@@ -27,6 +27,8 @@ export const BattleField: React.FC = () => {
   const [discardSelection, setDiscardSelection] = useState<string[]>([]);
   const [counterTimer, setCounterTimer] = useState<number>(30);
   const [showPhaseMenu, setShowPhaseMenu] = useState(false);
+  const [showAttackModal, setShowAttackModal] = useState(false);
+  const [showDefenseModal, setShowDefenseModal] = useState(false);
   const [selectedErosionCardId, setSelectedErosionCardId] = useState<string | null>(null);
   const [erosionChoice, setErosionChoice] = useState<'A' | 'B' | 'C' | null>(null);
 
@@ -107,11 +109,18 @@ export const BattleField: React.FC = () => {
     }
   }, [game?.counterStack, gameId]);
 
-  // Bot Turn Logic
+  // Bot Logic
   useEffect(() => {
     if (!game || !gameId) return;
-    const opponentUid = Object.keys(game.players).find(uid => uid !== auth.currentUser?.uid);
-    if (opponentUid === 'BOT_PLAYER' && game.players[opponentUid].isTurn) {
+    const bot = game.players['BOT_PLAYER'];
+    if (!bot) return;
+
+    const isBotTurn = bot.isTurn;
+    const isBotCountering = game.phase === 'COUNTERING' && game.counterStack.length > 0 && game.counterStack[game.counterStack.length - 1].ownerUid !== 'BOT_PLAYER';
+    const isBotDefending = game.phase === 'DEFENSE_DECLARATION' && !isBotTurn;
+    const isBotResolvingDamage = game.phase === 'DAMAGE_CALCULATION';
+
+    if (isBotTurn || isBotCountering || isBotDefending || isBotResolvingDamage) {
       const timer = setTimeout(() => {
         GameService.botMove(gameId);
       }, 2000);
@@ -135,12 +144,28 @@ export const BattleField: React.FC = () => {
   const me = game.players[myUid];
   const opponent = opponentUid ? game.players[opponentUid] : null;
 
+  const canUnitAttack = (card: Card) => {
+    if (!card || card.isExhausted) return false;
+    const isRush = card.isrush;
+    const wasPlayedThisTurn = (card.playedTurn === game.turnCount);
+    return isRush || !wasPlayedThisTurn;
+  };
+
+  const getAvailableAttackers = () => {
+    return me.unitZone.filter(c => c !== null && canUnitAttack(c)) as Card[];
+  };
+
+  const getAvailableDefenders = () => {
+    return me.unitZone.filter(c => c !== null && !c.isExhausted) as Card[];
+  };
+
   const handleDeclareAttack = async () => {
     if (!gameId || selectedAttackers.length === 0) return;
     try {
       await GameService.declareAttack(gameId, myUid, selectedAttackers, isAlliance);
       setSelectedAttackers([]);
       setIsAlliance(false);
+      setShowAttackModal(false);
     } catch (error: any) {
       alert(error.message);
     }
@@ -151,6 +176,7 @@ export const BattleField: React.FC = () => {
     try {
       await GameService.declareDefense(gameId, myUid, isDefending ? selectedDefender || undefined : undefined);
       setSelectedDefender(null);
+      setShowDefenseModal(false);
     } catch (error: any) {
       alert(error.message);
     }
@@ -205,11 +231,8 @@ export const BattleField: React.FC = () => {
 
     // Handle selecting defender in Defense Phase
     if (game.phase === 'DEFENSE_DECLARATION' && zone === 'unit') {
-      const isOpponentCard = opponent?.unitZone.some(c => c?.gamecardId === card.gamecardId);
-      const isMyCard = me.unitZone.some(c => c?.gamecardId === card.gamecardId);
-      
       // If it's my turn to defend (opponent is attacking)
-      if (opponent?.isTurn && isMyCard && !card.isExhausted) {
+      if (opponent?.isTurn && me.unitZone.some(c => c?.gamecardId === card.gamecardId) && !card.isExhausted) {
         setSelectedDefender(prev => prev === card.gamecardId ? null : card.gamecardId);
       }
       return;
@@ -238,7 +261,7 @@ export const BattleField: React.FC = () => {
     // Handle selecting attackers in Battle Phase
     if (game.phase === 'BATTLE_DECLARATION' && zone === 'unit') {
       const isMyCard = me.unitZone.some(c => c?.gamecardId === card.gamecardId);
-      if (isMyCard && !card.isExhausted) {
+      if (isMyCard && canUnitAttack(card)) {
         setSelectedAttackers(prev => {
           if (prev.includes(card.gamecardId)) return prev.filter(id => id !== card.gamecardId);
           if (isAlliance) {
@@ -1017,49 +1040,210 @@ export const BattleField: React.FC = () => {
           </div>
         </div>
 
+        {/* Attack Declaration Modal */}
+        <AnimatePresence>
+          {showAttackModal && (
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-[80] bg-black/90 backdrop-blur-md flex items-center justify-center p-8"
+            >
+              <div className="max-w-5xl w-full flex flex-col items-center gap-8">
+                <div className="text-center">
+                  <h2 className="text-4xl font-black italic text-red-500 mb-2 uppercase tracking-tighter">宣告攻击 (Attack Declaration)</h2>
+                  <p className="text-zinc-400 uppercase tracking-[0.3em] text-sm">请选择攻击单位，并确认攻击方式</p>
+                </div>
+
+                <div className="flex flex-col items-center gap-6 w-full">
+                  <div className="flex gap-4">
+                    <button 
+                      onClick={() => {
+                        setIsAlliance(!isAlliance);
+                        setSelectedAttackers([]);
+                      }}
+                      className={cn(
+                        "px-8 py-3 rounded-xl font-black uppercase italic tracking-widest transition-all border-2",
+                        isAlliance ? "bg-red-600 border-red-400 text-white" : "bg-zinc-800 border-white/10 text-white/50"
+                      )}
+                    >
+                      联军模式: {isAlliance ? 'ON' : 'OFF'}
+                    </button>
+                  </div>
+
+                  <div className="flex gap-6 overflow-x-auto p-8 max-w-full custom-scrollbar">
+                    {getAvailableAttackers().map(card => {
+                      const isSelected = selectedAttackers.includes(card.gamecardId);
+                      return (
+                        <motion.div
+                          key={card.gamecardId}
+                          whileHover={{ y: -10 }}
+                          onClick={() => {
+                            setSelectedAttackers(prev => {
+                              if (prev.includes(card.gamecardId)) return prev.filter(id => id !== card.gamecardId);
+                              if (isAlliance) {
+                                if (prev.length >= 2) return [prev[1], card.gamecardId];
+                                return [...prev, card.gamecardId];
+                              } else {
+                                return [card.gamecardId];
+                              }
+                            });
+                          }}
+                          className={cn(
+                            "w-40 shrink-0 cursor-pointer transition-all rounded-xl overflow-hidden border-2",
+                            isSelected ? "border-red-500 scale-105 shadow-[0_0_30px_rgba(220,38,38,0.4)]" : "border-transparent opacity-60"
+                          )}
+                        >
+                          <CardComponent card={card} disableZoom={true} />
+                        </motion.div>
+                      );
+                    })}
+                    {getAvailableAttackers().length === 0 && (
+                      <div className="text-white/20 italic text-xl py-20">没有可以攻击的单位</div>
+                    )}
+                  </div>
+
+                  <div className="flex gap-4">
+                    <button 
+                      onClick={handleDeclareAttack}
+                      disabled={selectedAttackers.length === 0 || (isAlliance && selectedAttackers.length !== 2)}
+                      className="px-16 py-4 bg-red-600 text-white font-black italic uppercase tracking-widest rounded-xl hover:bg-red-500 transition-all disabled:opacity-30 shadow-xl shadow-red-600/20"
+                    >
+                      确认攻击
+                    </button>
+                    <button 
+                      onClick={() => {
+                        setShowAttackModal(false);
+                        setSelectedAttackers([]);
+                        setIsAlliance(false);
+                      }}
+                      className="px-16 py-4 bg-zinc-800 text-white font-black italic uppercase tracking-widest rounded-xl hover:bg-zinc-700 transition-all"
+                    >
+                      取消
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Defense Declaration Modal */}
+        <AnimatePresence>
+          {showDefenseModal && (
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-[80] bg-black/90 backdrop-blur-md flex items-center justify-center p-8"
+            >
+              <div className="max-w-5xl w-full flex flex-col items-center gap-8">
+                <div className="text-center">
+                  <h2 className="text-4xl font-black italic text-blue-500 mb-2 uppercase tracking-tighter">防御宣告 (Defense Declaration)</h2>
+                  <p className="text-zinc-400 uppercase tracking-[0.3em] text-sm">请选择防御单位，或选择不防御</p>
+                </div>
+
+                <div className="flex flex-col items-center gap-6 w-full">
+                  <div className="flex gap-6 overflow-x-auto p-8 max-w-full custom-scrollbar">
+                    {getAvailableDefenders().map(card => {
+                      const isSelected = selectedDefender === card.gamecardId;
+                      return (
+                        <motion.div
+                          key={card.gamecardId}
+                          whileHover={{ y: -10 }}
+                          onClick={() => setSelectedDefender(prev => prev === card.gamecardId ? null : card.gamecardId)}
+                          className={cn(
+                            "w-40 shrink-0 cursor-pointer transition-all rounded-xl overflow-hidden border-2",
+                            isSelected ? "border-blue-500 scale-105 shadow-[0_0_30px_rgba(37,99,235,0.4)]" : "border-transparent opacity-60"
+                          )}
+                        >
+                          <CardComponent card={card} disableZoom={true} />
+                        </motion.div>
+                      );
+                    })}
+                    {getAvailableDefenders().length === 0 && (
+                      <div className="text-white/20 italic text-xl py-20">没有可以防御的单位</div>
+                    )}
+                  </div>
+
+                  <div className="flex gap-4">
+                    <button 
+                      onClick={() => handleDeclareDefense(true)}
+                      disabled={!selectedDefender}
+                      className="px-16 py-4 bg-blue-600 text-white font-black italic uppercase tracking-widest rounded-xl hover:bg-blue-500 transition-all disabled:opacity-30 shadow-xl shadow-blue-600/20"
+                    >
+                      确认防御
+                    </button>
+                    <button 
+                      onClick={() => handleDeclareDefense(false)}
+                      className="px-16 py-4 bg-zinc-800 text-white font-black italic uppercase tracking-widest rounded-xl hover:bg-zinc-700 transition-all"
+                    >
+                      不防御
+                    </button>
+                    <button 
+                      onClick={() => {
+                        setShowDefenseModal(false);
+                        setSelectedDefender(null);
+                      }}
+                      className="px-16 py-4 bg-zinc-900 border border-white/10 text-white/50 font-black italic uppercase tracking-widest rounded-xl hover:bg-white/5 transition-all"
+                    >
+                      取消
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
         {/* Battle Controls Overlay */}
         {game.phase === 'BATTLE_DECLARATION' && me.isTurn && (
           <div className="absolute bottom-40 left-1/2 -translate-x-1/2 flex flex-col items-center gap-4 z-50">
             <div className="flex gap-4">
+              {getAvailableAttackers().length > 0 && (
+                <button 
+                  onClick={() => setShowAttackModal(true)}
+                  className="px-12 py-3 bg-red-600 hover:bg-red-500 text-white font-black uppercase italic tracking-widest rounded-xl shadow-xl shadow-red-600/20"
+                >
+                  宣告攻击
+                </button>
+              )}
               <button 
-                onClick={() => setIsAlliance(!isAlliance)}
-                className={cn(
-                  "px-6 py-2 rounded-lg font-black uppercase italic tracking-widest transition-all border-2",
-                  isAlliance ? "bg-red-600 border-red-400 text-white" : "bg-zinc-800 border-white/10 text-white/50"
-                )}
+                onClick={() => GameService.advancePhase(gameId!, 'RETURN_MAIN')}
+                className="px-12 py-3 bg-zinc-800 hover:bg-zinc-700 text-white font-black uppercase italic tracking-widest rounded-xl"
               >
-                联军模式: {isAlliance ? 'ON' : 'OFF'}
-              </button>
-              <button 
-                onClick={handleDeclareAttack}
-                disabled={selectedAttackers.length === 0 || (isAlliance && selectedAttackers.length !== 2)}
-                className="px-12 py-3 bg-red-600 hover:bg-red-500 disabled:opacity-30 text-white font-black uppercase italic tracking-widest rounded-xl shadow-xl shadow-red-600/20"
-              >
-                宣告攻击
+                回到主要阶段
               </button>
             </div>
-            <p className="text-white/40 text-[10px] uppercase tracking-[0.2em]">请在场上选择攻击单位</p>
           </div>
         )}
 
         {game.phase === 'DEFENSE_DECLARATION' && !me.isTurn && (
-          <div className="absolute bottom-40 left-1/2 -translate-x-1/2 flex flex-col items-center gap-4 z-50">
-            <div className="flex gap-4">
-              <button 
-                onClick={() => handleDeclareDefense(true)}
-                disabled={!selectedDefender}
-                className="px-12 py-3 bg-blue-600 hover:bg-blue-500 disabled:opacity-30 text-white font-black uppercase italic tracking-widest rounded-xl shadow-xl shadow-blue-600/20"
+          <div className="absolute inset-0 z-[60] flex items-center justify-center bg-black/40 backdrop-blur-sm pointer-events-none">
+            <div className="flex flex-col items-center gap-8 pointer-events-auto">
+              <motion.div 
+                initial={{ y: 20, opacity: 0 }}
+                animate={{ y: 0, opacity: 1 }}
+                className="bg-zinc-900 border-2 border-blue-600/50 p-8 rounded-3xl flex flex-col items-center gap-6 shadow-[0_0_50px_rgba(37,99,235,0.3)]"
               >
-                宣告防御
-              </button>
-              <button 
-                onClick={() => handleDeclareDefense(false)}
-                className="px-12 py-3 bg-zinc-800 hover:bg-zinc-700 text-white font-black uppercase italic tracking-widest rounded-xl"
-              >
-                不防御
-              </button>
+                <h2 className="text-4xl font-black italic text-blue-500 uppercase tracking-widest">防御宣告 (DEFENSE)</h2>
+                <div className="flex gap-6">
+                  <button 
+                    onClick={() => setShowDefenseModal(true)}
+                    className="px-12 py-4 bg-blue-600 hover:bg-blue-500 text-white font-black uppercase italic tracking-widest rounded-xl shadow-xl shadow-blue-600/20 transition-all hover:scale-105 active:scale-95"
+                  >
+                    进行防御
+                  </button>
+                  <button 
+                    onClick={() => handleDeclareDefense(false)}
+                    className="px-12 py-4 bg-zinc-800 hover:bg-zinc-700 text-white font-black uppercase italic tracking-widest rounded-xl transition-all hover:scale-105 active:scale-95"
+                  >
+                    不防御
+                  </button>
+                </div>
+                <p className="text-white/40 text-xs uppercase tracking-[0.2em] font-bold">点击“进行防御”以在弹出窗口中选择防御单位</p>
+              </motion.div>
             </div>
-            <p className="text-white/40 text-[10px] uppercase tracking-[0.2em]">请在场上选择防御单位</p>
           </div>
         )}
 

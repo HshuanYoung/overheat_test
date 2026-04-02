@@ -258,8 +258,8 @@ export const GameService = {
 
       if (remainingCost > 0) {
         const totalErosion = player.erosionFront.filter(c => c !== null).length + player.erosionBack.filter(c => c !== null).length;
-        if (remainingCost > 10 - totalErosion) {
-          return { success: false, reason: '侵蚀区空间不足以支付剩余费用' };
+        if (remainingCost >= 10 - totalErosion) {
+          return { success: false, reason: '侵蚀区空间不足以支付剩余费用 (不能达到10张)' };
         }
       }
 
@@ -333,8 +333,10 @@ export const GameService = {
       const card = stackItem.card;
 
       if (card.type === 'UNIT') {
+        card.playedTurn = gameState.turnCount;
         this.moveCard(gameState, stackItem.ownerUid, 'PLAY', stackItem.ownerUid, 'UNIT', card.gamecardId);
       } else if (card.type === 'ITEM') {
+        card.playedTurn = gameState.turnCount;
         this.moveCard(gameState, stackItem.ownerUid, 'PLAY', stackItem.ownerUid, 'ITEM', card.gamecardId);
       } else {
         this.moveCard(gameState, stackItem.ownerUid, 'PLAY', stackItem.ownerUid, 'GRAVE', card.gamecardId);
@@ -370,6 +372,16 @@ export const GameService = {
       const unit = player.unitZone.find(c => c?.gamecardId === id);
       if (!unit) throw new Error('Attacker not found in unit zone');
       if (unit.isExhausted) throw new Error('Attacker is already exhausted');
+      
+      // Attack conditions:
+      // a. Upright, isrush=0, not played this turn
+      // b. Upright, isrush=1
+      const isRush = unit.isrush;
+      const wasPlayedThisTurn = unit.playedTurn === gameState.turnCount;
+      if (!isRush && wasPlayedThisTurn) {
+        throw new Error(`单位 [${unit.fullName}] 在本回合打出，没有【疾走】不能攻击`);
+      }
+
       attackers.push(unit);
     }
 
@@ -497,7 +509,8 @@ export const GameService = {
       }
     }
 
-    gameState.phase = 'BATTLE_END';
+    gameState.phase = 'MAIN';
+    gameState.battleState = undefined;
     await setDoc(gameRef, cleanForFirestore(gameState));
   },
 
@@ -507,7 +520,7 @@ export const GameService = {
       if (player.deck.length > 0) {
         const card = player.deck.pop()!;
         card.cardlocation = 'EROSION_FRONT';
-        card.displayState = 'FRONT_FACEDOWN';
+        card.displayState = 'FRONT_UPRIGHT';
         
         // Find empty spot in erosionFront
         const emptyIdx = player.erosionFront.findIndex(c => c === null);
@@ -888,7 +901,7 @@ export const GameService = {
     const botState: PlayerState = {
       uid: 'BOT_PLAYER',
       displayName: '神蚀 AI',
-      deck: this.assignGameCardIds(this.shuffle([...CARD_LIBRARY.slice(0, 50)])), // Bot uses first 50 cards
+      deck: this.assignGameCardIds(this.shuffle([...deck])), // Bot uses same deck as player
       hand: [],
       grave: [],
       exile: [],
@@ -1024,29 +1037,104 @@ export const GameService = {
     
     const game = gameSnap.data() as GameState;
     const bot = game.players['BOT_PLAYER'];
-    if (!bot || !bot.isTurn) return;
+    if (!bot) return;
+
+    // Handle Countering (Bot chooses not to counter)
+    if (game.phase === 'COUNTERING') {
+      const lastStackItem = game.counterStack[game.counterStack.length - 1];
+      if (lastStackItem && lastStackItem.ownerUid !== 'BOT_PLAYER') {
+        // Player played a card, bot chooses not to counter
+        await this.resolvePlay(gameId);
+        return;
+      }
+      return;
+    }
+
+    // Handle Defense Declaration
+    if (game.phase === 'DEFENSE_DECLARATION') {
+      const attackerUid = Object.keys(game.players).find(uid => game.players[uid].isTurn);
+      if (attackerUid !== 'BOT_PLAYER') {
+        // Bot is the defender
+        const availableDefender = bot.unitZone.find(c => c && !c.isExhausted);
+        if (availableDefender) {
+          await this.declareDefense(gameId, 'BOT_PLAYER', availableDefender.gamecardId);
+        } else {
+          await this.declareDefense(gameId, 'BOT_PLAYER', undefined);
+        }
+        return;
+      }
+    }
+
+    // Handle Discard Phase
+    if (game.phase === 'DISCARD' && bot.isTurn) {
+      if (bot.hand.length > 6) {
+        await this.discardCard(gameId, 'BOT_PLAYER', bot.hand[0].gamecardId);
+      }
+      return;
+    }
+
+    if (!bot.isTurn) return;
 
     // Handle Erosion Phase
     if (game.phase === 'EROSION') {
-      // Bot logic: choose A (move all to grave)
       await this.handleErosionChoice(gameId, 'BOT_PLAYER', 'A');
       return;
     }
 
-    // 1. Try to play a unit if possible
-    const unitInHand = bot.hand.find(c => c.type === 'UNIT' && this.canPlayCard(bot, c).canPlay);
-    if (unitInHand) {
-      try {
-        await this.playCard(gameId, 'BOT_PLAYER', unitInHand.id, {});
-        // Bot always resolves immediately for now
-        await this.resolvePlay(gameId);
-      } catch (e) {
-        console.error('Bot failed to play unit', e);
+    // Main Phase Logic
+    if (game.phase === 'MAIN') {
+      // Try to play cards in order
+      for (const card of bot.hand) {
+        const canPlay = this.canPlayCard(bot, card);
+        if (canPlay.canPlay) {
+          try {
+            // Bot plays with default payment (deck to erosion)
+            await this.playCard(gameId, 'BOT_PLAYER', card.gamecardId, {});
+            return; // Exit and wait for next botMove call or player response
+          } catch (e) {
+            console.error('Bot failed to play card', e);
+          }
+        }
       }
+
+      // If no cards can be played, try to enter battle or end turn
+      if (game.turnCount > 1 && bot.unitZone.some(c => c && !c.isExhausted)) {
+        // Enter battle phase
+        await this.advancePhase(gameId, 'DECLARE_BATTLE');
+      } else {
+        await this.endTurn(gameId);
+      }
+      return;
     }
 
-    // 2. End Turn
-    await this.endTurn(gameId);
+    // Battle Declaration Phase
+    if (game.phase === 'BATTLE_DECLARATION' && bot.isTurn) {
+      const attacker = bot.unitZone.find(c => {
+        if (!c || c.isExhausted) return false;
+        const isRush = c.isrush;
+        const wasPlayedThisTurn = c.playedTurn === game.turnCount;
+        return isRush || !wasPlayedThisTurn;
+      });
+      if (attacker) {
+        await this.declareAttack(gameId, 'BOT_PLAYER', [attacker.gamecardId], false);
+      } else {
+        await this.advancePhase(gameId, 'RETURN_MAIN');
+      }
+      return;
+    }
+
+    // Battle Free Phase
+    if (game.phase === 'BATTLE_FREE' && bot.isTurn) {
+      // Bot just ends battle free phase
+      await updateDoc(gameRef, { phase: 'DAMAGE_CALCULATION' });
+      return;
+    }
+
+    // Damage Calculation Phase
+    if (game.phase === 'DAMAGE_CALCULATION') {
+      await this.resolveDamage(gameId);
+      return;
+    }
   },
 
   // Join an existing game

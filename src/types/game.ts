@@ -40,6 +40,7 @@ export interface Card {
   isrush?: boolean;
   isExhausted?: boolean;
   canAttack?: boolean;
+  playedTurn?: number;
   cardlocation?: 'HAND' | 'UNIT' | 'ITEM' | 'GRAVE' | 'EXILE' | 'EROSION_FRONT' | 'EROSION_BACK' | 'PLAY' | 'DECK';
   feijingMark: boolean;
   canResetCount?: number;    //only 0 can be reset,if not 0,at the start of turn,canResetCount-1
