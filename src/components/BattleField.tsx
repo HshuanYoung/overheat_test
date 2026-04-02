@@ -22,6 +22,9 @@ export const BattleField: React.FC = () => {
   const [paymentSelection, setPaymentSelection] = useState<{ useFeijing: string[], exhaustIds: string[], erosionFrontIds: string[] }>({ useFeijing: [], exhaustIds: [], erosionFrontIds: [] });
   const [pendingPlayCard, setPendingPlayCard] = useState<Card | null>(null);
   const [selectedAttackers, setSelectedAttackers] = useState<string[]>([]);
+  const [isAlliance, setIsAlliance] = useState(false);
+  const [selectedDefender, setSelectedDefender] = useState<string | null>(null);
+  const [discardSelection, setDiscardSelection] = useState<string[]>([]);
   const [counterTimer, setCounterTimer] = useState<number>(30);
   const [showPhaseMenu, setShowPhaseMenu] = useState(false);
   const [selectedErosionCardId, setSelectedErosionCardId] = useState<string | null>(null);
@@ -135,8 +138,49 @@ export const BattleField: React.FC = () => {
   const handleDeclareAttack = async () => {
     if (!gameId || selectedAttackers.length === 0) return;
     try {
-      await GameService.declareAttack(gameId, myUid, selectedAttackers);
+      await GameService.declareAttack(gameId, myUid, selectedAttackers, isAlliance);
       setSelectedAttackers([]);
+      setIsAlliance(false);
+    } catch (error: any) {
+      alert(error.message);
+    }
+  };
+
+  const handleDeclareDefense = async (isDefending: boolean) => {
+    if (!gameId) return;
+    try {
+      await GameService.declareDefense(gameId, myUid, isDefending ? selectedDefender || undefined : undefined);
+      setSelectedDefender(null);
+    } catch (error: any) {
+      alert(error.message);
+    }
+  };
+
+  const handleEndBattleFree = async () => {
+    if (!gameId) return;
+    try {
+      // Transition to damage calculation
+      await updateDoc(doc(db, 'games', gameId), {
+        phase: 'DAMAGE_CALCULATION'
+      });
+    } catch (error: any) {
+      alert(error.message);
+    }
+  };
+
+  const handleResolveDamage = async () => {
+    if (!gameId) return;
+    try {
+      await GameService.resolveDamage(gameId);
+    } catch (error: any) {
+      alert(error.message);
+    }
+  };
+
+  const handleDiscardCard = async (cardId: string) => {
+    if (!gameId) return;
+    try {
+      await GameService.discardCard(gameId, myUid, cardId);
     } catch (error: any) {
       alert(error.message);
     }
@@ -149,11 +193,33 @@ export const BattleField: React.FC = () => {
   };
 
   const handleCardClick = (card: Card, zone: string, index?: number) => {
+    // Handle discarding cards
+    if (game.phase === 'DISCARD' && zone === 'hand') {
+      if (me.uid === auth.currentUser?.uid) {
+        handleDiscardCard(card.gamecardId);
+      }
+      return;
+    }
+
+    if (!me.isTurn && game.phase !== 'DEFENSE_DECLARATION') return;
+
+    // Handle selecting defender in Defense Phase
+    if (game.phase === 'DEFENSE_DECLARATION' && zone === 'unit') {
+      const isOpponentCard = opponent?.unitZone.some(c => c?.gamecardId === card.gamecardId);
+      const isMyCard = me.unitZone.some(c => c?.gamecardId === card.gamecardId);
+      
+      // If it's my turn to defend (opponent is attacking)
+      if (opponent?.isTurn && isMyCard && !card.isExhausted) {
+        setSelectedDefender(prev => prev === card.gamecardId ? null : card.gamecardId);
+      }
+      return;
+    }
+
     if (!me.isTurn) return;
 
     // Handle exhausting cards for payment
     if (pendingPlayCard) {
-      if (zone === 'unit' || zone === 'item') {
+      if (zone === 'unit') {
         if (card.isExhausted) return; // Cannot exhaust already exhausted card
         togglePaymentExhaust(card.gamecardId);
       } else if (zone === 'hand' && card.feijingMark) {
@@ -170,24 +236,28 @@ export const BattleField: React.FC = () => {
     }
 
     // Handle selecting attackers in Battle Phase
-    if (game.phase === 'BATTLE' && zone === 'unit') {
+    if (game.phase === 'BATTLE_DECLARATION' && zone === 'unit') {
       const isMyCard = me.unitZone.some(c => c?.gamecardId === card.gamecardId);
       if (isMyCard && !card.isExhausted) {
         setSelectedAttackers(prev => {
           if (prev.includes(card.gamecardId)) return prev.filter(id => id !== card.gamecardId);
-          if (prev.length >= 2) return [prev[1], card.gamecardId]; // Max 2 attackers
-          return [...prev, card.gamecardId];
+          if (isAlliance) {
+            if (prev.length >= 2) return [prev[1], card.gamecardId];
+            return [...prev, card.gamecardId];
+          } else {
+            return [card.gamecardId];
+          }
         });
       }
       return;
     }
 
-    // Activate [启] ability during Main Phase
-    if (game.phase === 'MAIN' && (zone === 'unit' || zone === 'item')) {
+    // Activate [启] ability during Main Phase or Battle Free Phase
+    if ((game.phase === 'MAIN' || game.phase === 'BATTLE_FREE') && (zone === 'unit' || zone === 'item')) {
       // Only allow activating abilities of my own cards
       const isMyCard = [...me.unitZone, ...me.itemZone].some(c => c?.gamecardId === card.gamecardId);
       if (isMyCard) {
-        const activateEffect = card.effects.find(e => e.type === 'ACTIVATE');
+        const activateEffect = card.effects?.find(e => e.type === 'ACTIVATE');
         if (activateEffect) {
           activateAbility(card, activateEffect);
         }
@@ -872,7 +942,7 @@ export const BattleField: React.FC = () => {
                             setShowPhaseMenu(false);
                           }}
                         >
-                          Enter Battle Phase
+                          进入战斗阶段
                         </button>
                       )}
                       <button 
@@ -882,11 +952,11 @@ export const BattleField: React.FC = () => {
                           setShowPhaseMenu(false);
                         }}
                       >
-                        End Turn
+                        结束回合
                       </button>
                     </>
                   )}
-                  {game.phase === 'BATTLE' && (
+                  {game.phase === 'BATTLE_DECLARATION' && (
                     <>
                       <button 
                         className="w-full py-3 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl font-bold uppercase tracking-widest transition-all"
@@ -895,7 +965,7 @@ export const BattleField: React.FC = () => {
                           setShowPhaseMenu(false);
                         }}
                       >
-                        End Battle Phase
+                        结束战斗阶段
                       </button>
                     </>
                   )}
@@ -940,11 +1010,109 @@ export const BattleField: React.FC = () => {
                   stack={game.counterStack || []}
                   myUid={myUid}
                   selectedAttackers={selectedAttackers}
+                  selectedDefender={selectedDefender || undefined}
                 />
               )}
             </div>
           </div>
         </div>
+
+        {/* Battle Controls Overlay */}
+        {game.phase === 'BATTLE_DECLARATION' && me.isTurn && (
+          <div className="absolute bottom-40 left-1/2 -translate-x-1/2 flex flex-col items-center gap-4 z-50">
+            <div className="flex gap-4">
+              <button 
+                onClick={() => setIsAlliance(!isAlliance)}
+                className={cn(
+                  "px-6 py-2 rounded-lg font-black uppercase italic tracking-widest transition-all border-2",
+                  isAlliance ? "bg-red-600 border-red-400 text-white" : "bg-zinc-800 border-white/10 text-white/50"
+                )}
+              >
+                联军模式: {isAlliance ? 'ON' : 'OFF'}
+              </button>
+              <button 
+                onClick={handleDeclareAttack}
+                disabled={selectedAttackers.length === 0 || (isAlliance && selectedAttackers.length !== 2)}
+                className="px-12 py-3 bg-red-600 hover:bg-red-500 disabled:opacity-30 text-white font-black uppercase italic tracking-widest rounded-xl shadow-xl shadow-red-600/20"
+              >
+                宣告攻击
+              </button>
+            </div>
+            <p className="text-white/40 text-[10px] uppercase tracking-[0.2em]">请在场上选择攻击单位</p>
+          </div>
+        )}
+
+        {game.phase === 'DEFENSE_DECLARATION' && !me.isTurn && (
+          <div className="absolute bottom-40 left-1/2 -translate-x-1/2 flex flex-col items-center gap-4 z-50">
+            <div className="flex gap-4">
+              <button 
+                onClick={() => handleDeclareDefense(true)}
+                disabled={!selectedDefender}
+                className="px-12 py-3 bg-blue-600 hover:bg-blue-500 disabled:opacity-30 text-white font-black uppercase italic tracking-widest rounded-xl shadow-xl shadow-blue-600/20"
+              >
+                宣告防御
+              </button>
+              <button 
+                onClick={() => handleDeclareDefense(false)}
+                className="px-12 py-3 bg-zinc-800 hover:bg-zinc-700 text-white font-black uppercase italic tracking-widest rounded-xl"
+              >
+                不防御
+              </button>
+            </div>
+            <p className="text-white/40 text-[10px] uppercase tracking-[0.2em]">请在场上选择防御单位</p>
+          </div>
+        )}
+
+        {game.phase === 'BATTLE_FREE' && me.isTurn && (
+          <div className="absolute bottom-40 left-1/2 -translate-x-1/2 flex flex-col items-center gap-4 z-50">
+            <button 
+              onClick={handleEndBattleFree}
+              className="px-16 py-4 bg-[#f27d26] hover:bg-[#f27d26]/80 text-black font-black uppercase italic tracking-widest rounded-xl shadow-xl shadow-[#f27d26]/20"
+            >
+              结束战斗自由阶段
+            </button>
+            <p className="text-white/40 text-[10px] uppercase tracking-[0.2em]">你可以使用故事卡或发动【启】能力</p>
+          </div>
+        )}
+
+        {game.phase === 'DAMAGE_CALCULATION' && (
+          <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+            <motion.div 
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              className="bg-zinc-900 border-2 border-red-600/30 p-12 rounded-3xl flex flex-col items-center gap-8 shadow-2xl"
+            >
+              <h2 className="text-5xl font-black italic text-red-500 uppercase tracking-tighter">伤害判定 (DAMAGE)</h2>
+              <button 
+                onClick={handleResolveDamage}
+                className="px-20 py-5 bg-red-600 hover:bg-red-500 text-white font-black uppercase italic tracking-widest rounded-2xl shadow-xl shadow-red-600/40 transition-all hover:scale-105"
+              >
+                确认判定
+              </button>
+            </motion.div>
+          </div>
+        )}
+
+        {game.phase === 'DISCARD' && me.uid === auth.currentUser?.uid && (
+          <div className="absolute inset-0 z-[70] flex items-center justify-center bg-black/60 backdrop-blur-md">
+            <div className="flex flex-col items-center gap-8">
+              <h2 className="text-4xl font-black italic text-[#f27d26] uppercase tracking-widest">弃置卡牌</h2>
+              <p className="text-white/60 text-lg">你的手牌超过 6 张，请选择卡牌弃置 (当前: {me.hand.length})</p>
+              <div className="flex gap-4 overflow-x-auto max-w-5xl p-8 custom-scrollbar">
+                {me.hand.map(card => (
+                  <motion.div 
+                    key={card.gamecardId}
+                    whileHover={{ y: -20, scale: 1.1 }}
+                    onClick={() => handleDiscardCard(card.gamecardId)}
+                    className="w-32 cursor-pointer transition-all hover:shadow-[0_0_30px_rgba(242,125,38,0.4)]"
+                  >
+                    <CardComponent card={card} disableZoom />
+                  </motion.div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Rulebook Overlay */}

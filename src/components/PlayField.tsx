@@ -17,6 +17,7 @@ interface PlayFieldProps {
   stack: StackItem[];
   myUid: string;
   selectedAttackers?: string[];
+  selectedDefender?: string;
 }
 
 const CardSlot: React.FC<{
@@ -33,7 +34,8 @@ const CardSlot: React.FC<{
   count?: number;
   showCount?: boolean;
   isAttacking?: boolean;
-}> = ({ card, label, onClick, onHover, className, isErosion, isFaceUp = true, isExhausted, isSelectedForPayment, isDeck, count = 0, showCount = true, isAttacking }) => {
+  isDefending?: boolean;
+}> = ({ card, label, onClick, onHover, className, isErosion, isFaceUp = true, isExhausted, isSelectedForPayment, isDeck, count = 0, showCount = true, isAttacking, isDefending }) => {
   // Calculate thickness layers (max 8 for visual performance)
   const layers = Math.min(Math.floor(count / 3), 8);
   
@@ -55,6 +57,7 @@ const CardSlot: React.FC<{
           isExhausted ? "rotate-90 scale-90 opacity-80" : "",
           isSelectedForPayment ? "ring-2 ring-[#f27d26] ring-offset-2 ring-offset-black z-10" : "",
           isAttacking ? "ring-4 ring-red-600 ring-offset-2 ring-offset-black z-10 shadow-[0_0_20px_rgba(220,38,38,0.8)]" : "",
+          isDefending ? "ring-4 ring-blue-600 ring-offset-2 ring-offset-black z-10 shadow-[0_0_20px_rgba(37,99,235,0.8)]" : "",
           className
         )}
         onClick={onClick}
@@ -127,7 +130,9 @@ const PlayerHalf: React.FC<{
   onPlayCard?: (card: Card) => void;
   paymentSelection?: { useFeijing: string[], exhaustIds: string[], erosionFrontIds?: string[] };
   selectedAttackers?: string[];
-}> = ({ player, isOpponent, onCardClick, onHoverCard, onPlayCard, paymentSelection, selectedAttackers }) => {
+  selectedDefender?: string;
+  game?: GameState;
+}> = ({ player, isOpponent, onCardClick, onHoverCard, onPlayCard, paymentSelection, selectedAttackers, selectedDefender, game }) => {
   const romanNumerals = ['Ⅰ', 'Ⅱ', 'Ⅲ', 'Ⅳ', 'Ⅴ', 'Ⅵ', 'Ⅶ', 'Ⅷ', 'Ⅸ', 'Ⅹ'];
   const [viewingZone, setViewingZone] = useState<{ title: string, cards: Card[] } | null>(null);
   const [selectedHandCardId, setSelectedHandCardId] = useState<string | null>(null);
@@ -266,7 +271,8 @@ const PlayerHalf: React.FC<{
                     onClick={() => unit && onCardClick?.(unit, 'unit', i)}
                     isExhausted={unit ? unit.isExhausted : false}
                     isSelectedForPayment={unit ? paymentSelection?.exhaustIds.includes(unit.gamecardId) : false}
-                    isAttacking={unit ? selectedAttackers?.includes(unit.gamecardId) : false}
+                    isAttacking={unit ? (selectedAttackers?.includes(unit.gamecardId) || game?.battleState?.attackers.includes(unit.gamecardId)) : false}
+                    isDefending={unit ? (selectedDefender === unit.gamecardId || game?.battleState?.defender === unit.gamecardId) : false}
                     showCount={false}
                   />
                 );
@@ -288,7 +294,8 @@ const PlayerHalf: React.FC<{
                     onClick={() => unit && onCardClick?.(unit, 'unit', i)}
                     isExhausted={unit ? unit.isExhausted : false}
                     isSelectedForPayment={unit ? paymentSelection?.exhaustIds.includes(unit.gamecardId) : false}
-                    isAttacking={unit ? selectedAttackers?.includes(unit.gamecardId) : false}
+                    isAttacking={unit ? (selectedAttackers?.includes(unit.gamecardId) || game?.battleState?.attackers.includes(unit.gamecardId)) : false}
+                    isDefending={unit ? (selectedDefender === unit.gamecardId || game?.battleState?.defender === unit.gamecardId) : false}
                     showCount={false}
                   />
                 );
@@ -462,7 +469,7 @@ const PlayerHalf: React.FC<{
   );
 };
 
-export const PlayField: React.FC<PlayFieldProps> = ({ player, opponent, game, onCardClick, onHoverCard, onPlayCard, paymentSelection, stack, myUid, selectedAttackers }) => {
+export const PlayField: React.FC<PlayFieldProps> = ({ player, opponent, game, onCardClick, onHoverCard, onPlayCard, paymentSelection, stack, myUid, selectedAttackers, selectedDefender }) => {
   return (
     <div className="relative w-full h-full max-w-7xl mx-auto bg-[#0a0a0a] border-2 border-[#1a1a1a] rounded-xl shadow-2xl font-mono text-white select-none flex flex-col">
       {/* Grid Pattern Background */}
@@ -471,7 +478,7 @@ export const PlayField: React.FC<PlayFieldProps> = ({ player, opponent, game, on
       
       {/* Background Overlay */}
       <div className="absolute inset-0 bg-gradient-to-b from-red-500/5 via-transparent to-blue-500/5 pointer-events-none" />
-
+ 
       {/* Opponent Half */}
       <div className="flex-1 min-h-0">
         <PlayerHalf 
@@ -479,9 +486,12 @@ export const PlayField: React.FC<PlayFieldProps> = ({ player, opponent, game, on
           isOpponent 
           onCardClick={onCardClick}
           onHoverCard={onHoverCard}
+          game={game}
+          selectedAttackers={selectedAttackers}
+          selectedDefender={selectedDefender}
         />
       </div>
-
+ 
       {/* STACK AREA */}
       <div className="h-10 shrink-0 border-y border-white/10 bg-white/5 flex items-center justify-center px-6 relative z-10">
         <div className="flex items-center gap-3">
@@ -506,7 +516,7 @@ export const PlayField: React.FC<PlayFieldProps> = ({ player, opponent, game, on
           ))}
         </div>
       </div>
-
+ 
       {/* Player Half */}
       <div className="flex-1 min-h-0">
         <PlayerHalf 
@@ -516,6 +526,8 @@ export const PlayField: React.FC<PlayFieldProps> = ({ player, opponent, game, on
           onPlayCard={onPlayCard}
           paymentSelection={paymentSelection}
           selectedAttackers={selectedAttackers}
+          selectedDefender={selectedDefender}
+          game={game}
         />
       </div>
 

@@ -66,6 +66,7 @@ export interface PlayerState {
   displayName: string;
   mulliganDone: boolean;
   hasExhaustedThisTurn: string[];
+  isGoddessMode?: boolean;
 }
 
 export interface StackItem {
@@ -76,7 +77,21 @@ export interface StackItem {
   timestamp: number;
 }
 
-export type GamePhase = 'START' | 'DRAW' | 'EROSION' | 'MAIN' | 'BATTLE' | 'COUNTERING' | 'END' | 'MULLIGAN' | 'INIT';
+export type GamePhase = 
+  | 'START' 
+  | 'DRAW' 
+  | 'EROSION' 
+  | 'MAIN' 
+  | 'BATTLE_DECLARATION' 
+  | 'DEFENSE_DECLARATION' 
+  | 'BATTLE_FREE' 
+  | 'DAMAGE_CALCULATION' 
+  | 'BATTLE_END' 
+  | 'DISCARD' 
+  | 'COUNTERING' 
+  | 'END' 
+  | 'MULLIGAN' 
+  | 'INIT';
 
 export interface GameState {
   gameId: string;
@@ -92,6 +107,11 @@ export interface GameState {
   logs: string[];
   players: {
     [uid: string]: PlayerState;
+  };
+  battleState?: {
+    attackers: string[]; // gamecardIds
+    defender?: string; // gamecardId
+    isAlliance: boolean;
   };
 }
 

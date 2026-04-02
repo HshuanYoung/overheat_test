@@ -245,7 +245,7 @@ export const GameService = {
       if (paymentSelection.exhaustUnitIds) {
         for (const uid of paymentSelection.exhaustUnitIds) {
           if (remainingCost <= 0) break;
-          const card = [...player.unitZone, ...player.itemZone].find(c => c?.gamecardId === uid && !c.isExhausted);
+          const card = [...player.unitZone].find(c => c?.gamecardId === uid && !c.isExhausted);
           if (card) {
             cardsToExhaust.push(card);
             remainingCost -= 1;
@@ -348,16 +348,23 @@ export const GameService = {
     await setDoc(gameRef, cleanForFirestore(gameState));
   },
 
-  async declareAttack(gameId: string, playerId: string, attackerIds: string[]) {
+  async declareAttack(gameId: string, playerId: string, attackerIds: string[], isAlliance: boolean) {
     const gameRef = doc(db, GAMES_COLLECTION, gameId);
     const gameSnap = await getDoc(gameRef);
     if (!gameSnap.exists()) throw new Error('Game not found');
     const gameState = gameSnap.data() as GameState;
 
-    if (gameState.phase !== 'BATTLE') throw new Error('Not in battle phase');
+    if (gameState.phase !== 'BATTLE_DECLARATION') throw new Error('Not in battle declaration phase');
     
     const player = gameState.players[playerId];
     const attackers: Card[] = [];
+
+    if (isAlliance && attackerIds.length !== 2) {
+      throw new Error('联军攻击必须选择两个单位');
+    }
+    if (!isAlliance && attackerIds.length !== 1) {
+      throw new Error('单体攻击必须选择一个单位');
+    }
 
     for (const id of attackerIds) {
       const unit = player.unitZone.find(c => c?.gamecardId === id);
@@ -371,13 +378,226 @@ export const GameService = {
       this.exhaustCard(unit);
     }
 
-    const attackerNames = attackers.map(a => a.fullName).join(' 和 ');
-    gameState.logs.push(`${player.displayName} 宣告了攻击: ${attackerNames}`);
+    gameState.battleState = {
+      attackers: attackerIds,
+      isAlliance
+    };
 
-    // TODO: Implement blocking and damage resolution
-    // For now, just log it.
+    const attackerNames = attackers.map(a => a.fullName).join(' 和 ');
+    gameState.logs.push(`${player.displayName} 宣告了攻击: ${attackerNames}${isAlliance ? ' (联军攻击)' : ''}`);
+
+    // Transition to counter check (for now just move to defense declaration)
+    gameState.phase = 'DEFENSE_DECLARATION';
 
     await setDoc(gameRef, cleanForFirestore(gameState));
+  },
+
+  async declareDefense(gameId: string, playerId: string, defenderId?: string) {
+    const gameRef = doc(db, GAMES_COLLECTION, gameId);
+    const gameSnap = await getDoc(gameRef);
+    if (!gameSnap.exists()) throw new Error('Game not found');
+    const gameState = gameSnap.data() as GameState;
+
+    if (gameState.phase !== 'DEFENSE_DECLARATION') throw new Error('Not in defense declaration phase');
+    if (!gameState.battleState) throw new Error('No battle state found');
+
+    const player = gameState.players[playerId];
+    
+    if (defenderId) {
+      const unit = player.unitZone.find(c => c?.gamecardId === defenderId);
+      if (!unit) throw new Error('Defender not found in unit zone');
+      if (unit.isExhausted) throw new Error('Defender is already exhausted');
+      
+      gameState.battleState.defender = defenderId;
+      gameState.logs.push(`${player.displayName} 宣告了防御: ${unit.fullName}`);
+    } else {
+      gameState.logs.push(`${player.displayName} 选择不防御`);
+    }
+
+    // Transition to counter check (for now just move to battle free)
+    gameState.phase = 'BATTLE_FREE';
+
+    await setDoc(gameRef, cleanForFirestore(gameState));
+  },
+
+  async resolveDamage(gameId: string) {
+    const gameRef = doc(db, GAMES_COLLECTION, gameId);
+    const gameSnap = await getDoc(gameRef);
+    if (!gameSnap.exists()) throw new Error('Game not found');
+    const gameState = gameSnap.data() as GameState;
+
+    if (gameState.phase !== 'DAMAGE_CALCULATION') throw new Error('Not in damage calculation phase');
+    if (!gameState.battleState) throw new Error('No battle state found');
+
+    const attackerId = gameState.playerIds[gameState.currentTurnPlayer];
+    const defenderId = gameState.playerIds[gameState.currentTurnPlayer === 0 ? 1 : 0];
+    const attacker = gameState.players[attackerId];
+    const defender = gameState.players[defenderId];
+
+    const attackingUnits = gameState.battleState.attackers.map(id => 
+      attacker.unitZone.find(c => c?.gamecardId === id)
+    ).filter(Boolean) as Card[];
+
+    if (!gameState.battleState.defender) {
+      // Direct damage to player
+      let totalDamage = attackingUnits.reduce((sum, u) => sum + (u.damage || 0), 0);
+      if (defender.isGoddessMode) {
+        totalDamage *= 2;
+        gameState.logs.push(`${defender.displayName} 处于女神化状态，受到的伤害翻倍！`);
+      }
+      
+      gameState.logs.push(`${attacker.displayName} 对 ${defender.displayName} 造成了 ${totalDamage} 点战斗伤害`);
+      this.applyDamageToPlayer(gameState, defenderId, totalDamage);
+    } else {
+      // Unit combat
+      const defendingUnit = defender.unitZone.find(c => c?.gamecardId === gameState.battleState!.defender) as Card;
+      const defenderPower = defendingUnit.power || 0;
+
+      if (!gameState.battleState.isAlliance) {
+        const attackingUnit = attackingUnits[0];
+        const attackerPower = attackingUnit.power || 0;
+
+        if (attackerPower > defenderPower) {
+          this.destroyUnit(gameState, defenderId, defendingUnit.gamecardId);
+          gameState.logs.push(`${attackingUnit.fullName} 破坏了 ${defendingUnit.fullName}`);
+        } else if (attackerPower < defenderPower) {
+          this.destroyUnit(gameState, attackerId, attackingUnit.gamecardId);
+          gameState.logs.push(`${defendingUnit.fullName} 破坏了 ${attackingUnit.fullName}`);
+        } else {
+          this.destroyUnit(gameState, attackerId, attackingUnit.gamecardId);
+          this.destroyUnit(gameState, defenderId, defendingUnit.gamecardId);
+          gameState.logs.push(`${attackingUnit.fullName} 和 ${defendingUnit.fullName} 同归于尽`);
+        }
+      } else {
+        // Alliance combat
+        const totalAttackerPower = attackingUnits.reduce((sum, u) => sum + (u.power || 0), 0);
+        const powerA = attackingUnits[0].power || 0;
+        const powerB = attackingUnits[1].power || 0;
+
+        if (defenderPower < Math.min(powerA, powerB)) {
+          // Defender destroyed
+          this.destroyUnit(gameState, defenderId, defendingUnit.gamecardId);
+          gameState.logs.push(`${defendingUnit.fullName} 被联军破坏`);
+        } else if (defenderPower > totalAttackerPower) {
+          // Both attackers destroyed
+          this.destroyUnit(gameState, attackerId, attackingUnits[0].gamecardId);
+          this.destroyUnit(gameState, attackerId, attackingUnits[1].gamecardId);
+          gameState.logs.push(`联军被 ${defendingUnit.fullName} 击溃，两个单位都被破坏`);
+        } else {
+          // Defender power is between min and total
+          // Prompt user to choose? For now, automatic logic as per rules
+          // aa. 如果防御单位的力量值高于其中一个的力量值但是不高于联军总力量值，则力量值最低的被破坏送去墓地。
+          // ab. 如果防御单位的力量值高于任意一个攻击单位的力量值但是不高于联军总力量值，则攻击方玩家选择一个攻击单位送去墓地。
+          // These rules seem to imply the same thing if powers are different.
+          // Let's just pick the lower power one to destroy.
+          const unitToDestroy = powerA <= powerB ? attackingUnits[0] : attackingUnits[1];
+          this.destroyUnit(gameState, attackerId, unitToDestroy.gamecardId);
+          gameState.logs.push(`${defendingUnit.fullName} 抵挡了联军，${unitToDestroy.fullName} 被破坏`);
+        }
+      }
+    }
+
+    gameState.phase = 'BATTLE_END';
+    await setDoc(gameRef, cleanForFirestore(gameState));
+  },
+
+  applyDamageToPlayer(gameState: GameState, playerId: string, damage: number) {
+    const player = gameState.players[playerId];
+    for (let i = 0; i < damage; i++) {
+      if (player.deck.length > 0) {
+        const card = player.deck.pop()!;
+        card.cardlocation = 'EROSION_FRONT';
+        card.displayState = 'FRONT_FACEDOWN';
+        
+        // Find empty spot in erosionFront
+        const emptyIdx = player.erosionFront.findIndex(c => c === null);
+        if (emptyIdx !== -1) {
+          player.erosionFront[emptyIdx] = card;
+        } else {
+          player.erosionFront.push(card);
+        }
+
+        // Check for goddess mode
+        const totalErosion = player.erosionFront.filter(c => c !== null).length + player.erosionBack.filter(c => c !== null).length;
+        if (totalErosion >= 10) {
+          player.isGoddessMode = true;
+          gameState.logs.push(`${player.displayName} 进入了女神化状态！`);
+        }
+
+        // If more than 10, excess to grave
+        const currentTotal = player.erosionFront.filter(c => c !== null).length;
+        if (currentTotal > 10) {
+          // This logic might need refinement based on which one to move to grave
+          // For now, just move the last one added
+          const lastIdx = player.erosionFront.length - 1;
+          const excessCard = player.erosionFront[lastIdx];
+          if (excessCard) {
+            excessCard.cardlocation = 'GRAVE';
+            player.grave.push(excessCard);
+            player.erosionFront[lastIdx] = null;
+          }
+        }
+      } else {
+        // Deck out
+        gameState.gameStatus = 2;
+        gameState.winReason = 'DECK_OUT';
+        gameState.winnerId = gameState.playerIds.find(id => id !== playerId);
+        break;
+      }
+    }
+  },
+
+  destroyUnit(gameState: GameState, playerId: string, gamecardId: string) {
+    const player = gameState.players[playerId];
+    const idx = player.unitZone.findIndex(c => c?.gamecardId === gamecardId);
+    if (idx !== -1) {
+      const card = player.unitZone[idx]!;
+      card.cardlocation = 'GRAVE';
+      player.grave.push(card);
+      player.unitZone[idx] = null;
+    }
+  },
+
+  async discardCard(gameId: string, playerId: string, cardId: string) {
+    const gameRef = doc(db, GAMES_COLLECTION, gameId);
+    const gameSnap = await getDoc(gameRef);
+    if (!gameSnap.exists()) throw new Error('Game not found');
+    const gameState = gameSnap.data() as GameState;
+
+    if (gameState.phase !== 'DISCARD') throw new Error('Not in discard phase');
+    const player = gameState.players[playerId];
+    
+    const cardIdx = player.hand.findIndex(c => c.gamecardId === cardId);
+    if (cardIdx === -1) throw new Error('Card not found in hand');
+
+    const card = player.hand.splice(cardIdx, 1)[0];
+    card.cardlocation = 'GRAVE';
+    player.grave.push(card);
+    gameState.logs.push(`${player.displayName} 弃置了一张卡牌`);
+
+    if (player.hand.length <= 6) {
+      // Move to next turn
+      this.finishTurnTransition(gameState);
+    }
+
+    await setDoc(gameRef, cleanForFirestore(gameState));
+  },
+
+  finishTurnTransition(gameState: GameState) {
+    const currentPlayerId = gameState.playerIds[gameState.currentTurnPlayer];
+    const currentPlayer = gameState.players[currentPlayerId];
+
+    gameState.currentTurnPlayer = gameState.currentTurnPlayer === 0 ? 1 : 0;
+    gameState.turnCount += 1;
+    gameState.phase = 'START';
+    const nextPlayerId = gameState.playerIds[gameState.currentTurnPlayer];
+    const nextPlayer = gameState.players[nextPlayerId];
+    
+    currentPlayer.isTurn = false;
+    nextPlayer.isTurn = true;
+    
+    gameState.logs.push(`--- 回合 ${gameState.turnCount}: ${nextPlayer.displayName} ---`);
+    this.executeStartPhase(gameState, nextPlayer);
   },
 
   async advancePhase(gameId: string, action?: 'DECLARE_BATTLE' | 'DECLARE_END' | 'RETURN_MAIN') {
@@ -412,49 +632,27 @@ export const GameService = {
           if (gameState.turnCount === 1) {
             throw new Error('先手玩家第一回合不能进入战斗阶段');
           }
-          gameState.phase = 'BATTLE';
+          gameState.phase = 'BATTLE_DECLARATION';
           gameState.logs.push(`${currentPlayer.displayName} 进入战斗阶段`);
         } else if (action === 'DECLARE_END') {
-          gameState.phase = 'END';
           this.executeEndPhase(gameState, currentPlayer);
-          
-          // Automatically transition to next player's START phase
-          gameState.currentTurnPlayer = gameState.currentTurnPlayer === 0 ? 1 : 0;
-          gameState.turnCount += 1;
-          gameState.phase = 'START';
-          const nextPlayerId = gameState.playerIds[gameState.currentTurnPlayer];
-          const nextPlayer = gameState.players[nextPlayerId];
-          
-          // Update isTurn flags
-          currentPlayer.isTurn = false;
-          nextPlayer.isTurn = true;
-          
-          gameState.logs.push(`--- 回合 ${gameState.turnCount}: ${nextPlayer.displayName} ---`);
-          this.executeStartPhase(gameState, nextPlayer);
         }
         break;
-      case 'BATTLE':
-        if (action === 'RETURN_MAIN') {
+      case 'BATTLE_DECLARATION':
+        if (action === 'DECLARE_END') {
+          this.executeEndPhase(gameState, currentPlayer);
+        } else if (action === 'RETURN_MAIN') {
           gameState.phase = 'MAIN';
           gameState.logs.push(`${currentPlayer.displayName} 返回主要阶段`);
-        } else if (action === 'DECLARE_END') {
-          gameState.phase = 'END';
-          this.executeEndPhase(gameState, currentPlayer);
-          
-          // Automatically transition to next player's START phase
-          gameState.currentTurnPlayer = gameState.currentTurnPlayer === 0 ? 1 : 0;
-          gameState.turnCount += 1;
-          gameState.phase = 'START';
-          const nextPlayerId = gameState.playerIds[gameState.currentTurnPlayer];
-          const nextPlayer = gameState.players[nextPlayerId];
-          
-          // Update isTurn flags
-          currentPlayer.isTurn = false;
-          nextPlayer.isTurn = true;
-          
-          gameState.logs.push(`--- 回合 ${gameState.turnCount}: ${nextPlayer.displayName} ---`);
-          this.executeStartPhase(gameState, nextPlayer);
         }
+        break;
+      case 'BATTLE_END':
+        gameState.phase = 'MAIN';
+        gameState.battleState = undefined;
+        gameState.logs.push(`战斗结束，返回主要阶段`);
+        break;
+      case 'DISCARD':
+        // Handled by discardCard
         break;
       case 'END':
         // This case is now handled automatically in DECLARE_END
@@ -597,7 +795,13 @@ export const GameService = {
 
   executeEndPhase(gameState: GameState, player: PlayerState) {
     gameState.logs.push(`${player.displayName} 的结束阶段`);
-    // Check effects at END phase (TODO)
+    
+    if (player.hand.length > 6) {
+      gameState.phase = 'DISCARD';
+      gameState.logs.push(`${player.displayName} 手牌超过 6 张，请弃置卡牌。`);
+    } else {
+      this.finishTurnTransition(gameState);
+    }
   },
 
   // Create a new game and wait for opponent
