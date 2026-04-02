@@ -16,7 +16,7 @@ export const BattleField: React.FC = () => {
   const navigate = useNavigate();
   const [game, setGame] = useState<GameState | null>(null);
   const [isRulebookOpen, setIsRulebookOpen] = useState(false);
-  const [hoveredCard, setHoveredCard] = useState<Card | null>(null);
+  const [previewCard, setPreviewCard] = useState<Card | null>(null);
   const [selectedMulligan, setSelectedMulligan] = useState<string[]>([]);
   const [isMulliganSubmitting, setIsMulliganSubmitting] = useState(false);
   const [paymentSelection, setPaymentSelection] = useState<{ useFeijing: string[], exhaustIds: string[], erosionFrontIds: string[] }>({ useFeijing: [], exhaustIds: [], erosionFrontIds: [] });
@@ -146,8 +146,8 @@ export const BattleField: React.FC = () => {
 
   const canUnitAttack = (card: Card) => {
     if (!card || card.isExhausted) return false;
-    const isRush = card.isrush;
-    const wasPlayedThisTurn = (card.playedTurn === game.turnCount);
+    const isRush = !!card.isrush;
+    const wasPlayedThisTurn = card.playedTurn === game.turnCount;
     return isRush || !wasPlayedThisTurn;
   };
 
@@ -246,6 +246,10 @@ export const BattleField: React.FC = () => {
         if (card.isExhausted) return; // Cannot exhaust already exhausted card
         togglePaymentExhaust(card.gamecardId);
       } else if (zone === 'hand' && card.feijingMark) {
+        if (card.gamecardId === pendingPlayCard.gamecardId) {
+          alert('不能使用正在打出的卡牌作为菲晶卡支付费用');
+          return;
+        }
         if (card.color !== pendingPlayCard.color) {
           alert('菲晶卡颜色与打出的卡牌颜色不匹配');
           return;
@@ -428,7 +432,7 @@ export const BattleField: React.FC = () => {
               <div key={`${card.gamecardId}-${i}`} className="flex flex-col items-center gap-4">
                 <motion.div
                   whileHover={{ y: -10 }}
-                  onClick={() => setHoveredCard(card)}
+                  onClick={() => setPreviewCard(card)}
                   className={cn(
                     "w-40 cursor-pointer transition-all rounded-xl overflow-hidden border-2",
                     isSelected ? "border-[#f27d26] scale-105 shadow-[0_0_30px_rgba(242,125,38,0.3)]" : "border-transparent opacity-60"
@@ -464,18 +468,18 @@ export const BattleField: React.FC = () => {
         
         {/* Full Image Overlay for Mulligan */}
         <AnimatePresence>
-          {hoveredCard && (
+          {previewCard && (
             <motion.div 
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               className="fixed inset-0 z-[100] bg-black/90 backdrop-blur-sm flex items-center justify-center p-8 cursor-pointer"
-              onClick={() => setHoveredCard(null)}
+              onClick={() => setPreviewCard(null)}
             >
               <div className="relative max-h-[90vh] aspect-[3/4]">
                 <img 
-                  src={hoveredCard.fullImageUrl || hoveredCard.imageUrl || `https://picsum.photos/seed/${hoveredCard.id}/400/600`} 
-                  alt={hoveredCard.fullName}
+                  src={previewCard.fullImageUrl || previewCard.imageUrl || `https://picsum.photos/seed/${previewCard.id}/400/600`} 
+                  alt={previewCard.fullName}
                   className="w-full h-full object-contain rounded-2xl shadow-2xl"
                   referrerPolicy="no-referrer"
                 />
@@ -498,34 +502,6 @@ export const BattleField: React.FC = () => {
 
   return (
     <div className="h-screen bg-[#050505] flex flex-col overflow-hidden select-none font-sans relative">
-      {/* Zoomed Card Overlay (Global) */}
-      <AnimatePresence>
-        {hoveredCard && (
-          <motion.div
-            initial={{ opacity: 0, x: 40, scale: 0.8 }}
-            animate={{ opacity: 1, x: 0, scale: 1 }}
-            exit={{ opacity: 0, x: 40, scale: 0.8 }}
-            className="fixed right-12 top-1/2 -translate-y-1/2 z-[100] w-72 aspect-[3/4] rounded-2xl border-2 border-[#f27d26] shadow-[0_0_50px_rgba(242,125,38,0.4)] overflow-hidden bg-black pointer-events-none"
-          >
-            <img 
-              src={hoveredCard.fullImageUrl} 
-              alt={hoveredCard.name} 
-              className="w-full h-full object-cover"
-              referrerPolicy="no-referrer"
-            />
-            <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black via-black/95 to-transparent p-4 border-t border-[#f27d26]/20">
-              <div className="text-sm font-black text-[#f27d26] mb-1 uppercase italic tracking-tighter">{hoveredCard.name}</div>
-              <div className="text-[10px] text-white/80 leading-relaxed font-mono">
-                {hoveredCard.effects.map((e, i) => (
-                  <div key={i} className="mb-1.5">
-                    <span className="font-bold text-blue-400">[{e.type}]</span> {e.description}
-                  </div>
-                ))}
-              </div>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
       {/* Erosion Phase Overlay */}
       <AnimatePresence>
         {game.phase === 'EROSION' && me.isTurn && (
@@ -663,14 +639,14 @@ export const BattleField: React.FC = () => {
                   {pendingPlayCard.acValue > 0 ? (
                     <>
                       {/* Feijing Section */}
-                      {me.hand.some(c => c.feijingMark && c.color === pendingPlayCard.color) && (
+                      {me.hand.some(c => c.feijingMark && c.color === pendingPlayCard.color && c.gamecardId !== pendingPlayCard.gamecardId) && (
                         <div className="flex flex-col gap-3">
                           <div className="flex items-center gap-2 text-blue-400 font-black uppercase italic tracking-widest text-sm">
                             <Zap className="w-4 h-4" />
                             菲晶支付 (Feijing Payment - Cost -3)
                           </div>
                           <div className="flex gap-4 overflow-x-auto pb-2 custom-scrollbar">
-                            {me.hand.filter(c => c.feijingMark && c.color === pendingPlayCard.color).map(card => {
+                            {me.hand.filter(c => c.feijingMark && c.color === pendingPlayCard.color && c.gamecardId !== pendingPlayCard.gamecardId).map(card => {
                               const isSelected = paymentSelection.useFeijing.includes(card.gamecardId);
                               return (
                                 <motion.div
@@ -1027,9 +1003,10 @@ export const BattleField: React.FC = () => {
                   opponent={opponent} 
                   game={game}
                   onCardClick={handleCardClick}
-                  onHoverCard={setHoveredCard}
+                  onPreviewCard={setPreviewCard}
                   onPlayCard={playCardFromHand}
                   paymentSelection={paymentSelection}
+                  pendingPlayCard={pendingPlayCard}
                   stack={game.counterStack || []}
                   myUid={myUid}
                   selectedAttackers={selectedAttackers}
@@ -1198,19 +1175,19 @@ export const BattleField: React.FC = () => {
 
         {/* Battle Controls Overlay */}
         {game.phase === 'BATTLE_DECLARATION' && me.isTurn && (
-          <div className="absolute bottom-40 left-1/2 -translate-x-1/2 flex flex-col items-center gap-4 z-50">
+          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col items-center gap-4 z-50">
             <div className="flex gap-4">
               {getAvailableAttackers().length > 0 && (
                 <button 
                   onClick={() => setShowAttackModal(true)}
-                  className="px-12 py-3 bg-red-600 hover:bg-red-500 text-white font-black uppercase italic tracking-widest rounded-xl shadow-xl shadow-red-600/20"
+                  className="px-12 py-3 bg-red-600 hover:bg-red-500 text-white font-black uppercase italic tracking-widest rounded-xl shadow-[0_0_30px_rgba(220,38,38,0.5)] border border-red-400/50"
                 >
                   宣告攻击
                 </button>
               )}
               <button 
                 onClick={() => GameService.advancePhase(gameId!, 'RETURN_MAIN')}
-                className="px-12 py-3 bg-zinc-800 hover:bg-zinc-700 text-white font-black uppercase italic tracking-widest rounded-xl"
+                className="px-12 py-3 bg-zinc-800 hover:bg-zinc-700 text-white font-black uppercase italic tracking-widest rounded-xl shadow-xl border border-white/20"
               >
                 回到主要阶段
               </button>
@@ -1230,13 +1207,13 @@ export const BattleField: React.FC = () => {
                 <div className="flex gap-6">
                   <button 
                     onClick={() => setShowDefenseModal(true)}
-                    className="px-12 py-4 bg-blue-600 hover:bg-blue-500 text-white font-black uppercase italic tracking-widest rounded-xl shadow-xl shadow-blue-600/20 transition-all hover:scale-105 active:scale-95"
+                    className="px-12 py-4 bg-blue-600 hover:bg-blue-500 text-white font-black uppercase italic tracking-widest rounded-xl shadow-[0_0_30px_rgba(37,99,235,0.5)] border border-blue-400/50 transition-all hover:scale-105 active:scale-95"
                   >
                     进行防御
                   </button>
                   <button 
                     onClick={() => handleDeclareDefense(false)}
-                    className="px-12 py-4 bg-zinc-800 hover:bg-zinc-700 text-white font-black uppercase italic tracking-widest rounded-xl transition-all hover:scale-105 active:scale-95"
+                    className="px-12 py-4 bg-zinc-800 hover:bg-zinc-700 text-white font-black uppercase italic tracking-widest rounded-xl transition-all hover:scale-105 active:scale-95 shadow-xl border border-white/20"
                   >
                     不防御
                   </button>
@@ -1248,14 +1225,36 @@ export const BattleField: React.FC = () => {
         )}
 
         {game.phase === 'BATTLE_FREE' && me.isTurn && (
-          <div className="absolute bottom-40 left-1/2 -translate-x-1/2 flex flex-col items-center gap-4 z-50">
+          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col items-center gap-4 z-50">
             <button 
               onClick={handleEndBattleFree}
-              className="px-16 py-4 bg-[#f27d26] hover:bg-[#f27d26]/80 text-black font-black uppercase italic tracking-widest rounded-xl shadow-xl shadow-[#f27d26]/20"
+              className="px-16 py-4 bg-red-600/90 hover:bg-red-500 text-white font-black uppercase italic tracking-widest rounded-xl shadow-[0_0_30px_rgba(220,38,38,0.5)] border border-red-400/50 backdrop-blur-md"
             >
               结束战斗自由阶段
             </button>
-            <p className="text-white/40 text-[10px] uppercase tracking-[0.2em]">你可以使用故事卡或发动【启】能力</p>
+            <p className="text-white/40 text-[10px] uppercase tracking-[0.2em] bg-black/50 px-4 py-1 rounded-full backdrop-blur-sm">你可以使用故事卡或发动【启】能力</p>
+          </div>
+        )}
+
+        {/* Main Phase Buttons */}
+        {game.phase === 'MAIN' && me.isTurn && (
+          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col items-center gap-4 z-50 pointer-events-none">
+            <motion.button 
+              initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
+              whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}
+              onClick={() => GameService.advancePhase(gameId!, 'DECLARE_BATTLE')}
+              className="pointer-events-auto px-8 py-3 bg-red-600/90 backdrop-blur-md hover:bg-red-500 rounded-xl text-lg font-black uppercase italic tracking-widest transition-all shadow-[0_0_30px_rgba(220,38,38,0.5)] border border-red-400/50 text-white"
+            >
+              进入战斗阶段
+            </motion.button>
+            <motion.button 
+              initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
+              whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}
+              onClick={() => GameService.advancePhase(gameId!, 'DECLARE_END')}
+              className="pointer-events-auto mt-2 px-6 py-2 bg-zinc-800/90 backdrop-blur-md hover:bg-zinc-700 rounded-lg text-sm font-black uppercase italic tracking-widest transition-all border border-white/10 text-white/70 hover:text-white"
+            >
+              结束回合
+            </motion.button>
           </div>
         )}
 

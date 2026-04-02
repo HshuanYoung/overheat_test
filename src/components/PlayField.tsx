@@ -11,9 +11,10 @@ interface PlayFieldProps {
   opponent: PlayerState;
   game: GameState;
   onCardClick?: (card: Card, zone: string, index?: number) => void;
-  onHoverCard?: (card: Card | null) => void;
+  onPreviewCard?: (card: Card) => void;
   onPlayCard?: (card: Card) => void;
   paymentSelection?: { useFeijing: string[], exhaustIds: string[], erosionFrontIds?: string[] };
+  pendingPlayCard?: Card | null;
   stack: StackItem[];
   myUid: string;
   selectedAttackers?: string[];
@@ -24,7 +25,7 @@ const CardSlot: React.FC<{
   card: Card | null;
   label?: string;
   onClick?: () => void;
-  onHover?: (card: Card | null) => void;
+  onPreview?: (card: Card) => void;
   className?: string;
   isErosion?: boolean;
   isFaceUp?: boolean;
@@ -35,7 +36,8 @@ const CardSlot: React.FC<{
   showCount?: boolean;
   isAttacking?: boolean;
   isDefending?: boolean;
-}> = ({ card, label, onClick, onHover, className, isErosion, isFaceUp = true, isExhausted, isSelectedForPayment, isDeck, count = 0, showCount = true, isAttacking, isDefending }) => {
+  isOpponent?: boolean;
+}> = ({ card, label, onClick, onPreview, className, isErosion, isFaceUp = true, isExhausted, isSelectedForPayment, isDeck, count = 0, showCount = true, isAttacking, isDefending, isOpponent }) => {
   // Calculate thickness layers (max 8 for visual performance)
   const layers = Math.min(Math.floor(count / 3), 8);
   
@@ -61,13 +63,15 @@ const CardSlot: React.FC<{
           className
         )}
         onClick={onClick}
-        onMouseEnter={() => card && onHover?.(card)}
-        onMouseLeave={() => onHover?.(null)}
+        onContextMenu={(e) => {
+          e.preventDefault();
+          if (card && onPreview) onPreview(card);
+        }}
       >
         {isDeck ? (
           <CardComponent isBack />
         ) : card ? (
-          <div className="h-full w-full relative">
+          <div className={cn("h-full w-full relative transition-transform duration-500", isOpponent && "rotate-180")}>
             {isFaceUp ? (
               <CardComponent card={card} className="border-0" />
             ) : (
@@ -98,7 +102,8 @@ const CardListModal: React.FC<{
   cards: Card[];
   isOpen: boolean;
   onClose: () => void;
-}> = ({ title, cards = [], isOpen, onClose }) => {
+  onPreviewCard?: (card: Card) => void;
+}> = ({ title, cards = [], isOpen, onClose, onPreviewCard }) => {
   if (!isOpen) return null;
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-8 bg-black/80 backdrop-blur-sm" onClick={onClose}>
@@ -111,8 +116,8 @@ const CardListModal: React.FC<{
         </div>
         <div className="flex-1 overflow-y-auto p-6 grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 gap-4 custom-scrollbar">
           {cards?.map((card, i) => (
-            <div key={i} className="aspect-[3/4]">
-              <CardComponent card={card} />
+            <div key={i} className="aspect-[3/4] cursor-pointer" onClick={() => onPreviewCard?.(card)}>
+              <CardComponent card={card} disableZoom />
             </div>
           ))}
           {(cards?.length || 0) === 0 && <div className="col-span-full py-20 text-center opacity-20 italic">No cards here</div>}
@@ -126,13 +131,14 @@ const PlayerHalf: React.FC<{
   player: PlayerState;
   isOpponent?: boolean;
   onCardClick?: (card: Card, zone: string, index?: number) => void;
-  onHoverCard?: (card: Card | null) => void;
+  onPreviewCard?: (card: Card) => void;
   onPlayCard?: (card: Card) => void;
   paymentSelection?: { useFeijing: string[], exhaustIds: string[], erosionFrontIds?: string[] };
+  pendingPlayCard?: Card | null;
   selectedAttackers?: string[];
   selectedDefender?: string;
   game?: GameState;
-}> = ({ player, isOpponent, onCardClick, onHoverCard, onPlayCard, paymentSelection, selectedAttackers, selectedDefender, game }) => {
+}> = ({ player, isOpponent, onCardClick, onPreviewCard, onPlayCard, paymentSelection, pendingPlayCard, selectedAttackers, selectedDefender, game }) => {
   const romanNumerals = ['Ⅰ', 'Ⅱ', 'Ⅲ', 'Ⅳ', 'Ⅴ', 'Ⅵ', 'Ⅶ', 'Ⅷ', 'Ⅸ', 'Ⅹ'];
   const [viewingZone, setViewingZone] = useState<{ title: string, cards: Card[] } | null>(null);
   const [selectedHandCardId, setSelectedHandCardId] = useState<string | null>(null);
@@ -149,6 +155,7 @@ const PlayerHalf: React.FC<{
         onClose={() => setViewingZone(null)}
         title={viewingZone?.title || ''}
         cards={viewingZone?.cards || []}
+        onPreviewCard={onPreviewCard}
       />
 
       {/* LEFT COLUMN */}
@@ -161,20 +168,20 @@ const PlayerHalf: React.FC<{
               className="border-white/20"
             />
             <CardSlot 
-              card={(player.grave?.length || 0) > 0 ? player.grave[player.grave.length - 1] : null} 
+              card={null} 
               label="GRAVE" count={player.grave?.length || 0} 
               className="border-red-900/30"
               onClick={() => setViewingZone({ title: 'Grave', cards: player.grave || [] })}
-              onHover={onHoverCard}
-              isFaceUp={true}
+              isFaceUp={false}
+              isOpponent={isOpponent}
             />
             <CardSlot 
-              card={(player.exile?.length || 0) > 0 ? player.exile[player.exile.length - 1] : null} 
+              card={null} 
               label="EXILE" count={player.exile?.length || 0} 
               className="border-purple-900/30"
               onClick={() => setViewingZone({ title: 'Exile', cards: player.exile || [] })}
-              onHover={onHoverCard}
-              isFaceUp={true}
+              isFaceUp={false}
+              isOpponent={isOpponent}
             />
           </div>
         ) : (
@@ -210,13 +217,21 @@ const PlayerHalf: React.FC<{
                   card={(player.playZone?.length || 0) > 0 ? player.playZone[player.playZone.length - 1] : null}
                   label="PLAY" count={player.playZone?.length || 0}
                   className="border-yellow-500/30"
-                  onHover={onHoverCard}
+                  onPreview={onPreviewCard}
+                  isOpponent={isOpponent}
                 />
               </div>
               <div className="flex-1 h-24 flex items-center justify-center gap-1 overflow-x-auto px-4 bg-black/20 rounded-xl border border-white/5 custom-scrollbar">
-                <div className="text-white/50 text-sm font-bold tracking-widest uppercase">
-                  手牌数量: {player.hand?.length || 0}
-                </div>
+                {player.hand?.map((_, i) => (
+                  <div key={i} className="w-12 aspect-[3/4] -ml-8 first:ml-0 shadow-lg drop-shadow-md">
+                    <CardComponent isBack />
+                  </div>
+                ))}
+                {(player.hand?.length || 0) === 0 && (
+                  <div className="text-white/50 text-sm font-bold tracking-widest uppercase">
+                    手牌数量: 0
+                  </div>
+                )}
               </div>
             </div>
 
@@ -240,11 +255,12 @@ const PlayerHalf: React.FC<{
                           <CardSlot 
                             card={displayCard}
                             isFaceUp={displayCard.isFaceUp}
-                            onHover={onHoverCard}
+                            onPreview={onPreviewCard}
                             onClick={() => displayCard.isFaceUp && onCardClick?.(displayCard, 'erosion_front', i)}
                             isSelectedForPayment={displayCard.isFaceUp && paymentSelection?.erosionFrontIds?.includes(displayCard.gamecardId)}
                             className={displayCard.isFaceUp ? "border-red-600" : "border-red-900/50"}
                             showCount={false}
+                            isOpponent={isOpponent}
                           />
                         ) : (
                           <div className="h-full w-full rounded-md border border-dashed border-white/5 bg-white/5 flex items-center justify-center">
@@ -267,13 +283,14 @@ const PlayerHalf: React.FC<{
                     key={i}
                     card={unit || null}
                     label={`UNIT ${i+1}`}
-                    onHover={onHoverCard}
+                    onPreview={onPreviewCard}
                     onClick={() => unit && onCardClick?.(unit, 'unit', i)}
                     isExhausted={unit ? unit.isExhausted : false}
                     isSelectedForPayment={unit ? paymentSelection?.exhaustIds.includes(unit.gamecardId) : false}
                     isAttacking={unit ? (selectedAttackers?.includes(unit.gamecardId) || game?.battleState?.attackers.includes(unit.gamecardId)) : false}
                     isDefending={unit ? (selectedDefender === unit.gamecardId || game?.battleState?.defender === unit.gamecardId) : false}
                     showCount={false}
+                    isOpponent={isOpponent}
                   />
                 );
               })}
@@ -290,7 +307,7 @@ const PlayerHalf: React.FC<{
                     key={i}
                     card={unit || null}
                     label={`UNIT ${i+1}`}
-                    onHover={onHoverCard}
+                    onPreview={onPreviewCard}
                     onClick={() => unit && onCardClick?.(unit, 'unit', i)}
                     isExhausted={unit ? unit.isExhausted : false}
                     isSelectedForPayment={unit ? paymentSelection?.exhaustIds.includes(unit.gamecardId) : false}
@@ -321,7 +338,7 @@ const PlayerHalf: React.FC<{
                           <CardSlot 
                             card={displayCard}
                             isFaceUp={displayCard.isFaceUp}
-                            onHover={onHoverCard}
+                            onPreview={onPreviewCard}
                             onClick={() => displayCard.isFaceUp && onCardClick?.(displayCard, 'erosion_front', i)}
                             isSelectedForPayment={displayCard.isFaceUp && paymentSelection?.erosionFrontIds?.includes(displayCard.gamecardId)}
                             className={displayCard.isFaceUp ? "border-red-600" : "border-red-900/50"}
@@ -349,6 +366,7 @@ const PlayerHalf: React.FC<{
                   const offset = i - middle;
                   const canPlayCheck = GameService.canPlayCard(player, card);
                   const isSelected = selectedHandCardId === card.gamecardId;
+                  const isFeijingSelected = paymentSelection?.useFeijing?.includes(card.gamecardId);
                   const xPos = offset * 80;
 
                   return (
@@ -356,18 +374,24 @@ const PlayerHalf: React.FC<{
                       key={card.gamecardId || i} 
                       className="absolute w-16 transition-all duration-300 cursor-pointer"
                       style={{
-                        transform: `translateX(${xPos}px) ${isSelected ? 'translateY(-40px) scale(1.5)' : ''}`,
-                        zIndex: isSelected ? 100 : i
+                        transform: `translateX(${xPos}px) ${(isSelected || isFeijingSelected) ? 'translateY(-40px) scale(1.5)' : ''}`,
+                        zIndex: (isSelected || isFeijingSelected) ? 100 : i
                       }}
                       onClick={() => {
+                        if (pendingPlayCard) {
+                          onCardClick?.(card, 'hand', i);
+                          return;
+                        }
                         if (isSelected) {
                           setSelectedHandCardId(null);
                         } else {
                           setSelectedHandCardId(card.gamecardId || null);
                         }
                       }}
-                      onMouseEnter={() => onHoverCard?.(card)}
-                      onMouseLeave={() => onHoverCard?.(null)}
+                      onContextMenu={(e) => {
+                        e.preventDefault();
+                        onPreviewCard?.(card);
+                      }}
                     >
                       <CardComponent 
                         card={card} 
@@ -443,20 +467,18 @@ const PlayerHalf: React.FC<{
           // Player Right: Exile, Grave, Deck
           <div className="flex flex-col gap-2">
             <CardSlot 
-              card={(player.exile?.length || 0) > 0 ? player.exile[player.exile.length - 1] : null} 
+              card={null} 
               label="EXILE" count={player.exile?.length || 0} 
               className="border-purple-900/30"
               onClick={() => setViewingZone({ title: 'Exile', cards: player.exile || [] })}
-              onHover={onHoverCard}
-              isFaceUp={true}
+              isFaceUp={false}
             />
             <CardSlot 
-              card={(player.grave?.length || 0) > 0 ? player.grave[player.grave.length - 1] : null} 
+              card={null} 
               label="GRAVE" count={player.grave?.length || 0} 
               className="border-red-900/30"
               onClick={() => setViewingZone({ title: 'Grave', cards: player.grave || [] })}
-              onHover={onHoverCard}
-              isFaceUp={true}
+              isFaceUp={false}
             />
             <CardSlot 
               card={null} isDeck label="DECK" count={player.deck?.length || 0} 
@@ -469,7 +491,7 @@ const PlayerHalf: React.FC<{
   );
 };
 
-export const PlayField: React.FC<PlayFieldProps> = ({ player, opponent, game, onCardClick, onHoverCard, onPlayCard, paymentSelection, stack, myUid, selectedAttackers, selectedDefender }) => {
+export const PlayField: React.FC<PlayFieldProps> = ({ player, opponent, game, onCardClick, onPreviewCard, onPlayCard, paymentSelection, pendingPlayCard, stack, myUid, selectedAttackers, selectedDefender }) => {
   return (
     <div className="relative w-full h-full max-w-7xl mx-auto bg-[#0a0a0a] border-2 border-[#1a1a1a] rounded-xl shadow-2xl font-mono text-white select-none flex flex-col">
       {/* Grid Pattern Background */}
@@ -485,10 +507,12 @@ export const PlayField: React.FC<PlayFieldProps> = ({ player, opponent, game, on
           player={opponent} 
           isOpponent 
           onCardClick={onCardClick}
-          onHoverCard={onHoverCard}
+          onPreviewCard={onPreviewCard}
           game={game}
           selectedAttackers={selectedAttackers}
           selectedDefender={selectedDefender}
+          paymentSelection={paymentSelection}
+          pendingPlayCard={pendingPlayCard}
         />
       </div>
  
@@ -501,9 +525,11 @@ export const PlayField: React.FC<PlayFieldProps> = ({ player, opponent, game, on
               key={i}
               initial={{ scale: 0.8, opacity: 0, y: 10 }}
               animate={{ scale: 1, opacity: 1, y: 0 }}
-              className="w-8 relative group"
-              onMouseEnter={() => onHoverCard?.(item.card)}
-              onMouseLeave={() => onHoverCard?.(null)}
+              className="w-8 relative group cursor-pointer"
+              onContextMenu={(e) => {
+                e.preventDefault();
+                onPreviewCard?.(item.card);
+              }}
             >
               <CardComponent card={item.card} disableZoom />
               <div className={cn(
@@ -522,9 +548,10 @@ export const PlayField: React.FC<PlayFieldProps> = ({ player, opponent, game, on
         <PlayerHalf 
           player={player} 
           onCardClick={onCardClick}
-          onHoverCard={onHoverCard}
+          onPreviewCard={onPreviewCard}
           onPlayCard={onPlayCard}
           paymentSelection={paymentSelection}
+          pendingPlayCard={pendingPlayCard}
           selectedAttackers={selectedAttackers}
           selectedDefender={selectedDefender}
           game={game}

@@ -205,7 +205,7 @@ export const GameService = {
     return { canPlay: true };
   },
 
-  payCost(gameState: GameState, playerId: string, cost: number, paymentSelection: { feijingCardId?: string, exhaustUnitIds?: string[], erosionFrontIds?: string[] }, cardColor?: string): { success: boolean; reason?: string } {
+  payCost(gameState: GameState, playerId: string, cost: number, paymentSelection: { feijingCardId?: string, exhaustUnitIds?: string[], erosionFrontIds?: string[] }, cardColor?: string, playingCardId?: string): { success: boolean; reason?: string } {
     const player = gameState.players[playerId];
     if (cost === 0) return { success: true };
 
@@ -232,6 +232,9 @@ export const GameService = {
       let feijingCard: Card | undefined;
       
       if (paymentSelection.feijingCardId) {
+        if (paymentSelection.feijingCardId === playingCardId) {
+          return { success: false, reason: '不能使用正在打出的卡牌作为菲晶卡支付费用' };
+        }
         feijingCard = player.hand.find(c => c.gamecardId === paymentSelection.feijingCardId && c.feijingMark);
         if (feijingCard) {
           if (cardColor && feijingCard.color !== cardColor) {
@@ -299,7 +302,7 @@ export const GameService = {
 
     const cost = card.acValue;
 
-    const paymentResult = this.payCost(gameState, playerId, cost, paymentSelection, card.color);
+    const paymentResult = this.payCost(gameState, playerId, cost, paymentSelection, card.color, cardId);
     if (!paymentResult.success) throw new Error(paymentResult.reason);
 
     this.moveCard(gameState, playerId, 'HAND', playerId, 'PLAY', cardId);
@@ -333,10 +336,12 @@ export const GameService = {
       const card = stackItem.card;
 
       if (card.type === 'UNIT') {
-        card.playedTurn = gameState.turnCount;
+        const playZoneCard = gameState.players[stackItem.ownerUid].playZone.find(c => c && c.gamecardId === card.gamecardId);
+        if (playZoneCard) playZoneCard.playedTurn = gameState.turnCount;
         this.moveCard(gameState, stackItem.ownerUid, 'PLAY', stackItem.ownerUid, 'UNIT', card.gamecardId);
       } else if (card.type === 'ITEM') {
-        card.playedTurn = gameState.turnCount;
+        const playZoneCard = gameState.players[stackItem.ownerUid].playZone.find(c => c && c.gamecardId === card.gamecardId);
+        if (playZoneCard) playZoneCard.playedTurn = gameState.turnCount;
         this.moveCard(gameState, stackItem.ownerUid, 'PLAY', stackItem.ownerUid, 'ITEM', card.gamecardId);
       } else {
         this.moveCard(gameState, stackItem.ownerUid, 'PLAY', stackItem.ownerUid, 'GRAVE', card.gamecardId);
@@ -374,9 +379,9 @@ export const GameService = {
       if (unit.isExhausted) throw new Error('Attacker is already exhausted');
       
       // Attack conditions:
-      // a. Upright, isrush=0, not played this turn
-      // b. Upright, isrush=1
-      const isRush = unit.isrush;
+      // a. Upright, isrush=true, can attack this turn
+      // b. Upright, isrush=false, not played this turn
+      const isRush = !!unit.isrush;
       const wasPlayedThisTurn = unit.playedTurn === gameState.turnCount;
       if (!isRush && wasPlayedThisTurn) {
         throw new Error(`单位 [${unit.fullName}] 在本回合打出，没有【疾走】不能攻击`);
@@ -420,6 +425,7 @@ export const GameService = {
       if (!unit) throw new Error('Defender not found in unit zone');
       if (unit.isExhausted) throw new Error('Defender is already exhausted');
       
+      this.exhaustCard(unit);
       gameState.battleState.defender = defenderId;
       gameState.logs.push(`${player.displayName} 宣告了防御: ${unit.fullName}`);
     } else {
@@ -1098,11 +1104,18 @@ export const GameService = {
       }
 
       // If no cards can be played, try to enter battle or end turn
-      if (game.turnCount > 1 && bot.unitZone.some(c => c && !c.isExhausted)) {
+      const canAttack = bot.unitZone.some(c => {
+        if (!c || c.isExhausted) return false;
+        const isRush = !!c.isrush;
+        const wasPlayedThisTurn = c.playedTurn === game.turnCount;
+        return isRush || !wasPlayedThisTurn;
+      });
+
+      if (game.turnCount > 1 && canAttack) {
         // Enter battle phase
         await this.advancePhase(gameId, 'DECLARE_BATTLE');
       } else {
-        await this.endTurn(gameId);
+        await this.advancePhase(gameId, 'DECLARE_END');
       }
       return;
     }
@@ -1111,7 +1124,7 @@ export const GameService = {
     if (game.phase === 'BATTLE_DECLARATION' && bot.isTurn) {
       const attacker = bot.unitZone.find(c => {
         if (!c || c.isExhausted) return false;
-        const isRush = c.isrush;
+        const isRush = !!c.isrush;
         const wasPlayedThisTurn = c.playedTurn === game.turnCount;
         return isRush || !wasPlayedThisTurn;
       });
