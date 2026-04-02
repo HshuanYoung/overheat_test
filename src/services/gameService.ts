@@ -70,6 +70,18 @@ export const GameService = {
     return { valid: true };
   },
 
+  exhaustCard(card: Card) {
+    if (card) {
+      card.isExhausted = true;
+    }
+  },
+
+  readyCard(card: Card) {
+    if (card) {
+      card.isExhausted = false;
+    }
+  },
+
   moveCard(
     gameState: GameState,
     sourcePlayerId: string,
@@ -113,6 +125,10 @@ export const GameService = {
     card.cardlocation = targetZone;
     if (options?.faceDown !== undefined) {
       card.displayState = options.faceDown ? 'FRONT_FACEDOWN' : 'FRONT_UPRIGHT';
+    }
+
+    if (targetZone === 'UNIT' || targetZone === 'ITEM') {
+      this.readyCard(card);
     }
 
     let targetArray: any[] = [];
@@ -189,7 +205,7 @@ export const GameService = {
     return { canPlay: true };
   },
 
-  payCost(gameState: GameState, playerId: string, cost: number, paymentSelection: { feijingCardId?: string, exhaustUnitIds?: string[], erosionFrontIds?: string[] }): { success: boolean; reason?: string } {
+  payCost(gameState: GameState, playerId: string, cost: number, paymentSelection: { feijingCardId?: string, exhaustUnitIds?: string[], erosionFrontIds?: string[] }, cardColor?: string): { success: boolean; reason?: string } {
     const player = gameState.players[playerId];
     if (cost === 0) return { success: true };
 
@@ -218,21 +234,27 @@ export const GameService = {
       if (paymentSelection.feijingCardId) {
         feijingCard = player.hand.find(c => c.gamecardId === paymentSelection.feijingCardId && c.feijingMark);
         if (feijingCard) {
+          if (cardColor && feijingCard.color !== cardColor) {
+            return { success: false, reason: '菲晶卡颜色与打出的卡牌颜色不匹配' };
+          }
           remainingCost = Math.max(0, remainingCost - 3);
         }
       }
 
-      const unitsToExhaust: Card[] = [];
+      const cardsToExhaust: Card[] = [];
       if (paymentSelection.exhaustUnitIds) {
         for (const uid of paymentSelection.exhaustUnitIds) {
           if (remainingCost <= 0) break;
-          const unit = player.unitZone.find(c => c?.gamecardId === uid && !c.isExhausted);
-          if (unit) {
-            unitsToExhaust.push(unit);
+          const card = [...player.unitZone, ...player.itemZone].find(c => c?.gamecardId === uid && !c.isExhausted);
+          if (card) {
+            cardsToExhaust.push(card);
             remainingCost -= 1;
           }
         }
       }
+
+      // Actually exhaust them
+      cardsToExhaust.forEach(c => this.exhaustCard(c));
 
       if (remainingCost > 0) {
         const totalErosion = player.erosionFront.filter(c => c !== null).length + player.erosionBack.filter(c => c !== null).length;
@@ -243,9 +265,6 @@ export const GameService = {
 
       if (feijingCard) {
         this.moveCard(gameState, playerId, 'HAND', playerId, 'GRAVE', feijingCard.gamecardId);
-      }
-      for (const unit of unitsToExhaust) {
-        unit.isExhausted = true;
       }
       for (let i = 0; i < remainingCost; i++) {
         const topCard = player.deck.pop();
@@ -280,7 +299,7 @@ export const GameService = {
 
     const cost = card.acValue;
 
-    const paymentResult = this.payCost(gameState, playerId, cost, paymentSelection);
+    const paymentResult = this.payCost(gameState, playerId, cost, paymentSelection, card.color);
     if (!paymentResult.success) throw new Error(paymentResult.reason);
 
     this.moveCard(gameState, playerId, 'HAND', playerId, 'PLAY', cardId);
@@ -349,7 +368,7 @@ export const GameService = {
 
     // Exhaust attackers
     for (const unit of attackers) {
-      unit.isExhausted = true;
+      this.exhaustCard(unit);
     }
 
     const attackerNames = attackers.map(a => a.fullName).join(' 和 ');
@@ -454,15 +473,15 @@ export const GameService = {
     } else {
       player.unitZone.forEach(card => {
         if (card && card.canResetCount === 0) {
-          card.isExhausted = false;
-        } else if (card && card.canResetCount > 0) {
+          this.readyCard(card);
+        } else if (card && card.canResetCount !== undefined && card.canResetCount > 0) {
           card.canResetCount -= 1;
         }
       });
       player.itemZone.forEach(card => {
         if (card && card.canResetCount === 0) {
-          card.isExhausted = false;
-        } else if (card && card.canResetCount > 0) {
+          this.readyCard(card);
+        } else if (card && card.canResetCount !== undefined && card.canResetCount > 0) {
           card.canResetCount -= 1;
         }
       });

@@ -8,7 +8,7 @@ import { CardComponent } from './Card';
 import { PlayField } from './PlayField';
 import { Rulebook } from './Rulebook';
 import { motion, AnimatePresence } from 'motion/react';
-import { Sword, Shield, Zap, LogOut, BookOpen, Send, Loader2 } from 'lucide-react';
+import { Sword, Shield, Zap, LogOut, BookOpen, Send, Loader2, Trash2 } from 'lucide-react';
 import { cn } from '../lib/utils';
 
 export const BattleField: React.FC = () => {
@@ -154,10 +154,16 @@ export const BattleField: React.FC = () => {
     // Handle exhausting cards for payment
     if (pendingPlayCard) {
       if (zone === 'unit' || zone === 'item') {
+        if (card.isExhausted) return; // Cannot exhaust already exhausted card
         togglePaymentExhaust(card.gamecardId);
       } else if (zone === 'hand' && card.feijingMark) {
+        if (card.color !== pendingPlayCard.color) {
+          alert('菲晶卡颜色与打出的卡牌颜色不匹配');
+          return;
+        }
         togglePaymentFeijing(card.gamecardId);
       } else if (zone === 'erosion_front') {
+        if (card.displayState !== 'FRONT_UPRIGHT') return; // Only face-up cards can be used
         togglePaymentErosionFront(card.gamecardId);
       }
       return;
@@ -520,36 +526,151 @@ export const BattleField: React.FC = () => {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[60] bg-black/80 backdrop-blur-sm flex items-center justify-center pointer-events-none"
+            className="fixed inset-0 z-[60] bg-black/90 backdrop-blur-md flex items-center justify-center"
           >
-            <div className="flex flex-col items-center gap-8 pointer-events-auto">
-              <h3 className="text-2xl font-black italic text-[#f27d26] uppercase tracking-widest">支付费用</h3>
-              <div className="flex gap-8 items-center">
-                <motion.div 
-                  initial={{ scale: 0.5, y: 100 }}
-                  animate={{ scale: 1, y: 0 }}
-                  className="w-64 relative"
-                >
-                  <CardComponent card={pendingPlayCard} />
-                </motion.div>
+            <div className="max-w-6xl w-full flex flex-col items-center gap-6 p-8 overflow-y-auto max-h-screen">
+              <div className="text-center">
+                <h3 className="text-4xl font-black italic text-[#f27d26] uppercase tracking-tighter mb-2">支付费用 (PAY COST)</h3>
+                <div className="flex items-center justify-center gap-4">
+                  <div className="flex items-center gap-2">
+                    <span className="text-zinc-500 uppercase text-[10px] font-bold tracking-widest">Required:</span>
+                    <span className={cn(
+                      "text-3xl font-black px-4 py-1 rounded-xl",
+                      pendingPlayCard.acValue > 0 ? "bg-red-600/20 text-red-500" : "bg-green-600/20 text-green-500"
+                    )}>
+                      {pendingPlayCard.acValue}
+                    </span>
+                  </div>
+                  <div className="h-8 w-px bg-white/10" />
+                  <div className="flex items-center gap-2">
+                    <span className="text-zinc-500 uppercase text-[10px] font-bold tracking-widest">Selected:</span>
+                    <span className="text-3xl font-black text-white">
+                      {pendingPlayCard.acValue > 0 
+                        ? (paymentSelection.useFeijing.length * 3) + paymentSelection.exhaustIds.length 
+                        : paymentSelection.erosionFrontIds.length}
+                    </span>
+                  </div>
+                </div>
               </div>
 
-              <div className="flex flex-col items-center gap-4">
-                <div className="flex gap-4">
-                  <button 
-                    onClick={handleConfirmPlay}
-                    className="px-12 py-3 bg-[#f27d26] text-white font-black italic uppercase tracking-widest rounded-xl hover:bg-[#f27d26]/80 transition-all"
-                  >
-                    确认支付
-                  </button>
-                  <button 
-                    onClick={() => setPendingPlayCard(null)}
-                    className="px-12 py-3 bg-zinc-800 text-white font-black italic uppercase tracking-widest rounded-xl hover:bg-zinc-700 transition-all"
-                  >
-                    取消
-                  </button>
+              <div className="grid grid-cols-[300px_1fr] gap-12 w-full items-start">
+                {/* Left: Card being played */}
+                <div className="flex flex-col items-center gap-4">
+                  <div className="w-full aspect-[3/4] rounded-2xl border-2 border-[#f27d26] shadow-[0_0_50px_rgba(242,125,38,0.3)] overflow-hidden">
+                    <CardComponent card={pendingPlayCard} disableZoom />
+                  </div>
+                  <div className="text-center">
+                    <div className="text-lg font-black text-white uppercase italic tracking-tight">{pendingPlayCard.fullName}</div>
+                    <div className="text-[10px] text-zinc-500 uppercase tracking-widest mt-1">{pendingPlayCard.type} / {pendingPlayCard.color}</div>
+                  </div>
                 </div>
-                <p className="text-zinc-500 text-xs">请在场上选择支付方式 (横置单位/道具，使用手牌菲晶，或选择侵蚀区正面卡)</p>
+
+                {/* Right: Selection Area */}
+                <div className="flex flex-col gap-8">
+                  {pendingPlayCard.acValue > 0 ? (
+                    <>
+                      {/* Feijing Section */}
+                      {me.hand.some(c => c.feijingMark && c.color === pendingPlayCard.color) && (
+                        <div className="flex flex-col gap-3">
+                          <div className="flex items-center gap-2 text-blue-400 font-black uppercase italic tracking-widest text-sm">
+                            <Zap className="w-4 h-4" />
+                            菲晶支付 (Feijing Payment - Cost -3)
+                          </div>
+                          <div className="flex gap-4 overflow-x-auto pb-2 custom-scrollbar">
+                            {me.hand.filter(c => c.feijingMark && c.color === pendingPlayCard.color).map(card => {
+                              const isSelected = paymentSelection.useFeijing.includes(card.gamecardId);
+                              return (
+                                <motion.div
+                                  key={card.gamecardId}
+                                  whileHover={{ y: -5 }}
+                                  whileTap={{ scale: 0.95 }}
+                                  onClick={() => togglePaymentFeijing(card.gamecardId)}
+                                  className={cn(
+                                    "w-28 shrink-0 cursor-pointer transition-all rounded-lg overflow-hidden border-2",
+                                    isSelected ? "border-blue-500 scale-105 shadow-[0_0_20px_rgba(59,130,246,0.5)]" : "border-white/5 opacity-60 grayscale hover:grayscale-0 hover:opacity-100"
+                                  )}
+                                >
+                                  <CardComponent card={card} disableZoom />
+                                </motion.div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Exhaust Section */}
+                      {[...me.unitZone, ...me.itemZone].some(c => c && !c.isExhausted) && (
+                        <div className="flex flex-col gap-3">
+                          <div className="flex items-center gap-2 text-green-400 font-black uppercase italic tracking-widest text-sm">
+                            <Sword className="w-4 h-4" />
+                            横置支付 (Exhaust Payment - Cost -1)
+                          </div>
+                          <div className="flex gap-4 overflow-x-auto pb-2 custom-scrollbar">
+                            {[...me.unitZone, ...me.itemZone].filter(c => c && !c.isExhausted).map(card => {
+                              const isSelected = paymentSelection.exhaustIds.includes(card!.gamecardId);
+                              return (
+                                <motion.div
+                                  key={card!.gamecardId}
+                                  whileHover={{ y: -5 }}
+                                  whileTap={{ scale: 0.95 }}
+                                  onClick={() => togglePaymentExhaust(card!.gamecardId)}
+                                  className={cn(
+                                    "w-28 shrink-0 cursor-pointer transition-all rounded-lg overflow-hidden border-2",
+                                    isSelected ? "border-green-500 scale-105 shadow-[0_0_20px_rgba(34,197,94,0.5)]" : "border-white/5 opacity-60 grayscale hover:grayscale-0 hover:opacity-100"
+                                  )}
+                                >
+                                  <CardComponent card={card!} disableZoom />
+                                </motion.div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    /* Negative Cost Section */
+                    <div className="flex flex-col gap-3">
+                      <div className="flex items-center gap-2 text-red-500 font-black uppercase italic tracking-widest text-sm">
+                        <Trash2 className="w-4 h-4" />
+                        侵蚀支付 (Erosion Payment - Select {Math.abs(pendingPlayCard.acValue)} cards)
+                      </div>
+                      <div className="flex gap-4 overflow-x-auto pb-2 custom-scrollbar">
+                        {me.erosionFront.filter(c => c && c.displayState === 'FRONT_UPRIGHT').map(card => {
+                          const isSelected = paymentSelection.erosionFrontIds.includes(card!.gamecardId);
+                          return (
+                            <motion.div
+                              key={card!.gamecardId}
+                              whileHover={{ y: -5 }}
+                              whileTap={{ scale: 0.95 }}
+                              onClick={() => togglePaymentErosionFront(card!.gamecardId)}
+                              className={cn(
+                                "w-28 shrink-0 cursor-pointer transition-all rounded-lg overflow-hidden border-2",
+                                isSelected ? "border-red-500 scale-105 shadow-[0_0_20px_rgba(239,68,68,0.5)]" : "border-white/5 opacity-60 grayscale hover:grayscale-0 hover:opacity-100"
+                              )}
+                            >
+                              <CardComponent card={card!} disableZoom />
+                            </motion.div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="flex gap-6 mt-8">
+                <button 
+                  onClick={handleConfirmPlay}
+                  className="px-20 py-4 bg-[#f27d26] text-black font-black italic uppercase tracking-widest rounded-xl hover:bg-[#f27d26]/80 transition-all shadow-2xl shadow-[#f27d26]/20"
+                >
+                  确认支付并打出
+                </button>
+                <button 
+                  onClick={() => setPendingPlayCard(null)}
+                  className="px-20 py-4 bg-zinc-800 text-white font-black italic uppercase tracking-widest rounded-xl hover:bg-zinc-700 transition-all border border-white/5"
+                >
+                  取消
+                </button>
               </div>
             </div>
           </motion.div>

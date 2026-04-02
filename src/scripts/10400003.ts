@@ -7,7 +7,7 @@ const trigger_10400003_1 = (card: Card, gameState: GameState, playerState: Playe
 const card: Card = {
   id: '10400003',
   fullName: '暮城的慈善家',
-  specialName: '暮城的慈善家',
+  specialName: '',
   type: 'UNIT',
   color: 'BLUE',
   gamecardId: null,

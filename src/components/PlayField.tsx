@@ -184,7 +184,7 @@ const PlayerHalf: React.FC<{
                   label={`ITEM ${i+1}`}
                   onHover={onHoverCard}
                   onClick={() => item && onCardClick?.(item, 'item', i)}
-                  isExhausted={item ? player.hasExhaustedThisTurn?.includes(item.gamecardId) : false}
+                  isExhausted={item ? item.isExhausted : false}
                   isSelectedForPayment={item ? paymentSelection?.exhaustIds.includes(item.gamecardId) : false}
                   showCount={false}
                 />
@@ -264,7 +264,7 @@ const PlayerHalf: React.FC<{
                     label={`UNIT ${i+1}`}
                     onHover={onHoverCard}
                     onClick={() => unit && onCardClick?.(unit, 'unit', i)}
-                    isExhausted={unit ? player.hasExhaustedThisTurn?.includes(unit.gamecardId) : false}
+                    isExhausted={unit ? unit.isExhausted : false}
                     isSelectedForPayment={unit ? paymentSelection?.exhaustIds.includes(unit.gamecardId) : false}
                     isAttacking={unit ? selectedAttackers?.includes(unit.gamecardId) : false}
                     showCount={false}
@@ -286,7 +286,7 @@ const PlayerHalf: React.FC<{
                     label={`UNIT ${i+1}`}
                     onHover={onHoverCard}
                     onClick={() => unit && onCardClick?.(unit, 'unit', i)}
-                    isExhausted={unit ? player.hasExhaustedThisTurn?.includes(unit.gamecardId) : false}
+                    isExhausted={unit ? unit.isExhausted : false}
                     isSelectedForPayment={unit ? paymentSelection?.exhaustIds.includes(unit.gamecardId) : false}
                     isAttacking={unit ? selectedAttackers?.includes(unit.gamecardId) : false}
                     showCount={false}
@@ -425,7 +425,7 @@ const PlayerHalf: React.FC<{
                   label={`ITEM ${i+1}`}
                   onHover={onHoverCard}
                   onClick={() => item && onCardClick?.(item, 'item', i)}
-                  isExhausted={item ? player.hasExhaustedThisTurn?.includes(item.gamecardId) : false}
+                  isExhausted={item ? item.isExhausted : false}
                   isSelectedForPayment={item ? paymentSelection?.exhaustIds.includes(item.gamecardId) : false}
                   showCount={false}
                 />

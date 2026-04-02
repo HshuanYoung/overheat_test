@@ -37,13 +37,13 @@ export interface Card {
   damage?: number;
   godMark: boolean;
   displayState: 'FRONT_UPRIGHT' | 'FRONT_FACEDOWN' | 'BACK_UPRIGHT';
-  isrush: boolean;
-  isExhausted: boolean;
-  canAttack: boolean;
+  isrush?: boolean;
+  isExhausted?: boolean;
+  canAttack?: boolean;
   cardlocation?: 'HAND' | 'UNIT' | 'ITEM' | 'GRAVE' | 'EXILE' | 'EROSION_FRONT' | 'EROSION_BACK' | 'PLAY' | 'DECK';
   feijingMark: boolean;
-  canResetCount: number;    //only 0 can be reset,if not 0,at the start of turn,canResetCount-1
-  effects: CardEffect[];
+  canResetCount?: number;    //only 0 can be reset,if not 0,at the start of turn,canResetCount-1
+  effects?: CardEffect[];
   imageUrl: string;
   fullImageUrl: string;
   rarity: 'C' | 'U' | 'R' | 'SR' | 'UR' | 'PR';

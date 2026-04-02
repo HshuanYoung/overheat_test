@@ -7,7 +7,7 @@ const trigger_10400003_1 = (card: Card, gameState: GameState, playerState: Playe
 const card: Card = {
   id: '10402006',
   fullName: '狐族交易术学徒',
-  specialName: '狐族交易术学徒',
+  specialName: '',
   type: 'UNIT',
   color: 'BLUE',
   gamecardId: null,
