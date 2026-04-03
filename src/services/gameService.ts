@@ -13,10 +13,11 @@ import {
 import { db, auth } from '../firebase';
 import { GameState, PlayerState, Card, Deck, TriggerLocation } from '../types/game';
 import { CARD_LIBRARY } from '../data/cards';
+import { EventEngine } from './EventEngine';
 
 const GAMES_COLLECTION = 'games';
 
-function cleanForFirestore(obj: any): any {
+export function cleanForFirestore(obj: any): any {
   if (obj === undefined) {
     return undefined;
   }
@@ -118,6 +119,7 @@ export const GameService = {
       } else {
         sourceArray.splice(index, 1);
       }
+      EventEngine.handleCardLeftZone(gameState, sourcePlayerId, card, sourceZone);
     }
 
     if (!card) return false;
@@ -162,6 +164,8 @@ export const GameService = {
         targetArray.push(card);
       }
     }
+
+    EventEngine.handleCardEnteredZone(gameState, targetPlayerId, card, targetZone);
 
     return true;
   },
@@ -335,18 +339,43 @@ export const GameService = {
 
       const card = stackItem.card;
 
-      if (card.type === 'UNIT') {
-        const playZoneCard = gameState.players[stackItem.ownerUid].playZone.find(c => c && c.gamecardId === card.gamecardId);
-        if (playZoneCard) playZoneCard.playedTurn = gameState.turnCount;
-        this.moveCard(gameState, stackItem.ownerUid, 'PLAY', stackItem.ownerUid, 'UNIT', card.gamecardId);
-      } else if (card.type === 'ITEM') {
-        const playZoneCard = gameState.players[stackItem.ownerUid].playZone.find(c => c && c.gamecardId === card.gamecardId);
-        if (playZoneCard) playZoneCard.playedTurn = gameState.turnCount;
-        this.moveCard(gameState, stackItem.ownerUid, 'PLAY', stackItem.ownerUid, 'ITEM', card.gamecardId);
+      if (stackItem.type === 'EFFECT') {
+        // Execute the effect
+        const effectIndex = stackItem.effectIndex ?? 0;
+        const effect = card.effects?.[effectIndex];
+        if (effect && effect.execute) {
+          effect.execute(card, gameState, gameState.players[stackItem.ownerUid]);
+          gameState.logs.push(`[效果结算] ${card.fullName} 的效果已结算。`);
+          EventEngine.dispatchEvent(gameState, {
+            type: 'EFFECT_ACTIVATED',
+            playerUid: stackItem.ownerUid,
+            sourceCardId: card.gamecardId
+          });
+        }
       } else {
-        this.moveCard(gameState, stackItem.ownerUid, 'PLAY', stackItem.ownerUid, 'GRAVE', card.gamecardId);
+        if (card.type === 'UNIT') {
+          const playZoneCard = gameState.players[stackItem.ownerUid].playZone.find(c => c && c.gamecardId === card.gamecardId);
+          if (playZoneCard) playZoneCard.playedTurn = gameState.turnCount;
+          this.moveCard(gameState, stackItem.ownerUid, 'PLAY', stackItem.ownerUid, 'UNIT', card.gamecardId);
+        } else if (card.type === 'ITEM') {
+          const playZoneCard = gameState.players[stackItem.ownerUid].playZone.find(c => c && c.gamecardId === card.gamecardId);
+          if (playZoneCard) playZoneCard.playedTurn = gameState.turnCount;
+          this.moveCard(gameState, stackItem.ownerUid, 'PLAY', stackItem.ownerUid, 'ITEM', card.gamecardId);
+        } else {
+          // STORY card
+          const effect = card.effects?.find(e => e.type === 'ALWAYS' || e.type === 'ACTIVATE' || e.type === 'ACTIVATED');
+          if (effect && effect.execute) {
+            effect.execute(card, gameState, gameState.players[stackItem.ownerUid]);
+            EventEngine.dispatchEvent(gameState, {
+              type: 'EFFECT_ACTIVATED',
+              playerUid: stackItem.ownerUid,
+              sourceCardId: card.gamecardId
+            });
+          }
+          this.moveCard(gameState, stackItem.ownerUid, 'PLAY', stackItem.ownerUid, 'GRAVE', card.gamecardId);
+        }
+        gameState.logs.push(`${card.fullName} 结算完成`);
       }
-      gameState.logs.push(`${card.fullName} 结算完成`);
     }
 
     gameState.phase = 'MAIN';
@@ -377,6 +406,7 @@ export const GameService = {
       const unit = player.unitZone.find(c => c?.gamecardId === id);
       if (!unit) throw new Error('Attacker not found in unit zone');
       if (unit.isExhausted) throw new Error('Attacker is already exhausted');
+      if (unit.canAttack === false) throw new Error(`单位 [${unit.fullName}] 无法攻击`);
       
       // Attack conditions:
       // a. Upright, isrush=true, can attack this turn
@@ -402,6 +432,12 @@ export const GameService = {
 
     const attackerNames = attackers.map(a => a.fullName).join(' 和 ');
     gameState.logs.push(`${player.displayName} 宣告了攻击: ${attackerNames}${isAlliance ? ' (联军攻击)' : ''}`);
+
+    EventEngine.dispatchEvent(gameState, {
+      type: 'ATTACK_DECLARED',
+      playerUid: playerId,
+      data: { attackerIds, isAlliance }
+    });
 
     // Transition to counter check (for now just move to defense declaration)
     gameState.phase = 'DEFENSE_DECLARATION';
@@ -465,6 +501,13 @@ export const GameService = {
       }
       
       gameState.logs.push(`${attacker.displayName} 对 ${defender.displayName} 造成了 ${totalDamage} 点战斗伤害`);
+      
+      EventEngine.dispatchEvent(gameState, {
+        type: 'DAMAGE_TAKEN',
+        playerUid: defenderId,
+        data: { amount: totalDamage, source: 'BATTLE' }
+      });
+
       this.applyDamageToPlayer(gameState, defenderId, totalDamage);
     } else {
       // Unit combat
@@ -593,6 +636,12 @@ export const GameService = {
     card.cardlocation = 'GRAVE';
     player.grave.push(card);
     gameState.logs.push(`${player.displayName} 弃置了一张卡牌`);
+    
+    EventEngine.dispatchEvent(gameState, {
+      type: 'CARD_DISCARDED',
+      playerUid: playerId,
+      data: { cardId: card.gamecardId }
+    });
 
     if (player.hand.length <= 6) {
       // Move to next turn
@@ -633,14 +682,17 @@ export const GameService = {
       case 'MULLIGAN':
         gameState.phase = 'START';
         gameState.turnCount = 1;
+        EventEngine.dispatchEvent(gameState, { type: 'PHASE_CHANGED', data: { phase: 'START' } });
         this.executeStartPhase(gameState, currentPlayer);
         break;
       case 'START':
         gameState.phase = 'DRAW';
+        EventEngine.dispatchEvent(gameState, { type: 'PHASE_CHANGED', data: { phase: 'DRAW' } });
         this.executeDrawPhase(gameState, currentPlayer);
         break;
       case 'DRAW':
         gameState.phase = 'EROSION';
+        EventEngine.dispatchEvent(gameState, { type: 'PHASE_CHANGED', data: { phase: 'EROSION' } });
         this.executeErosionPhase(gameState, currentPlayer);
         break;
       case 'EROSION':
@@ -652,6 +704,7 @@ export const GameService = {
             throw new Error('先手玩家第一回合不能进入战斗阶段');
           }
           gameState.phase = 'BATTLE_DECLARATION';
+          EventEngine.dispatchEvent(gameState, { type: 'PHASE_CHANGED', data: { phase: 'BATTLE_DECLARATION' } });
           gameState.logs.push(`${currentPlayer.displayName} 进入战斗阶段`);
         } else if (action === 'DECLARE_END') {
           this.executeEndPhase(gameState, currentPlayer);
@@ -662,11 +715,13 @@ export const GameService = {
           this.executeEndPhase(gameState, currentPlayer);
         } else if (action === 'RETURN_MAIN') {
           gameState.phase = 'MAIN';
+          EventEngine.dispatchEvent(gameState, { type: 'PHASE_CHANGED', data: { phase: 'MAIN' } });
           gameState.logs.push(`${currentPlayer.displayName} 返回主要阶段`);
         }
         break;
       case 'BATTLE_END':
         gameState.phase = 'MAIN';
+        EventEngine.dispatchEvent(gameState, { type: 'PHASE_CHANGED', data: { phase: 'MAIN' } });
         gameState.battleState = undefined;
         gameState.logs.push(`战斗结束，返回主要阶段`);
         break;
@@ -730,6 +785,11 @@ export const GameService = {
         card.cardlocation = 'HAND';
         player.hand.push(card);
         gameState.logs.push(`${player.displayName} 抽了一张卡`);
+        EventEngine.dispatchEvent(gameState, {
+          type: 'CARD_DRAWN',
+          playerUid: player.uid,
+          data: { cardId: card.gamecardId }
+        });
       }
     } else {
       gameState.logs.push(`${player.displayName} 卡组为空！`);
@@ -831,10 +891,21 @@ export const GameService = {
     if (!validation.valid) throw new Error(validation.error);
 
     const gameId = Math.random().toString(36).substring(7);
+    const initializedDeck = deck.map(card => ({
+      ...card,
+      basePower: card.basePower ?? card.power,
+      baseDamage: card.baseDamage ?? card.damage,
+      baseIsrush: card.baseIsrush ?? card.isrush,
+      baseCanAttack: card.baseCanAttack ?? card.canAttack,
+      baseGodMark: card.baseGodMark ?? card.godMark,
+      baseAcValue: card.baseAcValue ?? card.acValue,
+      baseCanActivateEffect: card.baseCanActivateEffect ?? card.canActivateEffect ?? true
+    }));
+
     const initialPlayerState: PlayerState = {
       uid: auth.currentUser.uid,
       displayName: auth.currentUser.displayName || 'Player 1',
-      deck: this.shuffle([...deck]),
+      deck: this.shuffle([...initializedDeck]),
       hand: [],
       grave: [],
       exile: [],
@@ -885,11 +956,22 @@ export const GameService = {
     const validation = this.validateDeck(deck);
     if (!validation.valid) throw new Error(validation.error);
 
+    const initializedDeck = deck.map(card => ({
+      ...card,
+      basePower: card.basePower ?? card.power,
+      baseDamage: card.baseDamage ?? card.damage,
+      baseIsrush: card.baseIsrush ?? card.isrush,
+      baseCanAttack: card.baseCanAttack ?? card.canAttack,
+      baseGodMark: card.baseGodMark ?? card.godMark,
+      baseAcValue: card.baseAcValue ?? card.acValue,
+      baseCanActivateEffect: card.baseCanActivateEffect ?? card.canActivateEffect ?? true
+    }));
+
     const gameId = 'practice_' + Math.random().toString(36).substring(7);
     const myState: PlayerState = {
       uid: auth.currentUser.uid,
       displayName: auth.currentUser.displayName || 'Player 1',
-      deck: this.assignGameCardIds(this.shuffle([...deck])),
+      deck: this.assignGameCardIds(this.shuffle([...initializedDeck])),
       hand: [],
       grave: [],
       exile: [],
@@ -907,7 +989,7 @@ export const GameService = {
     const botState: PlayerState = {
       uid: 'BOT_PLAYER',
       displayName: '神蚀 AI',
-      deck: this.assignGameCardIds(this.shuffle([...deck])), // Bot uses same deck as player
+      deck: this.assignGameCardIds(this.shuffle([...initializedDeck])), // Bot uses same deck as player
       hand: [],
       grave: [],
       exile: [],

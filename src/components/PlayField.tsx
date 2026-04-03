@@ -194,7 +194,6 @@ const PlayerHalf: React.FC<{
                   key={i}
                   card={item || null}
                   label={`ITEM ${i+1}`}
-                  onHover={onHoverCard}
                   onClick={() => item && onCardClick?.(item, 'item', i)}
                   isExhausted={item ? item.isExhausted : false}
                   isSelectedForPayment={item ? paymentSelection?.exhaustIds.includes(item.gamecardId) : false}
@@ -404,7 +403,7 @@ const PlayerHalf: React.FC<{
                       
                       {/* Play Button Overlay */}
                       {isSelected && (
-                        <div className="absolute -top-14 left-1/2 -translate-x-1/2 z-[110] flex flex-col items-center animate-in fade-in zoom-in duration-200">
+                        <div className="absolute -top-14 left-1/2 -translate-x-1/2 z-[110] flex flex-col items-center animate-in fade-in zoom-in duration-200 gap-1">
                           {canPlayCheck.canPlay ? (
                             <button 
                               onClick={(e) => {
@@ -422,6 +421,30 @@ const PlayerHalf: React.FC<{
                               {canPlayCheck.reason}
                             </div>
                           )}
+                          {card.effects?.some(e => e.type === 'ACTIVATE' || e.type === 'ACTIVATED') && (
+                            <button 
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onCardClick?.(card, 'hand', i);
+                                setSelectedHandCardId(null);
+                              }}
+                              className="bg-blue-500 text-white text-[10px] font-black px-4 py-1.5 rounded-full shadow-[0_0_20px_rgba(59,130,246,0.6)] hover:scale-110 active:scale-95 transition-all flex items-center gap-2 border-2 border-black/20"
+                            >
+                              ACTIVATE
+                            </button>
+                          )}
+                          {game.phase === 'DISCARD' && (
+                            <button 
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onCardClick?.(card, 'hand', i);
+                                setSelectedHandCardId(null);
+                              }}
+                              className="bg-red-500 text-white text-[10px] font-black px-4 py-1.5 rounded-full shadow-[0_0_20px_rgba(239,68,68,0.6)] hover:scale-110 active:scale-95 transition-all flex items-center gap-2 border-2 border-black/20"
+                            >
+                              DISCARD
+                            </button>
+                          )}
                         </div>
                       )}
                     </div>
@@ -434,7 +457,6 @@ const PlayerHalf: React.FC<{
                   card={(player.playZone?.length || 0) > 0 ? player.playZone[player.playZone.length - 1] : null}
                   label="PLAY" count={player.playZone?.length || 0}
                   className="border-yellow-500/30"
-                  onHover={onHoverCard}
                 />
               </div>
             </div>
@@ -454,7 +476,6 @@ const PlayerHalf: React.FC<{
                   key={i}
                   card={item || null}
                   label={`ITEM ${i+1}`}
-                  onHover={onHoverCard}
                   onClick={() => item && onCardClick?.(item, 'item', i)}
                   isExhausted={item ? item.isExhausted : false}
                   isSelectedForPayment={item ? paymentSelection?.exhaustIds.includes(item.gamecardId) : false}

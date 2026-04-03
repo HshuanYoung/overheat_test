@@ -1,11 +1,30 @@
 
 export type CardType = 'UNIT' | 'STORY' | 'ITEM';
 export type CardColor = 'RED' | 'WHITE' | 'YELLOW' | 'BLUE' | 'GREEN' | 'NONE';
-export type EffectType = 'ALWAYS' | 'TRIGGER' | 'ACTIVATE';
+export type EffectType = 'CONTINUOUS' | 'TRIGGERED' | 'ACTIVATED' | 'ALWAYS' | 'TRIGGER' | 'ACTIVATE';
 export type TriggerLocation = 'HAND' | 'UNIT' | 'ITEM' | 'GRAVE' | 'EXILE' | 'EROSION_FRONT' | 'EROSION_BACK' | 'PLAY' | 'DECK';
 
+export type GameEventType = 
+  | 'CARD_ENTERED_ZONE'
+  | 'CARD_LEFT_ZONE'
+  | 'ATTACK_DECLARED'
+  | 'DAMAGE_TAKEN'
+  | 'EFFECT_ACTIVATED'
+  | 'CARD_DISCARDED'
+  | 'CARD_DRAWN'
+  | 'DECK_SHUFFLED'
+  | 'PHASE_CHANGED';
+
+export interface GameEvent {
+  type: GameEventType;
+  sourceCardId?: string;
+  targetCardId?: string;
+  playerUid?: string;
+  data?: any;
+}
 
 export interface CardEffect {
+  id?: string;
   type: EffectType;
   limitCount?: number; // For ONCE_PER_TURN and ONCE_PER_GAME, this should be 1. For MULTI_PER_TURN and MULTI_PER_GAME, this can be any positive integer.
   limitNowCount?:number;  //at the start of turn,reset to limitCount，each time use this effect,limitNowCount-1,when limitNowCount is 0,can't use this effect
@@ -19,7 +38,16 @@ export interface CardEffect {
   triggerLocation?: TriggerLocation[];
   factionReq?: string;
   godUnitReq?: boolean;
-  execute?: (card: Card, gameState: GameState,playerState: PlayerState) => void; // The function to execute when the effect is triggered
+  
+  // New Event System Properties
+  triggerEvent?: GameEventType;
+  isMandatory?: boolean;
+  condition?: (gameState: GameState, playerState: PlayerState, card: Card, event?: GameEvent) => boolean;
+  cost?: (gameState: GameState, playerState: PlayerState, card: Card) => boolean;
+  applyContinuous?: (gameState: GameState, card: Card) => void;
+  removeContinuous?: (gameState: GameState, card: Card) => void;
+  
+  execute?: (card: Card, gameState: GameState, playerState: PlayerState, event?: GameEvent) => void; // The function to execute when the effect is triggered
   content?: string; // Description of the effect: Move, Draw, Add Power, etc.
   description: string; // Human readable text
 }
@@ -33,13 +61,21 @@ export interface Card {
   color: CardColor;
   colorReq: { [color in CardColor]?: number };
   acValue: number;
+  baseAcValue?: number;
   power?: number;
+  basePower?: number;
   damage?: number;
+  baseDamage?: number;
   godMark: boolean;
+  baseGodMark?: boolean;
   displayState: 'FRONT_UPRIGHT' | 'FRONT_FACEDOWN' | 'BACK_UPRIGHT';
   isrush?: boolean;
+  baseIsrush?: boolean;
   isExhausted?: boolean;
   canAttack?: boolean;
+  baseCanAttack?: boolean;
+  canActivateEffect?: boolean;
+  baseCanActivateEffect?: boolean;
   playedTurn?: number;
   cardlocation?: 'HAND' | 'UNIT' | 'ITEM' | 'GRAVE' | 'EXILE' | 'EROSION_FRONT' | 'EROSION_BACK' | 'PLAY' | 'DECK';
   feijingMark: boolean;

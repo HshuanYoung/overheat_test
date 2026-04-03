@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { onSnapshot, doc, updateDoc, arrayUnion } from 'firebase/firestore';
 import { db, auth } from '../firebase';
 import { GameState, PlayerState, Card, StackItem, CardEffect } from '../types/game';
-import { GameService } from '../services/gameService';
+import { GameService, cleanForFirestore } from '../services/gameService';
 import { CardComponent } from './Card';
 import { PlayField } from './PlayField';
 import { Rulebook } from './Rulebook';
@@ -145,7 +145,7 @@ export const BattleField: React.FC = () => {
   const opponent = opponentUid ? game.players[opponentUid] : null;
 
   const canUnitAttack = (card: Card) => {
-    if (!card || card.isExhausted) return false;
+    if (!card || card.isExhausted || card.canAttack === false) return false;
     const isRush = !!card.isrush;
     const wasPlayedThisTurn = card.playedTurn === game.turnCount;
     return isRush || !wasPlayedThisTurn;
@@ -280,35 +280,74 @@ export const BattleField: React.FC = () => {
     }
 
     // Activate [启] ability during Main Phase or Battle Free Phase
-    if ((game.phase === 'MAIN' || game.phase === 'BATTLE_FREE') && (zone === 'unit' || zone === 'item')) {
+    if ((game.phase === 'MAIN' || game.phase === 'BATTLE_FREE') && (zone === 'unit' || zone === 'item' || zone === 'erosion_front' || zone === 'hand')) {
       // Only allow activating abilities of my own cards
-      const isMyCard = [...me.unitZone, ...me.itemZone].some(c => c?.gamecardId === card.gamecardId);
+      const isMyCard = [...me.unitZone, ...me.itemZone, ...me.erosionFront, ...me.hand].some(c => c?.gamecardId === card.gamecardId);
       if (isMyCard) {
-        const activateEffect = card.effects?.find(e => e.type === 'ACTIVATE');
-        if (activateEffect) {
-          activateAbility(card, activateEffect);
+        const effectIndex = card.effects?.findIndex(e => e.type === 'ACTIVATE' || e.type === 'ACTIVATED');
+        if (effectIndex !== undefined && effectIndex !== -1) {
+          const effect = card.effects![effectIndex];
+          // Check if triggerLocation matches current zone
+          let zoneMatches = false;
+          if (!effect.triggerLocation || effect.triggerLocation.length === 0) {
+            // Default to unit or item if not specified
+            zoneMatches = zone === 'unit' || zone === 'item';
+          } else {
+            const zoneMap: Record<string, string> = {
+              'unit': 'UNIT',
+              'item': 'ITEM',
+              'erosion_front': 'EROSION_FRONT',
+              'hand': 'HAND'
+            };
+            zoneMatches = effect.triggerLocation.includes(zoneMap[zone] as any);
+          }
+          
+          if (zoneMatches) {
+            activateAbility(card, effect, effectIndex);
+            return; // Return early so we don't also play the card from hand
+          }
         }
       }
     }
+
+    // Handle playing card from hand
+    if (zone === 'hand' && game.phase === 'MAIN') {
+      playCardFromHand(card);
+    }
   };
 
-  const activateAbility = async (card: Card, effect: CardEffect) => {
+  const activateAbility = async (card: Card, effect: CardEffect, effectIndex: number) => {
     if (!gameId) return;
+
+    if (card.canActivateEffect === false) {
+      alert("此卡牌目前无法发动效果！");
+      return;
+    }
+
+    // Check and pay cost if defined
+    if (effect.cost) {
+      const canPay = effect.cost(game, me, card);
+      if (!canPay) {
+        alert("无法支付发动效果的费用！");
+        return;
+      }
+    }
     
     const newStackItem: StackItem = {
       card: card,
       ownerUid: myUid,
       type: 'EFFECT',
+      effectIndex: effectIndex,
       timestamp: Date.now()
     };
 
-    const newLogs = [...game.logs, `${me.displayName} 发动了 [${card.fullName}] 的 [启] 能力: ${effect.description}`];
+    game.counterStack.push(newStackItem);
+    game.phase = 'COUNTERING';
+    game.isCountering = 1;
+    game.logs.push(`${me.displayName} 发动了 [${card.fullName}] 的 [启] 能力: ${effect.description}`);
 
     try {
-      await updateDoc(doc(db, 'games', gameId), {
-        counterStack: arrayUnion(newStackItem),
-        logs: newLogs
-      });
+      await updateDoc(doc(db, 'games', gameId), cleanForFirestore(game));
     } catch (error) {
       console.error("Error activating ability:", error);
     }
@@ -317,7 +356,7 @@ export const BattleField: React.FC = () => {
   const playCardFromHand = async (card: Card) => {
     if (!me.isTurn || !gameId || game.phase !== 'MAIN') return;
     
-    const playEffect = card.effects.find(e => e.type === 'ACTIVATE' || e.type === 'TRIGGER' || e.type === 'ALWAYS');
+    const playEffect = card.effects?.find(e => e.type === 'ACTIVATE' || e.type === 'TRIGGER' || e.type === 'ALWAYS');
     const cost = card.acValue;
 
     if (cost === 0) {
