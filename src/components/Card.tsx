@@ -11,10 +11,12 @@ interface CardProps {
   showDetails?: boolean;
   count?: number;
   isBack?: boolean;
+  isExhausted?: boolean;
   disableZoom?: boolean;
+  statusBorder?: 'red' | 'blue';
 }
 
-export const CardComponent: React.FC<CardProps> = ({ card, onClick, className, count, isBack, disableZoom }) => {
+export const CardComponent: React.FC<CardProps> = ({ card, onClick, className, count, isBack, disableZoom, statusBorder, isExhausted }) => {
   if (isBack || !card) {
     return (
       <motion.div
@@ -50,11 +52,14 @@ export const CardComponent: React.FC<CardProps> = ({ card, onClick, className, c
     <>
       <motion.div
         layout
+        animate={{ rotate: isExhausted ? 90 : 0 }}
         whileHover={{ scale: 1.02, y: -2 }}
         whileTap={{ scale: 0.98 }}
         onClick={handleCardClick}
         className={clsx(
           "relative aspect-[3/4] w-full rounded-xl overflow-hidden border-2 cursor-pointer group transition-all bg-zinc-900",
+          statusBorder === 'red' ? "border-red-500 shadow-[0_0_15px_rgba(239,68,68,0.5)]" :
+          statusBorder === 'blue' ? "border-blue-500 shadow-[0_0_15px_rgba(59,130,246,0.5)]" :
           card.rarity === 'UR' ? "border-yellow-500 card-glow-gold" : "border-zinc-700",
           className
         )}

@@ -1,9 +1,8 @@
+import { getAuthUser } from '../socket';
 import React, { useState, useEffect } from 'react';
 import { User, Settings, Image, Layout, Palette, Heart, Save, Loader2, X, Search } from 'lucide-react';
-import { auth, db } from '../firebase';
-import { motion, AnimatePresence } from 'motion/react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '../lib/utils';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { CARD_LIBRARY } from '../data/cards';
 import { CardComponent } from './Card';
 import { Card as CardType } from '../types/game';
@@ -17,7 +16,7 @@ const RAY_CARDS = [
 ];
 
 export const Profile: React.FC = () => {
-  const user = auth.currentUser;
+  const user = getAuthUser();
   const [nickname, setNickname] = useState(user?.displayName || 'User');
   const [favoriteCardId, setFavoriteCardId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -28,12 +27,14 @@ export const Profile: React.FC = () => {
   useEffect(() => {
     const loadProfile = async () => {
       if (!user) return;
-      const docRef = doc(db, 'users', user.uid);
-      const docSnap = await getDoc(docRef);
-      if (docSnap.exists()) {
-        const data = docSnap.data();
-        setNickname(data.displayName || user.displayName || 'User');
+      try {
+        const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001';
+        const token = localStorage.getItem('token');
+        const res = await fetch(`${BACKEND_URL}/api/user/profile`, { headers: { 'Authorization': `Bearer ${token}` }});
+        const data = await res.json();
         setFavoriteCardId(data.favoriteCardId || null);
+      } catch (e) {
+        console.error(e);
       }
       setLoading(false);
     };
@@ -44,12 +45,13 @@ export const Profile: React.FC = () => {
     if (!user) return;
     setSaving(true);
     try {
-      await setDoc(doc(db, 'users', user.uid), {
-        uid: user.uid,
-        displayName: nickname,
-        favoriteCardId: favoriteCardId,
-        updatedAt: Date.now()
-      }, { merge: true });
+      const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001';
+      const token = localStorage.getItem('token');
+      await fetch(`${BACKEND_URL}/api/user/profile`, { 
+          method: 'PUT', 
+          headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }, 
+          body: JSON.stringify({ favoriteCardId }) 
+      });
       alert('个人信息已保存');
     } catch (e) {
       console.error(e);
@@ -82,7 +84,7 @@ export const Profile: React.FC = () => {
                 value={nickname}
                 onChange={e => setNickname(e.target.value)}
               />
-              <p className="text-zinc-500 uppercase tracking-widest text-xs">UID: {user?.uid?.slice(0, 8)}</p>
+              <p className="text-zinc-500 uppercase tracking-widest text-xs">UID: {user?.uid?.slice(0, 8) || user?.uid}</p>
             </div>
           </div>
           <button 

@@ -1,4 +1,6 @@
 // @ts-nocheck
+let db: any;
+let auth: any;
 import { 
   collection, 
   doc, 
@@ -11,15 +13,9 @@ import {
   serverTimestamp,
   getDoc
 } from 'firebase/firestore';
-import { GameState, PlayerState, Card, Deck, TriggerLocation, CardEffect } from '../types/game';
-import { CARD_LIBRARY } from '../data/cards';
-import { EventEngine } from './EventEngine';
-
-let db: any;
-let auth: any;
-let gameSnap: any;
-let gameRef: any;
-
+import { GameState, PlayerState, Card, Deck, TriggerLocation, CardEffect } from '../src/types/game';
+import { CARD_LIBRARY } from '../src/data/cards';
+import { EventEngine } from '../src/services/EventEngine';
 
 const GAMES_COLLECTION = 'games';
 
@@ -54,7 +50,7 @@ export function cleanForFirestore(obj: any): any {
   return obj;
 }
 
-export const GameService = {
+export const ServerGameService = {
   // Validate deck: 50 cards, max 10 God Mark, max 4 per card
   validateDeck(cards: Card[]): { valid: boolean; error?: string } {
     if (cards.length !== 50) {
@@ -380,11 +376,7 @@ export const GameService = {
     return { success: false, reason: '未知错误' };
   },
 
-  async playCard(gameId: string, playerId: string, cardId: string, paymentSelection: { feijingCardId?: string, exhaustUnitIds?: string[], erosionFrontIds?: string[] }) {
-    
-    
-    if (!gameSnap.exists()) throw new Error('Game not found');
-    const gameState: any = {}; 
+  async playCard(gameState: GameState, playerId: string, cardId: string, paymentSelection: { feijingCardId?: string, exhaustUnitIds?: string[], erosionFrontIds?: string[] }) {
 
     const player = gameState.players[playerId];
     const card = player.hand.find(c => c.gamecardId === cardId);
@@ -410,14 +402,10 @@ export const GameService = {
       timestamp: Date.now()
     });
 
-    
+    return gameState;
   },
 
-  async resolvePlay(gameId: string) {
-    
-    
-    if (!gameSnap.exists()) return;
-    const gameState: any = {}; 
+  async resolvePlay(gameState: GameState) {
 
     if (gameState.counterStack.length === 0) return;
 
@@ -470,14 +458,10 @@ export const GameService = {
     gameState.phase = 'MAIN';
     gameState.isCountering = 0;
 
-    
+    return gameState;
   },
 
-  async declareAttack(gameId: string, playerId: string, attackerIds: string[], isAlliance: boolean) {
-    
-    
-    if (!gameSnap.exists()) throw new Error('Game not found');
-    const gameState: any = {}; 
+  async declareAttack(gameState: GameState, playerId: string, attackerIds: string[], isAlliance: boolean) {
 
     if (gameState.phase !== 'BATTLE_DECLARATION') throw new Error('Not in battle declaration phase');
     
@@ -531,14 +515,10 @@ export const GameService = {
     // Transition to counter check (for now just move to defense declaration)
     gameState.phase = 'DEFENSE_DECLARATION';
 
-    
+    return gameState;
   },
 
-  async declareDefense(gameId: string, playerId: string, defenderId?: string) {
-    
-    
-    if (!gameSnap.exists()) throw new Error('Game not found');
-    const gameState: any = {}; 
+  async declareDefense(gameState: GameState, playerId: string, defenderId?: string) {
 
     if (gameState.phase !== 'DEFENSE_DECLARATION') throw new Error('Not in defense declaration phase');
     if (!gameState.battleState) throw new Error('No battle state found');
@@ -560,14 +540,10 @@ export const GameService = {
     // Transition to counter check (for now just move to battle free)
     gameState.phase = 'BATTLE_FREE';
 
-    
+    return gameState;
   },
 
-  async resolveDamage(gameId: string) {
-    
-    
-    if (!gameSnap.exists()) throw new Error('Game not found');
-    const gameState: any = {}; 
+  async resolveDamage(gameState: GameState) {
 
     if (gameState.phase !== 'DAMAGE_CALCULATION') throw new Error('Not in damage calculation phase');
     if (!gameState.battleState) throw new Error('No battle state found');
@@ -649,7 +625,7 @@ export const GameService = {
 
     gameState.phase = 'MAIN';
     gameState.battleState = undefined;
-    
+    return gameState;
   },
 
   applyDamageToPlayer(gameState: GameState, playerId: string, damage: number) {
@@ -709,11 +685,7 @@ export const GameService = {
     }
   },
 
-  async discardCard(gameId: string, playerId: string, cardId: string) {
-    
-    
-    if (!gameSnap.exists()) throw new Error('Game not found');
-    const gameState: any = {}; 
+  async discardCard(gameState: GameState, playerId: string, cardId: string) {
 
     if (gameState.phase !== 'DISCARD') throw new Error('Not in discard phase');
     const player = gameState.players[playerId];
@@ -737,7 +709,7 @@ export const GameService = {
       this.finishTurnTransition(gameState);
     }
 
-    
+    return gameState;
   },
 
   finishTurnTransition(gameState: GameState) {
@@ -757,11 +729,7 @@ export const GameService = {
     this.executeStartPhase(gameState, nextPlayer);
   },
 
-  async advancePhase(gameId: string, action?: 'DECLARE_BATTLE' | 'DECLARE_END' | 'RETURN_MAIN' | 'PROPOSE_DAMAGE_CALCULATION' | 'CONFIRM_CONFRONTATION' | 'DECLINE_CONFRONTATION' | 'DAMAGE_CALCULATION' | 'COUNTERING') {
-    
-    
-    if (!gameSnap.exists()) return;
-    const gameState: any = {}; 
+  async advancePhase(gameState: GameState, action?: 'DECLARE_BATTLE' | 'DECLARE_END' | 'RETURN_MAIN' | 'PROPOSE_DAMAGE_CALCULATION' | 'CONFIRM_CONFRONTATION' | 'DECLINE_CONFRONTATION' | 'DAMAGE_CALCULATION' | 'COUNTERING') {
 
     const currentPlayerId = gameState.playerIds[gameState.currentTurnPlayer];
     const currentPlayer = gameState.players[currentPlayerId];
@@ -849,7 +817,7 @@ export const GameService = {
         break;
     }
 
-    
+    return gameState;
   },
 
   executeStartPhase(gameState: GameState, player: PlayerState) {
@@ -930,11 +898,7 @@ export const GameService = {
     }
   },
 
-  async handleErosionChoice(gameId: string, playerId: string, choice: 'A' | 'B' | 'C', selectedCardId?: string) {
-    
-    
-    if (!gameSnap.exists()) throw new Error('Game not found');
-    const gameState: any = {}; 
+  async handleErosionChoice(gameState: GameState, playerId: string, choice: 'A' | 'B' | 'C', selectedCardId?: string) {
 
     const player = gameState.players[playerId];
     if (gameState.phase !== 'EROSION' || !player.isTurn) throw new Error('Not in erosion phase or not your turn');
@@ -985,7 +949,7 @@ export const GameService = {
     gameState.phase = 'MAIN';
     gameState.logs.push(`${player.displayName} 进入主要阶段`);
 
-    
+    return gameState;
   },
 
   executeEndPhase(gameState: GameState, player: PlayerState) {
@@ -1001,12 +965,12 @@ export const GameService = {
 
   // Create a new game and wait for opponent
   async createGame(deck: Card[]) {
-    if (!({ uid: "temp" } as any)) throw new Error('Not authenticated');
+    if (!({ uid: "temp", displayName: "temp" } as any)) throw new Error('Not authenticated');
     
     const validation = this.validateDeck(deck);
     if (!validation.valid) throw new Error(validation.error);
 
-    const gameId = Math.random().toString(36).substring(7);
+    const tempId = Math.random().toString(36).substring(7);
     const initializedDeck = deck.map(card => ({
       ...card,
       basePower: card.basePower ?? card.power,
@@ -1019,8 +983,8 @@ export const GameService = {
     }));
 
     const initialPlayerState: PlayerState = {
-      uid: ({ uid: "temp" } as any).uid,
-      displayName: ({ uid: "temp" } as any).displayName || 'Player 1',
+      uid: ({ uid: "temp", displayName: "temp" } as any).uid,
+      displayName: ({ uid: "temp", displayName: "temp" } as any).displayName || 'Player 1',
       deck: this.shuffle([...initializedDeck]),
       hand: [],
       grave: [],
@@ -1042,32 +1006,30 @@ export const GameService = {
       if (card) initialPlayerState.hand.push(card);
     }
 
-    const gameState: GameState = {
-      gameId,
-      phase: 'INIT',
+    const gameState: GameState = { gameId: "temp", phase: 'INIT',
       currentTurnPlayer: 0,
       turnCount: 0,
       isCountering: 0,
       counterStack: [],
-      playerIds: [({ uid: "temp" } as any).uid, ''],
+      playerIds: [({ uid: "temp", displayName: "temp" } as any).uid, ''],
       gameStatus: 1,
       logs: ['游戏已创建。等待对手加入...'],
       players: {
-        [({ uid: "temp" } as any).uid]: initialPlayerState
+        [({ uid: "temp", displayName: "temp" } as any).uid]: initialPlayerState
       }
     };
 
-    await setDoc(doc(null as any, GAMES_COLLECTION, gameId), cleanForFirestore({
+    await setDoc(doc(null as any, GAMES_COLLECTION, ''), cleanForFirestore({
       ...gameState,
       status: 'WAITING',
       createdAt: Date.now()
     }));
-    return gameId;
+    return '';
   },
 
   // Create a practice game with a bot
   async createPracticeGame(deck: Card[]) {
-    if (!({ uid: "temp" } as any)) throw new Error('Not authenticated');
+    if (!({ uid: "temp", displayName: "temp" } as any)) throw new Error('Not authenticated');
     
     const validation = this.validateDeck(deck);
     if (!validation.valid) throw new Error(validation.error);
@@ -1083,10 +1045,10 @@ export const GameService = {
       baseCanActivateEffect: card.baseCanActivateEffect ?? card.canActivateEffect ?? true
     }));
 
-    const gameId = 'practice_' + Math.random().toString(36).substring(7);
+    const tempId = 'practice_' + Math.random().toString(36).substring(7);
     const myState: PlayerState = {
-      uid: ({ uid: "temp" } as any).uid,
-      displayName: ({ uid: "temp" } as any).displayName || 'Player 1',
+      uid: ({ uid: "temp", displayName: "temp" } as any).uid,
+      displayName: ({ uid: "temp", displayName: "temp" } as any).displayName || 'Player 1',
       deck: this.assignGameCardIds(this.shuffle([...initializedDeck])),
       hand: [],
       grave: [],
@@ -1129,16 +1091,14 @@ export const GameService = {
     }
 
     // Random first player
-    const uids = [({ uid: "temp" } as any).uid, 'BOT_PLAYER'];
+    const uids = [({ uid: "temp", displayName: "temp" } as any).uid, 'BOT_PLAYER'];
     const firstIdx = Math.floor(Math.random() * uids.length) as 0 | 1;
     const firstPlayerUid = uids[firstIdx];
     
     myState.isFirst = firstPlayerUid === myState.uid;
     botState.isFirst = firstPlayerUid === botState.uid;
 
-    const gameState: GameState = {
-      gameId,
-      phase: 'MULLIGAN',
+    const gameState: GameState = { gameId: "temp", phase: 'MULLIGAN',
       currentTurnPlayer: firstIdx,
       turnCount: 0,
       isCountering: 0,
@@ -1147,27 +1107,27 @@ export const GameService = {
       gameStatus: 1,
       logs: ['练习赛开始。请进行调度 (Mulligan)。'],
       players: {
-        [({ uid: "temp" } as any).uid]: myState,
+        [({ uid: "temp", displayName: "temp" } as any).uid]: myState,
         'BOT_PLAYER': botState
       }
     };
 
-    await setDoc(doc(null as any, GAMES_COLLECTION, gameId), cleanForFirestore({
+    await setDoc(doc(null as any, GAMES_COLLECTION, ''), cleanForFirestore({
       ...gameState,
       status: 'ACTIVE',
       createdAt: Date.now()
     }));
-    return gameId;
+    return '';
   },
 
   // Mulligan action
-  async performMulligan(gameId: string, cardIdsToReturn: string[]) {
-    
-    
+  async performMulligan(gameState: GameState, cardIdsToReturn: string[]) {
+    const gameRef = doc(null as any, GAMES_COLLECTION, '');
+    const gameSnap = await getDoc(gameRef);
     if (!gameSnap.exists()) return;
     
     const game = gameSnap.data() as GameState;
-    const uid = ({ uid: "temp" } as any)?.uid;
+    const uid = ({ uid: "temp", displayName: "temp" } as any)?.uid;
     if (!uid) return;
     
     const player = game.players[uid];
@@ -1229,14 +1189,14 @@ export const GameService = {
     }));
   },
 
-  async endTurn(gameId: string) {
-    return this.advancePhase(gameId, 'DECLARE_END');
+  async endTurn(gameState: GameState) {
+    return this.advancePhase(gameState, 'DECLARE_END');
   },
 
   // Bot logic
-  async botMove(gameId: string) {
-    
-    
+  async botMove(gameState: GameState) {
+    const gameRef = doc(null as any, GAMES_COLLECTION, '');
+    const gameSnap = await getDoc(gameRef);
     if (!gameSnap.exists()) return;
     
     const game = gameSnap.data() as GameState;
@@ -1248,7 +1208,7 @@ export const GameService = {
       const lastStackItem = game.counterStack[game.counterStack.length - 1];
       if (lastStackItem && lastStackItem.ownerUid !== 'BOT_PLAYER') {
         // Player played a card, bot chooses not to counter
-        await this.resolvePlay(gameId);
+        await this.resolvePlay(gameState);
         return;
       }
       return;
@@ -1261,9 +1221,9 @@ export const GameService = {
         // Bot is the defender
         const availableDefender = bot.unitZone.find(c => c && !c.isExhausted);
         if (availableDefender) {
-          await this.declareDefense(gameId, 'BOT_PLAYER', availableDefender.gamecardId);
+          await this.declareDefense(gameState, 'BOT_PLAYER', availableDefender.gamecardId);
         } else {
-          await this.declareDefense(gameId, 'BOT_PLAYER', undefined);
+          await this.declareDefense(gameState, 'BOT_PLAYER', undefined);
         }
         return;
       }
@@ -1272,7 +1232,7 @@ export const GameService = {
     // Handle Discard Phase
     if (game.phase === 'DISCARD' && bot.isTurn) {
       if (bot.hand.length > 6) {
-        await this.discardCard(gameId, 'BOT_PLAYER', bot.hand[0].gamecardId);
+        await this.discardCard(gameState, 'BOT_PLAYER', bot.hand[0].gamecardId);
       }
       return;
     }
@@ -1281,7 +1241,7 @@ export const GameService = {
 
     // Handle Erosion Phase
     if (game.phase === 'EROSION') {
-      await this.handleErosionChoice(gameId, 'BOT_PLAYER', 'A');
+      await this.handleErosionChoice(gameState, 'BOT_PLAYER', 'A');
       return;
     }
 
@@ -1293,7 +1253,7 @@ export const GameService = {
         if (canPlay.canPlay) {
           try {
             // Bot plays with default payment (deck to erosion)
-            await this.playCard(gameId, 'BOT_PLAYER', card.gamecardId, {});
+            await this.playCard(gameState, 'BOT_PLAYER', card.gamecardId, {});
             return; // Exit and wait for next botMove call or player response
           } catch (e) {
             console.error('Bot failed to play card', e);
@@ -1311,9 +1271,9 @@ export const GameService = {
 
       if (game.turnCount > 1 && canAttack) {
         // Enter battle phase
-        await this.advancePhase(gameId, 'DECLARE_BATTLE');
+        await this.advancePhase(gameState, 'DECLARE_BATTLE');
       } else {
-        await this.advancePhase(gameId, 'DECLARE_END');
+        await this.advancePhase(gameState, 'DECLARE_END');
       }
       return;
     }
@@ -1327,9 +1287,9 @@ export const GameService = {
         return isRush || !wasPlayedThisTurn;
       });
       if (attacker) {
-        await this.declareAttack(gameId, 'BOT_PLAYER', [attacker.gamecardId], false);
+        await this.declareAttack(gameState, 'BOT_PLAYER', [attacker.gamecardId], false);
       } else {
-        await this.advancePhase(gameId, 'RETURN_MAIN');
+        await this.advancePhase(gameState, 'RETURN_MAIN');
       }
       return;
     }
@@ -1337,26 +1297,26 @@ export const GameService = {
     // Battle Free Phase
     if (game.phase === 'BATTLE_FREE' && bot.isTurn) {
       // Bot just ends battle free phase
-      
+      await updateDoc(gameRef, { phase: 'DAMAGE_CALCULATION' });
       return;
     }
 
     // Damage Calculation Phase
     if (game.phase === 'DAMAGE_CALCULATION') {
-      await this.resolveDamage(gameId);
+      await this.resolveDamage(gameState);
       return;
     }
   },
 
   // Join an existing game
-  async joinGame(gameId: string, deck: Card[]) {
-    if (!({ uid: "temp" } as any)) throw new Error('Not authenticated');
+  async joinGame(gameState: GameState, deck: Card[]) {
+    if (!({ uid: "temp", displayName: "temp" } as any)) throw new Error('Not authenticated');
     
     const validation = this.validateDeck(deck);
     if (!validation.valid) throw new Error(validation.error);
 
-    
-    
+    const gameRef = doc(null as any, GAMES_COLLECTION, '');
+    const gameSnap = await getDoc(gameRef);
     
     if (!gameSnap.exists()) throw new Error('Game not found');
     const gameData = gameSnap.data() as GameState;
@@ -1364,8 +1324,8 @@ export const GameService = {
     if ((gameData as any).status !== 'WAITING') throw new Error('Game already full');
 
     const opponentState: PlayerState = {
-      uid: ({ uid: "temp" } as any).uid,
-      displayName: ({ uid: "temp" } as any).displayName || 'Player 2',
+      uid: ({ uid: "temp", displayName: "temp" } as any).uid,
+      displayName: ({ uid: "temp", displayName: "temp" } as any).displayName || 'Player 2',
       deck: this.assignGameCardIds(this.shuffle([...deck])),
       hand: [],
       grave: [],
@@ -1388,13 +1348,13 @@ export const GameService = {
     }
 
     // Random first player
-    const uids = [Object.keys(gameData.players)[0], ({ uid: "temp" } as any).uid];
+    const uids = [Object.keys(gameData.players)[0], ({ uid: "temp", displayName: "temp" } as any).uid];
     const firstIdx = Math.floor(Math.random() * uids.length) as 0 | 1;
     const firstPlayerUid = uids[firstIdx];
     
     const players = {
       ...gameData.players,
-      [({ uid: "temp" } as any).uid]: opponentState
+      [({ uid: "temp", displayName: "temp" } as any).uid]: opponentState
     };
 
     players[uids[0]].isFirst = firstPlayerUid === uids[0];

@@ -1,10 +1,11 @@
+let db: any;
+import { getAuthUser } from '../socket';
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Save, Trash2, Plus, Minus, Search, Filter, Loader2, Copy, Edit3, X, ZoomIn } from 'lucide-react';
 import { CARD_LIBRARY } from '../data/cards';
 import { Card as CardType, Deck } from '../types/game';
 import { CardComponent } from './Card';
-import { db, auth } from '../firebase';
 import { collection, addDoc, query, where, getDocs, deleteDoc, doc, setDoc, updateDoc } from 'firebase/firestore';
 import { cn } from '../lib/utils';
 
@@ -25,10 +26,12 @@ export const DeckBuilder: React.FC = () => {
   }, []);
 
   const loadDecks = async () => {
-    if (!auth.currentUser) return;
-    const q = query(collection(db, `users/${auth.currentUser.uid}/decks`));
-    const snap = await getDocs(q);
-    const decks = snap.docs.map(d => ({ id: d.id, ...d.data() } as Deck));
+    if (!getAuthUser()) return;
+        const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001';
+    const token = localStorage.getItem('token');
+    const res = await fetch(BACKEND_URL + '/api/user/decks', { headers: { 'Authorization': `Bearer ${token}` }});
+    const data = await res.json();
+    const decks: Deck[] = data.decks || [];
     setMyDecks(decks);
     if (decks.length > 0 && !selectedDeckId) {
       loadDeckToEditor(decks[0]);
@@ -36,11 +39,11 @@ export const DeckBuilder: React.FC = () => {
   };
 
   const handleSave = async () => {
-    if (!auth.currentUser) return;
+    if (!getAuthUser()) return;
     setSaving(true);
     try {
       const deckData = {
-        userId: auth.currentUser.uid,
+        userId: getAuthUser().uid,
         name: deckName,
         cards: deck.map(c => c.id),
         isFavorite: false,
@@ -48,13 +51,15 @@ export const DeckBuilder: React.FC = () => {
       };
 
       if (selectedDeckId) {
-        await updateDoc(doc(db, `users/${auth.currentUser.uid}/decks`, selectedDeckId), deckData);
+        const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001';
+        const token = localStorage.getItem('token');
+await fetch(`${BACKEND_URL}/api/user/decks/${selectedDeckId}`, { method: 'PUT', headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify(deckData) });
       } else {
-        const docRef = await addDoc(collection(db, `users/${auth.currentUser.uid}/decks`), {
-          ...deckData,
-          createdAt: Date.now()
-        });
-        setSelectedDeckId(docRef.id);
+        const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001';
+        const token = localStorage.getItem('token');
+const res = await fetch(`${BACKEND_URL}/api/user/decks`, { method: 'POST', headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify(deckData) });
+const data = await res.json();
+setSelectedDeckId(data.id);
       }
       loadDecks();
     } catch (e) {
@@ -79,8 +84,10 @@ export const DeckBuilder: React.FC = () => {
 
   const deleteDeck = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!auth.currentUser) return;
-    await deleteDoc(doc(db, `users/${auth.currentUser.uid}/decks`, id));
+    if (!getAuthUser()) return;
+    const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001';
+        const token = localStorage.getItem('token');
+await fetch(`${BACKEND_URL}/api/user/decks/${id}`, { method: 'DELETE', headers: { 'Authorization': `Bearer ${token}` }});
     if (selectedDeckId === id) createNewDeck();
     setConfirmDeleteId(null);
     loadDecks();
@@ -88,7 +95,7 @@ export const DeckBuilder: React.FC = () => {
 
   const copyDeck = async (savedDeck: Deck, e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!auth.currentUser) return;
+    if (!getAuthUser()) return;
     const copyData = {
       ...savedDeck,
       name: `${savedDeck.name} (副本)`,
@@ -96,13 +103,17 @@ export const DeckBuilder: React.FC = () => {
       updatedAt: Date.now()
     };
     delete (copyData as any).id;
-    await addDoc(collection(db, `users/${auth.currentUser.uid}/decks`), copyData);
+    const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001';
+        const token = localStorage.getItem('token');
+await fetch(`${BACKEND_URL}/api/user/decks/${savedDeck.id}/copy`, { method: 'POST', headers: { 'Authorization': `Bearer ${token}` }});
     loadDecks();
   };
 
   const renameDeck = async (id: string) => {
-    if (!auth.currentUser || !newName.trim()) return;
-    await updateDoc(doc(db, `users/${auth.currentUser.uid}/decks`, id), { name: newName });
+    if (!getAuthUser() || !newName.trim()) return;
+    const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001';
+        const token = localStorage.getItem('token');
+await fetch(`${BACKEND_URL}/api/user/decks/${id}`, { method: 'PUT', headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ name: newName }) });
     setIsRenaming(null);
     if (selectedDeckId === id) setDeckName(newName);
     loadDecks();

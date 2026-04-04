@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { onSnapshot, doc, updateDoc, arrayUnion } from 'firebase/firestore';
-import { db, auth } from '../firebase';
 import { GameState, PlayerState, Card, StackItem, CardEffect, TriggerLocation } from '../types/game';
+import { socket, getAuthUser } from '../socket';
 import { GameService, cleanForFirestore } from '../services/gameService';
 import { CardComponent } from './Card';
 import { PlayField } from './PlayField';
@@ -54,9 +54,9 @@ export const BattleField: React.FC = () => {
 
   // Handle 30s response timeout
   useEffect(() => {
-    if (!gameId || !game || !auth.currentUser || game.isCountering === 0 || game.counterStack.length === 0) return;
+    if (!gameId || !game || !getAuthUser() || game.isCountering === 0 || game.counterStack.length === 0) return;
 
-    const myUid = auth.currentUser.uid;
+    const myUid = getAuthUser().uid;
     const stackItem = game.counterStack[game.counterStack.length - 1];
     if (!stackItem || !stackItem.timestamp) return;
 
@@ -67,7 +67,7 @@ export const BattleField: React.FC = () => {
         // Timeout reached, resolve automatically
         // Only the player who played the card should trigger this to avoid conflicts.
         if (myUid === stackItem.ownerUid) {
-           GameService.resolvePlay(gameId);
+           socket.emit('gameAction', { gameId, action: 'RESOLVE_PLAY' });
         }
       }
     };
@@ -96,19 +96,16 @@ export const BattleField: React.FC = () => {
 
   useEffect(() => {
     if (!gameId) return;
-    const unsubscribe = onSnapshot(doc(db, 'games', gameId), (doc) => {
-      if (doc.exists()) {
-        setGame(doc.data() as GameState);
-      }
-    });
-    return () => unsubscribe();
+    socket.emit('joinGame', gameId);
+socket.on('gameStateUpdate', (newState) => { setGame(newState); });
+return () => { socket.off('gameStateUpdate'); };
   }, [gameId]);
 
   // Counter Timer Logic
   useEffect(() => {
-    if (!game || !gameId || !auth.currentUser) return;
+    if (!game || !gameId || !getAuthUser()) return;
     
-    const myUid = auth.currentUser.uid;
+    const myUid = getAuthUser().uid;
     const isWaitingForMe = game.counterStack?.length > 0 && game.counterStack[game.counterStack.length - 1]?.ownerUid !== myUid;
 
     if (isWaitingForMe) {
@@ -142,13 +139,35 @@ export const BattleField: React.FC = () => {
 
     if (isBotTurn || isBotCountering || isBotDefending || isBotResolvingDamage) {
       const timer = setTimeout(() => {
-        GameService.botMove(gameId);
+        // Bot moves must be moved to backend entirely based on game state loops, or emitted
       }, 2000);
       return () => clearTimeout(timer);
     }
   }, [game, gameId]);
 
-  if (!game || !auth.currentUser) return (
+  // Effect Selection Keyboard Shortcuts
+  useEffect(() => {
+    if (!effectSelection) return;
+    
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const num = parseInt(e.key, 10);
+      if (!isNaN(num) && num > 0 && num <= effectSelection.effects.length) {
+        const selected = effectSelection.effects[num - 1];
+        setEffectConfirmation({
+          card: effectSelection.card,
+          effect: selected.effect,
+          effectIndex: selected.index,
+          triggerLocation: effectSelection.triggerLocation
+        });
+        setEffectSelection(null);
+      }
+    };
+    
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [effectSelection]);
+
+  if (!game || !getAuthUser()) return (
     <div className="h-screen bg-black flex items-center justify-center">
       <motion.div 
         animate={{ rotate: 360 }}
@@ -158,7 +177,7 @@ export const BattleField: React.FC = () => {
     </div>
   );
 
-  const myUid = auth.currentUser.uid;
+  const myUid = getAuthUser().uid;
   const opponentUid = Object.keys(game.players).find(uid => uid !== myUid);
   
   const me = game.players[myUid];
@@ -182,7 +201,7 @@ export const BattleField: React.FC = () => {
   const handleDeclareAttack = async (attackers: string[] = selectedAttackers, alliance: boolean = isAlliance) => {
     if (!gameId || attackers.length === 0) return;
     try {
-      await GameService.declareAttack(gameId, myUid, attackers, alliance);
+      await socket.emit('gameAction', { gameId, action: 'DECLARE_ATTACK', payload: { attackerIds: myUid, isAlliance: attackers, alliance } });
       setSelectedAttackers([]);
       setIsAlliance(false);
       setShowAttackModal(false);
@@ -194,7 +213,7 @@ export const BattleField: React.FC = () => {
   const handleDeclareDefense = async (defenderId?: string) => {
     if (!gameId) return;
     try {
-      await GameService.declareDefense(gameId, myUid, defenderId);
+      await socket.emit('gameAction', { gameId, action: 'DECLARE_DEFENSE', payload: { defenderId: defenderId || myUid } });
       setSelectedDefender(null);
       setShowDefenseModal(false);
     } catch (error: any) {
@@ -206,9 +225,7 @@ export const BattleField: React.FC = () => {
     if (!gameId) return;
     try {
       // Transition to damage calculation
-      await updateDoc(doc(db, 'games', gameId), {
-        phase: 'DAMAGE_CALCULATION'
-      });
+      socket.emit('gameAction', { gameId, action: 'ADVANCE_PHASE', payload: { action: 'PROPOSE_DAMAGE_CALCULATION' } });
     } catch (error: any) {
       alert(error.message);
     }
@@ -217,7 +234,7 @@ export const BattleField: React.FC = () => {
   const handleResolveDamage = async () => {
     if (!gameId) return;
     try {
-      await GameService.resolveDamage(gameId);
+      await socket.emit('gameAction', { gameId, action: 'RESOLVE_DAMAGE' });
     } catch (error: any) {
       alert(error.message);
     }
@@ -234,14 +251,14 @@ export const BattleField: React.FC = () => {
 
   const handleEndTurn = async () => {
     if (gameId) {
-      await GameService.advancePhase(gameId, 'DECLARE_END');
+      await socket.emit('gameAction', { gameId, action: 'ADVANCE_PHASE', payload: { action: 'DECLARE_END' } });
     }
   };
 
   const handleCardClick = (card: Card, zone: string, index?: number, e?: React.MouseEvent) => {
     // Handle discarding cards
     if (game.phase === 'DISCARD' && zone === 'hand') {
-      if (me.uid === auth.currentUser?.uid) {
+      if (me.uid === getAuthUser()?.uid) {
         handleDiscardCard(card.gamecardId);
       }
       return;
@@ -358,10 +375,10 @@ export const BattleField: React.FC = () => {
     game.logs.push(`${me.displayName} 发动了 [${card.fullName}] 的 [启] 能力: ${effect.description}`);
 
     try {
-      await updateDoc(doc(db, 'games', gameId), cleanForFirestore(game));
-    } catch (error) {
-      console.error("Error activating ability:", error);
-    }
+    socket.emit('gameAction', { gameId, action: 'ACTIVATE_EFFECT', payload: { cardId: card.gamecardId, effectIndex: effectIndex } });
+} catch (error) {
+    console.error("Error activating ability:", error);
+}
   };
 
   const playCardFromHand = async (card: Card) => {
@@ -372,7 +389,7 @@ export const BattleField: React.FC = () => {
 
     if (cost === 0) {
       try {
-        await GameService.playCard(gameId, myUid, card.gamecardId, {});
+        await socket.emit('gameAction', { gameId, action: 'PLAY_CARD', payload: { cardId: card.gamecardId, paymentSelection: {} } });
       } catch (error: any) {
         alert(error.message);
       }
@@ -397,7 +414,7 @@ export const BattleField: React.FC = () => {
   const handleResolve = async () => {
     if (!gameId) return;
     try {
-      await GameService.resolvePlay(gameId);
+      await socket.emit('gameAction', { gameId, action: 'RESOLVE_PLAY' });
     } catch (error: any) {
       alert(error.message);
     }
@@ -406,11 +423,11 @@ export const BattleField: React.FC = () => {
   const handleConfirmPlay = async () => {
     if (!gameId || !pendingPlayCard) return;
     try {
-      await GameService.playCard(gameId, myUid, pendingPlayCard.gamecardId, {
+      await socket.emit('gameAction', { gameId, action: 'PLAY_CARD', payload: { cardId: pendingPlayCard.gamecardId, paymentSelection: {
         feijingCardId: paymentSelection.useFeijing[0], // Assuming only one feijing card can be used
         exhaustUnitIds: paymentSelection.exhaustIds,
         erosionFrontIds: paymentSelection.erosionFrontIds
-      });
+      } } });
       setPendingPlayCard(null);
       setPaymentSelection({ useFeijing: [], exhaustIds: [], erosionFrontIds: [] });
     } catch (error: any) {
@@ -1048,20 +1065,11 @@ export const BattleField: React.FC = () => {
                       <button 
                         className="w-full py-3 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl font-bold uppercase tracking-widest transition-all"
                         onClick={() => {
-                          GameService.advancePhase(gameId!, 'DAMAGE_CALCULATION');
+                          GameService.advancePhase(gameId!, 'PROPOSE_DAMAGE_CALCULATION');
                           setShowPhaseMenu(false);
                         }}
                       >
                         进入伤害判定阶段 (Damage Calculation)
-                      </button>
-                      <button 
-                        className="w-full py-3 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl font-bold uppercase tracking-widest transition-all"
-                        onClick={() => {
-                          GameService.advancePhase(gameId!, 'COUNTERING');
-                          setShowPhaseMenu(false);
-                        }}
-                      >
-                        进入对抗阶段 (Countering)
                       </button>
                     </>
                   )}
@@ -1285,7 +1293,7 @@ export const BattleField: React.FC = () => {
           </div>
         )}
 
-        {game.phase === 'DISCARD' && me.uid === auth.currentUser?.uid && (
+        {game.phase === 'DISCARD' && me.uid === getAuthUser()?.uid && (
           <div className="absolute inset-0 z-[70] flex items-center justify-center bg-black/60 backdrop-blur-md">
             <div className="flex flex-col items-center gap-8">
               <h2 className="text-4xl font-black italic text-[#f27d26] uppercase tracking-widest">弃置卡牌</h2>
@@ -1329,18 +1337,22 @@ export const BattleField: React.FC = () => {
             </div>
             
             {/* Play Action */}
-            {cardMenu.zone === 'hand' && game.phase === 'MAIN' && me.isTurn && (
-              <button
-                className="px-4 py-3 text-left text-sm font-bold text-black bg-yellow-500 hover:bg-yellow-400 transition-colors flex items-center gap-2"
-                onClick={() => {
-                  playCardFromHand(cardMenu.card);
-                  setCardMenu(null);
-                }}
-              >
-                <div className="w-2 h-2 rounded-full bg-black/50" />
-                打出卡牌 (Play)
-              </button>
-            )}
+            {(() => {
+              const canPlay = cardMenu.zone === 'hand' && game.phase === 'MAIN' && me.isTurn && GameService.canPlayCard(me, cardMenu.card).canPlay;
+              if (!canPlay) return null;
+              return (
+                <button
+                  className="px-4 py-3 text-left text-sm font-bold text-black bg-yellow-500 hover:bg-yellow-400 transition-colors flex items-center gap-2"
+                  onClick={() => {
+                    playCardFromHand(cardMenu.card);
+                    setCardMenu(null);
+                  }}
+                >
+                  <div className="w-2 h-2 rounded-full bg-black/50" />
+                  打出卡牌 (Play)
+                </button>
+              );
+            })()}
 
             {/* Activate Action */}
             {(game.phase === 'MAIN' || game.phase === 'BATTLE_FREE') && me.isTurn && (
@@ -1530,16 +1542,21 @@ export const BattleField: React.FC = () => {
                       });
                       setEffectSelection(null);
                     }}
-                    className="w-full text-left p-4 rounded-xl border border-white/10 bg-black/40 hover:bg-white/5 hover:border-red-500/50 transition-all group"
+                    className="w-full text-left p-4 rounded-xl border border-white/10 bg-black/40 hover:bg-white/5 hover:border-red-500/50 transition-all group flex items-start gap-4"
                   >
-                    <div className="flex items-center gap-2 mb-2">
-                      <span className="px-2 py-0.5 rounded text-[10px] font-bold text-white bg-red-600">
-                        {e.effect.type}
-                      </span>
+                    <div className="shrink-0 w-8 h-8 bg-white/10 text-white rounded flex items-center justify-center font-bold">
+                      {i + 1}
                     </div>
-                    <p className="text-sm text-zinc-300 leading-relaxed group-hover:text-white transition-colors">
-                      {e.effect.description}
-                    </p>
+                    <div>
+                      <div className="flex items-center gap-2 mb-2">
+                        <span className="px-2 py-0.5 rounded text-[10px] font-bold text-white bg-red-600">
+                          {e.effect.type}
+                        </span>
+                      </div>
+                      <p className="text-sm text-zinc-300 leading-relaxed group-hover:text-white transition-colors">
+                        {e.effect.description}
+                      </p>
+                    </div>
                   </button>
                 ))}
               </div>
@@ -1615,6 +1632,95 @@ export const BattleField: React.FC = () => {
                 </button>
               </div>
             </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Confrontation Overlay */}
+      <AnimatePresence>
+        {game.phase === 'BATTLE_FREE' && game.battleState?.askConfront === 'ASKING_OPPONENT' && !me.isTurn && (
+          <motion.div
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[150] bg-black/80 backdrop-blur-md flex items-center justify-center p-8"
+          >
+            <div className="bg-zinc-900 border-2 border-[#f27d26]/50 p-8 rounded-3xl flex flex-col items-center gap-6 shadow-[0_0_50px_rgba(242,125,38,0.3)]">
+               <h2 className="text-3xl font-black italic text-[#f27d26] uppercase tracking-widest">确认对抗</h2>
+               <p className="text-white/80">对手准备进入伤害判定阶段。你是否要在这之前进行对抗？</p>
+               <div className="flex gap-4">
+                 <button onClick={() => GameService.advancePhase(gameId!, 'CONFIRM_CONFRONTATION')} className="px-8 py-3 bg-[#f27d26] text-black font-black uppercase rounded-lg hover:bg-orange-400">进行对抗</button>
+                 <button onClick={() => GameService.advancePhase(gameId!, 'DECLINE_CONFRONTATION')} className="px-8 py-3 bg-zinc-700 text-white font-black uppercase rounded-lg hover:bg-zinc-600">不进行对抗</button>
+               </div>
+            </div>
+          </motion.div>
+        )}
+        
+        {game.phase === 'BATTLE_FREE' && game.battleState?.askConfront === 'ASKING_TURN_PLAYER' && me.isTurn && (
+          <motion.div
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[150] bg-black/80 backdrop-blur-md flex items-center justify-center p-8"
+          >
+            <div className="bg-zinc-900 border-2 border-[#f27d26]/50 p-8 rounded-3xl flex flex-col items-center gap-6 shadow-[0_0_50px_rgba(242,125,38,0.3)]">
+               <h2 className="text-3xl font-black italic text-[#f27d26] uppercase tracking-widest">确认对抗</h2>
+               <p className="text-white/80">对手拒绝了对抗。你是否要进行对抗？(选择否则直接进入伤害判定)</p>
+               <div className="flex gap-4">
+                 <button onClick={() => GameService.advancePhase(gameId!, 'CONFIRM_CONFRONTATION')} className="px-8 py-3 bg-[#f27d26] text-black font-black uppercase rounded-lg hover:bg-orange-400">进行对抗</button>
+                 <button onClick={() => GameService.advancePhase(gameId!, 'DECLINE_CONFRONTATION')} className="px-8 py-3 bg-zinc-700 text-white font-black uppercase rounded-lg hover:bg-zinc-600">不对抗，进入伤害判定</button>
+               </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Details Window / Preview Card Modal */}
+      <AnimatePresence>
+        {previewCard && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[200] bg-black/95 backdrop-blur-lg flex items-center justify-center p-12 custom-scrollbar"
+            onClick={() => setPreviewCard(null)}
+          >
+            <div className="flex gap-16 max-w-7xl max-h-screen items-center" onClick={e => e.stopPropagation()}>
+              <div className="w-[400px] shrink-0 h-auto">
+                <img 
+                  src={previewCard.fullImageUrl || previewCard.imageUrl || `https://picsum.photos/seed/${previewCard.id}/400/600`} 
+                  alt={previewCard.fullName}
+                  className="w-full object-contain rounded-2xl shadow-[0_0_50px_rgba(255,255,255,0.1)] border-2 border-white/10"
+                  referrerPolicy="no-referrer"
+                />
+              </div>
+              <div className="flex flex-col gap-6 text-white max-w-lg bg-zinc-900/50 p-8 rounded-3xl border border-white/5">
+                <div className="flex items-center justify-between border-b border-white/10 pb-4">
+                  <div>
+                    <h2 className="text-4xl font-black italic uppercase tracking-tighter text-[#f27d26] mb-1">{previewCard.fullName}</h2>
+                    <span className="text-sm font-bold tracking-widest text-zinc-500 uppercase">{previewCard.type} | {previewCard.color} | {previewCard.rarity}</span>
+                  </div>
+                  <button onClick={() => setPreviewCard(null)} className="p-3 bg-white/5 hover:bg-red-500 rounded-full transition-colors group">
+                     <X className="w-6 h-6 text-white group-hover:text-black" />
+                  </button>
+                </div>
+                
+                <div className="flex-1 overflow-y-auto">
+                  <h3 className="text-white/60 text-xs font-bold uppercase tracking-widest mb-4">Affected By Effects:</h3>
+                  {previewCard.influencingEffects && previewCard.influencingEffects.length > 0 ? (
+                    <div className="space-y-4">
+                      {previewCard.influencingEffects.map((eff, idx) => (
+                        <div key={idx} className="flex gap-4 items-start bg-black/40 p-4 rounded-xl border border-white/5">
+                          <span className="bg-[#f27d26] text-black font-black rounded w-6 h-6 flex items-center justify-center shrink-0">{idx + 1}</span>
+                          <div className="flex flex-col">
+                            <span className="text-white font-bold opacity-80">{eff.description}</span>
+                            <span className="text-[10px] text-zinc-500 uppercase font-black tracking-widest mt-1">By {eff.sourceCardName}</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-zinc-500 italic text-sm">No active effects applied to this card.</div>
+                  )}
+                </div>
+              </div>
+            </div>
           </motion.div>
         )}
       </AnimatePresence>

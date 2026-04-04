@@ -56,10 +56,8 @@ const CardSlot: React.FC<{
         className={cn(
           "relative h-full w-full rounded-md border-2 border-dashed transition-all flex items-center justify-center group overflow-hidden cursor-pointer",
           (card || isDeck || count > 0) ? "border-[#f27d26]/50 bg-black/40 shadow-lg" : "border-white/10 bg-white/5",
-          isExhausted ? "rotate-90 scale-90 opacity-80" : "",
           isSelectedForPayment ? "ring-2 ring-[#f27d26] ring-offset-2 ring-offset-black z-10" : "",
-          isAttacking ? "ring-4 ring-red-600 ring-offset-2 ring-offset-black z-10 shadow-[0_0_20px_rgba(220,38,38,0.8)]" : "",
-          isDefending ? "ring-4 ring-blue-600 ring-offset-2 ring-offset-black z-10 shadow-[0_0_20px_rgba(37,99,235,0.8)]" : "",
+          (isAttacking || isDefending) ? "z-10" : "",
           className
         )}
         onClick={onClick}
@@ -71,11 +69,11 @@ const CardSlot: React.FC<{
         {isDeck ? (
           <CardComponent isBack />
         ) : card ? (
-          <div className={cn("h-full w-full relative transition-transform duration-500", isOpponent && "rotate-180")}>
+          <div className={cn("h-full w-full relative transition-[transform,opacity] duration-500", isOpponent && "rotate-180", isExhausted && "opacity-80")}>
             {isFaceUp ? (
-              <CardComponent card={card} className="border-0" />
+              <CardComponent card={card} className="border-0" isExhausted={isExhausted} statusBorder={isAttacking ? 'red' : isDefending ? 'blue' : undefined} />
             ) : (
-              <CardComponent isBack className="border-0" />
+              <CardComponent isBack className="border-0" isExhausted={isExhausted} />
             )}
           </div>
         ) : count > 0 ? (

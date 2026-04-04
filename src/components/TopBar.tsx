@@ -1,10 +1,10 @@
+import { getAuthUser, removeAuthToken, removeAuthUser } from '../socket';
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { User, LayoutGrid, BookOpen } from 'lucide-react';
-import { auth } from '../firebase';
 
 export const TopBar: React.FC<{ onOpenRulebook: () => void }> = ({ onOpenRulebook }) => {
-  const user = auth.currentUser;
+  const user = getAuthUser();
 
   return (
     <nav className="h-16 border-b border-zinc-800 bg-zinc-950/80 backdrop-blur-md flex items-center justify-between px-6 fixed top-0 left-0 right-0 z-50">

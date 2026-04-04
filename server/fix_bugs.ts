@@ -1,4 +1,20 @@
-import { getAuthUser } from '../socket';
+import fs from 'fs';
+import path from 'path';
+
+// Fix BigInt crash in index.ts
+const indexFile = path.join(process.cwd(), 'server', 'index.ts');
+let indexText = fs.readFileSync(indexFile, 'utf8');
+indexText = indexText.replace(
+/createdAt:\s*r\.created_at,\n\s*updatedAt:\s*r\.updated_at/g,
+"createdAt: Number(r.created_at),\n            updatedAt: Number(r.updated_at)"
+);
+fs.writeFileSync(indexFile, indexText);
+
+// Fix Matchmaking completely
+const matchFile = path.join(process.cwd(), 'src', 'components', 'Matchmaking.tsx');
+let matchText = fs.readFileSync(matchFile, 'utf8');
+
+matchText = `import { getAuthUser } from '../socket';
 import React, { useState, useEffect } from 'react';
 import { GameService } from '../services/gameService';
 import { useNavigate, Link } from 'react-router-dom';
@@ -36,7 +52,7 @@ export const Matchmaking: React.FC = () => {
       if (!getAuthUser()) return;
       const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001';
       const token = localStorage.getItem('token');
-      const res = await fetch(`${BACKEND_URL}/api/user/decks`, { headers: { 'Authorization': `Bearer ${token}` }});
+      const res = await fetch(\`\${BACKEND_URL}/api/user/decks\`, { headers: { 'Authorization': \`Bearer \${token}\` }});
       const data = await res.json();
       setMyDecks(data.decks || []);
       if (data.decks?.length > 0) setSelectedDeckId(data.decks[0].id);
@@ -66,9 +82,9 @@ export const Matchmaking: React.FC = () => {
     try {
       const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001';
       const token = localStorage.getItem('token');
-      const res = await fetch(BACKEND_URL + '/api/games', { method: 'POST', headers: { 'Authorization': `Bearer ${token}` }});
+      const res = await fetch(BACKEND_URL + '/api/games', { method: 'POST', headers: { 'Authorization': \`Bearer \${token}\` }});
       const data = await res.json();
-      navigate(`/battle/${data.gameId}`);
+      navigate(\`/battle/\${data.gameId}\`);
     } catch (error: any) {
       console.error(error);
       alert(error.message || 'Failed to create game');
@@ -93,9 +109,9 @@ export const Matchmaking: React.FC = () => {
     try {
       const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001';
       const token = localStorage.getItem('token');
-      const res = await fetch(BACKEND_URL + '/api/games', { method: 'POST', headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ practice: true }) });
+      const res = await fetch(BACKEND_URL + '/api/games', { method: 'POST', headers: { 'Authorization': \`Bearer \${token}\`, 'Content-Type': 'application/json' }, body: JSON.stringify({ practice: true }) });
       const data = await res.json();
-      navigate(`/battle/${data.gameId}`);
+      navigate(\`/battle/\${data.gameId}\`);
     } catch (error: any) {
       console.error(error);
       alert(error.message || 'Failed to create practice game');
@@ -118,7 +134,7 @@ export const Matchmaking: React.FC = () => {
 
     setLoading(true);
     try {
-      navigate(`/battle/${gameId}`);
+      navigate(\`/battle/\${gameId}\`);
     } catch (error: any) {
       console.error(error);
       alert(error.message || 'Failed to join game');
@@ -210,3 +226,7 @@ export const Matchmaking: React.FC = () => {
     </div>
   );
 };
+`;
+fs.writeFileSync(matchFile, matchText);
+
+console.log("Bugfixes applied successfully");

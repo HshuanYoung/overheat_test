@@ -1,25 +1,24 @@
+import { getAuthUser } from '../socket';
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { Play, LayoutGrid, Users, Heart, Loader2 } from 'lucide-react';
-import { motion } from 'motion/react';
+import { motion } from 'framer-motion';
 import { cn } from '../lib/utils';
-import { auth, db } from '../firebase';
-import { doc, getDoc } from 'firebase/firestore';
 import { CARD_LIBRARY } from '../data/cards';
 import { Card } from '../types/game';
 
 const RAY_CARDS = [
   { id: 'fav_card', name: '默认雷亚卡', url: '/assets/fav_card/fav_card.jpg' },
-  { id: 'fav_card_1', name: '雷亚卡 01', url: '/assets/fav_card/fav_card1.jpg' },
-  { id: 'fav_card_2', name: '雷亚卡 02', url: '/assets/fav_card/fav_card2.jpg' },
-  { id: 'fav_card_3', name: '雷亚卡 03', url: '/assets/fav_card/fav_card3.jpg' },
-  { id: 'fav_card_4', name: '雷亚卡 04', url: '/assets/fav_card/fav_card4.jpg' },
+  { id: 'fav_card_1', name: '雷亚卡 01', url: '/assets/fav_card/fav_card_1.jpg' },
+  { id: 'fav_card_2', name: '雷亚卡 02', url: '/assets/fav_card/fav_card_2.jpg' },
+  { id: 'fav_card_3', name: '雷亚卡 03', url: '/assets/fav_card/fav_card_3.jpg' },
+  { id: 'fav_card_4', name: '雷亚卡 04', url: '/assets/fav_card/fav_card_4.jpg' },
 ];
 
 export const Home: React.FC = () => {
   const [favoriteCard, setFavoriteCard] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const user = auth.currentUser;
+  const user = getAuthUser();
 
   useEffect(() => {
     const loadProfile = async () => {
@@ -29,22 +28,14 @@ export const Home: React.FC = () => {
         return;
       }
       try {
-        const docRef = doc(db, 'users', user.uid);
-        const docSnap = await getDoc(docRef);
-        if (docSnap.exists()) {
-          const data = docSnap.data();
-          if (data.favoriteCardId) {
+        const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001';
+        const res = await fetch(`${BACKEND_URL}/api/user/profile`, { headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }});
+        const data = await res.json();
+        if (data.favoriteCardId) {
             const card = RAY_CARDS.find(c => c.id === data.favoriteCardId);
-            if (card) {
-              setFavoriteCard(card);
-            } else {
-              setFavoriteCard(RAY_CARDS[0]);
-            }
-          } else {
-            setFavoriteCard(RAY_CARDS[0]);
-          }
+            setFavoriteCard(card || RAY_CARDS[0]);
         } else {
-          setFavoriteCard(RAY_CARDS[0]);
+            setFavoriteCard(RAY_CARDS[0]);
         }
       } catch (e) {
         console.error(e);

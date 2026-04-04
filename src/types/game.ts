@@ -151,6 +151,7 @@ export interface GameState {
     attackers: string[]; // gamecardIds
     defender?: string; // gamecardId
     isAlliance: boolean;
+    askConfront?: 'ASKING_OPPONENT' | 'ASKING_TURN_PLAYER';
   };
   effectUsage?: Record<string, number>;
 }
