@@ -1,13 +1,7 @@
-// @ts-nocheck
-let db: any;
-let auth: any;
 // Firebase imports removed - logic is now database-agnostic
-import { GameState, PlayerState, Card, Deck, TriggerLocation, CardEffect } from '../src/types/game';
 import { GameState, PlayerState, Card, Deck, TriggerLocation, CardEffect } from '../src/types/game';
 import { CARD_LIBRARY } from '../src/data/cards';
 import { EventEngine } from '../src/services/EventEngine';
-
-// GAMES_COLLECTION removed
 
 export function cleanForFirestore(obj: any): any {
   if (obj === undefined) {
@@ -735,6 +729,7 @@ export const ServerGameService = {
     nextPlayer.isTurn = true;
 
     gameState.logs.push(`--- 回合 ${gameState.turnCount}: ${nextPlayer.displayName} ---`);
+    gameState.mainPhaseTimeRemaining = 300000;
     this.executeStartPhase(gameState, nextPlayer);
   },
 
@@ -974,8 +969,6 @@ export const ServerGameService = {
 
     gameState.phase = 'MAIN';
     gameState.logs.push(`${player.displayName} 进入主要阶段`);
-
-    return gameState;
   },
 
   executeEndPhase(gameState: GameState, player: PlayerState) {
@@ -988,6 +981,7 @@ export const ServerGameService = {
       this.finishTurnTransition(gameState);
     }
   },
+
 
   // Create a new game and wait for opponent
   async createGame(deck: Card[]) {
@@ -1046,13 +1040,7 @@ export const ServerGameService = {
       },
       phaseTimerStart: Date.now()
     };
-
-    await setDoc(doc(null as any, GAMES_COLLECTION, ''), cleanForFirestore({
-      ...gameState,
-      status: 'WAITING',
-      createdAt: Date.now()
-    }));
-    return '';
+    return gameState;
   },
 
   // Create a practice game with a bot
@@ -1141,13 +1129,7 @@ export const ServerGameService = {
       },
       phaseTimerStart: Date.now()
     };
-
-    await setDoc(doc(null as any, GAMES_COLLECTION, ''), cleanForFirestore({
-      ...gameState,
-      status: 'ACTIVE',
-      createdAt: Date.now()
-    }));
-    return '';
+    return gameState;
   },
 
   async performMulligan(gameState: GameState, cardIdsToReturn: string[], uid: string) {
@@ -1399,8 +1381,14 @@ export const ServerGameService = {
         [playerUid]: myState,
         'BOT_PLAYER': botState
       },
-      phaseTimerStart: Date.now()
+      phaseTimerStart: Date.now(),
+      mainPhaseTimeRemaining: 300000
     };
+
+    // Correctly set isTurn for the initial player
+    const firstPlayerUid = gameState.playerIds[firstIdx];
+    gameState.players[firstPlayerUid].isTurn = true;
+
     return gameState;
   },
 
@@ -1426,11 +1414,18 @@ export const ServerGameService = {
     p1.isFirst = firstIdx === 0;
     p2.isFirst = firstIdx === 1;
 
-    return {
+    const gameState: GameState = {
       gameId: "match", phase: 'MULLIGAN', currentTurnPlayer: firstIdx, turnCount: 0, isCountering: 0, counterStack: [],
       playerIds: [uid1, uid2], gameStatus: 1, logs: ['匹配成功。对局开始'],
       players: { [uid1]: p1, [uid2]: p2 },
-      phaseTimerStart: Date.now()
+      phaseTimerStart: Date.now(),
+      mainPhaseTimeRemaining: 300000
     };
+
+    // Correctly set isTurn for the initial player
+    const firstPlayerUid = gameState.playerIds[firstIdx];
+    gameState.players[firstPlayerUid].isTurn = true;
+
+    return gameState;
   }
 };

@@ -1143,11 +1143,11 @@ export const BattleField: React.FC = () => {
               initial={{ opacity: 0, scale: 0.9, x: 20 }}
               animate={{ opacity: 1, scale: 1, x: 0 }}
               exit={{ opacity: 0, scale: 0.9, x: 20 }}
-              className="fixed z-[200] flex flex-col items-center gap-1.5"
+              className="fixed z-[200] flex flex-col gap-1"
               style={{
                 left: cardMenu.x,
                 top: cardMenu.y,
-                transform: 'translate(-50%, -100%)'
+                transform: 'translate(-50%, -110%)'
               }}
               onClick={(e) => e.stopPropagation()}
             >
@@ -1158,14 +1158,13 @@ export const BattleField: React.FC = () => {
                   if (check.canPlay) {
                     return (
                       <motion.button
-                        whileHover={{ scale: 1.1, x: -3 }}
-                        className="px-3 py-1 text-[9px] font-black tracking-tighter text-yellow-50 bg-yellow-500 rounded-full shadow-[0_0_15px_rgba(234,179,8,0.4)] flex items-center gap-2 border border-yellow-400/50"
+                        whileHover={{ scale: 1.1 }}
+                        className="px-4 py-1.5 text-[10px] font-bold text-black bg-[#facc15] rounded-full shadow-lg border border-white/20 flex items-center justify-center min-w-[70px]"
                         onClick={() => {
                           playCardFromHand(cardMenu.card);
                           setCardMenu(null);
                         }}
                       >
-                        <Play className="w-2.5 h-2.5 fill-current" />
                         PLAY
                       </motion.button>
                     );
@@ -1201,8 +1200,8 @@ export const BattleField: React.FC = () => {
                   if (validEffects.length > 0) {
                     return (
                       <motion.button
-                        whileHover={{ scale: 1.1, x: -3 }}
-                        className="px-3 py-1 text-[9px] font-black tracking-tighter text-emerald-50 bg-emerald-600 rounded-full shadow-[0_0_15px_rgba(5,150,105,0.4)] flex items-center gap-2 border border-emerald-400/50"
+                        whileHover={{ scale: 1.1 }}
+                        className="px-4 py-1.5 text-[10px] font-bold text-white bg-[#22c55e] rounded-full shadow-lg border border-white/20 flex items-center justify-center min-w-[70px]"
                         onClick={() => {
                           const triggerLocation = (cardMenu.zone === 'unit' ? 'UNIT' : cardMenu.zone === 'item' ? 'ITEM' : cardMenu.zone === 'erosion_front' ? 'EROSION_FRONT' : 'HAND') as TriggerLocation;
                           if (validEffects.length === 1) {
@@ -1222,7 +1221,6 @@ export const BattleField: React.FC = () => {
                           setCardMenu(null);
                         }}
                       >
-                        <Zap className="w-2.5 h-2.5 fill-current" />
                         ACTIVATE
                       </motion.button>
                     );
@@ -1237,29 +1235,27 @@ export const BattleField: React.FC = () => {
                   const isMyCard = me.unitZone.some(c => c?.gamecardId === cardMenu.card.gamecardId);
                   if (isMyCard && canUnitAttack(cardMenu.card)) {
                     return (
-                      <div className="flex flex-col gap-1.5 items-center">
+                      <div className="flex flex-col gap-1 items-center">
                           {!cardMenu.card.inAllianceGroup && (
                             <motion.button
-                              whileHover={{ scale: 1.1, x: -3 }}
-                              className="px-3 py-1 text-[9px] font-black tracking-tighter text-red-50 bg-red-600 rounded-full shadow-[0_0_15px_rgba(220,38,38,0.4)] flex items-center gap-2 border border-red-400/50"
+                              whileHover={{ scale: 1.1 }}
+                              className="px-4 py-1.5 text-[10px] font-bold text-white bg-[#ef4444] rounded-full shadow-lg border border-white/20 flex items-center justify-center min-w-[70px]"
                               onClick={() => {
                                 handleDeclareAttack([cardMenu.card.gamecardId], false);
                                 setCardMenu(null);
                               }}
                             >
-                              <Sword className="w-2.5 h-2.5 fill-current" />
                               ATTACK
                             </motion.button>
                           )}
                         <motion.button
-                          whileHover={{ scale: 1.1, x: -3 }}
-                          className="px-3 py-1 text-[9px] font-black tracking-tighter text-red-50 bg-red-600 rounded-full shadow-[0_0_15px_rgba(220,38,38,0.4)] flex items-center gap-2 border border-red-400/50"
+                          whileHover={{ scale: 1.1 }}
+                          className="px-4 py-1.5 text-[10px] font-bold text-white bg-[#ef4444] rounded-full shadow-lg border border-white/20 flex items-center justify-center min-w-[70px]"
                           onClick={() => {
                             setAllianceTargetSelection(cardMenu.card.gamecardId);
                             setCardMenu(null);
                           }}
                         >
-                          <Sword className="w-2.5 h-2.5 fill-current" />
                           ALLIANCE
                         </motion.button>
                       </div>
@@ -1292,14 +1288,13 @@ export const BattleField: React.FC = () => {
                   if (isMyCard && !cardMenu.card.isExhausted) {
                     return (
                       <motion.button
-                        whileHover={{ scale: 1.1, x: -3 }}
-                        className="px-3 py-1 text-[9px] font-black tracking-tighter text-blue-50 bg-blue-600 rounded-full shadow-[0_0_15px_rgba(37,99,235,0.4)] flex items-center gap-2 border border-blue-400/50"
+                        whileHover={{ scale: 1.1 }}
+                        className="px-4 py-1.5 text-[10px] font-bold text-white bg-[#3b82f6] rounded-full shadow-lg border border-white/20 flex items-center justify-center min-w-[70px]"
                         onClick={() => {
                           handleDeclareDefense(cardMenu.card.gamecardId);
                           setCardMenu(null);
                         }}
                       >
-                        <Shield className="w-2.5 h-2.5 fill-current" />
                         DEFEND
                       </motion.button>
                     );
@@ -1325,14 +1320,13 @@ export const BattleField: React.FC = () => {
 
               {/* Action: Details (Purple) */}
               <motion.button
-                whileHover={{ scale: 1.1, x: -3 }}
-                className="px-3 py-1 text-[9px] font-black tracking-tighter text-purple-50 bg-purple-600 rounded-full shadow-[0_0_15px_rgba(147,51,234,0.4)] flex items-center gap-2 border border-purple-400/50"
+                whileHover={{ scale: 1.1 }}
+                className="px-4 py-1.5 text-[10px] font-bold text-white bg-[#9333ea] rounded-full shadow-lg border border-white/20 flex items-center justify-center min-w-[70px]"
                 onClick={() => {
                   setPreviewCard(cardMenu.card);
                   setCardMenu(null);
                 }}
               >
-                <Search className="w-2.5 h-2.5 fill-current" />
                 DETAILS
               </motion.button>
             </motion.div>

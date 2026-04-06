@@ -29,21 +29,21 @@ async function validateUserDeck(uId: string, dId: string): Promise<{ valid: bool
     try {
         const dRows = await pool.query('SELECT cards FROM decks WHERE id = ? AND user_id = ?', [dId, uId]);
         if (dRows.length === 0) return { valid: false, error: '未找到卡组' };
-        
+
         let cIds = typeof dRows[0].cards === 'string' ? JSON.parse(dRows[0].cards) : dRows[0].cards;
         if (!Array.isArray(cIds)) cIds = [];
 
         const cObjs = cIds.map((idVal: string) => {
             return (SERVER_CARD_LIBRARY as any)[idVal];
         }).filter(Boolean);
-        
+
         if (cObjs.length !== cIds.length) {
             return { valid: false, error: '部分卡牌在服务器库中未找到' };
         }
 
         const vRes = ServerGameService.validateDeck(cObjs as any);
         if (!vRes.valid) return { valid: false, error: vRes.error };
-        
+
         return { valid: true, cards: cObjs as any };
     } catch (err) {
         console.error('Validate deck error:', err);
@@ -53,16 +53,20 @@ async function validateUserDeck(uId: string, dId: string): Promise<{ valid: bool
 
 async function handleBotMove(gameState: any, gameId: string) {
     const bot = gameState.players['BOT_PLAYER'];
+    console.log(`[Bot] handleBotMove checking: bot exists? ${!!bot}, bot.isTurn? ${bot?.isTurn}`);
     if (!bot || !bot.isTurn) return;
 
     setTimeout(async () => {
         try {
+            console.log('yangming 1200 - Entering botMove');
             await ServerGameService.botMove(gameState);
+            console.log('yangming 1210 - botMove finished');
             await pool.query('UPDATE games SET state = ? WHERE id = ?', [JSON.stringify(gameState), gameId]);
             io.to(gameId).emit('gameStateUpdate', gameState);
 
             // If bot is still on turn (e.g. played a card and need to move again)
             if (gameState.players['BOT_PLAYER']?.isTurn) {
+                console.log('[Bot] Bot still on turn, queuing next move...');
                 handleBotMove(gameState, gameId);
             }
         } catch (err) {
@@ -81,7 +85,10 @@ async function advancePhase(gameState: any, gameId: string, socket?: any, action
 
         // Trigger Bot behavior if it's the bot's turn
         const currentPlayerId = gameState.playerIds[gameState.currentTurnPlayer];
+        console.log(`[Socket] advancePhase finished. Next player: ${currentPlayerId}, Phase: ${gameState.phase}`);
+        
         if (currentPlayerId === 'BOT_PLAYER') {
+            console.log('[Socket] Bot detected, triggering handleBotMove');
             handleBotMove(gameState, gameId);
         }
     } catch (err: any) {
@@ -91,6 +98,82 @@ async function advancePhase(gameState: any, gameId: string, socket?: any, action
 }
 
 app.use(cors());
+
+// Background Timer for 30s Auto-Advance
+setInterval(async () => {
+    try {
+        const games = await pool.query('SELECT id, state FROM games WHERE status = 0');
+        for (const row of games) {
+            const gameState = typeof row.state === 'string' ? JSON.parse(row.state) : row.state;
+            const gameId = row.id;
+            
+            // Consolidated Timer Logic
+            if (!gameState || !gameState.phaseTimerStart) continue;
+            
+            const now = Date.now();
+            const phaseElapsed = now - gameState.phaseTimerStart;
+            const checkInterval = 2000; // Decrement 2s every interval
+
+            if (gameState.phase === 'MAIN') {
+                // Initialize remaining time if missing
+                if (gameState.mainPhaseTimeRemaining === undefined) {
+                    gameState.mainPhaseTimeRemaining = 300000;
+                }
+
+                // "The time will not be reduced while waiting for the opponent's response"
+                const isWaitingForOpponent = 
+                    (gameState.counterStack && gameState.counterStack.length > 0) ||
+                    (gameState.battleState && gameState.battleState.askConfront);
+
+                if (!isWaitingForOpponent) {
+                    gameState.mainPhaseTimeRemaining -= checkInterval;
+                }
+
+                if (gameState.mainPhaseTimeRemaining <= 0) {
+                    console.log(`[Timer] Main Phase timeout for game ${gameId}, auto-ending turn.`);
+                    gameState.logs.push('主要阶段时间耗尽，强制结束回合。');
+                    await ServerGameService.advancePhase(gameState, 'DECLARE_END');
+                    gameState.mainPhaseTimeRemaining = 300000; // Reset for next
+                    gameState.phaseTimerStart = now;
+                    await pool.query('UPDATE games SET state = ? WHERE id = ?', [JSON.stringify(gameState), gameId]);
+                    io.to(gameId).emit('gameStateUpdate', gameState);
+                }
+            } else {
+                // 30 second timeout for other phases
+                if (phaseElapsed > 30000) {
+                    console.log(`[Timer] Auto-advancing game ${gameId} due to timeout in phase ${gameState.phase}`);
+                    
+                    if (gameState.phase === 'MULLIGAN') {
+                        Object.values(gameState.players).forEach((p: any) => {
+                            p.mulliganDone = true;
+                        });
+                        gameState.phase = 'START';
+                        gameState.turnCount = 1;
+                        const currentUid = gameState.playerIds[gameState.currentTurnPlayer];
+                        gameState.playerIds.forEach((uid: string) => {
+                            gameState.players[uid].isTurn = (uid === currentUid);
+                        });
+                        gameState.logs.push('调度超时，自动开始游戏。');
+                    } else if (gameState.phase === 'DEFENSE_DECLARATION') {
+                        const defenderUid = gameState.playerIds[gameState.currentTurnPlayer === 0 ? 1 : 0];
+                        await ServerGameService.declareDefense(gameState, defenderUid, undefined);
+                    } else if (gameState.phase === 'COUNTERING') {
+                        await ServerGameService.resolvePlay(gameState);
+                    } else {
+                        // General forward advance
+                        await ServerGameService.advancePhase(gameState);
+                    }
+
+                    gameState.phaseTimerStart = Date.now();
+                    await pool.query('UPDATE games SET state = ? WHERE id = ?', [JSON.stringify(gameState), gameId]);
+                    io.to(gameId).emit('gameStateUpdate', gameState);
+                }
+            }
+        }
+    } catch (err) {
+        console.error('[Timer] Error in auto-advance loop:', err);
+    }
+}, 2000); // Check every 2 seconds
 app.use(express.json());
 
 // Initialize MariaDB Connection
@@ -381,7 +464,7 @@ app.post('/api/user/decks', async (req, res): Promise<void> => {
     try {
         const deckData = req.body;
         const deckId = Math.random().toString(36).substring(2, 10);
-        
+
         // Ensure we only store IDs
         let cardIds = deckData.cards || [];
         if (cardIds.length > 0 && typeof cardIds[0] === 'object') {
@@ -407,7 +490,7 @@ app.put('/api/user/decks/:id', async (req, res): Promise<void> => {
     try {
         const deckId = req.params.id;
         const deckData = req.body;
-        
+
         if (deckData.cards) {
             let cardIds = deckData.cards;
             if (cardIds.length > 0 && typeof cardIds[0] === 'object') {
@@ -726,6 +809,15 @@ io.on('connection', (socket) => {
                     }
 
                     const deckCards: Card[] = deckCardsRaw.map((id: string) => SERVER_CARD_LIBRARY[id]).filter(Boolean);
+                    
+                    // Validate Deck
+                    const validation = ServerGameService.validateDeck(deckCards);
+                    if (!validation.valid) {
+                        console.log(`[Socket] joinGame failed: Deck validation failed for user ${userIdStr}`);
+                        socket.emit('error', `卡组非法: ${validation.error}`);
+                        return;
+                    }
+
                     const isFirst = gameState.playerIds.indexOf(userIdStr) === 0;
 
                     const player = createInitialPlayer(deckCards, user.displayName || user.username || '玩家', isFirst);
@@ -764,7 +856,7 @@ io.on('connection', (socket) => {
             console.error('[Socket] joinGame exception:', err);
             socket.emit('error', '战场同步过程中发生错误');
         }
-// End of socket.on('joinGame')
+        // End of socket.on('joinGame')
     });
 
 
@@ -825,14 +917,14 @@ io.on('connection', (socket) => {
                 if (allDone) {
                     gameState.phase = 'START';
                     gameState.turnCount = 1;
-                    const firstUid = gameState.playerIds[0];
-                    gameState.currentTurnPlayer = 0;
-                    // Reset first turn states
+
+                    // Ensure isTurn is set correctly based on the current turn player
+                    const currentUid = gameState.playerIds[gameState.currentTurnPlayer];
                     gameState.playerIds.forEach((uid: string) => {
-                        gameState.players[uid].isTurn = (uid === firstUid);
+                        gameState.players[uid].isTurn = (uid === currentUid);
                     });
 
-                    gameState.logs.push(`调度结束。第 1 回合开始，由 ${gameState.players[firstUid].displayName} 先行。`);
+                    gameState.logs.push(`调度结束。第 1 回合开始，由 ${gameState.players[currentUid].displayName} 先行。`);
                     await advancePhase(gameState, gameId, socket);
                     return;
                 }
@@ -876,7 +968,7 @@ io.on('connection', (socket) => {
                 }
             } else if (action === 'END_PHASE') {
                 if (player.isTurn) {
-                    await advancePhase(gameState, gameId, payload);
+                    await advancePhase(gameState, gameId, socket, payload);
                 }
             }
 

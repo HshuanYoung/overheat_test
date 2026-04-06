@@ -83,6 +83,7 @@ export interface Card {
   canResetCount?: number;    //only 0 can be reset,if not 0,at the start of turn,canResetCount-1
   effects?: CardEffect[];
   influencingEffects?: { sourceCardName: string; description: string }[];
+  inAllianceGroup?: boolean;
   imageUrl: string;
   fullImageUrl: string;
   rarity: 'C' | 'U' | 'R' | 'SR' | 'UR' | 'SER' | 'PR';
@@ -154,6 +155,8 @@ export interface GameState {
     askConfront?: 'ASKING_OPPONENT' | 'ASKING_TURN_PLAYER';
   };
   effectUsage?: Record<string, number>;
+  phaseTimerStart?: number;
+  mainPhaseTimeRemaining?: number; 
 }
 
 export interface Deck {
