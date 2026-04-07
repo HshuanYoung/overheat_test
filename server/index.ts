@@ -1,3 +1,4 @@
+// VERSION: 2026-04-07-IND-FIX-01
 import express from 'express';
 console.log('[Server] index.ts is starting up...');
 import { createServer } from 'http';
@@ -38,7 +39,7 @@ async function withGameLock<T>(gameId: string, action: () => Promise<T>): Promis
             throw err;
         }
     });
-    gameLocks.set(gameId, newLock.catch(() => {})); // Ensure chain doesn't break on errors
+    gameLocks.set(gameId, newLock.catch(() => { })); // Ensure chain doesn't break on errors
     return newLock;
 }
 
@@ -88,11 +89,9 @@ async function handleBotMove(gameState: any, gameId: string) {
                 const stateRows = await pool.query('SELECT state FROM games WHERE id = ?', [gameId]);
                 if (stateRows.length === 0) return;
                 const currentGameState = typeof stateRows[0].state === 'string' ? JSON.parse(stateRows[0].state) : stateRows[0].state;
-                
-                console.log('yangming 1200 - Entering botMove');
+
                 await ServerGameService.botMove(currentGameState);
-                console.log('yangming 1210 - botMove finished');
-                
+
                 await pool.query('UPDATE games SET state = ? WHERE id = ?', [JSON.stringify(currentGameState), gameId]);
                 io.to(gameId).emit('gameStateUpdate', currentGameState);
 
@@ -105,7 +104,7 @@ async function handleBotMove(gameState: any, gameId: string) {
                     const isBotPriority = nextState.priorityPlayerId === 'BOT_PLAYER';
 
                     if (currentPlayerId === 'BOT_PLAYER' || isBotAsked || isBotPriority) {
-                        console.log('[Bot] Bot still needs to move, queuing next move...');
+                        // console.log('[Bot] Bot still needs to move, queuing next move...');
                         handleBotMove(nextState, gameId);
                     }
                 }
@@ -159,7 +158,7 @@ setInterval(async () => {
                 // Re-fetch state inside the lock to get the most recent version
                 const stateRows = await pool.query('SELECT state FROM games WHERE id = ?', [gameId]);
                 if (stateRows.length === 0) return;
-                
+
                 const gameState = typeof stateRows[0].state === 'string' ? JSON.parse(stateRows[0].state) : stateRows[0].state;
                 if (!gameState || !gameState.phaseTimerStart) return;
 
@@ -172,7 +171,7 @@ setInterval(async () => {
 
                 if (sharedPhases.includes(gameState.phase)) {
                     // Shared 300s budget logic
-                    const isWaitingForOpponent = 
+                    const isWaitingForOpponent =
                         (gameState.counterStack && gameState.counterStack.length > 0) ||
                         (gameState.battleState && gameState.battleState.askConfront);
 
@@ -185,11 +184,11 @@ setInterval(async () => {
                             } else if (gameState.counterStack && gameState.counterStack.length > 0) {
                                 await ServerGameService.resolveCounterStack(gameState);
                             }
-                            
+
                             gameState.phaseTimerStart = Date.now();
                             await pool.query('UPDATE games SET state = ? WHERE id = ?', [JSON.stringify(gameState), gameId]);
                             io.to(gameId).emit('gameStateUpdate', gameState);
-                            
+
                             const currentPlayerId = gameState.playerIds[gameState.currentTurnPlayer];
                             if (currentPlayerId === 'BOT_PLAYER' || gameState.priorityPlayerId === 'BOT_PLAYER') {
                                 handleBotMove(gameState, gameId);
@@ -197,7 +196,7 @@ setInterval(async () => {
                         }
                     } else {
                         gameState.mainPhaseTimeRemaining = (gameState.mainPhaseTimeRemaining || 300000) - checkInterval;
-                        
+
                         if (gameState.mainPhaseTimeRemaining <= 0) {
                             console.log(`[Timer] Shared budget timeout for game ${gameId}, auto-advancing.`);
                             gameState.logs.push('阶段时间耗尽，强制推进。');
@@ -212,7 +211,7 @@ setInterval(async () => {
 
                         await pool.query('UPDATE games SET state = ? WHERE id = ?', [JSON.stringify(gameState), gameId]);
                         io.to(gameId).emit('gameStateUpdate', gameState);
-                        
+
                         const currentPlayerId = gameState.playerIds[gameState.currentTurnPlayer];
                         if (currentPlayerId === 'BOT_PLAYER' || gameState.priorityPlayerId === 'BOT_PLAYER') {
                             handleBotMove(gameState, gameId);
@@ -221,7 +220,7 @@ setInterval(async () => {
                 } else if (independentPhases.includes(gameState.phase)) {
                     if (phaseElapsed > 30000) {
                         console.log(`[Timer] Auto-advancing game ${gameId} due to timeout in phase ${gameState.phase}`);
-                        
+
                         if (gameState.phase === 'MULLIGAN') {
                             Object.values(gameState.players).forEach((p: any) => { p.mulliganDone = true; });
                             gameState.phase = 'START';
@@ -796,13 +795,17 @@ app.post('/api/store/buy-pack', async (req, res): Promise<void> => {
 // Socket.IO logic
 // Helper to create initial player state
 function createInitialPlayer(deckCards: Card[], displayName: string, isFirst: boolean): PlayerState {
-    const fullDeck: Card[] = deckCards.map(c => ({
-        ...c,
-        gamecardId: Math.random().toString(36).substring(2, 10),
-        isExhausted: false,
-        displayState: 'FRONT_UPRIGHT',
-        cardlocation: 'DECK'
-    }));
+    const fullDeck: Card[] = deckCards.map(c => {
+        const uniqueId = Math.random().toString(36).substring(2, 10);
+        return {
+            ...c,
+            gamecardId: uniqueId,
+            runtimeFingerprint: `FP_${uniqueId}_${Date.now()}`,
+            isExhausted: false,
+            displayState: 'FRONT_UPRIGHT',
+            cardlocation: 'DECK'
+        };
+    });
 
     // Perform Durstenfeld shuffle (Fisher-Yates) 
     for (let i = fullDeck.length - 1; i > 0; i--) {
@@ -895,7 +898,7 @@ io.on('connection', (socket) => {
                     }
 
                     const deckCards: Card[] = deckCardsRaw.map((id: string) => SERVER_CARD_LIBRARY[id]).filter(Boolean);
-                    
+
                     // Validate Deck
                     const validation = ServerGameService.validateDeck(deckCards);
                     if (!validation.valid) {
@@ -947,7 +950,7 @@ io.on('connection', (socket) => {
         if (!user) return;
 
         const { gameId, action, payload } = data;
-        
+
         await withGameLock(gameId, async () => {
             try {
                 const rows = await pool.query('SELECT state FROM games WHERE id = ?', [gameId]);
@@ -1061,7 +1064,7 @@ io.on('connection', (socket) => {
                     }
                 }
 
-                 triggerBotIfNeeded(gameState, gameId);
+                triggerBotIfNeeded(gameState, gameId);
             } catch (err) {
                 console.error('Game action error:', err);
             }

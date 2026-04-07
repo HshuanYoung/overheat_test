@@ -34,8 +34,18 @@ export class EventEngine {
                 return;
               }
 
+              // Robust Self-Identification
+              const isEventSelf = (event.sourceCard === card) || 
+                                 (event.sourceCard?.runtimeFingerprint && event.sourceCard.runtimeFingerprint === card.runtimeFingerprint) ||
+                                 (event.sourceCardId && event.sourceCardId === card.gamecardId);
+
               if (!effect.condition || effect.condition(gameState, player, card, event)) {
-                console.log(`[EventEngine] Trigger Match: Card ${card.fullName} (GID: ${card.gamecardId}) evaluating event ${event.type} from source ${event.sourceCardId}`);
+                // Diagnostic log
+                if (event.type === 'CARD_ENTERED_ZONE') {
+                  const sourceName = event.sourceCard?.fullName || '未知卡牌';
+                  const sourceGID = event.sourceCard?.gamecardId || event.sourceCardId || 'N/A';
+                  gameState.logs.push(`[Induction-Check] ${card.fullName} (${card.gamecardId}) evaluates ${sourceName} (${sourceGID}). Match!`);
+                }
                 triggeredEffects.push({ card, effect, playerUid: player.uid });
               }
             }

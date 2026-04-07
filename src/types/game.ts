@@ -183,6 +183,7 @@ export interface Card {
   fullImageUrl: string;
   rarity: 'C' | 'U' | 'R' | 'SR' | 'UR' | 'SER' | 'PR';
   faction: string;
+  runtimeFingerprint?: string;
 }
 
 export interface PlayerState {
