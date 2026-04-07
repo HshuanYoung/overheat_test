@@ -137,6 +137,7 @@ export interface CardEffect {
   // New Event System Properties
   triggerEvent?: GameEventType;
   isMandatory?: boolean;
+  isGlobal?: boolean; // If true, the effect triggers for any card meeting the criteria (e.g. any card entering), not just self.
   condition?: (gameState: GameState, playerState: PlayerState, card: Card, event?: GameEvent) => boolean;
   cost?: (gameState: GameState, playerState: PlayerState, card: Card) => boolean;
   applyContinuous?: (gameState: GameState, card: Card) => void;

@@ -3,6 +3,7 @@ import { GameState, PlayerState, Card, Deck, TriggerLocation, CardEffect, StackI
 import { CARD_LIBRARY } from '../src/data/cards';
 import { EventEngine } from '../src/services/EventEngine';
 import { AtomicEffectExecutor } from '../src/services/AtomicEffectExecutor';
+import { SERVER_CARD_LIBRARY } from './card_loader';
 
 export function cleanForFirestore(obj: any): any {
   if (obj === undefined) {
@@ -36,6 +37,37 @@ export function cleanForFirestore(obj: any): any {
 }
 
 export const ServerGameService = {
+  hydrateCard(card: Card | null) {
+    if (!card || !card.id) return;
+    const masterCard = SERVER_CARD_LIBRARY[card.id];
+    if (masterCard && masterCard.effects) {
+      // Re-assign effects to restore functions (condition, execute) lost during JSON serialization
+      card.effects = masterCard.effects;
+    }
+  },
+
+  hydrateGameState(gameState: GameState) {
+    if (!gameState || !gameState.players) return;
+    Object.values(gameState.players).forEach(player => {
+      const allZones = [
+        player.hand, player.deck, player.grave, player.exile,
+        player.unitZone, player.itemZone, player.erosionFront, player.erosionBack,
+        player.playZone
+      ];
+      allZones.forEach(zone => {
+        if (Array.isArray(zone)) {
+          zone.forEach(card => this.hydrateCard(card));
+        }
+      });
+    });
+    // Also hydrate cards in the counter stack
+    if (gameState.counterStack) {
+      gameState.counterStack.forEach(item => {
+        if (item.card) this.hydrateCard(item.card);
+      });
+    }
+  },
+
   // Validate deck: 50 cards, max 10 God Mark, max 4 per card
   validateDeck(cards: Card[]): { valid: boolean; error?: string } {
     if (cards.length !== 50) {
@@ -973,7 +1005,7 @@ export const ServerGameService = {
 
   async advancePhase(gameState: GameState, action?: string, playerId?: string) {
     console.log(`[ServerGameService] advancePhase call, action: ${action}, phase: ${gameState.phase}, playerId: ${playerId}`);
-    
+
     const now = Date.now();
     const elapsed = now - (gameState.phaseTimerStart || now);
 
@@ -984,11 +1016,11 @@ export const ServerGameService = {
     }
 
     gameState.phaseTimerStart = now;
-    
+
     // Identity of the player performing the action
     const actingPlayerId = playerId || gameState.playerIds[gameState.currentTurnPlayer];
     const actingPlayer = gameState.players[actingPlayerId];
-    
+
     // Identity of the current turn player (for phase transitions)
     const turnPlayerId = gameState.playerIds[gameState.currentTurnPlayer];
     const turnPlayer = gameState.players[turnPlayerId];
@@ -1077,7 +1109,7 @@ export const ServerGameService = {
           gameState.phase = 'MAIN';
           return gameState;
         }
-        
+
         if (action === 'PROPOSE_DAMAGE_CALCULATION' || action === 'DAMAGE_CALCULATION') {
           if (action === 'DAMAGE_CALCULATION') {
             gameState.phase = 'DAMAGE_CALCULATION';
@@ -1528,11 +1560,11 @@ export const ServerGameService = {
 
     // Battle Free Phase response (as Opponent)
     if (gameState.phase === 'BATTLE_FREE' && !bot.isTurn) {
-        if (gameState.battleState && gameState.battleState.askConfront === 'ASKING_OPPONENT') {
-            console.log('[Bot] Declining confrontation in BATTLE_FREE as Opponent');
-            await this.advancePhase(gameState, 'DECLINE_CONFRONTATION', 'BOT_PLAYER');
-            return;
-        }
+      if (gameState.battleState && gameState.battleState.askConfront === 'ASKING_OPPONENT') {
+        console.log('[Bot] Declining confrontation in BATTLE_FREE as Opponent');
+        await this.advancePhase(gameState, 'DECLINE_CONFRONTATION', 'BOT_PLAYER');
+        return;
+      }
     }
 
     if (!bot.isTurn) return;
@@ -1554,7 +1586,7 @@ export const ServerGameService = {
             // We return and let the next botMove tick handle the next card to ensure stack resolution
             return;
           } catch (e) {
-            console.error('Bot failed to play card', e);
+            // console.error('Bot failed to play card', e);
           }
         }
       }

@@ -78,7 +78,7 @@ async function handleBotMove(gameState: any, gameId: string) {
     const isBotAsked = gameState.battleState && gameState.battleState.askConfront === 'ASKING_OPPONENT';
     const shouldBotMove = bot.isTurn || isBotAsked;
 
-    console.log(`[Bot] handleBotMove checking: bot.isTurn? ${bot.isTurn}, isBotAsked? ${isBotAsked}`);
+    // console.log(`[Bot] handleBotMove checking: bot.isTurn? ${bot.isTurn}, isBotAsked? ${isBotAsked}`);
     if (!shouldBotMove) return;
 
     // Use a delay to simulate thinking and allow final state propagation
@@ -89,6 +89,7 @@ async function handleBotMove(gameState: any, gameId: string) {
                 const stateRows = await pool.query('SELECT state FROM games WHERE id = ?', [gameId]);
                 if (stateRows.length === 0) return;
                 const currentGameState = typeof stateRows[0].state === 'string' ? JSON.parse(stateRows[0].state) : stateRows[0].state;
+                ServerGameService.hydrateGameState(currentGameState);
 
                 await ServerGameService.botMove(currentGameState);
 
@@ -160,7 +161,9 @@ setInterval(async () => {
                 if (stateRows.length === 0) return;
 
                 const gameState = typeof stateRows[0].state === 'string' ? JSON.parse(stateRows[0].state) : stateRows[0].state;
-                if (!gameState || !gameState.phaseTimerStart) return;
+                if (!gameState) return;
+                ServerGameService.hydrateGameState(gameState);
+                if (!gameState.phaseTimerStart) return;
 
                 const now = Date.now();
                 const phaseElapsed = now - (gameState.phaseTimerStart || now);
@@ -883,6 +886,7 @@ io.on('connection', (socket) => {
             }
 
             const gameState = typeof rows[0].state === 'string' ? JSON.parse(rows[0].state) : rows[0].state;
+            ServerGameService.hydrateGameState(gameState);
             if (!gameState.players) gameState.players = {};
 
             // Initialize human player if they haven't been initialized yet
@@ -934,8 +938,6 @@ io.on('connection', (socket) => {
             }
 
             console.log(`[Socket] joinGame success: Emitting state for ${userIdStr} in ${gameId}`);
-            console.log('yangming98');
-            console.log(gameState);
             socket.emit('gameStateUpdate', gameState);
             io.to(gameId).emit('gameStateUpdate', gameState);
 
@@ -957,6 +959,7 @@ io.on('connection', (socket) => {
                 if (rows.length === 0) return;
 
                 let gameState = typeof rows[0].state === 'string' ? JSON.parse(rows[0].state) : rows[0].state;
+                ServerGameService.hydrateGameState(gameState);
                 const myUid = user.userId.toString();
                 const player = gameState.players[myUid];
                 if (!player) {

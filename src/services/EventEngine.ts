@@ -14,17 +14,17 @@ export class EventEngine {
       // erosionFront cards are active (e.g. for continuous effects like color), 
       // but TRIGGER effects should only fire if the card is in an allowed triggerLocation.
       const activeZones = [...player.unitZone, ...player.itemZone, ...player.erosionFront];
-      
+
       activeZones.forEach(card => {
         if (card && card.effects) {
           card.effects.forEach(effect => {
             if ((effect.type === 'TRIGGERED' || effect.type === 'TRIGGER') && effect.triggerEvent === event.type) {
-              
+
               // New: Check if the card's current location is in the effect's triggerLocation array
               // If triggerLocation is not specified, default depends on the card type (usually UNIT/ITEM for units)
               const cardLoc = card.cardlocation as TriggerLocation;
               const allowedLocations = effect.triggerLocation || BATTLEFIELD_ZONES;
-              
+
               if (!allowedLocations.includes(cardLoc)) {
                 return;
               }
@@ -35,9 +35,17 @@ export class EventEngine {
               }
 
               // Robust Self-Identification
-              const isEventSelf = (event.sourceCard === card) || 
-                                 (event.sourceCard?.runtimeFingerprint && event.sourceCard.runtimeFingerprint === card.runtimeFingerprint) ||
-                                 (event.sourceCardId && event.sourceCardId === card.gamecardId);
+              const isEventSelf = (event.sourceCard === card) ||
+                (event.sourceCard?.runtimeFingerprint && event.sourceCard.runtimeFingerprint === card.runtimeFingerprint) ||
+                (event.sourceCardId && event.sourceCardId === card.gamecardId);
+              
+              // Guard: For specific card-entry/action events, default to self-trigger unless explicitly global
+              const isMovementEvent = ['CARD_ENTERED_ZONE', 'CARD_LEFT_ZONE', 'CARD_PLAYED', 'CARD_ATTACK_DECLARED'].includes(event.type);
+              
+              if (isMovementEvent && !effect.isGlobal && !isEventSelf) {
+                // If it's a movement/entry event for another card and this effect is not global, skip it
+                return;
+              }
 
               if (!effect.condition || effect.condition(gameState, player, card, event)) {
                 // Diagnostic log
@@ -59,7 +67,7 @@ export class EventEngine {
     // 2. Execute mandatory effects first, then optional (or add to stack)
     for (const { card, effect, playerUid } of triggeredEffects) {
       const player = gameState.players[playerUid];
-      
+
       // Execute Atomic Effects if present
       if (effect.atomicEffects && effect.atomicEffects.length > 0) {
         effect.atomicEffects.forEach(atomic => {
@@ -74,7 +82,7 @@ export class EventEngine {
 
       GameService.recordEffectUsage(gameState, playerUid, card, effect);
       gameState.logs.push(`[诱发效果] ${player.displayName} 的 ${card.fullName} 触发了效果: ${effect.description}`);
-      
+
       // Special event for triggering
       this.dispatchEvent(gameState, {
         type: 'EFFECT_TRIGGERED',
@@ -118,8 +126,8 @@ export class EventEngine {
               }
               if (effect.atomicEffects) {
                 effect.atomicEffects.forEach(atomic => {
-                   // Only applying stat changes for continuous atomic effects for now
-                   AtomicEffectExecutor.execute(gameState, player.uid, atomic, card);
+                  // Only applying stat changes for continuous atomic effects for now
+                  AtomicEffectExecutor.execute(gameState, player.uid, atomic, card);
                 });
               }
             }
@@ -132,7 +140,7 @@ export class EventEngine {
 
   static handleCardEnteredZone(gameState: GameState, playerUid: string, card: Card, zone: string) {
     this.recalculateContinuousEffects(gameState);
-    
+
     this.dispatchEvent(gameState, {
       type: 'CARD_ENTERED_ZONE',
       sourceCard: card,
@@ -144,7 +152,7 @@ export class EventEngine {
 
   static handleCardLeftZone(gameState: GameState, playerUid: string, card: Card, zone: string) {
     this.recalculateContinuousEffects(gameState);
-    
+
     this.dispatchEvent(gameState, {
       type: 'CARD_LEFT_ZONE',
       sourceCard: card,
