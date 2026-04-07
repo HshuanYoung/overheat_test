@@ -18,6 +18,8 @@ export const BattleField: React.FC = () => {
   const { gameId } = useParams<{ gameId: string }>();
   const navigate = useNavigate();
   const location = useLocation() as any;
+  const authUser = getAuthUser();
+  const myUid = authUser?.uid;
 
   const [game, setGame] = useState<GameState | null>(null);
   const [isRulebookOpen, setIsRulebookOpen] = useState(false);
@@ -30,7 +32,6 @@ export const BattleField: React.FC = () => {
   const [isAlliance, setIsAlliance] = useState(false);
   const [selectedDefender, setSelectedDefender] = useState<string | null>(null);
   const [discardSelection, setDiscardSelection] = useState<string[]>([]);
-  const [counterTimer, setCounterTimer] = useState<number>(30);
   const [showPhaseMenu, setShowPhaseMenu] = useState(false);
   const [showAttackModal, setShowAttackModal] = useState(false);
   const [showDefenseModal, setShowDefenseModal] = useState(false);
@@ -60,30 +61,35 @@ export const BattleField: React.FC = () => {
 
   // Universal Visual Timer Logic
   useEffect(() => {
-    if (!game || !game.phaseTimerStart) return;
-    
     const interval = setInterval(() => {
       const now = Date.now();
       const elapsed = now - (game.phaseTimerStart || now);
-      
+
       const sharedPhases = ['MAIN', 'BATTLE_DECLARATION', 'BATTLE_FREE'];
       const independentPhases = ['EROSION', 'DEFENSE_DECLARATION', 'COUNTERING', 'MULLIGAN'];
 
-      if (sharedPhases.includes(game.phase)) {
-        // Budget is mainPhaseTimeRemaining
-        const remaining = Math.max(0, (game.mainPhaseTimeRemaining || 300000) - elapsed);
-        setTimer(Math.floor(remaining / 1000));
-      } else if (independentPhases.includes(game.phase)) {
-        // Budget is independent 30s
-        const remaining = Math.max(0, 30000 - elapsed);
-        setTimer(Math.floor(remaining / 1000));
-      } else {
-        setTimer(30);
+      const isWaiting = (game.counterStack && game.counterStack.length > 0) ||
+                        (game.battleState && game.battleState.askConfront);
+ 
+       let remaining = 30000;
+       if (sharedPhases.includes(game.phase) && !isWaiting) {
+         remaining = Math.max(0, (game.mainPhaseTimeRemaining || 300000) - elapsed);
+       } else {
+         remaining = Math.max(0, 30000 - elapsed);
+       }
+ 
+       const newTimerValue = Math.floor(remaining / 1000);
+       setTimer(newTimerValue);
+
+      // Auto-resolve for player if timeout during Countering
+      if (game.phase === 'COUNTERING' && game.priorityPlayerId === myUid && remaining <= 0) {
+        clearInterval(interval);
+        handleResolve();
       }
     }, 500);
-    
+
     return () => clearInterval(interval);
-  }, [game?.phase, game?.phaseTimerStart, game?.mainPhaseTimeRemaining]);
+  }, [game?.phase, game?.phaseTimerStart, game?.mainPhaseTimeRemaining, game?.priorityPlayerId, myUid]);
 
   useEffect(() => {
     const audio = new Audio('/assets/music_bg.wav');
@@ -142,30 +148,7 @@ export const BattleField: React.FC = () => {
   }, [gameId, deckId]);
 
 
-  // Counter Timer Logic
-  useEffect(() => {
-    if (!game || !gameId || !getAuthUser()) return;
 
-    const myUid = getAuthUser().uid;
-    const isWaitingForMe = game.phase === 'COUNTERING' && game.priorityPlayerId === myUid;
-
-    if (isWaitingForMe) {
-      setCounterTimer(30);
-      const interval = setInterval(() => {
-        setCounterTimer((prev) => {
-          if (prev <= 1) {
-            clearInterval(interval);
-            handleResolve(); // Auto pass when timer hits 0
-            return 0;
-          }
-          return prev - 1;
-        });
-      }, 1000);
-      return () => clearInterval(interval);
-    } else {
-      setCounterTimer(30); // Reset timer when not waiting
-    }
-  }, [game?.phase, game?.priorityPlayerId, gameId]);
 
   // Bot Logic
   useEffect(() => {
@@ -208,8 +191,8 @@ export const BattleField: React.FC = () => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [effectSelection]);
 
-  const authUser = getAuthUser();
-  const myUid = authUser?.uid;
+  // const authUser = getAuthUser();
+  // const myUid = authUser?.uid;
   const me = (game && myUid) ? game.players[myUid] : null;
   const opponentUid = (game && myUid) ? Object.keys(game.players).find(uid => uid !== myUid) : null;
   const opponent = (game && opponentUid) ? game.players[opponentUid] : null;
@@ -326,7 +309,7 @@ export const BattleField: React.FC = () => {
 
     if (allianceTargetSelection) {
       const isPartnerUnit = me.unitZone.some(c => c?.gamecardId === card.gamecardId) && canUnitAttack(card) && card.gamecardId !== allianceTargetSelection;
-      
+
       if (zone === 'unit' && isPartnerUnit) {
         // Instead of immediate action, fall through to show the Action Menu with "Attack (Allied Forces)"
       } else {
@@ -1046,7 +1029,7 @@ export const BattleField: React.FC = () => {
                     </button>
                     <div className="h-4 w-px bg-white/20" />
                     <div className="flex items-center gap-2 px-3 py-1 bg-black/40 rounded-full border border-red-500/30">
-                      <span className="text-red-500 font-mono text-xl font-black">{counterTimer}s</span>
+                      <span className="text-red-500 font-mono text-xl font-black">{timer}s</span>
                     </div>
                   </div>
                 )}
@@ -1054,31 +1037,31 @@ export const BattleField: React.FC = () => {
 
               {/* Stack Visualization */}
               <div className="flex gap-4 mt-8">
-               {game.counterStack.map((item, idx) => (
-                 <motion.div
-                   key={`${idx}-${item.timestamp}`}
-                   initial={{ y: 20, opacity: 0 }}
-                   animate={{ y: 0, opacity: 1 }}
-                   className={cn(
-                     "w-32 h-44 rounded-lg overflow-hidden border-2 shadow-2xl relative",
-                     idx === game.counterStack.length - 1 ? "border-red-500 scale-110 z-10" : "border-white/10 opacity-50 grayscale"
-                   )}
-                 >
-                   {item.card ? (
-                     <CardComponent card={item.card} disableZoom />
-                   ) : (
-                     <div className="w-full h-full bg-zinc-900 flex flex-col items-center justify-center p-4 text-center">
+                {game.counterStack.map((item, idx) => (
+                  <motion.div
+                    key={`${idx}-${item.timestamp}`}
+                    initial={{ y: 20, opacity: 0 }}
+                    animate={{ y: 0, opacity: 1 }}
+                    className={cn(
+                      "w-32 h-44 rounded-lg overflow-hidden border-2 shadow-2xl relative",
+                      idx === game.counterStack.length - 1 ? "border-red-500 scale-110 z-10" : "border-white/10 opacity-50 grayscale"
+                    )}
+                  >
+                    {item.card ? (
+                      <CardComponent card={item.card} disableZoom />
+                    ) : (
+                      <div className="w-full h-full bg-zinc-900 flex flex-col items-center justify-center p-4 text-center">
                         <Sword className="w-8 h-8 text-white/20 mb-2" />
                         <span className="text-[10px] font-black text-white/40 uppercase tracking-widest">
                           {item.type.replace(/_/g, ' ')}
                         </span>
-                     </div>
-                   )}
-                   <div className="absolute top-2 left-2 w-5 h-5 bg-black/80 rounded-full border border-white/20 flex items-center justify-center text-[10px] font-black italic text-white shadow-lg">
-                     {idx + 1}
-                   </div>
-                 </motion.div>
-               ))}
+                      </div>
+                    )}
+                    <div className="absolute top-2 left-2 w-5 h-5 bg-black/80 rounded-full border border-white/20 flex items-center justify-center text-[10px] font-black italic text-white shadow-lg">
+                      {idx + 1}
+                    </div>
+                  </motion.div>
+                ))}
               </div>
             </motion.div>
           )}
@@ -1111,27 +1094,27 @@ export const BattleField: React.FC = () => {
           )}
 
           {game.phase === 'DEFENSE_DECLARATION' && me.isTurn && (
-             <div className="absolute inset-0 z-[100] bg-black/40 backdrop-blur-sm flex items-center justify-center pointer-events-none">
-                <motion.div 
-                  initial={{ scale: 0.9, opacity: 0 }}
-                  animate={{ scale: 1, opacity: 1 }}
-                  className="bg-zinc-900/90 border border-blue-500/50 p-12 rounded-2xl flex flex-col items-center gap-6 shadow-[0_0_50px_rgba(37,99,235,0.2)]"
-                >
-                  <div className="w-16 h-16 relative">
-                    <Shield className="w-full h-full text-blue-500 animate-pulse" />
-                    <Loader2 className="absolute inset-0 w-full h-full text-blue-400 animate-spin opacity-50" />
-                  </div>
-                  <div className="text-center">
-                    <h2 className="text-2xl font-black italic text-blue-500 uppercase tracking-widest mb-2">WAITING FOR DEFENSE</h2>
-                    <p className="text-blue-200/60 font-medium tracking-wide">Opponent is choosing a unit to block your attack...</p>
-                  </div>
-                  <div className="px-6 py-2 bg-blue-500/10 rounded-full border border-blue-500/20">
-                    <span className="text-blue-400 font-bold tabular-nums">
-                        {timer}s
-                    </span>
-                  </div>
-                </motion.div>
-             </div>
+            <div className="absolute inset-0 z-[100] bg-black/40 backdrop-blur-sm flex items-center justify-center pointer-events-none">
+              <motion.div
+                initial={{ scale: 0.9, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                className="bg-zinc-900/90 border border-blue-500/50 p-12 rounded-2xl flex flex-col items-center gap-6 shadow-[0_0_50px_rgba(37,99,235,0.2)]"
+              >
+                <div className="w-16 h-16 relative">
+                  <Shield className="w-full h-full text-blue-500 animate-pulse" />
+                  <Loader2 className="absolute inset-0 w-full h-full text-blue-400 animate-spin opacity-50" />
+                </div>
+                <div className="text-center">
+                  <h2 className="text-2xl font-black italic text-blue-500 uppercase tracking-widest mb-2">WAITING FOR DEFENSE</h2>
+                  <p className="text-blue-200/60 font-medium tracking-wide">Opponent is choosing a unit to block your attack...</p>
+                </div>
+                <div className="px-6 py-2 bg-blue-500/10 rounded-full border border-blue-500/20">
+                  <span className="text-blue-400 font-bold tabular-nums">
+                    {timer}s
+                  </span>
+                </div>
+              </motion.div>
+            </div>
           )}
         </AnimatePresence>
 
@@ -1160,7 +1143,7 @@ export const BattleField: React.FC = () => {
 
 
 
-        </div>
+      </div>
       {/* Rulebook Overlay */}
       <Rulebook isOpen={isRulebookOpen} onClose={() => setIsRulebookOpen(false)} />
 
@@ -1267,18 +1250,18 @@ export const BattleField: React.FC = () => {
                   if (isMyCard && canUnitAttack(cardMenu.card)) {
                     return (
                       <div className="flex flex-col gap-1 items-center">
-                          {!cardMenu.card.inAllianceGroup && (
-                            <motion.button
-                              whileHover={{ scale: 1.1 }}
-                              className="px-4 py-1.5 text-[10px] font-bold text-white bg-[#ef4444] rounded-full shadow-lg border border-white/20 flex items-center justify-center w-full"
-                              onClick={() => {
-                                handleDeclareAttack([cardMenu.card.gamecardId], false);
-                                setCardMenu(null);
-                              }}
-                            >
-                              ATTACK
-                            </motion.button>
-                          )}
+                        {!cardMenu.card.inAllianceGroup && (
+                          <motion.button
+                            whileHover={{ scale: 1.1 }}
+                            className="px-4 py-1.5 text-[10px] font-bold text-white bg-[#ef4444] rounded-full shadow-lg border border-white/20 flex items-center justify-center w-full"
+                            onClick={() => {
+                              handleDeclareAttack([cardMenu.card.gamecardId], false);
+                              setCardMenu(null);
+                            }}
+                          >
+                            ATTACK
+                          </motion.button>
+                        )}
                         <motion.button
                           whileHover={{ scale: 1.1 }}
                           className="px-4 py-1.5 text-[10px] font-bold text-white bg-[#ef4444] rounded-full shadow-lg border border-white/20 flex items-center justify-center min-w-[70px]"
@@ -1595,7 +1578,7 @@ export const BattleField: React.FC = () => {
                   className="w-full h-full object-cover"
                   referrerPolicy="no-referrer"
                 />
-                
+
                 {/* Floating Elegant Close Button */}
                 <button
                   onClick={() => setPreviewCard(null)}

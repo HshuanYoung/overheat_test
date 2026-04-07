@@ -24,6 +24,24 @@ const io = new Server(httpServer, {
     }
 });
 
+// In-memory locks to prevent concurrent modifications of the same game state
+const gameLocks = new Map<string, Promise<any>>();
+
+async function withGameLock<T>(gameId: string, action: () => Promise<T>): Promise<T> {
+    const existingLock = gameLocks.get(gameId) || Promise.resolve();
+    const newLock = existingLock.then(async () => {
+        try {
+            return await action();
+        } catch (err) {
+            console.error(`[Lock] Error in locked action for game ${gameId}:`, err);
+            // Re-throw to allow the caller to handle it, but the lock chain continues
+            throw err;
+        }
+    });
+    gameLocks.set(gameId, newLock.catch(() => {})); // Ensure chain doesn't break on errors
+    return newLock;
+}
+
 // Helper: Validate User Deck
 async function validateUserDeck(uId: string, dId: string): Promise<{ valid: boolean; cards?: Card[]; error?: string }> {
     try {
@@ -53,44 +71,74 @@ async function validateUserDeck(uId: string, dId: string): Promise<{ valid: bool
 
 async function handleBotMove(gameState: any, gameId: string) {
     const bot = gameState.players['BOT_PLAYER'];
-    console.log(`[Bot] handleBotMove checking: bot exists? ${!!bot}, bot.isTurn? ${bot?.isTurn}`);
-    if (!bot || !bot.isTurn) return;
+    if (!bot) return;
 
+    // The bot should move if it's its turn OR if it's being asked for a confrontation response
+    const isBotAsked = gameState.battleState && gameState.battleState.askConfront === 'ASKING_OPPONENT';
+    const shouldBotMove = bot.isTurn || isBotAsked;
+
+    console.log(`[Bot] handleBotMove checking: bot.isTurn? ${bot.isTurn}, isBotAsked? ${isBotAsked}`);
+    if (!shouldBotMove) return;
+
+    // Use a delay to simulate thinking and allow final state propagation
     setTimeout(async () => {
-        try {
-            console.log('yangming 1200 - Entering botMove');
-            await ServerGameService.botMove(gameState);
-            console.log('yangming 1210 - botMove finished');
-            await pool.query('UPDATE games SET state = ? WHERE id = ?', [JSON.stringify(gameState), gameId]);
-            io.to(gameId).emit('gameStateUpdate', gameState);
+        await withGameLock(gameId, async () => {
+            try {
+                // Re-fetch state inside the lock to get the most recent version
+                const stateRows = await pool.query('SELECT state FROM games WHERE id = ?', [gameId]);
+                if (stateRows.length === 0) return;
+                const currentGameState = typeof stateRows[0].state === 'string' ? JSON.parse(stateRows[0].state) : stateRows[0].state;
+                
+                console.log('yangming 1200 - Entering botMove');
+                await ServerGameService.botMove(currentGameState);
+                console.log('yangming 1210 - botMove finished');
+                
+                await pool.query('UPDATE games SET state = ? WHERE id = ?', [JSON.stringify(currentGameState), gameId]);
+                io.to(gameId).emit('gameStateUpdate', currentGameState);
 
-            // If bot is still on turn (e.g. played a card and need to move again)
-            if (gameState.players['BOT_PLAYER']?.isTurn) {
-                console.log('[Bot] Bot still on turn, queuing next move...');
-                handleBotMove(gameState, gameId);
+                // Re-trigger if bot still needs to move
+                const nextState = currentGameState;
+                const bot = nextState.players['BOT_PLAYER'];
+                if (bot) {
+                    const currentPlayerId = nextState.playerIds[nextState.currentTurnPlayer];
+                    const isBotAsked = nextState.battleState && nextState.battleState.askConfront === 'ASKING_OPPONENT';
+                    const isBotPriority = nextState.priorityPlayerId === 'BOT_PLAYER';
+
+                    if (currentPlayerId === 'BOT_PLAYER' || isBotAsked || isBotPriority) {
+                        console.log('[Bot] Bot still needs to move, queuing next move...');
+                        handleBotMove(nextState, gameId);
+                    }
+                }
+            } catch (err) {
+                console.error('[Bot] handleBotMove error:', err);
             }
-        } catch (err) {
-            console.error('[Bot] handleBotMove error:', err);
-        }
+        });
     }, 1000);
 }
 
-async function advancePhase(gameState: any, gameId: string, socket?: any, action?: any) {
+function triggerBotIfNeeded(gameState: any, gameId: string) {
+    const bot = gameState.players['BOT_PLAYER'];
+    if (!bot) return;
+
+    const currentPlayerId = gameState.playerIds[gameState.currentTurnPlayer];
+    const isBotAsked = gameState.battleState && gameState.battleState.askConfront === 'ASKING_OPPONENT';
+    const isBotPriority = gameState.priorityPlayerId === 'BOT_PLAYER';
+
+    if (currentPlayerId === 'BOT_PLAYER' || isBotAsked || isBotPriority) {
+        console.log(`[Bot] Triggering bot move for game ${gameId}. Reason: ${currentPlayerId === 'BOT_PLAYER' ? 'Turn' : isBotAsked ? 'Confrontation' : 'Priority'}`);
+        handleBotMove(gameState, gameId);
+    }
+}
+
+async function advancePhase(gameState: any, gameId: string, playerId?: string, socket?: any, action?: any) {
     try {
-        console.log(`[Socket] advancePhase for game ${gameId}, action: ${action}`);
-        await ServerGameService.advancePhase(gameState, action);
+        console.log(`[Socket] advancePhase for game ${gameId}, action: ${action}, playerId: ${playerId}`);
+        await ServerGameService.advancePhase(gameState, action, playerId);
 
         await pool.query('UPDATE games SET state = ? WHERE id = ?', [JSON.stringify(gameState), gameId]);
         io.to(gameId).emit('gameStateUpdate', gameState);
 
-        // Trigger Bot behavior if it's the bot's turn
-        const currentPlayerId = gameState.playerIds[gameState.currentTurnPlayer];
-        console.log(`[Socket] advancePhase finished. Next player: ${currentPlayerId}, Phase: ${gameState.phase}`);
-        
-        if (currentPlayerId === 'BOT_PLAYER') {
-            console.log('[Socket] Bot detected, triggering handleBotMove');
-            handleBotMove(gameState, gameId);
-        }
+        triggerBotIfNeeded(gameState, gameId);
     } catch (err: any) {
         console.error('[Socket] advancePhase error:', err);
         if (socket) socket.emit('error', err.message || '阶段切换失败');
@@ -102,78 +150,111 @@ app.use(cors());
 // Background Timer for 30s Auto-Advance
 setInterval(async () => {
     try {
-        const games = await pool.query('SELECT id, state FROM games WHERE status = 0');
+        const games = await pool.query('SELECT id FROM games WHERE status = 0');
         for (const row of games) {
-            const gameState = typeof row.state === 'string' ? JSON.parse(row.state) : row.state;
             const gameId = row.id;
-            
-            // Consolidated Timer Logic
-            if (!gameState || !gameState.phaseTimerStart) continue;
-            
-            const now = Date.now();
-            const phaseElapsed = now - (gameState.phaseTimerStart || now);
-            const checkInterval = 2000;
 
-            const sharedPhases = ['MAIN', 'BATTLE_DECLARATION', 'BATTLE_FREE'];
-            const independentPhases = ['EROSION', 'DEFENSE_DECLARATION', 'COUNTERING', 'MULLIGAN'];
+            // Use the lock to ensure we don't conflict with player actions
+            await withGameLock(gameId, async () => {
+                // Re-fetch state inside the lock to get the most recent version
+                const stateRows = await pool.query('SELECT state FROM games WHERE id = ?', [gameId]);
+                if (stateRows.length === 0) return;
+                
+                const gameState = typeof stateRows[0].state === 'string' ? JSON.parse(stateRows[0].state) : stateRows[0].state;
+                if (!gameState || !gameState.phaseTimerStart) return;
 
-            if (sharedPhases.includes(gameState.phase)) {
-                // Shared 300s budget logic
-                // The time will not be reduced while waiting for the opponent's response
-                const isWaitingForOpponent = 
-                    (gameState.counterStack && gameState.counterStack.length > 0) ||
-                    (gameState.battleState && gameState.battleState.askConfront);
+                const now = Date.now();
+                const phaseElapsed = now - (gameState.phaseTimerStart || now);
+                const checkInterval = 2000;
 
-                if (!isWaitingForOpponent) {
-                    gameState.mainPhaseTimeRemaining = (gameState.mainPhaseTimeRemaining || 300000) - checkInterval;
-                    
-                    if (gameState.mainPhaseTimeRemaining <= 0) {
-                        console.log(`[Timer] Shared budget timeout for game ${gameId}, auto-advancing.`);
-                        gameState.logs.push('阶段时间耗尽，强制推进。');
-                        if (gameState.phase === 'BATTLE_FREE') {
-                            await ServerGameService.advancePhase(gameState, 'PROPOSE_DAMAGE_CALCULATION');
-                        } else {
-                            await ServerGameService.advancePhase(gameState, 'DECLARE_END');
+                const sharedPhases = ['MAIN', 'BATTLE_DECLARATION', 'BATTLE_FREE'];
+                const independentPhases = ['EROSION', 'DEFENSE_DECLARATION', 'COUNTERING', 'MULLIGAN'];
+
+                if (sharedPhases.includes(gameState.phase)) {
+                    // Shared 300s budget logic
+                    const isWaitingForOpponent = 
+                        (gameState.counterStack && gameState.counterStack.length > 0) ||
+                        (gameState.battleState && gameState.battleState.askConfront);
+
+                    if (isWaitingForOpponent) {
+                        if (phaseElapsed > 30000) {
+                            console.log(`[Timer] Confrontation timeout in ${gameState.phase} for game ${gameId}, auto-advancing.`);
+                            gameState.logs.push('响应超时，自动推进。');
+                            if (gameState.phase === 'BATTLE_FREE') {
+                                await ServerGameService.advancePhase(gameState, 'DECLINE_CONFRONTATION');
+                            } else if (gameState.counterStack && gameState.counterStack.length > 0) {
+                                await ServerGameService.resolveCounterStack(gameState);
+                            }
+                            
+                            gameState.phaseTimerStart = Date.now();
+                            await pool.query('UPDATE games SET state = ? WHERE id = ?', [JSON.stringify(gameState), gameId]);
+                            io.to(gameId).emit('gameStateUpdate', gameState);
+                            
+                            const currentPlayerId = gameState.playerIds[gameState.currentTurnPlayer];
+                            if (currentPlayerId === 'BOT_PLAYER' || gameState.priorityPlayerId === 'BOT_PLAYER') {
+                                handleBotMove(gameState, gameId);
+                            }
                         }
-                        gameState.mainPhaseTimeRemaining = 300000;
-                        gameState.phaseTimerStart = Date.now();
-                    }
-
-                    await pool.query('UPDATE games SET state = ? WHERE id = ?', [JSON.stringify(gameState), gameId]);
-                    io.to(gameId).emit('gameStateUpdate', gameState);
-                }
-            } else if (independentPhases.includes(gameState.phase)) {
-                // Independent 30s timeout logic
-                if (phaseElapsed > 30000) {
-                    console.log(`[Timer] Auto-advancing game ${gameId} due to timeout in phase ${gameState.phase}`);
-                    
-                    if (gameState.phase === 'MULLIGAN') {
-                        Object.values(gameState.players).forEach((p: any) => { p.mulliganDone = true; });
-                        gameState.phase = 'START';
-                        gameState.turnCount = 1;
-                        const firstUid = gameState.playerIds[gameState.currentTurnPlayer];
-                        gameState.playerIds.forEach((uid: string) => {
-                            gameState.players[uid].isTurn = (uid === firstUid);
-                        });
-                        gameState.logs.push('调度超时，自动开始游戏。');
-                    } else if (gameState.phase === 'EROSION') {
-                        const playerUid = gameState.playerIds[gameState.currentTurnPlayer];
-                        gameState.logs.push(`侵蚀阶段超时，自动选择方案 A。`);
-                        await ServerGameService.handleErosionChoice(gameState, playerUid, 'A');
-                    } else if (gameState.phase === 'DEFENSE_DECLARATION') {
-                        const defenderUid = gameState.playerIds[gameState.currentTurnPlayer === 0 ? 1 : 0];
-                        await ServerGameService.declareDefense(gameState, defenderUid, undefined);
-                    } else if (gameState.phase === 'COUNTERING') {
-                        await ServerGameService.resolveCounterStack(gameState);
                     } else {
-                        await ServerGameService.advancePhase(gameState);
-                    }
+                        gameState.mainPhaseTimeRemaining = (gameState.mainPhaseTimeRemaining || 300000) - checkInterval;
+                        
+                        if (gameState.mainPhaseTimeRemaining <= 0) {
+                            console.log(`[Timer] Shared budget timeout for game ${gameId}, auto-advancing.`);
+                            gameState.logs.push('阶段时间耗尽，强制推进。');
+                            if (gameState.phase === 'BATTLE_FREE') {
+                                await ServerGameService.advancePhase(gameState, 'PROPOSE_DAMAGE_CALCULATION');
+                            } else {
+                                await ServerGameService.advancePhase(gameState, 'DECLARE_END');
+                            }
+                            gameState.mainPhaseTimeRemaining = 300000;
+                            gameState.phaseTimerStart = Date.now();
+                        }
 
-                    gameState.phaseTimerStart = Date.now();
-                    await pool.query('UPDATE games SET state = ? WHERE id = ?', [JSON.stringify(gameState), gameId]);
-                    io.to(gameId).emit('gameStateUpdate', gameState);
+                        await pool.query('UPDATE games SET state = ? WHERE id = ?', [JSON.stringify(gameState), gameId]);
+                        io.to(gameId).emit('gameStateUpdate', gameState);
+                        
+                        const currentPlayerId = gameState.playerIds[gameState.currentTurnPlayer];
+                        if (currentPlayerId === 'BOT_PLAYER' || gameState.priorityPlayerId === 'BOT_PLAYER') {
+                            handleBotMove(gameState, gameId);
+                        }
+                    }
+                } else if (independentPhases.includes(gameState.phase)) {
+                    if (phaseElapsed > 30000) {
+                        console.log(`[Timer] Auto-advancing game ${gameId} due to timeout in phase ${gameState.phase}`);
+                        
+                        if (gameState.phase === 'MULLIGAN') {
+                            Object.values(gameState.players).forEach((p: any) => { p.mulliganDone = true; });
+                            gameState.phase = 'START';
+                            gameState.turnCount = 1;
+                            const firstUid = gameState.playerIds[gameState.currentTurnPlayer];
+                            gameState.playerIds.forEach((uid: string) => {
+                                gameState.players[uid].isTurn = (uid === firstUid);
+                            });
+                            gameState.logs.push('调度超时，自动开始游戏。');
+                        } else if (gameState.phase === 'EROSION') {
+                            const playerUid = gameState.playerIds[gameState.currentTurnPlayer];
+                            gameState.logs.push(`侵蚀阶段超时，自动选择方案 A。`);
+                            await ServerGameService.handleErosionChoice(gameState, playerUid, 'A');
+                        } else if (gameState.phase === 'DEFENSE_DECLARATION') {
+                            const defenderUid = gameState.playerIds[gameState.currentTurnPlayer === 0 ? 1 : 0];
+                            await ServerGameService.declareDefense(gameState, defenderUid, undefined);
+                        } else if (gameState.phase === 'COUNTERING') {
+                            await ServerGameService.resolveCounterStack(gameState);
+                        } else {
+                            await ServerGameService.advancePhase(gameState);
+                        }
+
+                        gameState.phaseTimerStart = Date.now();
+                        await pool.query('UPDATE games SET state = ? WHERE id = ?', [JSON.stringify(gameState), gameId]);
+                        io.to(gameId).emit('gameStateUpdate', gameState);
+
+                        const currentPlayerId = gameState.playerIds[gameState.currentTurnPlayer];
+                        if (currentPlayerId === 'BOT_PLAYER' || gameState.priorityPlayerId === 'BOT_PLAYER') {
+                            handleBotMove(gameState, gameId);
+                        }
+                    }
                 }
-            }
+            });
         }
     } catch (err) {
         console.error('[Timer] Error in auto-advance loop:', err);
@@ -853,142 +934,138 @@ io.on('connection', (socket) => {
             console.log('yangming98');
             console.log(gameState);
             socket.emit('gameStateUpdate', gameState);
-            console.log('yangming99');
-            console.log(gameState);
             io.to(gameId).emit('gameStateUpdate', gameState);
 
         } catch (err) {
             console.error('[Socket] joinGame exception:', err);
             socket.emit('error', '战场同步过程中发生错误');
         }
-        // End of socket.on('joinGame')
     });
 
-
-
     socket.on('gameAction', async (data: { gameId: string, action: string, payload?: any }) => {
-
         const user = (socket as any).user;
         if (!user) return;
 
         const { gameId, action, payload } = data;
-        try {
-            const rows = await pool.query('SELECT state FROM games WHERE id = ?', [gameId]);
-            if (rows.length === 0) return;
+        
+        await withGameLock(gameId, async () => {
+            try {
+                const rows = await pool.query('SELECT state FROM games WHERE id = ?', [gameId]);
+                if (rows.length === 0) return;
 
-            let gameState = typeof rows[0].state === 'string' ? JSON.parse(rows[0].state) : rows[0].state;
-            const myUid = user.userId.toString();
-            const player = gameState.players[myUid];
-            if (!player) {
-                console.log(`[Socket] Action ${action} rejected: Player ${myUid} not found in game ${gameId}`);
-                return;
-            }
-
-
-            if (action === 'MULLIGAN') {
-                const selectedIds: string[] = payload || [];
-                if (player.mulliganDone) return;
-
-                if (selectedIds.length > 0) {
-                    const cardsToSwap = player.hand.filter((c: any) => selectedIds.includes(c.gamecardId));
-                    player.hand = player.hand.filter((c: any) => !selectedIds.includes(c.gamecardId));
-
-                    cardsToSwap.forEach((c: any) => {
-                        c.cardlocation = 'DECK';
-                        player.deck.push(c);
-                    });
-
-                    for (let i = 0; i < selectedIds.length; i++) {
-                        const newCard = player.deck.shift();
-                        if (newCard) {
-                            newCard.cardlocation = 'HAND';
-                            player.hand.push(newCard);
-                        }
-                    }
-
-                    for (let i = player.deck.length - 1; i > 0; i--) {
-                        const j = Math.floor(Math.random() * (i + 1));
-                        [player.deck[i], player.deck[j]] = [player.deck[j], player.deck[i]];
-                    }
-
-                    gameState.logs.push(`${player.displayName} 更换了 ${selectedIds.length} 张卡牌。`);
-                } else {
-                    gameState.logs.push(`${player.displayName} 接受了初始手牌。`);
-                }
-
-                player.mulliganDone = true;
-
-                const allDone = Object.values(gameState.players).every((p: any) => p.mulliganDone);
-                if (allDone) {
-                    gameState.phase = 'START';
-                    gameState.turnCount = 1;
-
-                    // Ensure isTurn is set correctly based on the current turn player
-                    const currentUid = gameState.playerIds[gameState.currentTurnPlayer];
-                    gameState.playerIds.forEach((uid: string) => {
-                        gameState.players[uid].isTurn = (uid === currentUid);
-                    });
-
-                    gameState.logs.push(`调度结束。第 1 回合开始，由 ${gameState.players[currentUid].displayName} 先行。`);
-                    await advancePhase(gameState, gameId, socket);
+                let gameState = typeof rows[0].state === 'string' ? JSON.parse(rows[0].state) : rows[0].state;
+                const myUid = user.userId.toString();
+                const player = gameState.players[myUid];
+                if (!player) {
+                    console.log(`[Socket] Action ${action} rejected: Player ${myUid} not found in game ${gameId}`);
                     return;
                 }
 
-                await pool.query('UPDATE games SET state = ? WHERE id = ?', [JSON.stringify(gameState), gameId]);
-                io.to(gameId).emit('gameStateUpdate', gameState);
-            } else if (action === 'PLAY_CARD') {
-                const { cardId, paymentSelection } = payload;
-                await ServerGameService.playCard(gameState, myUid, cardId, paymentSelection);
-                await pool.query('UPDATE games SET state = ? WHERE id = ?', [JSON.stringify(gameState), gameId]);
-                io.to(gameId).emit('gameStateUpdate', gameState);
-            } else if (action === 'ATTACK') {
-                const { attackerIds, alliance } = payload;
-                await ServerGameService.declareAttack(gameState, myUid, attackerIds, alliance);
-                await pool.query('UPDATE games SET state = ? WHERE id = ?', [JSON.stringify(gameState), gameId]);
-                io.to(gameId).emit('gameStateUpdate', gameState);
-            } else if (action === 'DEFEND') {
-                const { defenderId } = payload;
-                await ServerGameService.declareDefense(gameState, myUid, defenderId);
-                await pool.query('UPDATE games SET state = ? WHERE id = ?', [JSON.stringify(gameState), gameId]);
-                io.to(gameId).emit('gameStateUpdate', gameState);
-            } else if (action === 'RESOLVE_DAMAGE') {
-                await ServerGameService.resolveDamage(gameState);
-                await pool.query('UPDATE games SET state = ? WHERE id = ?', [JSON.stringify(gameState), gameId]);
-                io.to(gameId).emit('gameStateUpdate', gameState);
-            } else if (action === 'EROSION_CHOICE') {
-                const { choice, selectedCardId } = payload;
-                await ServerGameService.handleErosionChoice(gameState, myUid, choice, selectedCardId);
-                await pool.query('UPDATE games SET state = ? WHERE id = ?', [JSON.stringify(gameState), gameId]);
-                io.to(gameId).emit('gameStateUpdate', gameState);
-            } else if (action === 'DISCARD') {
-                const { cardId } = payload;
-                await ServerGameService.discardCard(gameState, myUid, cardId);
-                await pool.query('UPDATE games SET state = ? WHERE id = ?', [JSON.stringify(gameState), gameId]);
-                io.to(gameId).emit('gameStateUpdate', gameState);
-            } else if (action === 'ACTIVATE_EFFECT') {
-                const { cardId, effectIndex } = payload;
-                await ServerGameService.activateEffect(gameState, myUid, cardId, effectIndex);
-                await pool.query('UPDATE games SET state = ? WHERE id = ?', [JSON.stringify(gameState), gameId]);
-                io.to(gameId).emit('gameStateUpdate', gameState);
-            } else if (action === 'PASS_CONFRONTATION') {
-                await ServerGameService.passConfrontation(gameState, myUid);
-                await pool.query('UPDATE games SET state = ? WHERE id = ?', [JSON.stringify(gameState), gameId]);
-                io.to(gameId).emit('gameStateUpdate', gameState);
-            } else if (action === 'RESOLVE_PLAY') {
-                if (gameState.phase === 'COUNTERING') {
-                    await ServerGameService.resolveCounterStack(gameState);
+                if (action === 'MULLIGAN') {
+                    const selectedIds: string[] = payload || [];
+                    if (player.mulliganDone) return;
+
+                    if (selectedIds.length > 0) {
+                        const cardsToSwap = player.hand.filter((c: any) => selectedIds.includes(c.gamecardId));
+                        player.hand = player.hand.filter((c: any) => !selectedIds.includes(c.gamecardId));
+
+                        cardsToSwap.forEach((c: any) => {
+                            c.cardlocation = 'DECK';
+                            player.deck.push(c);
+                        });
+
+                        for (let i = 0; i < selectedIds.length; i++) {
+                            const newCard = player.deck.shift();
+                            if (newCard) {
+                                newCard.cardlocation = 'HAND';
+                                player.hand.push(newCard);
+                            }
+                        }
+
+                        for (let i = player.deck.length - 1; i > 0; i--) {
+                            const j = Math.floor(Math.random() * (i + 1));
+                            [player.deck[i], player.deck[j]] = [player.deck[j], player.deck[i]];
+                        }
+
+                        gameState.logs.push(`${player.displayName} 更换了 ${selectedIds.length} 张卡牌。`);
+                    } else {
+                        gameState.logs.push(`${player.displayName} 接受了初始手牌。`);
+                    }
+
+                    player.mulliganDone = true;
+
+                    const allDone = Object.values(gameState.players).every((p: any) => p.mulliganDone);
+                    if (allDone) {
+                        gameState.phase = 'START';
+                        gameState.turnCount = 1;
+
+                        const currentUid = gameState.playerIds[gameState.currentTurnPlayer];
+                        gameState.playerIds.forEach((uid: string) => {
+                            gameState.players[uid].isTurn = (uid === currentUid);
+                        });
+
+                        gameState.logs.push(`调度结束。第 1 回合开始，由 ${gameState.players[currentUid].displayName} 先行。`);
+                        await advancePhase(gameState, gameId, myUid, socket);
+                        return;
+                    }
+
                     await pool.query('UPDATE games SET state = ? WHERE id = ?', [JSON.stringify(gameState), gameId]);
                     io.to(gameId).emit('gameStateUpdate', gameState);
+                } else if (action === 'PLAY_CARD') {
+                    const { cardId, paymentSelection } = payload;
+                    await ServerGameService.playCard(gameState, myUid, cardId, paymentSelection);
+                    await pool.query('UPDATE games SET state = ? WHERE id = ?', [JSON.stringify(gameState), gameId]);
+                    io.to(gameId).emit('gameStateUpdate', gameState);
+                } else if (action === 'ATTACK') {
+                    const { attackerIds, alliance } = payload;
+                    await ServerGameService.declareAttack(gameState, myUid, attackerIds, alliance);
+                    await pool.query('UPDATE games SET state = ? WHERE id = ?', [JSON.stringify(gameState), gameId]);
+                    io.to(gameId).emit('gameStateUpdate', gameState);
+                } else if (action === 'DEFEND') {
+                    const { defenderId } = payload;
+                    await ServerGameService.declareDefense(gameState, myUid, defenderId);
+                    await pool.query('UPDATE games SET state = ? WHERE id = ?', [JSON.stringify(gameState), gameId]);
+                    io.to(gameId).emit('gameStateUpdate', gameState);
+                } else if (action === 'RESOLVE_DAMAGE') {
+                    await ServerGameService.resolveDamage(gameState);
+                    await pool.query('UPDATE games SET state = ? WHERE id = ?', [JSON.stringify(gameState), gameId]);
+                    io.to(gameId).emit('gameStateUpdate', gameState);
+                } else if (action === 'EROSION_CHOICE') {
+                    const { choice, selectedCardId } = payload;
+                    await ServerGameService.handleErosionChoice(gameState, myUid, choice, selectedCardId);
+                    await pool.query('UPDATE games SET state = ? WHERE id = ?', [JSON.stringify(gameState), gameId]);
+                    io.to(gameId).emit('gameStateUpdate', gameState);
+                } else if (action === 'DISCARD') {
+                    const { cardId } = payload;
+                    await ServerGameService.discardCard(gameState, myUid, cardId);
+                    await pool.query('UPDATE games SET state = ? WHERE id = ?', [JSON.stringify(gameState), gameId]);
+                    io.to(gameId).emit('gameStateUpdate', gameState);
+                } else if (action === 'ACTIVATE_EFFECT') {
+                    const { cardId, effectIndex } = payload;
+                    await ServerGameService.activateEffect(gameState, myUid, cardId, effectIndex);
+                    await pool.query('UPDATE games SET state = ? WHERE id = ?', [JSON.stringify(gameState), gameId]);
+                    io.to(gameId).emit('gameStateUpdate', gameState);
+                } else if (action === 'PASS_CONFRONTATION') {
+                    await ServerGameService.passConfrontation(gameState, myUid);
+                    await pool.query('UPDATE games SET state = ? WHERE id = ?', [JSON.stringify(gameState), gameId]);
+                    io.to(gameId).emit('gameStateUpdate', gameState);
+                } else if (action === 'RESOLVE_PLAY') {
+                    if (gameState.phase === 'COUNTERING') {
+                        await ServerGameService.resolveCounterStack(gameState);
+                        await pool.query('UPDATE games SET state = ? WHERE id = ?', [JSON.stringify(gameState), gameId]);
+                        io.to(gameId).emit('gameStateUpdate', gameState);
+                    }
+                } else if (action === 'END_PHASE') {
+                    if (player.isTurn || gameState.phase === 'BATTLE_FREE' || gameState.phase === 'COUNTERING') {
+                        await advancePhase(gameState, gameId, myUid, socket, payload);
+                    }
                 }
-            } else if (action === 'END_PHASE') {
-                if (player.isTurn) {
-                    await advancePhase(gameState, gameId, socket, payload);
-                }
-            }
 
-        } catch (err) {
-            console.error('Game action error:', err);
-        }
+                 triggerBotIfNeeded(gameState, gameId);
+            } catch (err) {
+                console.error('Game action error:', err);
+            }
+        });
     });
 
     socket.on('disconnect', () => {

@@ -279,25 +279,25 @@ export const ServerGameService = {
       }
     } else if (cost > 0) {
       let remainingCost = cost;
-      
+
       // I. Check for Feijing card in hand (of the same color)
-      const hasFeijing = player.hand.some(c => 
-        c.gamecardId !== card.gamecardId && 
-        c.feijingMark && 
+      const hasFeijing = player.hand.some(c =>
+        c.gamecardId !== card.gamecardId &&
+        c.feijingMark &&
         c.color === card.color
       );
       if (hasFeijing) {
         remainingCost = Math.max(0, remainingCost - 3);
       }
-      
+
       // II. Check for ready units on field
       const readyUnitsCount = player.unitZone.filter(c => c !== null && !c.isExhausted).length;
       remainingCost = Math.max(0, remainingCost - readyUnitsCount);
-      
+
       // III. Check Erosion space limit (cannot reach 10 total)
       if (remainingCost > 0) {
-        const totalErosionCount = player.erosionFront.filter(c => c !== null).length + 
-                                  player.erosionBack.filter(c => c !== null).length;
+        const totalErosionCount = player.erosionFront.filter(c => c !== null).length +
+          player.erosionBack.filter(c => c !== null).length;
         if (totalErosionCount + remainingCost >= 10) {
           return { canPlay: false, reason: '侵蚀区空间不足 (总数不能超过 9 张)' };
         }
@@ -384,6 +384,7 @@ export const ServerGameService = {
         const topCard = player.deck.pop();
         if (topCard) {
           topCard.cardlocation = 'EROSION_FRONT';
+          topCard.displayState = 'FRONT_UPRIGHT';
           const emptyIndex = player.erosionFront.findIndex(c => c === null);
           if (emptyIndex !== -1) {
             player.erosionFront[emptyIndex] = topCard;
@@ -413,15 +414,15 @@ export const ServerGameService = {
       gameState.phase = 'COUNTERING';
       gameState.phaseTimerStart = now; // Independent 30s starts now
     }
-    
+
     gameState.isCountering = 1;
     gameState.counterStack.push(stackItem);
     gameState.passCount = 0;
-    
+
     // In TCGs, usually the non-active player gets the first chance to respond
     const opponentId = gameState.playerIds.find(id => id !== sourcePlayerId);
     gameState.priorityPlayerId = opponentId;
-    
+
     gameState.logs.push(`[对抗开始] 等待 ${gameState.players[opponentId!].displayName} 响应。`);
   },
 
@@ -521,14 +522,14 @@ export const ServerGameService = {
       gameState.isCountering = 0;
       gameState.priorityPlayerId = undefined;
       gameState.passCount = 0;
-      
+
       // CRITICAL: Restore the phase we are transitioning FROM
       // This ensures advancePhase's switch(gameState.phase) hits the correct case.
       if (gameState.previousPhase) {
         gameState.phase = gameState.previousPhase;
         gameState.previousPhase = undefined;
       }
-      
+
       if (phaseEndItem!.nextPhase) {
         return this.advancePhase(gameState, phaseEndItem!.nextPhase);
       }
@@ -555,12 +556,12 @@ export const ServerGameService = {
       gameState.isCountering = 0;
       gameState.passCount = 0;
       gameState.priorityPlayerId = undefined;
-      
+
       if (gameState.previousPhase) {
         gameState.phase = gameState.previousPhase;
         gameState.previousPhase = undefined;
       }
-      
+
       if (item.nextPhase) {
         return this.advancePhase(gameState, item.nextPhase);
       }
@@ -655,7 +656,7 @@ export const ServerGameService = {
       gameState.phase = gameState.previousPhase;
       gameState.previousPhase = undefined;
     }
-    
+
     gameState.isCountering = 0;
     gameState.priorityPlayerId = undefined;
     gameState.passCount = 0;
@@ -966,8 +967,8 @@ export const ServerGameService = {
     this.executeStartPhase(gameState, nextPlayer);
   },
 
-  async advancePhase(gameState: GameState, action?: string) {
-    console.log(`[ServerGameService] advancePhase call, action: ${action}, phase: ${gameState.phase}`);
+  async advancePhase(gameState: GameState, action?: string, playerId?: string) {
+    console.log(`[ServerGameService] advancePhase call, action: ${action}, phase: ${gameState.phase}, playerId: ${playerId}`);
     
     const now = Date.now();
     const elapsed = now - (gameState.phaseTimerStart || now);
@@ -979,9 +980,14 @@ export const ServerGameService = {
     }
 
     gameState.phaseTimerStart = now;
-    const currentPlayerId = gameState.playerIds[gameState.currentTurnPlayer];
-
-    const currentPlayer = gameState.players[currentPlayerId];
+    
+    // Identity of the player performing the action
+    const actingPlayerId = playerId || gameState.playerIds[gameState.currentTurnPlayer];
+    const actingPlayer = gameState.players[actingPlayerId];
+    
+    // Identity of the current turn player (for phase transitions)
+    const turnPlayerId = gameState.playerIds[gameState.currentTurnPlayer];
+    const turnPlayer = gameState.players[turnPlayerId];
 
     switch (gameState.phase) {
       case 'INIT':
@@ -989,17 +995,17 @@ export const ServerGameService = {
         gameState.phase = 'START';
         gameState.turnCount = 1;
         EventEngine.dispatchEvent(gameState, { type: 'PHASE_CHANGED', data: { phase: 'START' } });
-        this.executeStartPhase(gameState, currentPlayer);
+        this.executeStartPhase(gameState, turnPlayer);
         break;
       case 'START':
         gameState.phase = 'DRAW';
         EventEngine.dispatchEvent(gameState, { type: 'PHASE_CHANGED', data: { phase: 'DRAW' } });
-        this.executeDrawPhase(gameState, currentPlayer);
+        this.executeDrawPhase(gameState, turnPlayer);
         break;
       case 'DRAW':
         gameState.phase = 'EROSION';
         EventEngine.dispatchEvent(gameState, { type: 'PHASE_CHANGED', data: { phase: 'EROSION' } });
-        this.executeErosionPhase(gameState, currentPlayer);
+        this.executeErosionPhase(gameState, turnPlayer);
         break;
       case 'EROSION':
         // Handled by handleErosionChoice
@@ -1012,10 +1018,10 @@ export const ServerGameService = {
           if (action === 'BATTLE_DECLARATION') {
             gameState.phase = 'BATTLE_DECLARATION';
             EventEngine.dispatchEvent(gameState, { type: 'PHASE_CHANGED', data: { phase: 'BATTLE_DECLARATION' } });
-            gameState.logs.push(`${currentPlayer.displayName} 进入战斗阶段`);
+            gameState.logs.push(`${actingPlayer.displayName} 进入战斗阶段`);
           } else {
-            this.enterCountering(gameState, currentPlayerId, {
-              ownerUid: currentPlayerId,
+            this.enterCountering(gameState, actingPlayerId, {
+              ownerUid: actingPlayerId,
               type: 'PHASE_END',
               nextPhase: 'BATTLE_DECLARATION',
               timestamp: Date.now()
@@ -1023,10 +1029,10 @@ export const ServerGameService = {
           }
         } else if (action === 'DECLARE_END' || action === 'DISCARD') {
           if (action === 'DISCARD') {
-             this.executeEndPhase(gameState, currentPlayer);
+            this.executeEndPhase(gameState, actingPlayer);
           } else {
-            this.enterCountering(gameState, currentPlayerId, {
-              ownerUid: currentPlayerId,
+            this.enterCountering(gameState, actingPlayerId, {
+              ownerUid: actingPlayerId,
               type: 'PHASE_END',
               nextPhase: 'DISCARD', // Transition to discard/end
               timestamp: Date.now()
@@ -1037,10 +1043,10 @@ export const ServerGameService = {
       case 'BATTLE_DECLARATION':
         if (action === 'DECLARE_END' || action === 'DISCARD') {
           if (action === 'DISCARD') {
-            this.executeEndPhase(gameState, currentPlayer);
+            this.executeEndPhase(gameState, actingPlayer);
           } else {
-            this.enterCountering(gameState, currentPlayerId, {
-              ownerUid: currentPlayerId,
+            this.enterCountering(gameState, actingPlayerId, {
+              ownerUid: actingPlayerId,
               type: 'PHASE_END',
               nextPhase: 'DISCARD',
               timestamp: Date.now()
@@ -1050,10 +1056,10 @@ export const ServerGameService = {
           if (action === 'MAIN') {
             gameState.phase = 'MAIN';
             EventEngine.dispatchEvent(gameState, { type: 'PHASE_CHANGED', data: { phase: 'MAIN' } });
-            gameState.logs.push(`${currentPlayer.displayName} 返回主要阶段`);
+            gameState.logs.push(`${actingPlayer.displayName} 返回主要阶段`);
           } else {
-            this.enterCountering(gameState, currentPlayerId, {
-              ownerUid: currentPlayerId,
+            this.enterCountering(gameState, actingPlayerId, {
+              ownerUid: actingPlayerId,
               type: 'PHASE_END',
               nextPhase: 'MAIN',
               timestamp: Date.now()
@@ -1062,25 +1068,48 @@ export const ServerGameService = {
         }
         break;
       case 'BATTLE_FREE':
+        if (!gameState.battleState) {
+          console.warn('[ServerGameService] BATTLE_FREE without battleState, returning to MAIN');
+          gameState.phase = 'MAIN';
+          return gameState;
+        }
+        
         if (action === 'PROPOSE_DAMAGE_CALCULATION' || action === 'DAMAGE_CALCULATION') {
           if (action === 'DAMAGE_CALCULATION') {
             gameState.phase = 'DAMAGE_CALCULATION';
-            this.resolveDamage(gameState);
+            gameState.battleState.askConfront = undefined;
+            await this.resolveDamage(gameState);
           } else {
-            this.enterCountering(gameState, currentPlayerId, {
-              ownerUid: currentPlayerId,
-              type: 'PHASE_END',
-              nextPhase: 'DAMAGE_CALCULATION',
-              timestamp: Date.now()
-            });
+            // Propose calculation - ask opponent first
+            gameState.battleState.askConfront = 'ASKING_OPPONENT';
+            gameState.phaseTimerStart = Date.now();
+            gameState.logs.push(`等待对手确认是否进行对抗`);
           }
         } else if (action === 'CONFIRM_CONFRONTATION') {
-          gameState.phase = 'COUNTERING';
-          gameState.logs.push(`双方进入对抗阶段`);
+          gameState.battleState.askConfront = undefined;
+          this.enterCountering(gameState, actingPlayerId, {
+            ownerUid: actingPlayerId,
+            type: 'PHASE_END',
+            nextPhase: 'DAMAGE_CALCULATION',
+            timestamp: Date.now()
+          });
+          gameState.logs.push(`在自由阶段展开对抗！`);
         } else if (action === 'DECLINE_CONFRONTATION') {
-          gameState.phase = 'DAMAGE_CALCULATION';
-          gameState.logs.push(`直接进入伤害判定`);
-          this.resolveDamage(gameState);
+          if (gameState.battleState.askConfront === 'ASKING_OPPONENT') {
+            // Opponent declined, ask turn player if they want to counter? 
+            gameState.battleState.askConfront = 'ASKING_TURN_PLAYER';
+            gameState.phaseTimerStart = Date.now();
+          } else {
+            // Both declined or turn player declined
+            gameState.phase = 'DAMAGE_CALCULATION';
+            gameState.battleState.askConfront = undefined;
+            gameState.logs.push(`进入伤害判定`);
+            await this.resolveDamage(gameState);
+          }
+        } else if (action === 'RETURN_MAIN') {
+          gameState.phase = 'MAIN';
+          gameState.battleState = undefined;
+          gameState.logs.push(`战斗中止，返回主要阶段`);
         }
         break;
       case 'BATTLE_END':
@@ -1466,9 +1495,12 @@ export const ServerGameService = {
     const bot = gameState.players['BOT_PLAYER'];
     if (!bot) return;
 
-    // Handle Countering (Bot skips countering)
+    // Handle Countering (Bot chooses to pass priority)
     if (gameState.phase === 'COUNTERING') {
-      await this.resolveCounterStack(gameState);
+      if (gameState.priorityPlayerId === 'BOT_PLAYER') {
+        console.log('[Bot] Passing confrontation priority');
+        await this.passConfrontation(gameState, 'BOT_PLAYER');
+      }
       return;
     }
 
@@ -1488,6 +1520,15 @@ export const ServerGameService = {
         await this.discardCard(gameState, 'BOT_PLAYER', bot.hand[0].gamecardId);
       }
       return;
+    }
+
+    // Battle Free Phase response (as Opponent)
+    if (gameState.phase === 'BATTLE_FREE' && !bot.isTurn) {
+        if (gameState.battleState && gameState.battleState.askConfront === 'ASKING_OPPONENT') {
+            console.log('[Bot] Declining confrontation in BATTLE_FREE as Opponent');
+            await this.advancePhase(gameState, 'DECLINE_CONFRONTATION', 'BOT_PLAYER');
+            return;
+        }
     }
 
     if (!bot.isTurn) return;
@@ -1514,25 +1555,25 @@ export const ServerGameService = {
         }
       }
 
-        // If no cards can be played, try to enter battle or end turn
-        const canAttack = bot.unitZone.some(c => {
-          if (!c || c.isExhausted) return false;
-          const isRush = !!c.isrush;
-          const wasPlayedThisTurn = c.playedTurn === gameState.turnCount;
-          return isRush || !wasPlayedThisTurn;
-        });
+      // If no cards can be played, try to enter battle or end turn
+      const canAttack = bot.unitZone.some(c => {
+        if (!c || c.isExhausted) return false;
+        const isRush = !!c.isrush;
+        const wasPlayedThisTurn = c.playedTurn === gameState.turnCount;
+        return isRush || !wasPlayedThisTurn;
+      });
 
-        if (gameState.turnCount > 1 && canAttack) {
-          // Enter battle phase only if we haven't already exhausted all attackers this AI iteration
-          // To prevent infinite re-entry to BATTLE_DECLARATION from MAIN, we check if there's truly something new to do
-          console.log('[Bot] Entering Battle Phase');
-          await this.advancePhase(gameState, 'DECLARE_BATTLE');
-        } else {
-          console.log('[Bot] Ending Turn');
-          await this.advancePhase(gameState, 'DECLARE_END');
-        }
-        return;
+      if (gameState.turnCount > 1 && canAttack) {
+        // Enter battle phase only if we haven't already exhausted all attackers this AI iteration
+        // To prevent infinite re-entry to BATTLE_DECLARATION from MAIN, we check if there's truly something new to do
+        console.log('[Bot] Entering Battle Phase');
+        await this.advancePhase(gameState, 'DECLARE_BATTLE');
+      } else {
+        console.log('[Bot] Ending Turn');
+        await this.advancePhase(gameState, 'DECLARE_END');
       }
+      return;
+    }
 
     // Battle Declaration Phase
     if (gameState.phase === 'BATTLE_DECLARATION' && bot.isTurn) {
@@ -1550,19 +1591,26 @@ export const ServerGameService = {
       return;
     }
 
-      // Battle Free Phase
-      if (gameState.phase === 'BATTLE_FREE' && bot.isTurn) {
-        // Bot declines confrontation to move to damage calculation
-        console.log('[Bot] Declining confrontation in BATTLE_FREE');
+    // Battle Free Phase (as Turn Player)
+    if (gameState.phase === 'BATTLE_FREE' && bot.isTurn) {
+      if (!gameState.battleState?.askConfront) {
+        // Bot proposes calculation to give player a chance to counter
+        console.log('[Bot] Proposing damage calculation in BATTLE_FREE');
+        await this.advancePhase(gameState, 'PROPOSE_DAMAGE_CALCULATION');
+      } else if (gameState.battleState.askConfront === 'ASKING_TURN_PLAYER') {
+        // Player declined, bot now asked if it wants to counter? 
+        // Bot usually just declines to get to resolution.
+        console.log('[Bot] Declining confrontation in BATTLE_FREE (ASKING_TURN_PLAYER)');
         await this.advancePhase(gameState, 'DECLINE_CONFRONTATION');
-        return;
       }
+      return;
+    }
 
-      // Damage Calculation Phase
-      if (gameState.phase === 'DAMAGE_CALCULATION') {
-        await this.resolveDamage(gameState);
-        return;
-      }
+    // Damage Calculation Phase
+    if (gameState.phase === 'DAMAGE_CALCULATION') {
+      await this.resolveDamage(gameState);
+      return;
+    }
   },
 
   // Helper: Assign unique gamecardId to all cards in a deck

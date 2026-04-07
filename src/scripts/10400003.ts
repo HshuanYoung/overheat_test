@@ -29,17 +29,16 @@ const card: Card = {
       type: 'TRIGGER',
       triggerEvent: 'CARD_ENTERED_ZONE',
       isMandatory: true,
-      description: '这张卡进入战场时，若战场上有2个或以上的蓝色单位，双方玩家抽1张卡。',
+      description: '这张卡进入战场时，若你的战场上有2个或以上的蓝色区域（包括侵蚀区和道具区），双方玩家抽1张卡。',
       condition: (gameState: GameState, playerState: PlayerState, card: Card, event?: GameEvent) => {
         if (event?.type !== 'CARD_ENTERED_ZONE' || event?.sourceCardId !== card.gamecardId) return false;
         if (event?.data?.zone !== 'UNIT') return false;
 
-        // Count blue units on field
+        // Count blue zones (Unit, Item, Erosion) on your side
         let blueCount = 0;
-        Object.values(gameState.players).forEach(p => {
-          p.unitZone.forEach(c => {
-            if (c && c.color === 'BLUE') blueCount++;
-          });
+        const zones = [...playerState.unitZone, ...playerState.itemZone, ...playerState.erosionFront, ...playerState.erosionBack];
+        zones.forEach(c => {
+          if (c && c.color === 'BLUE') blueCount++;
         });
         return blueCount >= 2;
       },

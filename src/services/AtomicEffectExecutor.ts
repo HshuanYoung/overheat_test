@@ -32,12 +32,16 @@ export class AtomicEffectExecutor {
         this.turnErosionFaceDown(gameState, playerUid, effect.value || 0);
         break;
 
+      case 'SET_CAN_RESET_COUNT':
+        this.applyCanResetChange(gameState, effect, sourceCard);
+        break;
+
       case 'ROTATE_HORIZONTAL':
-        this.rotateCards(gameState, playerUid, effect, 'HORIZONTAL');
+        this.rotateCards(gameState, playerUid, effect, 'HORIZONTAL', sourceCard);
         break;
 
       case 'ROTATE_VERTICAL':
-        this.rotateCards(gameState, playerUid, effect, 'VERTICAL');
+        this.rotateCards(gameState, playerUid, effect, 'VERTICAL', sourceCard);
         break;
 
       case 'SHUFFLE_DECK':
@@ -49,24 +53,23 @@ export class AtomicEffectExecutor {
         break;
 
       case 'SEARCH_DECK':
-        // Wait: Search might need a pending choice. For now, we auto-select or log.
-        this.searchDeck(gameState, playerUid, effect);
+        this.searchDeck(gameState, playerUid, effect, sourceCard);
         break;
 
       case 'MOVE_FROM_HAND':
-        this.moveCards(gameState, playerUid, effect, effect.destinationZone || 'GRAVE', 'HAND');
+        this.moveCards(gameState, playerUid, effect, effect.destinationZone || 'GRAVE', 'HAND', sourceCard);
         break;
 
       case 'MOVE_FROM_EROSION':
-        this.moveCards(gameState, playerUid, effect, effect.destinationZone || 'HAND', 'EROSION_FRONT');
+        this.moveCards(gameState, playerUid, effect, effect.destinationZone || 'HAND', 'EROSION_FRONT', sourceCard);
         break;
 
       case 'MOVE_FROM_EROSION_BACK':
-        this.moveCards(gameState, playerUid, effect, effect.destinationZone || 'GRAVE', 'EROSION_BACK');
+        this.moveCards(gameState, playerUid, effect, effect.destinationZone || 'GRAVE', 'EROSION_BACK', sourceCard);
         break;
 
       case 'MOVE_FROM_FIELD':
-        this.moveCards(gameState, playerUid, effect, effect.destinationZone || 'HAND', 'UNIT');
+        this.moveCards(gameState, playerUid, effect, effect.destinationZone || 'HAND', 'UNIT', sourceCard);
         break;
 
       case 'NEGATE_EFFECT':
@@ -226,8 +229,8 @@ export class AtomicEffectExecutor {
     });
   }
 
-  private static destroyCards(gameState: GameState, playerUid: string, effect: AtomicEffect) {
-    const targets = this.findTargets(gameState, effect.targetFilter);
+  private static destroyCards(gameState: GameState, playerUid: string, effect: AtomicEffect, sourceCard?: Card) {
+    const targets = this.findTargets(gameState, effect.targetFilter, sourceCard);
     targets.forEach(card => {
       // Find which player owns the card
       for (const pUid of Object.keys(gameState.players)) {
@@ -246,8 +249,8 @@ export class AtomicEffectExecutor {
     });
   }
 
-  private static moveCards(gameState: GameState, playerUid: string, effect: AtomicEffect, toZone: TriggerLocation, fromZonePref?: TriggerLocation) {
-    const targets = this.findTargets(gameState, effect.targetFilter);
+  private static moveCards(gameState: GameState, playerUid: string, effect: AtomicEffect, toZone: TriggerLocation, fromZonePref?: TriggerLocation, sourceCard?: Card) {
+    const targets = this.findTargets(gameState, effect.targetFilter, sourceCard);
     // Limit by targetCount if specified
     const finalTargets = effect.targetCount ? targets.slice(0, effect.targetCount) : targets;
     
@@ -258,8 +261,8 @@ export class AtomicEffectExecutor {
     });
   }
 
-  private static rotateCards(gameState: GameState, playerUid: string, effect: AtomicEffect, direction: 'HORIZONTAL' | 'VERTICAL') {
-    const targets = this.findTargets(gameState, effect.targetFilter);
+  private static rotateCards(gameState: GameState, playerUid: string, effect: AtomicEffect, direction: 'HORIZONTAL' | 'VERTICAL', sourceCard?: Card) {
+    const targets = this.findTargets(gameState, effect.targetFilter, sourceCard);
     targets.forEach(card => {
       card.displayState = direction === 'HORIZONTAL' ? 'BACK_UPRIGHT' : 'FRONT_UPRIGHT'; // Simplified for now
       EventEngine.dispatchEvent(gameState, { type: 'CARD_ROTATED', targetCardId: card.gamecardId, data: { direction } });
@@ -273,9 +276,9 @@ export class AtomicEffectExecutor {
     EventEngine.dispatchEvent(gameState, { type: 'REVEAL_DECK', playerUid, data: { cards } });
   }
 
-  private static searchDeck(gameState: GameState, playerUid: string, effect: AtomicEffect) {
+  private static searchDeck(gameState: GameState, playerUid: string, effect: AtomicEffect, sourceCard?: Card) {
     const player = gameState.players[playerUid];
-    const results = player.deck.filter(c => this.matchesFilter(c, effect.targetFilter));
+    const results = player.deck.filter(c => this.matchesFilter(c, effect.targetFilter, sourceCard));
     if (results.length > 0) {
       // In a real game, this would be a UI choice if there are multiple. 
       // For atomic execution, we might pick the first one or the specific one.
@@ -432,5 +435,14 @@ export class AtomicEffectExecutor {
       });
 
       gameState.logs.push(`${player.displayName} 将 ${targets.length} 张侵蚀区的卡翻面。`);
+  }
+
+  private static applyCanResetChange(gameState: GameState, effect: AtomicEffect, sourceCard?: Card) {
+      const targets = this.findTargets(gameState, effect.targetFilter, sourceCard);
+      targets.forEach(card => {
+          if (effect.value !== undefined) {
+              card.canResetCount = effect.value;
+          }
+      });
   }
 }
