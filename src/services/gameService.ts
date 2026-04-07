@@ -94,13 +94,38 @@ export const GameService = {
       }
     }
 
-    // 3. Erosion Space Check (Costs)
+    // 3. Cost Check (AC Value)
     const cost = card.acValue || 0;
-    if (cost > 0) {
-      const currentTotalErosion = (player.erosionFront?.filter((c: any) => c !== null).length || 0) + 
-                                  (player.erosionBack?.filter((c: any) => c !== null).length || 0);
-      if (cost >= 10 - currentTotalErosion) {
-        return { canPlay: false, reason: 'NOT ENOUGH EROSION SPACE' };
+    if (cost < 0) {
+      const absCost = Math.abs(cost);
+      const faceUpFrontCount = player.erosionFront.filter((c: any) => c !== null && c.displayState === 'FRONT_UPRIGHT').length;
+      if (faceUpFrontCount < absCost) {
+        return { canPlay: false, reason: `EROSION FRONT HAS LESS THAN ${absCost} CARDS` };
+      }
+    } else if (cost > 0) {
+      let remainingCost = cost;
+      
+      // I. Check for Feijing card in hand (of the same color)
+      const hasFeijing = player.hand.some((c: any) => 
+        c.gamecardId !== card.gamecardId && 
+        c.feijingMark && 
+        c.color === card.color
+      );
+      if (hasFeijing) {
+        remainingCost = Math.max(0, remainingCost - 3);
+      }
+      
+      // II. Check for ready units on field
+      const readyUnitsCount = player.unitZone.filter((c: any) => c !== null && !c.isExhausted).length;
+      remainingCost = Math.max(0, remainingCost - readyUnitsCount);
+      
+      // III. Check Erosion space limit (cannot reach 10 total)
+      if (remainingCost > 0) {
+        const totalErosionCount = player.erosionFront.filter((c: any) => c !== null).length + 
+                                  player.erosionBack.filter((c: any) => c !== null).length;
+        if (totalErosionCount + remainingCost >= 10) {
+          return { canPlay: false, reason: 'EROSION ZONE IS FULL (LIMIT 9)' };
+        }
       }
     }
 

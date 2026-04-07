@@ -253,6 +253,7 @@ export const ServerGameService = {
       }
     }
 
+    // 3. Color Requirements
     const availableColors: Record<string, number> = { RED: 0, WHITE: 0, YELLOW: 0, BLUE: 0, GREEN: 0, NONE: 0 };
     const countColors = (c: Card | null) => {
       if (c && c.color !== 'NONE') availableColors[c.color] = (availableColors[c.color] || 0) + 1;
@@ -267,6 +268,42 @@ export const ServerGameService = {
       }
     }
 
+    // 4. Cost Check (AC Value)
+    const cost = card.acValue || 0;
+    if (cost < 0) {
+      const absCost = Math.abs(cost);
+      const faceUpFrontCount = player.erosionFront.filter(c => c !== null && c.displayState === 'FRONT_UPRIGHT').length;
+      if (faceUpFrontCount < absCost) {
+        return { canPlay: false, reason: `侵蚀区正面卡不足以支付费用 (需要 ${absCost} 张)` };
+      }
+    } else if (cost > 0) {
+      let remainingCost = cost;
+      
+      // I. Check for Feijing card in hand (of the same color)
+      const hasFeijing = player.hand.some(c => 
+        c.gamecardId !== card.gamecardId && 
+        c.feijingMark && 
+        c.color === card.color
+      );
+      if (hasFeijing) {
+        remainingCost = Math.max(0, remainingCost - 3);
+      }
+      
+      // II. Check for ready units on field
+      const readyUnitsCount = player.unitZone.filter(c => c !== null && !c.isExhausted).length;
+      remainingCost = Math.max(0, remainingCost - readyUnitsCount);
+      
+      // III. Check Erosion space limit (cannot reach 10 total)
+      if (remainingCost > 0) {
+        const totalErosionCount = player.erosionFront.filter(c => c !== null).length + 
+                                  player.erosionBack.filter(c => c !== null).length;
+        if (totalErosionCount + remainingCost >= 10) {
+          return { canPlay: false, reason: '侵蚀区空间不足 (总数不能超过 9 张)' };
+        }
+      }
+    }
+
+    // 5. Specific Effect Limits (e.g. erosionBackLimit)
     const playEffect = card.effects.find(e => e.type === 'ACTIVATE' || e.type === 'TRIGGER' || e.type === 'ALWAYS');
     if (playEffect?.erosionBackLimit) {
       const backCount = player.erosionBack.filter(c => c !== null).length;
