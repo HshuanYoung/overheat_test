@@ -148,6 +148,12 @@ export const BattleField: React.FC = () => {
     };
   }, [gameId, deckId]);
 
+  // Clear query selection when query changes
+  useEffect(() => {
+    setSelectedQueryIds([]);
+    setPaymentSelection({ useFeijing: [], exhaustIds: [], erosionFrontIds: [] });
+  }, [game?.pendingQuery?.id]);
+
 
 
 
@@ -1571,11 +1577,29 @@ export const BattleField: React.FC = () => {
             exit={{ opacity: 0 }}
             className="fixed inset-0 z-[600] bg-black/95 backdrop-blur-xl flex flex-col items-center justify-center p-8"
           >
-            <div className="max-w-6xl w-full flex flex-col items-center gap-10">
-              <div className="text-center">
-                <h2 className="text-5xl font-black italic text-[#f27d26] mb-3 uppercase tracking-tighter">
-                  {game.pendingQuery.title}
-                </h2>
+            {/* Background Accent for Discard */}
+            { (game.pendingQuery.title.includes('舍弃') || game.pendingQuery.title.includes('Discard')) && (
+              <div className="absolute inset-0 pointer-events-none overflow-hidden">
+                <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[400px] bg-red-600/10 blur-[120px] rounded-full" />
+              </div>
+            )}
+
+            <div className="max-w-6xl w-full flex flex-col items-center gap-10 relative z-10">
+              <div className="text-center flex flex-col items-center">
+                <div className={cn(
+                  "flex items-center justify-center gap-4 mb-3",
+                  (game.pendingQuery.title.includes('舍弃') || game.pendingQuery.title.includes('Discard')) ? "text-red-500" : "text-[#f27d26]"
+                )}>
+                  {(game.pendingQuery.title.includes('舍弃') || game.pendingQuery.title.includes('Discard')) ? (
+                    <Trash2 className="w-10 h-10 animate-bounce" />
+                  ) : (
+                    <Zap className="w-10 h-10 animate-pulse" />
+                  )}
+                  <h2 className="text-5xl font-black italic uppercase tracking-tighter">
+                    {game.pendingQuery.title}
+                  </h2>
+                </div>
+                
                 <p className="text-zinc-400 uppercase tracking-[0.4em] text-sm max-w-2xl mx-auto leading-relaxed">
                   {game.pendingQuery.description}
                 </p>
@@ -1599,14 +1623,16 @@ export const BattleField: React.FC = () => {
               </div>
 
               {game.pendingQuery.type === 'SELECT_CARD' ? (
-                <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-8 max-h-[50vh] overflow-y-auto p-4 custom-scrollbar w-full">
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-10 max-h-[55vh] overflow-y-auto p-6 custom-scrollbar w-full">
                   {game.pendingQuery.options.map((option, i) => {
                     const isSelected = selectedQueryIds.includes(option.card.gamecardId);
+                    const isDiscardQuery = game.pendingQuery!.title.includes('舍弃') || game.pendingQuery!.title.includes('Discard');
                     return (
                       <div key={`${option.card.gamecardId}-${i}`} className="flex flex-col items-center gap-4 group">
                         <div className="relative">
                           <motion.div
-                            whileHover={{ scale: 1.05, y: -10 }}
+                            whileHover={{ scale: 1.08, y: -12 }}
+                            whileTap={{ scale: 0.95 }}
                             onClick={() => {
                               setSelectedQueryIds(prev => {
                                 const alreadySelected = prev.includes(option.card.gamecardId);
@@ -1619,27 +1645,49 @@ export const BattleField: React.FC = () => {
                               });
                             }}
                             className={cn(
-                              "w-44 cursor-pointer transition-all rounded-2xl overflow-hidden border-2 relative",
+                              "w-48 cursor-pointer transition-all rounded-2xl overflow-hidden border-2 relative group-hover:shadow-2xl",
                               isSelected
-                                ? "border-[#f27d26] shadow-[0_0_40px_rgba(242,125,38,0.4)] scale-105"
+                                ? isDiscardQuery ? "border-red-500 shadow-[0_0_40px_rgba(239,68,68,0.4)] scale-105" : "border-[#f27d26] shadow-[0_0_40px_rgba(242,125,38,0.4)] scale-105"
                                 : "border-white/5 opacity-80 hover:opacity-100"
                             )}
                           >
                             <CardComponent card={option.card} disableZoom={true} />
-                            {isSelected && (
-                              <div className="absolute inset-0 bg-[#f27d26]/10 flex items-center justify-center pointer-events-none">
-                                <div className="w-12 h-12 rounded-full bg-[#f27d26] text-black flex items-center justify-center font-black shadow-2xl">
-                                  <Zap className="w-6 h-6 fill-current" />
-                                </div>
-                              </div>
-                            )}
+                            
+                            {/* Selected Badge */}
+                            <AnimatePresence>
+                              {isSelected && (
+                                <motion.div 
+                                  initial={{ scale: 0, opacity: 0 }}
+                                  animate={{ scale: 1, opacity: 1 }}
+                                  exit={{ scale: 0, opacity: 0 }}
+                                  className="absolute inset-0 bg-black/40 backdrop-blur-[2px] flex items-center justify-center pointer-events-none"
+                                >
+                                  <div className={cn(
+                                    "w-14 h-14 rounded-full flex items-center justify-center shadow-2xl relative",
+                                    isDiscardQuery ? "bg-red-600 text-white" : "bg-[#f27d26] text-black"
+                                  )}>
+                                    {isDiscardQuery ? <Trash2 className="w-8 h-8" /> : <Zap className="w-8 h-8 fill-current" />}
+                                    <motion.div 
+                                      animate={{ scale: [1, 1.2, 1] }} 
+                                      transition={{ repeat: Infinity, duration: 2 }}
+                                      className="absolute inset-0 rounded-full border-2 border-current opacity-30"
+                                    />
+                                  </div>
+                                </motion.div>
+                              )}
+                            </AnimatePresence>
                           </motion.div>
-                          <div className="absolute -top-4 -right-4 px-3 py-1 bg-black border border-white/10 rounded-lg text-[10px] font-black uppercase tracking-widest text-[#f27d26] shadow-2xl">
+                          
+                          <div className={cn(
+                            "absolute -top-3 -right-3 px-3 py-1 bg-black border rounded-lg text-[10px] font-black uppercase tracking-widest shadow-2xl z-20",
+                            isDiscardQuery ? "border-red-500/50 text-red-500" : "border-white/10 text-[#f27d26]"
+                          )}>
                             {option.source}
                           </div>
                         </div>
                         <div className="text-center">
-                          <p className="text-white text-[12px] font-bold truncate max-w-[176px]">{option.card.fullName}</p>
+                          <p className="text-white text-[13px] font-black uppercase tracking-tight truncate max-w-[192px]">{option.card.fullName}</p>
+                          <p className="text-zinc-500 text-[9px] uppercase tracking-widest mt-0.5">{option.card.type}</p>
                         </div>
                       </div>
                     );

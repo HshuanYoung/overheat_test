@@ -628,7 +628,7 @@ export const ServerGameService = {
             const playZoneCard = owner.playZone.find(c => c && c.gamecardId === card.gamecardId);
             if (playZoneCard) playZoneCard.playedTurn = gameState.turnCount;
             this.moveCard(gameState, stackItem.ownerUid, 'PLAY', stackItem.ownerUid, 'UNIT', card.gamecardId);
-          } else if (card.type === 'ITEM') {
+          } else if (card.type === 'ITEM' || card.isEquip) {
             const playZoneCard = owner.playZone.find(c => c && c.gamecardId === card.gamecardId);
             if (playZoneCard) playZoneCard.playedTurn = gameState.turnCount;
             this.moveCard(gameState, stackItem.ownerUid, 'PLAY', stackItem.ownerUid, 'ITEM', card.gamecardId);
@@ -731,7 +731,21 @@ export const ServerGameService = {
     const query = gameState.pendingQuery;
     gameState.pendingQuery = undefined; // Clear it
 
-    // Generic Resolution logic
+    // --- Generic Effect Resolution ---
+    if (query.callbackKey === 'EFFECT_RESOLVE') {
+        const sourceCardId = query.context?.sourceCardId;
+        const effectIndex = query.context?.effectIndex;
+        const card = sourceCardId ? this.findCardById(gameState, sourceCardId) : undefined;
+        const effect = (card && effectIndex !== undefined) ? card.effects?.[effectIndex] : undefined;
+
+        if (effect && effect.resolve) {
+            effect.resolve(card, gameState, gameState.players[playerUid], selections, query.context);
+            EventEngine.recalculateContinuousEffects(gameState);
+            return gameState;
+        }
+    }
+    // ---------------------------------
+
     let afterEffects = query.afterSelectionEffects || [];
     let currentSelections = selections;
     const sourceCardId = query.context?.sourceCardId;

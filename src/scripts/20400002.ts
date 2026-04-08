@@ -3,14 +3,14 @@ import { AtomicEffectExecutor } from '../services/AtomicEffectExecutor';
 
 const card: Card = {
   id: '20400002',
-  fullName: '歌月影舞',
+  fullName: '歌月扬帆',
   specialName: '',
   type: 'STORY',
   color: 'BLUE',
   gamecardId: null as any,
   colorReq: { BLUE: 2 },
   faction: '无',
-  acValue: 3,
+  acValue: -3,
   godMark: false,
   displayState: 'FRONT_UPRIGHT',
   feijingMark: false,
@@ -48,12 +48,12 @@ const card: Card = {
               enemyTarget.isExhausted = true;
               // Prevent vertical placement next round
               enemyTarget.canResetCount = 1;
-              
+
               gameState.logs.push(`[歌月影舞] 返回了 风花，使对方单位 ${enemyTarget.fullName} 进入无法重置状态。`);
             }
           }
         }
-        
+
         gameState.logs.push(`${playerState.displayName} 发动了 [歌月影舞]。`);
       }
     }

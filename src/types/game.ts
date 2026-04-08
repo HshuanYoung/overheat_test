@@ -4,7 +4,7 @@ export type CardColor = 'RED' | 'WHITE' | 'YELLOW' | 'BLUE' | 'GREEN' | 'NONE';
 export type EffectType = 'CONTINUOUS' | 'TRIGGERED' | 'ACTIVATED' | 'ALWAYS' | 'TRIGGER' | 'ACTIVATE';
 export type TriggerLocation = 'HAND' | 'UNIT' | 'ITEM' | 'GRAVE' | 'EXILE' | 'EROSION_FRONT' | 'EROSION_BACK' | 'PLAY' | 'DECK';
 
-export type GameEventType = 
+export type GameEventType =
   | 'PHASE_CHANGED'
   | 'CARD_ROTATED'
   | 'CARD_DRAWN'
@@ -98,6 +98,7 @@ export interface CardFilter {
   excludeGamecardId?: string;
   fuzzyName?: string;
   querySelection?: boolean; // If true, only target cards selected in the current query context
+  gamecardId?: string; // Specific instance ID
 }
 
 export interface AtomicEffect {
@@ -124,19 +125,19 @@ export interface CardEffect {
   id?: string;
   type: EffectType;
   limitCount?: number; // For ONCE_PER_TURN and ONCE_PER_GAME, this should be 1. For MULTI_PER_TURN and MULTI_PER_GAME, this can be any positive integer.
-  limitNowCount?:number;  //at the start of turn,reset to limitCount，each time use this effect,limitNowCount-1,when limitNowCount is 0,can't use this effect
-  limitGlobal?:boolean; //0:use every turn,1:only use once in the whole game
-  limitNameType?:boolean; //0:check gameid，1:check cardid
+  limitNowCount?: number;  //at the start of turn,reset to limitCount，each time use this effect,limitNowCount-1,when limitNowCount is 0,can't use this effect
+  limitGlobal?: boolean; //0:use every turn,1:only use once in the whole game
+  limitNameType?: boolean; //0:check gameid，1:check cardid
   erosionFrontLimit?: [number, number];   //scope:[2,8] means "this effect can only be triggered when there are 2 to 8 cards in the front erosion zone",[0,11] means not limited
-  erosionBackLimit?: [number, number];  
-  erosionTotalLimit?: [number, number]; 
+  erosionBackLimit?: [number, number];
+  erosionTotalLimit?: [number, number];
   playCost?: number;
   playColorReq?: { [color in CardColor]?: number };
   triggerLocation?: TriggerLocation[];
   factionReq?: string;
   godUnitReq?: boolean;
   targetcost?: [number, number]; // [min, max]
-  
+
   // New Event System Properties
   triggerEvent?: GameEventType;
   isMandatory?: boolean;
@@ -145,8 +146,9 @@ export interface CardEffect {
   cost?: (gameState: GameState, playerState: PlayerState, card: Card) => boolean;
   applyContinuous?: (gameState: GameState, card: Card) => void;
   removeContinuous?: (gameState: GameState, card: Card) => void;
-  
+
   execute?: (card: Card, gameState: GameState, playerState: PlayerState, event?: GameEvent) => void; // The function to execute when the effect is triggered
+  resolve?: (card: Card, gameState: GameState, playerState: PlayerState, selections: string[], context?: any) => void; // Resolve sequential steps after a query
   atomicEffects?: AtomicEffect[]; // Structured atomic effects
   content?: string; // Description of the effect: Move, Draw, Add Power, etc.
   description: string; // Human readable text
@@ -188,6 +190,8 @@ export interface Card {
   rarity: 'C' | 'U' | 'R' | 'SR' | 'UR' | 'SER' | 'PR';
   faction: string;
   runtimeFingerprint?: string;
+  equipTargetId?: string;
+  isEquip?: boolean;
 }
 
 export interface PlayerState {
@@ -245,20 +249,20 @@ export interface EffectQuery {
   paymentColor?: string;
 }
 
-export type GamePhase = 
-  | 'START' 
-  | 'DRAW' 
-  | 'EROSION' 
-  | 'MAIN' 
-  | 'BATTLE_DECLARATION' 
-  | 'DEFENSE_DECLARATION' 
-  | 'BATTLE_FREE' 
-  | 'DAMAGE_CALCULATION' 
-  | 'BATTLE_END' 
-  | 'DISCARD' 
-  | 'COUNTERING' 
-  | 'END' 
-  | 'MULLIGAN' 
+export type GamePhase =
+  | 'START'
+  | 'DRAW'
+  | 'EROSION'
+  | 'MAIN'
+  | 'BATTLE_DECLARATION'
+  | 'DEFENSE_DECLARATION'
+  | 'BATTLE_FREE'
+  | 'DAMAGE_CALCULATION'
+  | 'BATTLE_END'
+  | 'DISCARD'
+  | 'COUNTERING'
+  | 'END'
+  | 'MULLIGAN'
   | 'INIT';
 
 export interface GameState {
@@ -286,7 +290,7 @@ export interface GameState {
   };
   effectUsage?: Record<string, number>;
   phaseTimerStart?: number;
-  mainPhaseTimeRemaining?: number; 
+  mainPhaseTimeRemaining?: number;
   previousPhase?: GamePhase;
   pendingQuery?: EffectQuery;
 }
