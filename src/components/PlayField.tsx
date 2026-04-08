@@ -227,9 +227,21 @@ const PlayerHalf: React.FC<{
                 />
               </div>
               <div className="flex-1 h-24 flex items-center justify-center gap-1 overflow-x-auto px-4 bg-black/20 rounded-xl border border-white/5 custom-scrollbar">
-                {player.hand?.map((_, i) => (
-                  <div key={i} className="w-12 aspect-[3/4] -ml-8 first:ml-0 shadow-lg drop-shadow-md">
-                    <CardComponent isBack />
+                {player.hand?.map((card, i) => (
+                  <div 
+                    key={i} 
+                    className={cn(
+                      "w-12 aspect-[3/4] -ml-8 first:ml-0 shadow-lg drop-shadow-md transition-all",
+                      player.isHandPublic !== 0 ? "cursor-pointer hover:scale-110 hover:-translate-y-2 z-10" : "",
+                      isOpponent && "rotate-180"
+                    )}
+                    onClick={() => player.isHandPublic !== 0 && onPreviewCard?.(card)}
+                  >
+                    {player.isHandPublic !== 0 ? (
+                      <CardComponent card={card} disableZoom />
+                    ) : (
+                      <CardComponent isBack />
+                    )}
                   </div>
                 ))}
                 {(player.hand?.length || 0) === 0 && (

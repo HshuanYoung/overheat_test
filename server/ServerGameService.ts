@@ -1334,6 +1334,17 @@ export const ServerGameService = {
 
   executeStartPhase(gameState: GameState, player: PlayerState) {
     console.log(`[ServerGameService] executeStartPhase for ${player.displayName}`);
+
+    // Update public hand duration
+    Object.values(gameState.players).forEach(p => {
+      if (p.isHandPublic !== undefined && p.isHandPublic > 0) {
+        p.isHandPublic -= 1;
+        if (p.isHandPublic === 0) {
+          gameState.logs.push(`${p.displayName} 的手牌已恢复私密状态`);
+        }
+      }
+    });
+
     gameState.mainPhaseTimeRemaining = 300000;
     const unitsToReset = player.unitZone.filter(c => c && c.isExhausted && c.canResetCount === 0);
 

@@ -122,6 +122,7 @@ export class AtomicEffectExecutor {
         break;
 
       case 'REVEAL_HAND':
+        player.isHandPublic = effect.turnDuration !== undefined ? effect.turnDuration : -1;
         gameState.logs.push(`${player.displayName} 展示了手牌`);
         EventEngine.dispatchEvent(gameState, { type: 'REVEAL_HAND', playerUid });
         break;

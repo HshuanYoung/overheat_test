@@ -29,7 +29,7 @@ const card: Card = {
       type: 'TRIGGER',
       triggerEvent: 'CARD_ENTERED_ZONE',
       isMandatory: true,
-      description: '这张卡进入战场时，若你的战场上有2个或以上的蓝色区域（包括侵蚀区和道具区），双方玩家抽1张卡。',
+      description: '这张卡进入战场时，若你的战场上有2个或以上的蓝色单位，双方玩家抽1张卡。',
       condition: (gameState: GameState, playerState: PlayerState, instance: Card, event?: GameEvent) => {
         // Absolute Identification Check
         const isSelf = event?.type === 'CARD_ENTERED_ZONE' &&
@@ -42,8 +42,7 @@ const card: Card = {
 
         // Count blue zones (Unit, Item, Erosion) on your side
         let blueCount = 0;
-        const zones = [...playerState.unitZone];
-        zones.forEach(c => {
+        playerState.unitZone.forEach(c => {
           if (c && c.color === 'BLUE') blueCount++;
         });
         return blueCount >= 2;

@@ -15,7 +15,7 @@ const activation_10401008_1: CardEffect = {
   },
   execute: (instance: Card, gameState: GameState, playerState: PlayerState) => {
     const equippedItems = playerState.itemZone.filter(c => c && c.equipTargetId === instance.gamecardId) as Card[];
-    
+
     // Select from equipped items
     gameState.pendingQuery = {
       id: Math.random().toString(36).substring(7),
@@ -27,7 +27,7 @@ const activation_10401008_1: CardEffect = {
       minSelections: 1,
       maxSelections: 1,
       callbackKey: 'EFFECT_RESOLVE',
-      context: { 
+      context: {
         sourceCardId: instance.gamecardId,
         effectId: 'beitian_activate_1',
         step: 1
@@ -41,7 +41,7 @@ const activation_10401008_1: CardEffect = {
       if (targetCard) {
         const damageAmount = targetCard.acValue || 0;
         gameState.logs.push(`[北冥] 效果：破坏了装备卡 ${targetCard.fullName}，造成 ${damageAmount} 点效果伤害。`);
-        
+
         // 1. Destroy the card
         AtomicEffectExecutor.execute(gameState, playerState.uid, {
           type: 'DESTROY_CARD',
@@ -70,7 +70,7 @@ const activation_10401008_2: CardEffect = {
 
     // EXACTLY 2 blue units on field
     const blueUnitsCount = playerState.unitZone.filter(u => u && u.color === 'BLUE' && u.type === 'UNIT').length;
-    return blueUnitsCount === 2;
+    return blueUnitsCount >= 2;
   },
   cost: (gameState: GameState, playerState: PlayerState, instance: Card) => {
     // Search for '剑仙' card in hand (using fullName)
@@ -87,14 +87,14 @@ const activation_10401008_2: CardEffect = {
       minSelections: 1,
       maxSelections: 1,
       callbackKey: 'EFFECT_RESOLVE',
-      context: { 
+      context: {
         sourceCardId: instance.gamecardId,
         effectId: 'beitian_activate_2',
         step: 1
       }
     };
 
-    return true; 
+    return true;
   },
   resolve: (instance: Card, gameState: GameState, playerState: PlayerState, selections: string[], context: any) => {
     if (context.step === 1) {
@@ -130,7 +130,7 @@ const card: Card = {
   specialName: '北冥',
   type: 'UNIT',
   color: 'BLUE',
-  colorReq: {'BLUE':2},
+  colorReq: { 'BLUE': 2 },
   faction: '无',
   acValue: 4,
   power: 3500,
@@ -139,7 +139,7 @@ const card: Card = {
   baseDamage: 3,
   godMark: true,
   displayState: 'FRONT_UPRIGHT',
-  isExhausted:false,
+  isExhausted: false,
   isrush: false,
   canAttack: true,
   feijingMark: false,

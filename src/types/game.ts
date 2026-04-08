@@ -211,6 +211,7 @@ export interface PlayerState {
   mulliganDone: boolean;
   hasExhaustedThisTurn: string[];
   isGoddessMode?: boolean;
+  isHandPublic?: number;
 }
 
 export type StackItemType = 'PLAY' | 'EFFECT' | 'ATTACK' | 'PHASE_END';
