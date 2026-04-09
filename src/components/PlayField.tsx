@@ -20,6 +20,7 @@ interface PlayFieldProps {
   selectedAttackers?: string[];
   selectedDefender?: string;
   allianceInitiator?: string;
+  timer: number;
 }
 
 const CardSlot: React.FC<{
@@ -495,7 +496,7 @@ const PlayerHalf: React.FC<{
   );
 };
 
-export const PlayField: React.FC<PlayFieldProps> = ({ player, opponent, game, onCardClick, onPreviewCard, onPlayCard, paymentSelection, pendingPlayCard, stack, myUid, selectedAttackers, selectedDefender, allianceInitiator }) => {
+export const PlayField: React.FC<PlayFieldProps> = ({ player, opponent, game, onCardClick, onPreviewCard, onPlayCard, paymentSelection, pendingPlayCard, stack, myUid, selectedAttackers, selectedDefender, allianceInitiator, timer }) => {
   return (
     <div className="relative w-full h-full max-w-7xl mx-auto bg-[#0a0a0a] border-2 border-[#1a1a1a] rounded-xl shadow-2xl font-mono text-white select-none flex flex-col">
       {/* Grid Pattern Background */}
@@ -507,14 +508,13 @@ export const PlayField: React.FC<PlayFieldProps> = ({ player, opponent, game, on
 
       {/* Global Timer Display */}
       <div className="absolute top-4 right-4 z-50 flex items-center gap-3">
-        {game.phase === 'MAIN' ? (
+        {['MAIN', 'BATTLE_DECLARATION', 'BATTLE_FREE'].includes(game.phase) ? (
           <div className="bg-black/60 backdrop-blur-md border border-[#f27d26]/30 px-4 py-2 rounded-xl flex items-center gap-3 shadow-2xl">
             <Play className="w-4 h-4 text-[#f27d26]" />
             <div className="flex flex-col">
               <span className="text-[8px] text-zinc-500 uppercase font-black leading-none mb-1">Main Phase Time</span>
               <span className="text-xl font-black tabular-nums text-white leading-none">
-                {Math.floor((game.mainPhaseTimeRemaining || 0) / 60000)}:
-                {String(Math.floor(((game.mainPhaseTimeRemaining || 0) % 60000) / 1000)).padStart(2, '0')}
+                {Math.floor(timer / 60)}:{String(timer % 60).padStart(2, '0')}
               </span>
             </div>
           </div>
@@ -524,7 +524,7 @@ export const PlayField: React.FC<PlayFieldProps> = ({ player, opponent, game, on
             <div className="flex flex-col">
               <span className="text-[8px] text-zinc-500 uppercase font-black leading-none mb-1">{game.phase} Timeout</span>
               <span className="text-xl font-black tabular-nums text-red-500 leading-none">
-                {Math.max(0, Math.ceil((GAME_TIMEOUTS.INDEPENDENT_PHASE - (Date.now() - (game.phaseTimerStart || Date.now()))) / 1000))}s
+                {timer}s
               </span>
             </div>
           </div>

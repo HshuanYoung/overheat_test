@@ -16,9 +16,9 @@ async function migrate() {
             await conn.query(`UPDATE users SET coins = 100000 WHERE coins < 100000 OR coins IS NULL;`);
             await conn.query(`UPDATE users SET card_crystals = 100000 WHERE card_crystals < 100000 OR card_crystals IS NULL;`);
             
-            console.log("✅ User columns and balances synchronized");
+            // console.log("✅ User columns and balances synchronized");
         } catch (e: any) {
-            console.log('Column add/update error:', e.message);
+            // console.log('Column add/update error:', e.message);
         }
 
         // 2. Create decks table
@@ -35,7 +35,7 @@ async function migrate() {
             );
         `);
 
-        console.log("Migration complete");
+        // console.log("Migration complete");
     } catch (err) {
         console.error("Migration fatal error:", err);
     } finally {

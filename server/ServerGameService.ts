@@ -743,10 +743,10 @@ export const ServerGameService = {
   },
 
   async handleQueryChoice(gameState: GameState, playerUid: string, queryId: string, selections: string[]) {
-    console.log(`[Server] handleQueryChoice: player=${playerUid}, queryId=${queryId}, selections=`, selections);
+    // console.log(`[Server] handleQueryChoice: player=${playerUid}, queryId=${queryId}, selections=`, selections);
 
     if (!gameState.pendingQuery || gameState.pendingQuery.id !== queryId) {
-      console.warn(`[Server] Invalid query choice request: expected ${gameState.pendingQuery?.id}, got ${queryId}`);
+      // console.warn(`[Server] Invalid query choice request: expected ${gameState.pendingQuery?.id}, got ${queryId}`);
       throw new Error('无效的选择请求');
     }
     if (gameState.pendingQuery.playerUid !== playerUid) {
@@ -1212,17 +1212,18 @@ export const ServerGameService = {
   },
 
   async advancePhase(gameState: GameState, action?: string, playerId?: string) {
-    console.log(`[ServerGameService] advancePhase call, action: ${action}, phase: ${gameState.phase}, playerId: ${playerId}`);
+    // console.log(`[ServerGameService] advancePhase call, action: ${action}, phase: ${gameState.phase}, playerId: ${playerId}`);
 
+    // Standardized Shared Timer Docking
     const now = Date.now();
     const elapsed = now - (gameState.phaseTimerStart || now);
-
-    // If we are leaving a shared phase (MAIN, BATTLE_DECLARATION, BATTLE_FREE), subtract from turn budget
     const sharedPhases: GamePhase[] = ['MAIN', 'BATTLE_DECLARATION', 'BATTLE_FREE'];
-    if (sharedPhases.includes(gameState.phase)) {
+    const isWaiting = (gameState.counterStack && gameState.counterStack.length > 0) ||
+      (gameState.battleState && gameState.battleState.askConfront);
+
+    if (sharedPhases.includes(gameState.phase) && !isWaiting) {
       gameState.mainPhaseTimeRemaining = Math.max(0, (gameState.mainPhaseTimeRemaining || GAME_TIMEOUTS.MAIN_PHASE_TOTAL) - elapsed);
     }
-
     gameState.phaseTimerStart = now;
 
     // Identity of the player performing the action
@@ -1322,7 +1323,7 @@ export const ServerGameService = {
         break;
       case 'BATTLE_FREE':
         if (!gameState.battleState) {
-          console.warn('[ServerGameService] BATTLE_FREE without battleState, returning to MAIN');
+          // console.warn('[ServerGameService] BATTLE_FREE without battleState, returning to MAIN');
           gameState.phase = 'MAIN';
           gameState.logs.push(`[阶段切换] 战斗状态缺失，返回主要阶段`);
           return gameState;
@@ -1386,7 +1387,7 @@ export const ServerGameService = {
   },
 
   executeStartPhase(gameState: GameState, player: PlayerState) {
-    console.log(`[ServerGameService] executeStartPhase for ${player.displayName}`);
+    // console.log(`[ServerGameService] executeStartPhase for ${player.displayName}`);
 
     // Update public hand duration
     Object.values(gameState.players).forEach(p => {
@@ -1432,7 +1433,7 @@ export const ServerGameService = {
   },
 
   executeDrawPhase(gameState: GameState, player: PlayerState) {
-    console.log(`[ServerGameService] executeDrawPhase for ${player.displayName}`);
+    // console.log(`[ServerGameService] executeDrawPhase for ${player.displayName}`);
     gameState.logs.push(`${player.displayName} 的抽卡阶段`);
 
 
@@ -1472,18 +1473,18 @@ export const ServerGameService = {
   },
 
   executeErosionPhase(gameState: GameState, player: PlayerState) {
-    console.log(`[ServerGameService] executeErosionPhase for ${player.displayName}`);
+    // console.log(`[ServerGameService] executeErosionPhase for ${player.displayName}`);
     const faceUpCards = player.erosionFront.filter(c => c !== null && c.displayState === 'FRONT_UPRIGHT');
-    console.log(`[ServerGameService] Found ${faceUpCards.length} face-up cards in erosion front`);
+    // console.log(`[ServerGameService] Found ${faceUpCards.length} face-up cards in erosion front`);
 
     if (faceUpCards.length === 0) {
       gameState.logs.push(`${player.displayName} 侵蚀区没有正面卡，跳过侵蚀阶段。`);
       gameState.phase = 'MAIN';
       gameState.logs.push(`${player.displayName} 进入主要阶段`);
-      console.log(`[ServerGameService] No face-up cards, auto-moving to MAIN phase`);
+      // console.log(`[ServerGameService] No face-up cards, auto-moving to MAIN phase`);
     } else {
       gameState.logs.push(`${player.displayName} 进入侵蚀阶段，请选择处理方式。`);
-      console.log(`[ServerGameService] Waiting for erosion choice`);
+      // console.log(`[ServerGameService] Waiting for erosion choice`);
     }
   },
 
@@ -1537,6 +1538,7 @@ export const ServerGameService = {
     }
 
     gameState.phase = 'MAIN';
+    gameState.phaseTimerStart = Date.now();
     gameState.logs.push(`${player.displayName} 进入主要阶段`);
   },
 
@@ -1765,12 +1767,12 @@ export const ServerGameService = {
   async surrender(gameState: GameState, playerUid: string) {
     const player = gameState.players[playerUid];
     const opponentId = gameState.playerIds.find(id => id !== playerUid);
-    
+
     gameState.gameStatus = 2;
     gameState.winnerId = opponentId;
     gameState.winReason = 'SURRENDER';
     gameState.logs.push(`[游戏结束] ${player.displayName} 选择了投降。`);
-    
+
     return gameState;
   },
 
@@ -1782,7 +1784,7 @@ export const ServerGameService = {
     // Handle Countering (Bot chooses to pass priority)
     if (gameState.phase === 'COUNTERING') {
       if (gameState.priorityPlayerId === 'BOT_PLAYER') {
-        console.log('[Bot] Passing confrontation priority');
+        // console.log('[Bot] Passing confrontation priority');
         await this.passConfrontation(gameState, 'BOT_PLAYER');
       }
       return;
@@ -1809,7 +1811,7 @@ export const ServerGameService = {
     // Battle Free Phase response (as Opponent)
     if (gameState.phase === 'BATTLE_FREE' && !bot.isTurn) {
       if (gameState.battleState && gameState.battleState.askConfront === 'ASKING_OPPONENT') {
-        console.log('[Bot] Declining confrontation in BATTLE_FREE as Opponent');
+        // console.log('[Bot] Declining confrontation in BATTLE_FREE as Opponent');
         await this.advancePhase(gameState, 'DECLINE_CONFRONTATION', 'BOT_PLAYER');
         return;
       }
@@ -1850,10 +1852,10 @@ export const ServerGameService = {
       if (gameState.turnCount > 1 && canAttack) {
         // Enter battle phase only if we haven't already exhausted all attackers this AI iteration
         // To prevent infinite re-entry to BATTLE_DECLARATION from MAIN, we check if there's truly something new to do
-        console.log('[Bot] Entering Battle Phase');
+        // console.log('[Bot] Entering Battle Phase');
         await this.advancePhase(gameState, 'DECLARE_BATTLE');
       } else {
-        console.log('[Bot] Ending Turn');
+        // console.log('[Bot] Ending Turn');
         await this.advancePhase(gameState, 'DECLARE_END');
       }
       return;
@@ -1879,12 +1881,12 @@ export const ServerGameService = {
     if (gameState.phase === 'BATTLE_FREE' && bot.isTurn) {
       if (!gameState.battleState?.askConfront) {
         // Bot proposes calculation to give player a chance to counter
-        console.log('[Bot] Proposing damage calculation in BATTLE_FREE');
+        // console.log('[Bot] Proposing damage calculation in BATTLE_FREE');
         await this.advancePhase(gameState, 'PROPOSE_DAMAGE_CALCULATION');
       } else if (gameState.battleState.askConfront === 'ASKING_TURN_PLAYER') {
         // Player declined, bot now asked if it wants to counter? 
         // Bot usually just declines to get to resolution.
-        console.log('[Bot] Declining confrontation in BATTLE_FREE (ASKING_TURN_PLAYER)');
+        // console.log('[Bot] Declining confrontation in BATTLE_FREE (ASKING_TURN_PLAYER)');
         await this.advancePhase(gameState, 'DECLINE_CONFRONTATION');
       }
       return;

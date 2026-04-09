@@ -58,7 +58,7 @@ export const setupGameHandlers = (io: Server, socket: Socket) => {
             io.to(gameId).emit('gameStateUpdate', gameState);
             
         } catch (err: any) {
-            console.error('Game Action Error:', err);
+            // console.error('Game Action Error:', err);
             socket.emit('gameError', { message: err.message || 'Action failed' });
         }
     });

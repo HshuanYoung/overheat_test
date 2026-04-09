@@ -4,7 +4,7 @@ import { SERVER_CARD_LIBRARY, initServerCardLibrary } from './card_loader.js';
 async function seedAdmin() {
     let conn;
     try {
-        console.log("Starting Admin Seeding...");
+        // console.log("Starting Admin Seeding...");
         await initServerCardLibrary();
         conn = await pool.getConnection();
 
@@ -35,11 +35,11 @@ async function seedAdmin() {
             'UPDATE users SET coins = 100000, card_crystals = 100000 WHERE id = ?',
             [adminId]
         );
-        console.log("✅ Admin balance set to 100k/100k");
+        // console.log("✅ Admin balance set to 100k/100k");
 
         // 3. Seed 8 copies of every card to Admin
         const cardIds = Object.keys(SERVER_CARD_LIBRARY).filter(id => !id.includes(':legacy'));
-        console.log(`Found ${cardIds.length} cards to seed.`);
+        // console.log(`Found ${cardIds.length} cards to seed.`);
 
         for (const cardId of cardIds) {
             await conn.query(
@@ -48,9 +48,9 @@ async function seedAdmin() {
                 [adminId, cardId]
             );
         }
-        console.log(`✅ Seeded 8 copies of each card for admin.`);
+        // console.log(`✅ Seeded 8 copies of each card for admin.`);
 
-        console.log("🚀 Admin seeding complete!");
+        // console.log("🚀 Admin seeding complete!");
     } catch (err) {
         console.error("❌ Seeding error:", err);
     } finally {

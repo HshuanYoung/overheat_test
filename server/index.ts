@@ -1,6 +1,6 @@
 // VERSION: 2026-04-07-IND-FIX-01
 import express from 'express';
-console.log('[Server] index.ts is starting up...');
+// console.log('[Server] index.ts is starting up...');
 import { createServer } from 'http';
 
 import { Server } from 'socket.io';
@@ -10,7 +10,7 @@ import { pool, dbInit } from './db';
 import { generateToken, verifyToken } from './auth';
 import { initServerCardLibrary, SERVER_CARD_LIBRARY } from './card_loader';
 import { ServerGameService } from './ServerGameService';
-import { PlayerState, Card, GAME_TIMEOUTS } from '../src/types/game';
+import { PlayerState, Card, GAME_TIMEOUTS, GameState } from '../src/types/game';
 import fs from 'fs';
 import path from 'path';
 
@@ -40,7 +40,7 @@ async function withGameLock<T>(gameId: string, action: () => Promise<T>): Promis
         try {
             return await action();
         } catch (err) {
-            console.error(`[Lock] Error in locked action for game ${gameId}:`, err);
+            // console.error(`[Lock] Error in locked action for game ${gameId}:`, err);
             // Re-throw to allow the caller to handle it, but the lock chain continues
             throw err;
         }
@@ -71,7 +71,7 @@ async function validateUserDeck(uId: string, dId: string): Promise<{ valid: bool
 
         return { valid: true, cards: cObjs as any };
     } catch (err) {
-        console.error('Validate deck error:', err);
+        // console.error('Validate deck error:', err);
         return { valid: false, error: '数据库错误' };
     }
 }
@@ -115,7 +115,7 @@ async function handleBotMove(gameState: any, gameId: string) {
                     }
                 }
             } catch (err) {
-                console.error('[Bot] handleBotMove error:', err);
+                // console.error('[Bot] handleBotMove error:', err);
             }
         });
     }, 1000);
@@ -130,7 +130,7 @@ function triggerBotIfNeeded(gameState: any, gameId: string) {
     const isBotPriority = gameState.priorityPlayerId === 'BOT_PLAYER';
 
     if (currentPlayerId === 'BOT_PLAYER' || isBotAsked || isBotPriority) {
-        console.log(`[Bot] Triggering bot move for game ${gameId}. Reason: ${currentPlayerId === 'BOT_PLAYER' ? 'Turn' : isBotAsked ? 'Confrontation' : 'Priority'}`);
+        // console.log(`[Bot] Triggering bot move for game ${gameId}. Reason: ${currentPlayerId === 'BOT_PLAYER' ? 'Turn' : isBotAsked ? 'Confrontation' : 'Priority'}`);
         handleBotMove(gameState, gameId);
     }
 }
@@ -142,9 +142,21 @@ async function saveMatchLog(gameState: any, gameId?: string) {
     const matchNumber = gameState.gameId || gameId;
     if (!matchNumber) return;
 
-    // Use full history from memory if available, otherwise fallback to current logs
-    const fullHistory = matchLogHistory.get(matchNumber) || gameState.logs || [];
-    const logContent = fullHistory.join('\n');
+    const p1 = gameState.playerIds[0] || 'Unknown';
+    const p2 = gameState.playerIds[1] || 'Unknown';
+    const winner = gameState.winnerId || 'Draw/None';
+    const reason = gameState.winReason || 'Unknown';
+    
+    const history = matchLogHistory.get(gameId) || [];
+    const logContent = [
+        `Player1: ${p1}`,
+        `Player2: ${p2}`,
+        `Match: ${matchNumber}`,
+        `Winner: ${winner}`,
+        `Reason: ${reason}`,
+        '-----------------------------------',
+        ...history
+    ].join('\n');
 
     let savedAny = false;
     for (const uid of gameState.playerIds || []) {
@@ -162,7 +174,7 @@ async function saveMatchLog(gameState: any, gameId?: string) {
 
             const filePath = path.join(logDir, `${matchNumber}.log`);
             fs.writeFileSync(filePath, logContent);
-            console.log(`[Log] Match log saved for ${username}: ${filePath}`);
+            // console.log(`[Log] Match log saved for ${username}: ${filePath}`);
             savedAny = true;
         } catch (err) {
             console.error(`[Log] Failed to save match log for user ${uid}:`, err);
@@ -199,7 +211,7 @@ async function syncAndSaveState(gameId: string, gameState: any) {
 
     // 4. Prune logs in gameState to keep the DB 'state' blob small
     // satisfies "It should not be pushed to the backend (DB)"
-    const MAX_DB_LOGS = 50;
+    const MAX_DB_LOGS = 1000;
     if (gameState.logs.length > MAX_DB_LOGS) {
         gameState.logs = gameState.logs.slice(-MAX_DB_LOGS);
         // Update lastIdx so the next sync knows where to start from the pruned array
@@ -220,15 +232,15 @@ async function syncAndSaveState(gameId: string, gameState: any) {
 
 async function advancePhase(gameState: any, gameId: string, playerId?: string, socket?: any, action?: any) {
     try {
-        console.log(`[Socket] advancePhase for game ${gameId}, action: ${action}, playerId: ${playerId}`);
+        // console.log(`[Socket] advancePhase for game ${gameId}, action: ${action}, playerId: ${playerId}`);
         await ServerGameService.advancePhase(gameState, action, playerId);
 
         await syncAndSaveState(gameId, gameState);
 
         triggerBotIfNeeded(gameState, gameId);
     } catch (err: any) {
-        console.error('[Socket] advancePhase error:', err);
-        if (socket) socket.emit('error', err.message || '阶段切换失败');
+        // console.error('Game Action Error:', err);
+        if (socket) socket.emit('gameError', { message: err.message || 'Action failed' });
     }
 }
 
@@ -267,7 +279,7 @@ setInterval(async () => {
 
                     if (isWaitingForOpponent) {
                         if (phaseElapsed > GAME_TIMEOUTS.INDEPENDENT_PHASE) {
-                            console.log(`[Timer] Confrontation timeout in ${gameState.phase} for game ${gameId}, auto-advancing.`);
+                            // console.log(`[Timer] Confrontation timeout in ${gameState.phase} for game ${gameId}, auto-advancing.`);
                             gameState.logs.push('响应超时，自动推进。');
                             if (gameState.phase === 'BATTLE_FREE') {
                                 await ServerGameService.advancePhase(gameState, 'DECLINE_CONFRONTATION');
@@ -284,10 +296,10 @@ setInterval(async () => {
                             }
                         }
                     } else {
-                        gameState.mainPhaseTimeRemaining = (gameState.mainPhaseTimeRemaining || GAME_TIMEOUTS.MAIN_PHASE_TOTAL) - checkInterval;
+                        const remaining = (gameState.mainPhaseTimeRemaining || GAME_TIMEOUTS.MAIN_PHASE_TOTAL) - phaseElapsed;
 
-                        if (gameState.mainPhaseTimeRemaining <= 0) {
-                            console.log(`[Timer] Shared budget timeout for game ${gameId}, auto-advancing.`);
+                        if (remaining <= 0) {
+                            // console.log(`[Timer] Shared budget timeout for game ${gameId}, auto-advancing.`);
                             gameState.logs.push('阶段时间耗尽，强制推进。');
                             if (gameState.phase === 'BATTLE_FREE') {
                                 await ServerGameService.advancePhase(gameState, 'PROPOSE_DAMAGE_CALCULATION');
@@ -296,9 +308,8 @@ setInterval(async () => {
                             }
                             gameState.mainPhaseTimeRemaining = GAME_TIMEOUTS.MAIN_PHASE_TOTAL;
                             gameState.phaseTimerStart = Date.now();
+                            await syncAndSaveState(gameId, gameState);
                         }
-
-                        await syncAndSaveState(gameId, gameState);
 
                         const currentPlayerId = gameState.playerIds[gameState.currentTurnPlayer];
                         if (currentPlayerId === 'BOT_PLAYER' || gameState.priorityPlayerId === 'BOT_PLAYER') {
@@ -307,7 +318,7 @@ setInterval(async () => {
                     }
                 } else if (independentPhases.includes(gameState.phase)) {
                     if (phaseElapsed > GAME_TIMEOUTS.INDEPENDENT_PHASE) {
-                        console.log(`[Timer] Auto-advancing game ${gameId} due to timeout in phase ${gameState.phase}`);
+                        // console.log(`[Timer] Auto-advancing game ${gameId} due to timeout in phase ${gameState.phase}`);
 
                         if (gameState.phase === 'MULLIGAN' || gameState.phase === 'INIT') {
                             Object.values(gameState.players).forEach((p: any) => { p.mulliganDone = true; });
@@ -590,8 +601,8 @@ app.get('/api/user/profile', async (req, res): Promise<void> => {
 
     try {
         const rows = await pool.query('SELECT favorite_card_id, favorite_back_id, coins, card_crystals FROM users WHERE id = ?', [user.userId]);
-        res.json({ 
-            favoriteCardId: rows.length > 0 ? rows[0].favorite_card_id : null, 
+        res.json({
+            favoriteCardId: rows.length > 0 ? rows[0].favorite_card_id : null,
             favoriteBackId: rows.length > 0 ? rows[0].favorite_back_id : 'default',
             coins: rows.length > 0 ? Number(rows[0].coins) : 0,
             cardCrystals: rows.length > 0 ? Number(rows[0].card_crystals) : 0
@@ -1079,7 +1090,7 @@ function createInitialPlayer(deckCards: Card[], displayName: string, isFirst: bo
 }
 
 io.on('connection', (socket) => {
-    console.log('Client connected:', socket.id);
+    // console.log('Client connected:', socket.id);
 
     socket.on('authenticate', (token) => {
         const user = verifyToken(token);
@@ -1096,7 +1107,7 @@ io.on('connection', (socket) => {
     socket.on('joinGame', async (data: { gameId: string, deckId?: string }) => {
         const user = (socket as any).user;
         if (!user) {
-            console.log('[Socket] joinGame failed: Socket not authenticated');
+            // console.log('[Socket] joinGame failed: Socket not authenticated');
             socket.emit('error', '未授权，请重试');
             return;
         }
@@ -1105,20 +1116,20 @@ io.on('connection', (socket) => {
         const gameId = typeof data === 'string' ? data : data.gameId;
         const deckId = typeof data === 'object' ? data.deckId : undefined;
 
-        console.log(`[Socket] Request gameId: ${gameId}`);
+        // console.log(`[Socket] Request gameId: ${gameId}`);
         if (!gameId || gameId === 'undefined') {
-            console.log('[Socket] joinGame failed: Missing or invalid gameId');
+            // console.log('[Socket] joinGame failed: Missing or invalid gameId');
             socket.emit('error', '无效的房间ID');
             return;
         }
 
         socket.join(gameId);
-        console.log(`[Socket] User ${userIdStr} attempting to join game ${gameId}`);
+        // console.log(`[Socket] User ${userIdStr} attempting to join game ${gameId}`);
 
         try {
             const rows = await pool.query('SELECT state FROM games WHERE id = ?', [gameId]);
             if (rows.length === 0) {
-                console.log(`[Socket] joinGame failed: Game ${gameId} not found in DB`);
+                // console.log(`[Socket] joinGame failed: Game ${gameId} not found in DB`);
                 socket.emit('error', '未找到游戏战场');
                 return;
             }
@@ -1129,13 +1140,13 @@ io.on('connection', (socket) => {
 
             // Initialize human player if they haven't been initialized yet
             if (!gameState.players[userIdStr] && deckId) {
-                console.log(`[Socket] Initializing player ${userIdStr} in game ${gameId}`);
+                // console.log(`[Socket] Initializing player ${userIdStr} in game ${gameId}`);
                 const deckRows = await pool.query('SELECT * FROM decks WHERE id = ?', [deckId]);
                 if (deckRows.length > 0) {
                     const deckCardsRaw = typeof deckRows[0].cards === 'string' ? JSON.parse(deckRows[0].cards) : deckRows[0].cards;
 
                     if (Object.keys(SERVER_CARD_LIBRARY).length === 0) {
-                        console.log('[Socket] WARNING: Card library was empty, initializing now...');
+                        // console.log('[Socket] WARNING: Card library was empty, initializing now...');
                         await initServerCardLibrary();
                     }
 
@@ -1144,7 +1155,7 @@ io.on('connection', (socket) => {
                     // Validate Deck
                     const validation = ServerGameService.validateDeck(deckCards);
                     if (!validation.valid) {
-                        console.log(`[Socket] joinGame failed: Deck validation failed for user ${userIdStr}`);
+                        // console.log(`[Socket] joinGame failed: Deck validation failed for user ${userIdStr}`);
                         socket.emit('error', `卡组非法: ${validation.error}`);
                         return;
                     }
@@ -1171,14 +1182,14 @@ io.on('connection', (socket) => {
 
                     await syncAndSaveState(gameId, gameState);
                 } else {
-                    console.error(`[Socket] joinGame error: Deck ${deckId} not found`);
+                    // console.error(`[Socket] joinGame error: Deck ${deckId} not found`);
                 }
             }
 
-            console.log(`[Socket] joinGame success: for ${userIdStr} in ${gameId}`);
+            // console.log(`[Socket] joinGame success: for ${userIdStr} in ${gameId}`);
 
         } catch (err) {
-            console.error('[Socket] joinGame exception:', err);
+            // console.error('[Socket] joinGame exception:', err);
             socket.emit('error', '战场同步过程中发生错误');
         }
     });
@@ -1188,7 +1199,7 @@ io.on('connection', (socket) => {
         if (!user) return;
 
         const { gameId, action, payload } = data;
-        console.log(`[Socket] received gameAction: ${action} for game ${gameId}`, payload);
+        // console.log(`[Socket] received gameAction: ${action} for game ${gameId}`, payload);
 
         await withGameLock(gameId, async () => {
             try {
@@ -1200,7 +1211,7 @@ io.on('connection', (socket) => {
                 const myUid = user.userId.toString();
                 const player = gameState.players[myUid];
                 if (!player) {
-                    console.log(`[Socket] Action ${action} rejected: Player ${myUid} not found in game ${gameId}`);
+                    // console.log(`[Socket] Action ${action} rejected: Player ${myUid} not found in game ${gameId}`);
                     return;
                 }
 
@@ -1293,27 +1304,27 @@ io.on('connection', (socket) => {
                 await syncAndSaveState(gameId, gameState);
                 triggerBotIfNeeded(gameState, gameId);
             } catch (err) {
-                console.error('Game action error:', err);
+                // console.error('Game action error:', err);
             }
         });
     });
 
     socket.on('disconnect', () => {
-        console.log('Client disconnected:', socket.id);
+        // console.log('Client disconnected:', socket.id);
     });
 });
 
 // Main bootstrap function
 const start = async () => {
     try {
-        console.log('[Server] Initializing card library...');
+        // console.log('[Server] Initializing card library...');
         await initServerCardLibrary();
-        console.log('[Server] Connecting to database...');
+        // console.log('[Server] Connecting to database...');
         await dbInit();
 
         const PORT = process.env.PORT || 3001;
         httpServer.listen(PORT, () => {
-            console.log(`Server running on port ${PORT}`);
+            // console.log(`Server running on port ${PORT}`);
         });
     } catch (err) {
         console.error('[Server] Fatal initialization error:', err);

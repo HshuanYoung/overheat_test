@@ -2,7 +2,7 @@ import { Faction } from '../data/factions';
 
 export const GAME_TIMEOUTS = {
   MAIN_PHASE_TOTAL: 300000, // 300 seconds (5 minutes)
-  INDEPENDENT_PHASE: 5000,  // 5 seconds
+  INDEPENDENT_PHASE: 5000,  // 15 seconds
   CHECK_INTERVAL: 1000      // 1 seconds
 };
 

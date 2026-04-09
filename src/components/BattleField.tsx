@@ -63,7 +63,7 @@ export const BattleField: React.FC = () => {
 
   // Universal Visual Timer Logic
   useEffect(() => {
-    const interval = setInterval(() => {
+    const updateTimer = () => {
       if (!game) return;
       const now = Date.now();
       const elapsed = now - (game.phaseTimerStart || now);
@@ -81,15 +81,17 @@ export const BattleField: React.FC = () => {
         remaining = Math.max(0, GAME_TIMEOUTS.INDEPENDENT_PHASE - elapsed);
       }
 
-      const newTimerValue = Math.floor(remaining / 1000);
+      const newTimerValue = Math.ceil(remaining / 1000);
       setTimer(newTimerValue);
 
       // Auto-resolve for player if timeout during Countering
       if (game.phase === 'COUNTERING' && game.priorityPlayerId === myUid && remaining <= 0) {
-        clearInterval(interval);
         handleResolve();
       }
-    }, 500);
+    };
+
+    updateTimer();
+    const interval = setInterval(updateTimer, 500);
 
     return () => clearInterval(interval);
   }, [game?.phase, game?.phaseTimerStart, game?.mainPhaseTimeRemaining, game?.priorityPlayerId, myUid]);
@@ -892,19 +894,6 @@ export const BattleField: React.FC = () => {
                       {game.phase.replace(/_/g, ' ')}
                     </span>
                   </div>
-                  <div className="h-10 w-px bg-white/10 mx-2" />
-                  <div className="flex items-center gap-2 px-4 py-2 bg-black/40 rounded-xl border border-white/5 shadow-inner">
-                    <Loader2 className={cn("w-4 h-4 animate-spin text-[#f27d26]", timer <= 10 && "text-red-500")} />
-                    <span className={cn(
-                      "text-2xl font-black italic tabular-nums leading-none",
-                      timer > 10 ? "text-white" : "text-red-500 animate-pulse"
-                    )}>
-                      {['MAIN', 'BATTLE_DECLARATION', 'BATTLE_FREE'].includes(game.phase)
-                        ? `${Math.floor(timer / 60)}:${String(timer % 60).padStart(2, '0')}`
-                        : `${timer}s`
-                      }
-                    </span>
-                  </div>
                 </div>
               </div>
 
@@ -940,7 +929,7 @@ export const BattleField: React.FC = () => {
               Battle Logs
             </span>
             <div className="flex-1 overflow-y-auto space-y-3 pr-2 custom-scrollbar">
-              {game.logs.slice(-30).map((log, i) => (
+              {game.logs.slice().map((log, i) => (
                 <div key={i} className="text-[11px] font-mono text-white/60 leading-relaxed border-l border-white/10 pl-3 hover:text-white/90 transition-colors">
                   {log}
                 </div>
@@ -966,6 +955,7 @@ export const BattleField: React.FC = () => {
                   selectedAttackers={selectedAttackers}
                   selectedDefender={selectedDefender || undefined}
                   allianceInitiator={allianceTargetSelection || undefined}
+                  timer={timer}
                 />
               )}
             </div>
@@ -1003,10 +993,6 @@ export const BattleField: React.FC = () => {
                       <X className="w-4 h-4 group-hover:rotate-90 transition-transform" />
                       PASS
                     </button>
-                    <div className="h-4 w-px bg-white/20" />
-                    <div className="flex items-center gap-2 px-3 py-1 bg-black/40 rounded-full border border-red-500/30">
-                      <span className="text-red-500 font-mono text-xl font-black">{timer}s</span>
-                    </div>
                   </div>
                 )}
               </div>
@@ -1083,11 +1069,6 @@ export const BattleField: React.FC = () => {
                 <div className="text-center">
                   <h2 className="text-2xl font-black italic text-blue-500 uppercase tracking-widest mb-2">WAITING FOR DEFENSE</h2>
                   <p className="text-blue-200/60 font-medium tracking-wide">Opponent is choosing a unit to block your attack...</p>
-                </div>
-                <div className="px-6 py-2 bg-blue-500/10 rounded-full border border-blue-500/20">
-                  <span className="text-blue-400 font-bold tabular-nums">
-                    {timer}s
-                  </span>
                 </div>
               </motion.div>
             </div>
@@ -1375,9 +1356,6 @@ export const BattleField: React.FC = () => {
               className="bg-zinc-900 border border-white/10 rounded-2xl max-w-2xl w-full p-8 shadow-2xl"
               onClick={(e) => e.stopPropagation()}
             >
-              <div className="absolute top-4 right-6 text-2xl font-black text-red-500 animate-pulse">
-                {Math.max(0, Math.ceil((GAME_TIMEOUTS.INDEPENDENT_PHASE - (Date.now() - (game.phaseTimerStart || Date.now()))) / 1000))}s
-              </div>
               <h3 className="text-2xl font-black italic text-red-500 mb-6 uppercase tracking-tighter">选择要发动的效果</h3>
               <div className="space-y-4">
                 {effectSelection.effects.map((e, i) => (
@@ -1440,9 +1418,6 @@ export const BattleField: React.FC = () => {
               className="bg-zinc-900 border border-red-500/30 rounded-2xl max-w-xl w-full p-8 shadow-[0_0_50px_rgba(220,38,38,0.15)]"
               onClick={(e) => e.stopPropagation()}
             >
-              <div className="absolute top-4 right-6 text-2xl font-black text-red-500 animate-pulse">
-                {Math.max(0, Math.ceil((GAME_TIMEOUTS.INDEPENDENT_PHASE - (Date.now() - (game.phaseTimerStart || Date.now()))) / 1000))}s
-              </div>
               <h3 className="text-2xl font-black italic text-red-500 mb-6 uppercase tracking-tighter flex items-center gap-3">
                 <Zap className="w-6 h-6" />
                 CONFIRM EFFECT
@@ -1497,9 +1472,6 @@ export const BattleField: React.FC = () => {
             className="fixed inset-0 z-[150] bg-black/80 backdrop-blur-md flex items-center justify-center p-8"
           >
             <div className="bg-zinc-900 border-2 border-[#f27d26]/50 p-8 rounded-3xl flex flex-col items-center gap-6 shadow-[0_0_50px_rgba(242,125,38,0.3)] relative">
-              <div className="absolute top-4 right-6 text-2xl font-black text-[#f27d26] animate-pulse">
-                {Math.max(0, Math.ceil((GAME_TIMEOUTS.INDEPENDENT_PHASE - (Date.now() - (game.phaseTimerStart || Date.now()))) / 1000))}s
-              </div>
               <h2 className="text-3xl font-black italic text-[#f27d26] uppercase tracking-widest">CONFIRM COUNTER</h2>
               <p className="text-white/80">Your opponent is proposing damage calculation. Would you like to counter first?</p>
               <div className="flex gap-4">
@@ -1516,9 +1488,6 @@ export const BattleField: React.FC = () => {
             className="fixed inset-0 z-[150] bg-black/80 backdrop-blur-md flex items-center justify-center p-8"
           >
             <div className="bg-zinc-900 border-2 border-[#f27d26]/50 p-8 rounded-3xl flex flex-col items-center gap-6 shadow-[0_0_50px_rgba(242,125,38,0.3)] relative">
-              <div className="absolute top-4 right-6 text-2xl font-black text-[#f27d26] animate-pulse">
-                {Math.max(0, Math.ceil((GAME_TIMEOUTS.INDEPENDENT_PHASE - (Date.now() - (game.phaseTimerStart || Date.now()))) / 1000))}s
-              </div>
               <h2 className="text-3xl font-black italic text-[#f27d26] uppercase tracking-widest">CONFIRM COUNTER</h2>
               <p className="text-white/80">Opponent declined counter. Would you like to counter? (Choosing NO moves to damage calculation)</p>
               <div className="flex gap-4">

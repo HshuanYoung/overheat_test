@@ -2,7 +2,7 @@ import { pool } from './db';
 import bcrypt from 'bcryptjs';
 
 async function initDB() {
-    console.log("Starting Database Initialization...");
+    // console.log("Starting Database Initialization...");
     let conn;
     try {
         conn = await pool.getConnection();
@@ -22,7 +22,7 @@ async function initDB() {
                 created_at BIGINT
             )
         `);
-        console.log("✅ Users table ensured");
+        // console.log("✅ Users table ensured");
 
         // 2. Create games table
         await conn.query(`
@@ -34,7 +34,7 @@ async function initDB() {
                 updated_at BIGINT
             )
         `);
-        console.log("✅ Games table ensured");
+        // console.log("✅ Games table ensured");
 
         // 3. Create decks table
         await conn.query(`
@@ -49,7 +49,7 @@ async function initDB() {
                 FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
             )
         `);
-        console.log("✅ Decks table ensured");
+        // console.log("✅ Decks table ensured");
 
         // 4. Seed Users
         const accounts = [
@@ -70,13 +70,13 @@ async function initDB() {
                     'INSERT INTO users (id, username, password_hash, display_name, role, coins, card_crystals, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
                     [account.id, account.username, hash, account.name, account.role, 100000, 100000, Date.now()]
                 );
-                console.log(`✅ Seeded user: ${account.username}`);
+                // console.log(`✅ Seeded user: ${account.username}`);
             } else {
-                console.log(`⚠️ User ${account.username} already exists`);
+                // console.log(`⚠️ User ${account.username} already exists`);
             }
         }
 
-        console.log("🚀 Database initialization complete!");
+        // console.log("🚀 Database initialization complete!");
     } catch (err) {
         console.error("❌ Initialization error:", err);
     } finally {

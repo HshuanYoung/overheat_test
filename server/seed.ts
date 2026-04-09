@@ -22,11 +22,11 @@ async function seed() {
         for (const query of queries) {
             // Ignore CREATE DATABASE IF NOT EXISTS overheat again
             if (query.includes('CREATE DATABASE')) continue;
-            console.log(`Executing: ${query.substring(0, 50)}...`);
+            // console.log(`Executing: ${query.substring(0, 50)}...`);
             await conn.query(query);
         }
         
-        console.log('Schema setup complete');
+        // console.log('Schema setup complete');
         conn.release();
         process.exit(0);
     } catch (err) {

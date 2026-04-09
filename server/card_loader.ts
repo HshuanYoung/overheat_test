@@ -45,5 +45,5 @@ export async function initServerCardLibrary() {
       SERVER_CARD_LIBRARY[c.id] = c;
     }
   }
-  console.log(`[Server] Loaded ${cards.length} card variations into library.`);
+  // console.log(`[Server] Loaded ${cards.length} card variations into library.`);
 }
