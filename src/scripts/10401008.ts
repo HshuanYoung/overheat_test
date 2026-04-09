@@ -131,7 +131,7 @@ const card: Card = {
   type: 'UNIT',
   color: 'BLUE',
   colorReq: { 'BLUE': 2 },
-  faction: '无',
+  faction: '百濑之水城',
   acValue: 4,
   power: 3500,
   basePower: 3500,
@@ -148,8 +148,8 @@ const card: Card = {
     activation_10401008_1,
     activation_10401008_2
   ],
-  rarity: 'SR',
-  availableRarities: ['SR'],
+  rarity: 'SER',
+  availableRarities: ['SER'],
   uniqueId: null,
 };
 

@@ -7,7 +7,7 @@ export function cn(...inputs: ClassValue[]) {
 
 export function getCardImageUrl(cardId: string, rarity: string, thumbnail: boolean = false) {
   const rarityUpper = (rarity || 'C').toUpperCase();
-  const base = '/Pics';
+  const base = '/pics';
   if (thumbnail) {
     return `${base}/${rarityUpper}/thumbnail/${cardId}.jpg`;
   }

@@ -64,7 +64,7 @@ export const TopBar: React.FC<{ onOpenRulebook: () => void }> = ({ onOpenRuleboo
         </button>
         <Link to="/profile" className="flex items-center gap-2 text-zinc-400 hover:text-red-500 transition-colors text-sm font-bold uppercase tracking-wider">
           <div className="w-8 h-8 rounded-full bg-red-600 flex items-center justify-center overflow-hidden border border-white/10">
-            {user?.photoURL ? <img src={user.photoURL} className="w-full h-full object-cover" /> : <User className="w-4 h-4 text-white" />}
+            {user?.photoURL ? <img src={user.photoURL} className="w-full h-full object-cover" /> : <img src="assets/icons/myself.JPG" className="w-full h-full object-cover" />}
           </div>
           个人信息
         </Link>

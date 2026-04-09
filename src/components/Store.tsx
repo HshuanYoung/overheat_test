@@ -167,7 +167,7 @@ export const Store: React.FC = () => {
               )}
             >
               <div className="absolute inset-0 bg-gradient-to-b from-red-950/40 via-black to-red-950/20" />
-              <img src="/Pics/SR/10401004.jpg" className="absolute inset-0 w-full h-full object-cover opacity-60 group-hover:scale-110 transition-transform duration-700" />
+              <img src="assets/cardpack/basic.JPG" className="absolute inset-0 w-full h-full object-cover opacity-60 group-hover:scale-110 transition-transform duration-700" />
               <div className="absolute inset-0 flex flex-col items-center justify-center gap-6 z-10 text-center px-6">
                 {/* <ShoppingBag className="w-20 h-20 text-red-500 group-hover:scale-110 transition-transform duration-500" /> */}
                 <div>
@@ -217,7 +217,7 @@ export const Store: React.FC = () => {
               )}
             >
               <div className="absolute inset-0 bg-gradient-to-b from-rose-950/40 via-black to-rose-950/20" />
-              <img src="/Pics/PR/10402007.jpg" className="absolute inset-0 w-full h-full object-cover opacity-60 group-hover:scale-110 transition-transform duration-700" />
+              <img src="assets/cardpack/basic.JPG" className="absolute inset-0 w-full h-full object-cover opacity-60 group-hover:scale-110 transition-transform duration-700" />
               <div className="absolute inset-0 flex flex-col items-center justify-center gap-6 z-10 text-center px-6">
                 {/* <Sparkles className="w-20 h-20 text-rose-500 group-hover:scale-110 transition-transform duration-500" /> */}
                 <div>
@@ -336,7 +336,7 @@ export const Store: React.FC = () => {
                               "absolute inset-0 backface-hidden rounded-2xl border-2 border-white/10 bg-zinc-900 group-hover:border-red-500/50 flex flex-col items-center justify-center p-4 transition-colors",
                               "shadow-[0_10px_30px_rgba(0,0,0,0.5)]"
                             )}>
-                              <img src="/assets/card_bg.jpg" className="absolute inset-0 w-full h-full object-cover opacity-20 rounded-2xl grayscale" />
+                              <img src="assets/card_bg/default_card_bg.jpg" className="absolute inset-0 w-full h-full object-cover opacity-20 rounded-2xl grayscale" />
                               <div className="relative z-10 flex flex-col items-center gap-2">
                                 <ShoppingBag className="w-10 h-10 text-zinc-700 group-hover:text-red-500 animation-pulse" />
                                 <span className="text-[10px] font-black text-zinc-700 uppercase tracking-widest">Pack Card</span>

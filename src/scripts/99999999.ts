@@ -9,7 +9,7 @@ const card: Card = {
   color: 'BLUE',
   gamecardId: null as any,
   colorReq: { BLUE: 1 },
-  faction: '测试',
+  faction: '九尾商会联盟',
   acValue: 4,
   power: 3500,
   basePower: 3500,

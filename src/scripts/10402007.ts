@@ -245,7 +245,7 @@ const card: Card = {
   color: 'BLUE',
   gamecardId: null as any,
   colorReq: { 'BLUE': 1 },
-  faction: '无',
+  faction: '九尾商会联盟',
   acValue: 2,
   power: 1500,
   basePower: 1500,

@@ -439,7 +439,7 @@ export const BattleField: React.FC = () => {
 
   const handleQuerySubmit = async () => {
     if (!gameId || !game?.pendingQuery) return;
-    
+
     console.log(`[Query] Submitting choice for ${game.pendingQuery.type}:`, {
       id: game.pendingQuery.id,
       selectedIds: selectedQueryIds,
@@ -450,11 +450,11 @@ export const BattleField: React.FC = () => {
       let selections = selectedQueryIds;
       // Normalize type check to handle potential variations
       const queryType = game.pendingQuery.type.replace(/-/g, '_').toUpperCase();
-      
+
       if (queryType === 'SELECT_PAYMENT') {
         selections = [JSON.stringify(paymentSelection)];
       }
-      
+
       await GameService.submitQueryChoice(gameId, game.pendingQuery.id, selections);
       setSelectedQueryIds([]);
       setPaymentSelection({ useFeijing: [], exhaustIds: [], erosionFrontIds: [] });
@@ -562,7 +562,7 @@ export const BattleField: React.FC = () => {
             >
               <div className="relative max-h-[90vh] aspect-[3/4]">
                 <img
-                  src={previewCard.fullImageUrl || previewCard.imageUrl || `https://picsum.photos/seed/${previewCard.id}/400/600`}
+                  src={previewCard.fullImageUrl || previewCard.imageUrl}
                   alt={previewCard.fullName}
                   className="w-full h-full object-contain rounded-2xl shadow-2xl"
                   referrerPolicy="no-referrer"
@@ -980,11 +980,17 @@ export const BattleField: React.FC = () => {
           </div>
 
           <div className={cn(
-            "px-6 py-2 rounded-xl text-sm font-black uppercase italic tracking-[0.2em] shadow-2xl border border-white/10",
+            "flex items-center gap-3 px-6 py-2 rounded-xl text-sm font-black uppercase italic tracking-[0.2em] shadow-2xl border border-white/10",
             game.playerIds[game.currentTurnPlayer] === myUid
               ? "bg-[#f27d26] text-black animate-pulse"
               : "bg-zinc-800 text-white/50"
           )}>
+            <div className="w-6 h-6 rounded-full overflow-hidden border border-white/20">
+              {game.playerIds[game.currentTurnPlayer] === myUid 
+                ? <img src={authUser?.photoURL || 'assets/icons/myself.JPG'} className="w-full h-full object-cover" />
+                : <img src="assets/icons/opponent.JPG" className="w-full h-full object-cover" />
+              }
+            </div>
             {game.playerIds[game.currentTurnPlayer] === myUid ? "YOUR ACTION" : "OPPONENT ACTION"}
           </div>
         </div>
@@ -1230,8 +1236,8 @@ export const BattleField: React.FC = () => {
                   if (!isMyCard) return null;
 
                   const latestCard = [
-                      ...me.unitZone, ...me.itemZone, ...me.erosionFront, ...me.hand,
-                      ...(opponent?.unitZone || []), ...(opponent?.itemZone || []), ...(opponent?.erosionFront || [])
+                    ...me.unitZone, ...me.itemZone, ...me.erosionFront, ...me.hand,
+                    ...(opponent?.unitZone || []), ...(opponent?.itemZone || []), ...(opponent?.erosionFront || [])
                   ].find(c => c?.gamecardId === cardMenu.card.gamecardId) || cardMenu.card;
 
                   const activateEffects = latestCard.effects?.map((effect, index) => ({ effect, index }))
@@ -1243,7 +1249,7 @@ export const BattleField: React.FC = () => {
                     'erosion_front': 'EROSION_FRONT',
                     'hand': 'HAND'
                   };
-                     const validEffects = activateEffects.filter(e => {
+                  const validEffects = activateEffects.filter(e => {
                     const zoneMap: Record<string, string> = {
                       'unit': 'UNIT',
                       'item': 'ITEM',
@@ -1846,7 +1852,7 @@ export const BattleField: React.FC = () => {
 
                 <div className="relative aspect-[3/4] rounded-3xl overflow-hidden border-2 border-white/10 shadow-[0_30px_60px_rgba(0,0,0,0.8)] group">
                   <img
-                    src={previewCard.fullImageUrl || previewCard.imageUrl || `https://picsum.photos/seed/${previewCard.id}/400/600`}
+                    src={previewCard.fullImageUrl || previewCard.imageUrl}
                     alt={previewCard.fullName}
                     className="w-full h-full object-cover transition-transform duration-1000 group-hover:scale-110"
                     referrerPolicy="no-referrer"
@@ -1938,7 +1944,7 @@ export const BattleField: React.FC = () => {
                         <Layers className="w-3 h-3 text-[#f27d26]" />
                         <span className="text-[10px] font-black uppercase text-white/30 tracking-widest">Influenced By</span>
                       </div>
-                      
+
                       <div className="space-y-3">
                         {previewCard.influencingEffects && previewCard.influencingEffects.length > 0 ? (
                           previewCard.influencingEffects.map((eff, i) => (

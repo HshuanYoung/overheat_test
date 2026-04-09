@@ -1,3 +1,5 @@
+import { Faction } from '../data/factions';
+
 export const GAME_TIMEOUTS = {
   MAIN_PHASE_TOTAL: 300000, // 300 seconds (5 minutes)
   INDEPENDENT_PHASE: 5000,  // 5 seconds
@@ -86,7 +88,7 @@ export interface CardFilter {
   name?: string;
   type?: CardType;
   color?: CardColor;
-  faction?: string;
+  faction?: Faction | string;
   godMark?: boolean;
   minPower?: number;
   maxPower?: number;
@@ -139,7 +141,7 @@ export interface CardEffect {
   playCost?: number;
   playColorReq?: { [color in CardColor]?: number };
   triggerLocation?: TriggerLocation[];
-  factionReq?: string;
+  factionReq?: Faction | string;
   godUnitReq?: boolean;
   targetcost?: [number, number]; // [min, max]
 
@@ -197,8 +199,8 @@ export interface Card {
   fullImageUrl?: string;
   rarity: Rarity;
   availableRarities?: Rarity[];
-  faction: string;
-  baseFaction?: string;
+  faction: Faction | string;
+  baseFaction?: Faction | string;
   runtimeFingerprint?: string;
   equipTargetId?: string;
   isEquip?: boolean;

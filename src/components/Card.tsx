@@ -42,7 +42,7 @@ export const CardComponent: React.FC<CardProps> = ({ card, onClick, className, c
         )}
       >
         <img
-          src="/assets/card_bg.jpg"
+          src="assets/card_bg/default_card_bg.jpg"
           alt="Card Back"
           className="absolute inset-0 w-full h-full object-cover"
           referrerPolicy="no-referrer"

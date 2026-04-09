@@ -6,11 +6,11 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '../lib/utils';
 
 const RAY_CARDS = [
-  { id: 'fav_card', name: '默认雷亚卡', url: '/assets/fav_card/fav_card.jpg' },
-  { id: 'fav_card_1', name: '雷亚卡 01', url: '/assets/fav_card/fav_card_1.jpg' },
-  { id: 'fav_card_2', name: '雷亚卡 02', url: '/assets/fav_card/fav_card_2.jpg' },
-  { id: 'fav_card_3', name: '雷亚卡 03', url: '/assets/fav_card/fav_card_3.jpg' },
-  { id: 'fav_card_4', name: '雷亚卡 04', url: '/assets/fav_card/fav_card_4.jpg' },
+  { id: 'fav_card', name: '默认雷亚卡', url: 'assets/fav_card/fav_card.jpg' },
+  { id: 'fav_card_1', name: '雷亚卡 01', url: 'assets/fav_card/fav_card1.jpg' },
+  { id: 'fav_card_2', name: '雷亚卡 02', url: 'assets/fav_card/fav_card2.jpg' },
+  { id: 'fav_card_3', name: '雷亚卡 03', url: 'assets/fav_card/fav_card3.jpg' },
+  { id: 'fav_card_4', name: '雷亚卡 04', url: 'assets/fav_card/fav_card.jpg' },
 ];
 
 export const Home: React.FC = () => {
@@ -54,7 +54,7 @@ export const Home: React.FC = () => {
       <div 
         className="absolute inset-0 z-0 opacity-30 transition-all duration-1000"
         style={{
-          backgroundImage: `url("${favoriteCard?.url || '/assets/fav_card/fav_card.jpg'}")`,
+          backgroundImage: `url("${favoriteCard?.url || 'assets/fav_card/fav_card.jpg'}")`,
           backgroundSize: 'cover',
           backgroundPosition: 'center',
           filter: 'blur(2px)',

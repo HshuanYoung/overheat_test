@@ -8,7 +8,7 @@ const card: Card = {
   color: 'BLUE',
   gamecardId: null as any,
   colorReq: {},
-  faction: '无',
+  faction: '冒险家工会',
   acValue: 1,
   godMark: false,
   displayState: 'FRONT_UPRIGHT',
@@ -35,8 +35,8 @@ const card: Card = {
       ]
     }
   ],
-  rarity: 'U',
-  availableRarities: ['U'],
+  rarity: 'R',
+  availableRarities: ['R'],
   uniqueId: null,
 };
 

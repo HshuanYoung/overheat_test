@@ -3,6 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Save, Trash2, Plus, Search, Loader2, Copy, Edit3, X, Sparkles } from 'lucide-react';
 import { CARD_LIBRARY } from '../data/cards';
+import { FACTIONS } from '../data/factions';
 import { Card as CardType, Deck } from '../types/game';
 import { CardComponent } from './Card';
 import { cn, getCardImageUrl } from '../lib/utils';
@@ -26,7 +27,7 @@ export const DeckBuilder: React.FC = () => {
     damage: '',
     power: '',
     color: 'ALL',
-    faction: '',
+    faction: 'ALL',
     rarity: 'ALL',
     ownership: 'ALL' // ALL, OWNED, NOT_OWNED
   });
@@ -300,7 +301,7 @@ export const DeckBuilder: React.FC = () => {
     if (filters.damage !== '' && c.damage?.toString() !== filters.damage) return false;
     if (filters.power !== '' && c.power?.toString() !== filters.power) return false;
     if (filters.color !== 'ALL' && c.color !== filters.color) return false;
-    if (filters.faction !== '' && !c.faction?.toLocaleLowerCase().includes(filters.faction.toLocaleLowerCase())) return false;
+    if (filters.faction !== 'ALL' && c.faction !== filters.faction) return false;
     if (filters.rarity !== 'ALL' && c.rarity !== filters.rarity) return false;
 
     // Ownership
@@ -532,12 +533,16 @@ export const DeckBuilder: React.FC = () => {
             </div>
             <div className="flex flex-col gap-1">
               <label className="text-[10px] text-zinc-500 font-bold uppercase">Faction</label>
-              <input 
-                className="bg-black border border-zinc-800 rounded px-2 py-1 text-xs"
-                placeholder="All"
+              <select 
+                className="bg-black border border-zinc-800 rounded px-2 py-1 text-xs text-white appearance-none"
                 value={filters.faction}
                 onChange={e => setFilters({...filters, faction: e.target.value})}
-              />
+              >
+                <option value="ALL">All Factions</option>
+                {FACTIONS.map(f => (
+                  <option key={f} value={f}>{f}</option>
+                ))}
+              </select>
             </div>
           </div>
         </div>

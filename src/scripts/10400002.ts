@@ -70,8 +70,8 @@ const card: Card = {
       }
     }
   ],
-  rarity: 'SER',
-  availableRarities: ['SER'],
+  rarity: 'U',
+  availableRarities: ['U'],
   uniqueId: null,
 };
 

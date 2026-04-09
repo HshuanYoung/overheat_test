@@ -7,11 +7,11 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '../lib/utils';
 
 const RAY_CARDS = [
-  { id: 'fav_card', name: '默认雷亚卡', url: '/assets/fav_card/fav_card.jpg' },
-  { id: 'fav_card_1', name: '雷亚卡 01', url: '/assets/fav_card/fav_card_1.jpg' },
-  { id: 'fav_card_2', name: '雷亚卡 02', url: '/assets/fav_card/fav_card_2.jpg' },
-  { id: 'fav_card_3', name: '雷亚卡 03', url: '/assets/fav_card/fav_card_3.jpg' },
-  { id: 'fav_card_4', name: '雷亚卡 04', url: '/assets/fav_card/fav_card_4.jpg' },
+  { id: 'fav_card', name: '默认雷亚卡', url: 'assets/fav_card/fav_card.jpg' },
+  { id: 'fav_card_1', name: '雷亚卡 01', url: 'assets/fav_card/fav_card1.jpg' },
+  { id: 'fav_card_2', name: '雷亚卡 02', url: 'assets/fav_card/fav_card2.jpg' },
+  { id: 'fav_card_3', name: '雷亚卡 03', url: 'assets/fav_card/fav_card3.jpg' },
+  { id: 'fav_card_4', name: '雷亚卡 04', url: 'assets/fav_card/fav_card.jpg' },
 ];
 
 export const Profile: React.FC = () => {
@@ -83,7 +83,7 @@ export const Profile: React.FC = () => {
       <div 
         className="fixed inset-0 z-0 opacity-20 transition-all duration-1000"
         style={{
-          backgroundImage: `url("${favoriteCard?.url || '/assets/fav_card/fav_card.jpg'}")`,
+          backgroundImage: `url("${favoriteCard?.url || 'assets/fav_card/fav_card.jpg'}")`,
           backgroundSize: 'cover',
           backgroundPosition: 'center',
           filter: 'blur(3px)',
@@ -102,7 +102,7 @@ export const Profile: React.FC = () => {
               </button>
               <div className="flex items-center gap-6">
                 <div className="w-28 h-28 rounded-full bg-red-600 flex items-center justify-center overflow-hidden border-4 border-zinc-800 shadow-[0_0_50px_rgba(220,38,38,0.2)]">
-                  {user?.photoURL ? <img src={user.photoURL} className="w-full h-full object-cover" /> : <User className="w-14 h-14 text-white" />}
+                  {user?.photoURL ? <img src={user.photoURL} className="w-full h-full object-cover" /> : <img src="assets/icons/myself.JPG" className="w-full h-full object-cover" />}
                 </div>
                 <div>
                   <input 

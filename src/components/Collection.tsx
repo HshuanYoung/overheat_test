@@ -4,6 +4,7 @@ import { ArrowLeft, Search, Loader2, Filter, Layout, CreditCard, Image as ImageI
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '../lib/utils';
 import { CARD_LIBRARY } from '../data/cards';
+import { FACTIONS } from '../data/factions';
 import { Card, Deck } from '../types/game';
 import { CardComponent } from './Card';
 import { getAuthUser } from '../socket';
@@ -49,7 +50,7 @@ export const Collection: React.FC = () => {
   const [filterRarity, setFilterRarity] = useState<string | null>(null);
   const [filterColor, setFilterColor] = useState<string | null>(null);
   const [filters, setFilters] = useState({
-    ac: '', damage: '', power: '', faction: '', ownership: 'ALL'
+    ac: '', damage: '', power: '', faction: 'ALL', ownership: 'ALL'
   });
 
   const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001';
@@ -179,7 +180,7 @@ export const Collection: React.FC = () => {
     if (filters.ac !== '' && card.acValue.toString() !== filters.ac) return false;
     if (filters.damage !== '' && card.damage?.toString() !== filters.damage) return false;
     if (filters.power !== '' && card.power?.toString() !== filters.power) return false;
-    if (filters.faction !== '' && !card.faction?.toLocaleLowerCase().includes(filters.faction.toLocaleLowerCase())) return false;
+    if (filters.faction !== 'ALL' && card.faction !== filters.faction) return false;
     const isOwned = (collection[card.uniqueId] || collection[card.id] || 0) > 0;
     if (filters.ownership === 'OWNED' && !isOwned) return false;
     if (filters.ownership === 'NOT_OWNED' && isOwned) return false;
@@ -311,6 +312,36 @@ export const Collection: React.FC = () => {
                     <option value="OWNED">已拥有</option>
                     <option value="NOT_OWNED">未拥有</option>
                   </select>
+
+                  <select 
+                    className="bg-zinc-900/50 border border-white/5 rounded-xl px-3 py-2.5 text-xs font-bold text-white focus:outline-none"
+                    value={filters.faction}
+                    onChange={e => setFilters({...filters, faction: e.target.value})}
+                  >
+                    <option value="ALL">全部势力</option>
+                    {FACTIONS.map(f => (
+                      <option key={f} value={f}>{f}</option>
+                    ))}
+                  </select>
+
+                  <input 
+                    className="bg-zinc-900/50 border border-white/5 rounded-xl px-3 py-2.5 text-xs font-bold text-white focus:outline-none"
+                    placeholder="AC (费用)"
+                    value={filters.ac}
+                    onChange={e => setFilters({...filters, ac: e.target.value})}
+                  />
+                  <input 
+                    className="bg-zinc-900/50 border border-white/5 rounded-xl px-3 py-2.5 text-xs font-bold text-white focus:outline-none"
+                    placeholder="Damage (伤害)"
+                    value={filters.damage}
+                    onChange={e => setFilters({...filters, damage: e.target.value})}
+                  />
+                  <input 
+                    className="bg-zinc-900/50 border border-white/5 rounded-xl px-3 py-2.5 text-xs font-bold text-white focus:outline-none"
+                    placeholder="Power (力量)"
+                    value={filters.power}
+                    onChange={e => setFilters({...filters, power: e.target.value})}
+                  />
                 </div>
               </div>
 
