@@ -30,8 +30,7 @@ export const Store: React.FC = () => {
   const [cardCrystals, setCardCrystals] = useState(0);
   const [loading, setLoading] = useState(true);
   const [buying, setBuying] = useState<string | null>(null);
-  const [drawnCards, setDrawnCards] = useState<{ id: string; rarity: string }[]>([]);
-  const [revealedCount, setRevealedCount] = useState(0);
+  const [drawnCards, setDrawnCards] = useState<{ id: string; rarity: string; revealed: boolean }[]>([]);
   const [showResult, setShowResult] = useState(false);
   const [pityInfo, setPityInfo] = useState({ packsSinceSR: 0, packsSinceUR: 0, totalPacks: 0 });
 
@@ -51,13 +50,13 @@ export const Store: React.FC = () => {
     loadProfile();
   }, []);
 
-  const handleBuyPack = async (packType: 'basic' | 'prize') => {
-    const cost = packType === 'prize' ? 20 : 10;
-    if (coins < cost) { alert('金币不足！'); return; }
+  const handleBuyPack = async (packType: 'basic' | 'prize', count: number) => {
+    const singleCost = packType === 'prize' ? 20 : 10;
+    const totalCost = singleCost * count;
+    if (coins < totalCost) { alert('金币不足！'); return; }
     
-    setBuying(packType);
+    setBuying(`${packType}-${count}`);
     setDrawnCards([]);
-    setRevealedCount(0);
     setShowResult(false);
 
     try {
@@ -67,32 +66,35 @@ export const Store: React.FC = () => {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}` 
         },
-        body: JSON.stringify({ packType }),
+        body: JSON.stringify({ packType, count }),
       });
       const data = await res.json();
       if (data.error) { alert(data.error); setBuying(null); return; }
 
       setCoins(data.newCoins);
       setCardCrystals(data.newCardCrystals);
-      setDrawnCards(data.cards);
+      // Initialize cards as unrevealed
+      setDrawnCards(data.cards.map((c: any) => ({ ...c, revealed: false })));
       setPityInfo({ 
         packsSinceSR: data.packsSinceSR, 
         packsSinceUR: data.packsSinceUR, 
         totalPacks: data.totalPacks 
       });
       setShowResult(true);
-
-      // Reveal cards one by one
-      for (let i = 0; i < data.cards.length; i++) {
-        await new Promise(r => setTimeout(r, 400));
-        setRevealedCount(i + 1);
-      }
     } catch (e) {
       console.error(e);
       alert('购买失败');
     } finally {
       setBuying(null);
     }
+  };
+
+  const revealCard = (index: number) => {
+    setDrawnCards(prev => prev.map((c, i) => i === index ? { ...c, revealed: true } : c));
+  };
+
+  const revealAll = () => {
+    setDrawnCards(prev => prev.map(c => ({ ...c, revealed: true })));
   };
 
   const getCardInfo = (id: string) => CARD_LIBRARY.find(c => c.id === id);
@@ -106,166 +108,263 @@ export const Store: React.FC = () => {
   }
 
   return (
-    <div className="pt-20 px-8 min-h-screen bg-black text-white pb-20">
-      <div className="max-w-5xl mx-auto">
+    <div className="pt-20 px-8 min-h-screen bg-black text-white pb-20 overflow-x-hidden">
+      <div className="max-w-6xl mx-auto">
         {/* Header */}
-        <div className="flex items-center justify-between mb-10">
-          <div className="flex items-center gap-4">
-            <button onClick={() => navigate('/')} className="p-2 rounded-full bg-zinc-900 hover:bg-zinc-800 transition-colors">
-              <ArrowLeft className="w-5 h-5" />
+        <div className="flex items-center justify-between mb-12">
+          <div className="flex items-center gap-6">
+            <button onClick={() => navigate('/')} className="p-3 rounded-2xl bg-zinc-900 hover:bg-zinc-800 transition-all border border-white/5 group">
+              <ArrowLeft className="w-5 h-5 group-hover:-translate-x-1" />
             </button>
             <div>
-              <h1 className="text-3xl font-black italic tracking-tighter uppercase">Card Store</h1>
-              <p className="text-zinc-500 text-sm">购买卡包，扩充你的收藏</p>
+              <h1 className="text-4xl font-black italic tracking-tighter uppercase">Card Store</h1>
+              <p className="text-zinc-500 text-sm font-bold uppercase tracking-widest">扩充你的卡牌收藏</p>
             </div>
           </div>
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-2 bg-gradient-to-r from-amber-900/30 to-amber-800/10 border border-amber-500/30 rounded-full px-5 py-2">
+          <div className="flex gap-4">
+            <div className="flex items-center gap-2 bg-gradient-to-r from-amber-900/30 to-amber-800/10 border border-amber-500/30 rounded-full px-6 py-2.5">
               <Coins className="w-5 h-5 text-amber-400" />
-              <span className="text-amber-300 font-bold text-lg">{coins.toLocaleString()}</span>
+              <span className="text-amber-300 font-bold text-xl">{coins.toLocaleString()}</span>
             </div>
-            <div className="flex items-center gap-2 bg-gradient-to-r from-cyan-900/30 to-cyan-800/10 border border-cyan-500/30 rounded-full px-5 py-2">
+            <div className="flex items-center gap-2 bg-gradient-to-r from-cyan-900/30 to-cyan-800/10 border border-cyan-500/30 rounded-full px-6 py-2.5">
               <Sparkles className="w-5 h-5 text-cyan-400" />
-              <span className="text-cyan-300 font-bold text-lg">{cardCrystals.toLocaleString()}</span>
+              <span className="text-cyan-300 font-bold text-xl">{cardCrystals.toLocaleString()}</span>
             </div>
           </div>
         </div>
 
         {/* Pack Purchase Options */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-12 mb-12 max-w-4xl mx-auto">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-16 max-w-5xl mx-auto">
           {/* Basic Pack */}
-          <div className="flex flex-col items-center gap-6">
+          <div className="flex flex-col items-center gap-8">
             <motion.div
-              whileHover={{ scale: 1.05, rotateY: 5 }}
-              whileTap={{ scale: 0.95 }}
-              onClick={() => handleBuyPack('basic')}
+              whileHover={{ rotateY: 5, scale: 1.02 }}
               className={cn(
-                "relative w-64 h-80 rounded-2xl border-2 cursor-pointer overflow-hidden transition-all group",
-                buying ? "opacity-50 pointer-events-none" : "border-red-600/50 hover:border-red-500 hover:shadow-[0_0_40px_rgba(220,38,38,0.3)]"
+                "relative w-72 h-96 rounded-3xl border-4 overflow-hidden transition-all group",
+                "border-red-600/30 shadow-[0_0_50px_rgba(220,38,38,0.1)] hover:border-red-500 hover:shadow-[0_0_60px_rgba(220,38,38,0.3)]"
               )}
             >
-              <div className="absolute inset-0 bg-gradient-to-b from-red-900/40 via-black to-red-950/30" />
-              <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 z-10">
-                <ShoppingBag className="w-16 h-16 text-red-500 group-hover:scale-110 transition-transform" />
-                <div className="text-center">
-                  <p className="text-2xl font-black italic tracking-tighter">基础包</p>
-                  <p className="text-zinc-400 text-xs mt-1 font-bold uppercase tracking-wider">Basic Pack</p>
+              <div className="absolute inset-0 bg-gradient-to-b from-red-950/40 via-black to-red-950/20" />
+              <div className="absolute inset-0 flex flex-col items-center justify-center gap-6 z-10 text-center px-6">
+                <ShoppingBag className="w-20 h-20 text-red-500 group-hover:scale-110 transition-transform duration-500" />
+                <div>
+                  <h2 className="text-3xl font-black italic tracking-tighter uppercase mb-1">基础包</h2>
+                  <p className="text-zinc-500 text-[10px] font-black tracking-[0.2em] uppercase">Basic Edition</p>
                 </div>
-                <div className="flex items-center gap-1 bg-black/60 rounded-full px-4 py-1.5 border border-amber-500/30">
-                  <Coins className="w-4 h-4 text-amber-400" />
-                  <span className="text-amber-300 font-bold">10</span>
-                </div>
-                <p className="text-[10px] text-zinc-500 font-bold">5张卡牌 · 保底R以上</p>
+                <div className="w-full h-px bg-gradient-to-r from-transparent via-red-600/50 to-transparent" />
+                <p className="text-xs text-zinc-400 font-bold leading-relaxed px-4">包含5张卡牌<br/>保底一张R及以上稀有度</p>
               </div>
-              {buying === 'basic' && (
-                <div className="absolute inset-0 flex items-center justify-center z-20 bg-black/60">
-                  <Loader2 className="w-10 h-10 animate-spin text-red-500" />
+              {buying?.startsWith('basic') && (
+                <div className="absolute inset-0 flex flex-col items-center justify-center z-20 bg-black/80 backdrop-blur-sm">
+                  <Loader2 className="w-12 h-12 animate-spin text-red-500 mb-4" />
+                  <span className="text-xs font-black italic text-red-500 uppercase">Processing...</span>
                 </div>
               )}
             </motion.div>
-            <div className="text-[10px] text-zinc-600 text-center space-y-1 bg-zinc-900/50 p-3 rounded-lg border border-zinc-800 w-full">
-              <p>保底: 10包SR / 50包UR/SER</p>
-              <p>SR保底还差: <span className="text-purple-400 font-bold">{10 - pityInfo.packsSinceSR}</span> · UR保底还差: <span className="text-amber-400 font-bold">{50 - pityInfo.packsSinceUR}</span></p>
+            
+            <div className="flex gap-2 w-full max-w-[288px]">
+              {[1, 10, 50].map(n => (
+                <button
+                  key={n}
+                  onClick={() => handleBuyPack('basic', n)}
+                  className="flex-1 py-4 bg-zinc-900 hover:bg-red-600 border border-white/5 hover:border-red-500 rounded-2xl font-black italic text-sm transition-all flex flex-col items-center gap-1 group"
+                >
+                  <span className="text-zinc-400 group-hover:text-white transition-colors">{n} 包</span>
+                  <div className="flex items-center gap-1">
+                    <Coins className="w-3 h-3 text-amber-400" />
+                    <span className="text-amber-400">{n * 10}</span>
+                  </div>
+                </button>
+              ))}
+            </div>
+            
+            <div className="text-[10px] text-zinc-600 bg-zinc-900/40 p-4 rounded-2xl border border-white/5 w-full max-w-[288px] text-center">
+              <p className="font-bold uppercase tracking-widest mb-1 opacity-50 text-[8px]">Pity Status</p>
+              <p>SR: <span className="text-purple-400">{10 - pityInfo.packsSinceSR}</span> UR: <span className="text-amber-400">{50 - pityInfo.packsSinceUR}</span></p>
             </div>
           </div>
 
           {/* Prize Pack */}
-          <div className="flex flex-col items-center gap-6">
+          <div className="flex flex-col items-center gap-8">
             <motion.div
-              whileHover={{ scale: 1.05, rotateY: -5 }}
-              whileTap={{ scale: 0.95 }}
-              onClick={() => handleBuyPack('prize')}
+              whileHover={{ rotateY: -5, scale: 1.02 }}
               className={cn(
-                "relative w-64 h-80 rounded-2xl border-2 cursor-pointer overflow-hidden transition-all group",
-                buying ? "opacity-50 pointer-events-none" : "border-rose-600/50 hover:border-rose-500 hover:shadow-[0_0_40px_rgba(244,63,94,0.3)]"
+                "relative w-72 h-96 rounded-3xl border-4 overflow-hidden transition-all group",
+                "border-rose-600/30 shadow-[0_0_50px_rgba(244,63,94,0.1)] hover:border-rose-500 hover:shadow-[0_0_60px_rgba(244,63,94,0.3)]"
               )}
             >
-              <div className="absolute inset-0 bg-gradient-to-b from-rose-900/40 via-black to-rose-950/30" />
-              <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 z-10">
-                <Sparkles className="w-16 h-16 text-rose-500 group-hover:scale-110 transition-transform" />
-                <div className="text-center">
-                  <p className="text-2xl font-black italic tracking-tighter">奖品包</p>
-                  <p className="text-zinc-400 text-xs mt-1 font-bold uppercase tracking-wider">Prize Pack</p>
+              <div className="absolute inset-0 bg-gradient-to-b from-rose-950/40 via-black to-rose-950/20" />
+              <div className="absolute inset-0 flex flex-col items-center justify-center gap-6 z-10 text-center px-6">
+                <Sparkles className="w-20 h-20 text-rose-500 group-hover:scale-110 transition-transform duration-500" />
+                <div>
+                  <h2 className="text-3xl font-black italic tracking-tighter uppercase mb-1">奖品包</h2>
+                  <p className="text-zinc-500 text-[10px] font-black tracking-[0.2em] uppercase">Prize Collector</p>
                 </div>
-                <div className="flex items-center gap-1 bg-black/60 rounded-full px-4 py-1.5 border border-amber-500/30">
-                  <Coins className="w-4 h-4 text-amber-400" />
-                  <span className="text-amber-300 font-bold">20</span>
-                </div>
-                <p className="text-[10px] text-zinc-500 font-bold">1张卡牌 · 必得PR稀有度</p>
+                <div className="w-full h-px bg-gradient-to-r from-transparent via-rose-600/50 to-transparent" />
+                <p className="text-xs text-zinc-400 font-bold leading-relaxed px-4">包含1张卡牌<br/>必得PR稀有度奖品卡</p>
               </div>
-              {buying === 'prize' && (
-                <div className="absolute inset-0 flex items-center justify-center z-20 bg-black/60">
-                  <Loader2 className="w-10 h-10 animate-spin text-rose-500" />
+              {buying?.startsWith('prize') && (
+                <div className="absolute inset-0 flex flex-col items-center justify-center z-20 bg-black/80 backdrop-blur-sm">
+                  <Loader2 className="w-12 h-12 animate-spin text-rose-500 mb-4" />
+                  <span className="text-xs font-black italic text-rose-500 uppercase">Processing...</span>
                 </div>
               )}
             </motion.div>
-            <div className="text-[10px] text-zinc-600 text-center flex items-center justify-center bg-zinc-900/50 p-3 rounded-lg border border-zinc-800 w-full h-[54px]">
-              <p>专为收集者准备的顶级奖励卡包</p>
+
+            <div className="flex gap-2 w-full max-w-[288px]">
+              {[1, 10, 50].map(n => (
+                <button
+                  key={n}
+                  onClick={() => handleBuyPack('prize', n)}
+                  className="flex-1 py-4 bg-zinc-900 hover:bg-rose-600 border border-white/5 hover:border-rose-500 rounded-2xl font-black italic text-sm transition-all flex flex-col items-center gap-1 group"
+                >
+                  <span className="text-zinc-400 group-hover:text-white transition-colors">{n} 包</span>
+                  <div className="flex items-center gap-1">
+                    <Coins className="w-3 h-3 text-amber-400" />
+                    <span className="text-amber-400">{n * 20}</span>
+                  </div>
+                </button>
+              ))}
+            </div>
+
+            <div className="text-[10px] text-zinc-600 bg-zinc-900/40 p-4 rounded-2xl border border-white/5 w-full max-w-[288px] text-center h-[58px] flex items-center justify-center uppercase font-black italic tracking-widest opacity-40">
+              Top Collector Rewards
             </div>
           </div>
         </div>
 
-        {/* Drawn Cards Display */}
+        {/* Card Opening Portal */}
         <AnimatePresence>
-          {showResult && drawnCards.length > 0 && (
+          {showResult && (
             <motion.div
-              initial={{ opacity: 0, y: 30 }}
-              animate={{ opacity: 1, y: 0 }}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="mb-12"
+              className="fixed inset-0 z-[100] bg-black/95 backdrop-blur-xl flex flex-col items-center justify-center p-8 overflow-hidden"
             >
-              <h2 className="text-center text-sm font-bold text-zinc-500 uppercase tracking-widest mb-6">
-                <Sparkles className="inline w-4 h-4 mr-2" />开包结果
-              </h2>
-              <div className={cn(
-                "grid gap-4 mx-auto",
-                drawnCards.length === 1 ? "grid-cols-1 max-w-[200px]" : "grid-cols-5 max-w-3xl"
-              )}>
-                {drawnCards.map((drawn, i) => {
-                  const card = getCardInfo(drawn.id);
-                  const isRevealed = i < revealedCount;
-                  return (
-                    <motion.div
-                      key={i}
-                      initial={{ rotateY: 180, opacity: 0 }}
-                      animate={isRevealed ? { rotateY: 0, opacity: 1 } : { rotateY: 180, opacity: 0.3 }}
-                      transition={{ duration: 0.5, delay: i * 0.1 }}
-                      className={cn(
-                        "aspect-[3/4] rounded-xl border-2 overflow-hidden relative",
-                        isRevealed ? RARITY_COLORS[drawn.rarity] || '' : 'border-zinc-800',
-                        isRevealed && `shadow-lg`
-                      )}
-                    >
-                      {isRevealed && card ? (
-                        <>
-                          <img src={card.imageUrl} alt={card.fullName} className="w-full h-full object-cover" />
-                          <div className={cn("absolute inset-0 bg-gradient-to-t to-transparent", RARITY_BG[drawn.rarity])} />
-                          <div className="absolute bottom-0 left-0 right-0 p-2 text-center">
-                            <p className="text-[10px] font-bold truncate">{card.fullName}</p>
-                            <span className={cn("text-[9px] font-black", RARITY_TEXT[drawn.rarity])}>{drawn.rarity}</span>
-                          </div>
-                        </>
-                      ) : (
-                        <div className="w-full h-full bg-zinc-900 flex items-center justify-center">
-                          <span className="text-zinc-700 text-2xl font-black">?</span>
-                        </div>
-                      )}
-                    </motion.div>
-                  );
-                })}
+              {/* Portal Background Glow */}
+              <div className="absolute inset-0 pointer-events-none overflow-hidden">
+                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-red-600/20 blur-[120px] rounded-full animate-pulse" />
               </div>
-              <div className="text-center mt-8">
-                <button
-                  onClick={() => setShowResult(false)}
-                  className="px-12 py-3 bg-red-600 hover:bg-red-500 rounded-full text-sm font-black italic tracking-tighter uppercase transition-all hover:scale-110 active:scale-95 shadow-lg shadow-red-900/20"
-                >
-                  继续 Confirm
-                </button>
-              </div>
+
+              <motion.div 
+                initial={{ y: 20, opacity: 0 }}
+                animate={{ y: 0, opacity: 1 }}
+                className="w-full max-w-7xl flex-1 flex flex-col relative z-10"
+              >
+                {/* Result Info */}
+                <div className="flex items-center justify-between mb-8">
+                  <div className="flex items-center gap-4">
+                    <div className="w-12 h-12 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center">
+                       <Sparkles className="w-6 h-6 text-red-500" />
+                    </div>
+                    <div>
+                      <h2 className="text-2xl font-black italic uppercase tracking-tighter">开包成果 Drawn Result</h2>
+                      <p className="text-zinc-500 text-[10px] font-black uppercase tracking-widest">{drawnCards.length} 张卡牌 • 点击卡牌以揭开</p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={revealAll}
+                    className="px-8 py-3 bg-white/5 hover:bg-white/10 border border-white/10 rounded-2xl font-black italic text-sm transition-all uppercase"
+                  >
+                    全部揭开 Reveal All
+                  </button>
+                </div>
+
+                {/* Cards Grid */}
+                <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar">
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8 gap-6 p-4">
+                    {drawnCards.map((drawn, i) => {
+                      const card = getCardInfo(drawn.id);
+                      return (
+                        <motion.div
+                          key={i}
+                          layout
+                          initial={{ scale: 0.8, opacity: 0 }}
+                          animate={{ scale: 1, opacity: 1 }}
+                          transition={{ delay: i * 0.02 }}
+                          className="relative aspect-[3/4] perspective-1000 group cursor-pointer"
+                          onClick={() => revealCard(i)}
+                        >
+                          {/* Hover Halo */}
+                          {!drawn.revealed && (
+                            <div className="absolute -inset-2 bg-red-600/0 group-hover:bg-red-600/30 blur-xl rounded-2xl transition-all duration-300 scale-90 group-hover:scale-100" />
+                          )}
+                          
+                          <motion.div
+                            animate={{ rotateY: drawn.revealed ? 180 : 0 }}
+                            transition={{ type: 'spring', damping: 20, stiffness: 100 }}
+                            className="w-full h-full relative transform-style-3d preserve-3d"
+                          >
+                            {/* Card Back (Face Down) */}
+                            <div className={cn(
+                              "absolute inset-0 backface-hidden rounded-2xl border-2 border-white/10 bg-zinc-900 group-hover:border-red-500/50 flex flex-col items-center justify-center p-4 transition-colors",
+                              "shadow-[0_10px_30px_rgba(0,0,0,0.5)]"
+                            )}>
+                              <img src="/assets/card_bg.jpg" className="absolute inset-0 w-full h-full object-cover opacity-20 rounded-2xl grayscale" />
+                              <ShoppingBag className="w-10 h-10 text-zinc-700 group-hover:text-red-500 animation-pulse" />
+                            </div>
+
+                            {/* Card Front (Revealed) */}
+                            <div className={cn(
+                              "absolute inset-0 backface-hidden rotateY-180 rounded-2xl border-2 bg-zinc-900 overflow-hidden",
+                              RARITY_COLORS[drawn.rarity] || "border-zinc-800",
+                              "shadow-[0_15px_40px_rgba(0,0,0,0.7)]"
+                            )}>
+                              {card ? (
+                                <>
+                                  <img src={card.imageUrl} className="w-full h-full object-cover" />
+                                  <div className={cn("absolute inset-0 bg-gradient-to-t to-transparent", RARITY_BG[drawn.rarity])} />
+                                  <div className="absolute bottom-0 left-0 right-0 p-2 text-center">
+                                    <p className="text-[9px] font-black truncate text-white uppercase italic tracking-tighter">{card.fullName}</p>
+                                    <span className={cn("text-[9px] font-black", RARITY_TEXT[drawn.rarity])}>{drawn.rarity}</span>
+                                  </div>
+                                </>
+                              ) : (
+                                <div className="w-full h-full flex items-center justify-center text-zinc-700 font-black">?</div>
+                              )}
+                            </div>
+                          </motion.div>
+                        </motion.div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Confirm Button */}
+                <div className="mt-12 text-center pb-8 border-t border-white/5 pt-8">
+                  <button
+                    onClick={() => setShowResult(false)}
+                    className={cn(
+                      "px-20 py-5 rounded-full text-xl font-black italic tracking-tighter uppercase transition-all hover:scale-110 active:scale-95",
+                      drawnCards.every(c => c.revealed) 
+                        ? "bg-red-600 shadow-[0_0_50px_rgba(220,38,38,0.4)] text-white" 
+                        : "bg-zinc-900 text-zinc-500 cursor-not-allowed"
+                    )}
+                  >
+                    确认 Confirm
+                  </button>
+                  <p className="text-[10px] text-zinc-600 mt-4 font-bold uppercase tracking-widest transition-opacity duration-300">
+                    {drawnCards.every(c => c.revealed) ? "所有卡牌已入库" : "请先揭开所有卡牌"}
+                  </p>
+                </div>
+              </motion.div>
             </motion.div>
           )}
         </AnimatePresence>
       </div>
+      
+      <style>{`
+        .perspective-1000 { perspective: 1000px; }
+        .backface-hidden { backface-visibility: hidden; }
+        .transform-style-3d { transform-style: preserve-3d; }
+        .preserve-3d { transform-style: preserve-3d; }
+        .rotateY-180 { transform: rotateY(180deg); }
+        .custom-scrollbar::-webkit-scrollbar { width: 6px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 10px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.2); }
+      `}</style>
     </div>
   );
 };

@@ -719,9 +719,10 @@ app.post('/api/store/buy-pack', async (req, res): Promise<void> => {
     const user = verifyToken(authHeader.split(' ')[1]);
     if (!user) { res.status(401).json({ error: 'Invalid token' }); return; }
 
-    const { packType } = req.body; // 'basic' or 'prize'
+    const { packType, count = 1 } = req.body;
     const isPrizePack = packType === 'prize';
-    const cost = isPrizePack ? 20 : 10;
+    const singleCost = isPrizePack ? 20 : 10;
+    const totalCost = singleCost * count;
 
     let conn;
     try {
@@ -731,13 +732,12 @@ app.post('/api/store/buy-pack', async (req, res): Promise<void> => {
         // Check coins
         const userRows = await conn.query('SELECT coins FROM users WHERE id = ?', [user.userId]);
         const coins = Number(userRows[0].coins);
-        if (coins < cost) {
+        if (coins < totalCost) {
             await conn.rollback();
             res.status(400).json({ error: '金币不足' });
             return;
         }
 
-        // Build pools
         const allCards = Object.values(SERVER_CARD_LIBRARY).filter(c => !c.uniqueId.includes(':legacy'));
         const drawnCards: Card[] = [];
 
@@ -748,56 +748,63 @@ app.post('/api/store/buy-pack', async (req, res): Promise<void> => {
                 res.status(400).json({ error: '奖品包暂无可抽卡牌' });
                 return;
             }
-            drawnCards.push(pickRandom(prPool));
+            for (let i = 0; i < count; i++) {
+                drawnCards.push(pickRandom(prPool));
+            }
         } else {
-            // Basic Pack Logic
-            // Get pity counters
+            // Basic Pack Pity Setup
             let pityRows = await conn.query('SELECT * FROM pack_history WHERE user_id = ?', [user.userId]);
             if (pityRows.length === 0) {
                 await conn.query('INSERT INTO pack_history (user_id, total_packs, packs_since_sr, packs_since_ur) VALUES (?, 0, 0, 0)', [user.userId]);
                 pityRows = [{ total_packs: 0, packs_since_sr: 0, packs_since_ur: 0 }];
             }
-            let packsSinceSR = Number(pityRows[0].packs_since_sr) + 1;
-            let packsSinceUR = Number(pityRows[0].packs_since_ur) + 1;
-            const totalPacks = Number(pityRows[0].total_packs) + 1;
+            let packsSinceSR = Number(pityRows[0].packs_since_sr);
+            let packsSinceUR = Number(pityRows[0].packs_since_ur);
+            let totalPacks = Number(pityRows[0].total_packs);
 
             const cuPool = allCards.filter(c => c.rarity === 'C' || c.rarity === 'U');
             const rPool = allCards.filter(c => c.rarity === 'R');
             const srPool = allCards.filter(c => c.rarity === 'SR');
             const urPool = allCards.filter(c => c.rarity === 'UR' || c.rarity === 'SER');
 
-            // Pick 4 C/U cards
-            for (let i = 0; i < 4; i++) {
-                drawnCards.push(pickRandom(cuPool));
-            }
+            for (let p = 0; p < count; p++) {
+                packsSinceSR++;
+                packsSinceUR++;
+                totalPacks++;
 
-            // Pick 1 R+ card with pity
-            let guaranteedCard: Card;
-            if (packsSinceUR >= 50 && urPool.length > 0) {
-                guaranteedCard = pickRandom(urPool);
-                packsSinceUR = 0;
-                packsSinceSR = 0;
-            } else if (packsSinceSR >= 10 && srPool.length > 0) {
-                guaranteedCard = pickRandom(srPool);
-                packsSinceSR = 0;
-            } else {
-                const roll = Math.random();
-                if (roll < 0.02 && urPool.length > 0) {
+                // Pick 4 C/U cards
+                for (let i = 0; i < 4; i++) {
+                    drawnCards.push(pickRandom(cuPool));
+                }
+
+                // Pick 1 R+ card with pity
+                let guaranteedCard: Card;
+                if (packsSinceUR >= 50 && urPool.length > 0) {
                     guaranteedCard = pickRandom(urPool);
                     packsSinceUR = 0;
                     packsSinceSR = 0;
-                } else if (roll < 0.15 && srPool.length > 0) {
+                } else if (packsSinceSR >= 10 && srPool.length > 0) {
                     guaranteedCard = pickRandom(srPool);
                     packsSinceSR = 0;
-                } else if (rPool.length > 0) {
-                    guaranteedCard = pickRandom(rPool);
                 } else {
-                    guaranteedCard = pickRandom(cuPool);
+                    const roll = Math.random();
+                    if (roll < 0.02 && urPool.length > 0) {
+                        guaranteedCard = pickRandom(urPool);
+                        packsSinceUR = 0;
+                        packsSinceSR = 0;
+                    } else if (roll < 0.15 && srPool.length > 0) {
+                        guaranteedCard = pickRandom(srPool);
+                        packsSinceSR = 0;
+                    } else if (rPool.length > 0) {
+                        guaranteedCard = pickRandom(rPool);
+                    } else {
+                        guaranteedCard = pickRandom(cuPool);
+                    }
                 }
+                drawnCards.push(guaranteedCard);
             }
-            drawnCards.push(guaranteedCard);
 
-            // Update pity counters
+            // Update pity counters once
             await conn.query(
                 'UPDATE pack_history SET total_packs = ?, packs_since_sr = ?, packs_since_ur = ? WHERE user_id = ?',
                 [totalPacks, packsSinceSR, packsSinceUR, user.userId]
@@ -805,29 +812,33 @@ app.post('/api/store/buy-pack', async (req, res): Promise<void> => {
         }
 
         // Deduct coins
-        await conn.query('UPDATE users SET coins = coins - ? WHERE id = ?', [cost, user.userId]);
+        await conn.query('UPDATE users SET coins = coins - ? WHERE id = ?', [totalCost, user.userId]);
 
-        // Add cards to collection
-        for (const card of drawnCards) {
+        // Add cards to collection using batch logic (not really batch, but optimized loops)
+        // Group by cardId to reduce queries
+        const counts: Record<string, number> = {};
+        drawnCards.forEach(c => counts[c.uniqueId] = (counts[c.uniqueId] || 0) + 1);
+
+        for (const [cardId, qty] of Object.entries(counts)) {
             await conn.query(
-                `INSERT INTO user_cards (user_id, card_id, quantity) VALUES (?, ?, 1)
-                 ON DUPLICATE KEY UPDATE quantity = quantity + 1`,
-                [user.userId, card.uniqueId]
+                `INSERT INTO user_cards (user_id, card_id, quantity) VALUES (?, ?, ?)
+                 ON DUPLICATE KEY UPDATE quantity = quantity + ?`,
+                [user.userId, cardId, qty, qty]
             );
         }
 
         await conn.commit();
 
         const newBalanceRow = await pool.query('SELECT coins, card_crystals FROM users WHERE id = ?', [user.userId]);
-        const pityRows = await pool.query('SELECT * FROM pack_history WHERE user_id = ?', [user.userId]);
+        const finalPityRows = await pool.query('SELECT * FROM pack_history WHERE user_id = ?', [user.userId]);
 
         res.json({
             cards: drawnCards.map(c => ({ id: c.id, uniqueId: c.uniqueId, rarity: c.rarity })),
             newCoins: Number(newBalanceRow[0].coins),
             newCardCrystals: Number(newBalanceRow[0].card_crystals),
-            totalPacks: pityRows.length > 0 ? Number(pityRows[0].total_packs) : 0,
-            packsSinceSR: pityRows.length > 0 ? Number(pityRows[0].packs_since_sr) : 0,
-            packsSinceUR: pityRows.length > 0 ? Number(pityRows[0].packs_since_ur) : 0,
+            totalPacks: finalPityRows.length > 0 ? Number(finalPityRows[0].total_packs) : 0,
+            packsSinceSR: finalPityRows.length > 0 ? Number(finalPityRows[0].packs_since_sr) : 0,
+            packsSinceUR: finalPityRows.length > 0 ? Number(finalPityRows[0].packs_since_ur) : 0,
         });
     } catch (err) {
         if (conn) await conn.rollback();
