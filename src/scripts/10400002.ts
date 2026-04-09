@@ -14,6 +14,7 @@ const card: Card = {
   acValue: 0,
   power: 0,
   damage: 0,
+  baseDamage: 0,
   godMark: false,
   displayState: 'FRONT_UPRIGHT',
   isExhausted: false,

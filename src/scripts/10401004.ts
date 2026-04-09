@@ -12,6 +12,7 @@ const card: Card = {
   acValue: 2,
   power: 500,
   damage: 0,
+  baseDamage: 0,
   godMark: false,
   displayState: 'FRONT_UPRIGHT',
   isExhausted: false,

@@ -168,7 +168,7 @@ const card: Card = {
   power: 1000,
   basePower: 1000,
   damage: 1,
-  baseDamage: 0,
+  baseDamage: 1,
   godMark: false,
   displayState: 'FRONT_UPRIGHT',
   isExhausted: false,
