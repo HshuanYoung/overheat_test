@@ -39,7 +39,8 @@ export const Collection: React.FC = () => {
   }, []);
 
   const ownedCards = CARD_LIBRARY.filter(card => {
-    const owned = collection[card.id] || 0;
+    // Check both base id (legacy) and uniqueId (new)
+    const owned = (collection[card.uniqueId] || collection[card.id] || 0);
     if (owned === 0) return false;
     if (searchTerm && !card.fullName.includes(searchTerm) && !(card.specialName && card.specialName.includes(searchTerm))) return false;
     if (filterRarity && card.rarity !== filterRarity) return false;
@@ -49,6 +50,19 @@ export const Collection: React.FC = () => {
 
   const totalOwned = Object.values(collection).reduce((sum: number, qty: number) => sum + qty, 0);
   const uniqueOwned = Object.keys(collection).filter(k => collection[k] > 0).length;
+
+  const getRarityClass = (rarity: string) => {
+    switch (rarity) {
+      case 'C':
+      case 'U': return 'rarity-border-cu';
+      case 'R': return 'rarity-border-r';
+      case 'SR': return 'rarity-border-sr';
+      case 'UR': return 'rarity-border-ur';
+      case 'SER': return 'rarity-border-ser';
+      case 'PR': return 'rarity-border-pr';
+      default: return 'border-zinc-700';
+    }
+  };
 
   if (loading) {
     return (
@@ -92,7 +106,7 @@ export const Collection: React.FC = () => {
             />
           </div>
           <div className="flex gap-1.5">
-            {['C', 'U', 'R', 'SR', 'UR', 'SER'].map(r => (
+            {['C', 'U', 'R', 'SR', 'UR', 'SER', 'PR'].map(r => (
               <button
                 key={r}
                 onClick={() => setFilterRarity(filterRarity === r ? null : r)}
@@ -126,20 +140,24 @@ export const Collection: React.FC = () => {
         <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-3">
           {ownedCards.map(card => (
             <motion.div
-              key={card.id}
+              key={card.uniqueId}
               whileHover={{ scale: 1.05 }}
               className={cn(
                 "relative aspect-[3/4] rounded-xl border-2 overflow-hidden cursor-pointer group",
-                RARITY_COLORS[card.rarity] || 'border-zinc-700'
+                getRarityClass(card.rarity)
               )}
             >
-              <img src={card.imageUrl} alt={card.fullName} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+              <img 
+                src={card.imageUrl || getCardImageUrl(card.id, card.rarity, true)} 
+                alt={card.fullName} 
+                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" 
+              />
               <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent" />
               <div className="absolute bottom-0 left-0 right-0 p-2">
                 <p className="text-[11px] font-bold truncate">{card.fullName}</p>
                 <div className="flex items-center justify-between mt-0.5">
                   <span className={cn("text-[9px] font-black px-1.5 py-0.5 rounded", RARITY_BADGE[card.rarity])}>{card.rarity}</span>
-                  <span className="text-[10px] text-zinc-400">x{collection[card.id] || 0}</span>
+                  <span className="text-[10px] text-zinc-400">x{collection[card.uniqueId] || collection[card.id] || 0}</span>
                 </div>
               </div>
             </motion.div>

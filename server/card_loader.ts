@@ -10,23 +10,40 @@ export async function loadServerCards(): Promise<Card[]> {
   
   for (const file of files) {
     if (file.endsWith('.ts')) {
-      // Use tsx or dynamic import to load the ts card script
       const cardModule = await import(`../src/scripts/${file}`);
       if (cardModule.default) {
-        cards.push(cardModule.default);
+        const baseCard = cardModule.default;
+        if (baseCard.availableRarities && baseCard.availableRarities.length > 0) {
+          baseCard.availableRarities.forEach((r: any) => {
+            cards.push({
+              ...baseCard,
+              rarity: r,
+              uniqueId: `${baseCard.id}:${r}`
+            });
+          });
+        } else {
+          cards.push({
+            ...baseCard,
+            uniqueId: `${baseCard.id}:${baseCard.rarity}`
+          });
+        }
       }
     }
   }
   return cards;
 }
 
-// Map by card ID for fast lookup
+// Map by unique ID for fast lookup
 export let SERVER_CARD_LIBRARY: Record<string, Card> = {};
 
 export async function initServerCardLibrary() {
   const cards = await loadServerCards();
   for (const c of cards) {
-    SERVER_CARD_LIBRARY[c.id] = c;
+    SERVER_CARD_LIBRARY[c.uniqueId] = c;
+    // Map by base ID as well if it doesn't exist yet (for legacy compat)
+    if (!SERVER_CARD_LIBRARY[c.id]) {
+      SERVER_CARD_LIBRARY[c.id] = c;
+    }
   }
-  console.log(`[Server] Loaded ${cards.length} cards into library.`);
+  console.log(`[Server] Loaded ${cards.length} card variations into library.`);
 }

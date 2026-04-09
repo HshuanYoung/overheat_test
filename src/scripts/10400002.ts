@@ -70,9 +70,9 @@ const card: Card = {
       }
     }
   ],
-  imageUrl: '/pics/10400002_thumb.jpg',
-  fullImageUrl: '/pics/10400002_full.jpg',
   rarity: 'U',
+  availableRarities: ['U'],
+  uniqueId: null,
 };
 
 

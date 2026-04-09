@@ -23,9 +23,9 @@ const card: Card = {
   feijingMark: true,
   canResetCount: 0,
   effects: [],
-  imageUrl: '/pics/10401005_thumb.jpg',
-  fullImageUrl: '/pics/10401005_full.jpg',
   rarity: 'C',
+  availableRarities: ['C'],
+  uniqueId: null,
 };
 
 export default card;

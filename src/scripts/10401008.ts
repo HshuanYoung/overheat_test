@@ -148,9 +148,9 @@ const card: Card = {
     activation_10401008_1,
     activation_10401008_2
   ],
-  imageUrl: '/pics/10401008_thumb.jpg',
-  fullImageUrl: '/pics/10401008_full.jpg',
   rarity: 'SR',
+  availableRarities: ['SR'],
+  uniqueId: null,
 };
 
 export default card;

@@ -31,3 +31,39 @@
 .card-glow-gold {
   box-shadow: 0 0 20px rgba(234, 179, 8, 0.4);
 }
+
+/* Rarity Styles */
+.rarity-border-cu { border-color: #e5e7eb !important; }
+.rarity-border-r { border-color: #3b82f6 !important; box-shadow: 0 0 10px rgba(59, 130, 246, 0.3); }
+.rarity-border-sr { border-color: #a855f7 !important; box-shadow: 0 0 15px rgba(168, 85, 247, 0.4); }
+.rarity-border-ur { border-color: #991b1b !important; box-shadow: 0 0 20px rgba(153, 27, 27, 0.5); }
+.rarity-border-pr { border-color: #fbbf24 !important; box-shadow: 0 0 15px rgba(251, 191, 36, 0.5); }
+
+.rarity-border-ser {
+  border-color: transparent !important;
+  position: relative;
+}
+
+.rarity-border-ser::before {
+  content: "";
+  position: absolute;
+  inset: -2px;
+  border-radius: inherit;
+  padding: 2px;
+  background: linear-gradient(
+    45deg,
+    #ff0000, #ff7f00, #ffff00, #00ff00, #0000ff, #4b0082, #8b00ff
+  );
+  -webkit-mask: 
+     linear-gradient(#fff 0 0) content-box, 
+     linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+          mask-composite: exclude;
+  pointer-events: none;
+  animation: rotate-gradient 3s linear infinite;
+}
+
+@keyframes rotate-gradient {
+  0% { filter: hue-rotate(0deg); }
+  100% { filter: hue-rotate(360deg); }
+}

@@ -722,37 +722,38 @@ app.post('/api/store/buy-pack', async (req, res): Promise<void> => {
         let packsSinceUR = Number(pityRows[0].packs_since_ur) + 1;
         const totalPacks = Number(pityRows[0].total_packs) + 1;
 
-        // Build rarity pools
-        const cuPool = CARD_POOL.filter(id => CARD_RARITIES[id] === 'C' || CARD_RARITIES[id] === 'U');
-        const rPool = CARD_POOL.filter(id => CARD_RARITIES[id] === 'R');
-        const srPool = CARD_POOL.filter(id => CARD_RARITIES[id] === 'SR');
-        const urPool = CARD_POOL.filter(id => CARD_RARITIES[id] === 'UR' || CARD_RARITIES[id] === 'SER');
+        // Build rarity pools using the dynamic library
+        const allCards = Object.values(SERVER_CARD_LIBRARY).filter(c => !c.uniqueId.includes(':legacy'));
+        
+        const cuPool = allCards.filter(c => c.rarity === 'C' || c.rarity === 'U');
+        const rPool = allCards.filter(c => c.rarity === 'R');
+        const srPool = allCards.filter(c => c.rarity === 'SR');
+        const urPool = allCards.filter(c => c.rarity === 'UR' || c.rarity === 'SER');
+        const prPool = allCards.filter(c => c.rarity === 'PR');
 
         // Pick 4 C/U cards
-        const drawnCards: string[] = [];
+        const drawnCards: Card[] = [];
         for (let i = 0; i < 4; i++) {
             drawnCards.push(pickRandom(cuPool));
         }
 
         // Pick 1 R+ card with pity
-        let guaranteedCard: string;
+        let guaranteedCard: Card;
         if (packsSinceUR >= 50 && urPool.length > 0) {
-            // UR/SER pity
             guaranteedCard = pickRandom(urPool);
-            packsSinceUR = 0;
-            packsSinceSR = 0;
         } else if (packsSinceSR >= 10 && srPool.length > 0) {
-            // SR pity
             guaranteedCard = pickRandom(srPool);
             packsSinceSR = 0;
         } else {
-            // Normal R+ roll with weighted odds
             const roll = Math.random();
             if (roll < 0.02 && urPool.length > 0) {
                 guaranteedCard = pickRandom(urPool);
                 packsSinceUR = 0;
                 packsSinceSR = 0;
-            } else if (roll < 0.12 && srPool.length > 0) {
+            } else if (roll < 0.05 && prPool.length > 0) { // PR rarity
+                guaranteedCard = pickRandom(prPool);
+                packsSinceSR = 0;
+            } else if (roll < 0.15 && srPool.length > 0) {
                 guaranteedCard = pickRandom(srPool);
                 packsSinceSR = 0;
             } else if (rPool.length > 0) {
@@ -766,19 +767,19 @@ app.post('/api/store/buy-pack', async (req, res): Promise<void> => {
         // Deduct coins
         await conn.query('UPDATE users SET coins = coins - 10 WHERE id = ?', [user.userId]);
 
-        // Add cards to collection
-        for (const cardId of drawnCards) {
+        // Add cards to collection using uniqueId
+        for (const card of drawnCards) {
             await conn.query(
                 `INSERT INTO user_cards (user_id, card_id, quantity) VALUES (?, ?, 1)
                  ON DUPLICATE KEY UPDATE quantity = quantity + 1`,
-                [user.userId, cardId]
+                [user.userId, card.uniqueId]
             );
         }
 
         // Update pity counters
         await conn.query(
-            'UPDATE pack_history SET total_packs = ?, packs_since_sr = ?, packs_since_ur = ? WHERE user_id = ?',
-            [totalPacks, packsSinceSR, packsSinceUR, user.userId]
+          'UPDATE pack_history SET total_packs = ?, packs_since_sr = ?, packs_since_ur = ? WHERE user_id = ?',
+          [totalPacks, packsSinceSR, packsSinceUR, user.userId]
         );
 
         await conn.commit();
@@ -786,7 +787,7 @@ app.post('/api/store/buy-pack', async (req, res): Promise<void> => {
         const newCoinsRow = await pool.query('SELECT coins FROM users WHERE id = ?', [user.userId]);
 
         res.json({
-            cards: drawnCards.map(id => ({ id, rarity: CARD_RARITIES[id] || 'C' })),
+            cards: drawnCards.map(c => ({ id: c.id, uniqueId: c.uniqueId, rarity: c.rarity })),
             newCoins: Number(newCoinsRow[0].coins),
             totalPacks,
             packsSinceSR,

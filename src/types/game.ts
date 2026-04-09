@@ -159,9 +159,12 @@ export interface CardEffect {
   description: string; // Human readable text
 }
 
+export type Rarity = 'C' | 'U' | 'R' | 'SR' | 'UR' | 'SER' | 'PR';
+
 export interface Card {
-  id: string;
-  gamecardId: string;
+  id: string; // Base ID
+  uniqueId: string; // Unique ID (id + rarity)
+  gamecardId: string; // Instance ID
   fullName: string;
   specialName?: string;
   type: CardType;
@@ -190,9 +193,10 @@ export interface Card {
   effects?: CardEffect[];
   influencingEffects?: { sourceCardName: string; description: string }[];
   inAllianceGroup?: boolean;
-  imageUrl: string;
-  fullImageUrl: string;
-  rarity: 'C' | 'U' | 'R' | 'SR' | 'UR' | 'SER' | 'PR';
+  imageUrl?: string;
+  fullImageUrl?: string;
+  rarity: Rarity;
+  availableRarities?: Rarity[];
   faction: string;
   runtimeFingerprint?: string;
   equipTargetId?: string;

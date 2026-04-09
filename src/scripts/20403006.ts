@@ -35,9 +35,9 @@ const card: Card = {
       ]
     }
   ],
-  imageUrl: '/pics/20403006_thumb.jpg',
-  fullImageUrl: '/pics/20403006_full.jpg',
   rarity: 'U',
+  availableRarities: ['U'],
+  uniqueId: null,
 };
 
 export default card;

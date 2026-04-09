@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Card as CardType } from '../types/game';
+import { Card as CardType, Rarity } from '../types/game';
 import { clsx } from 'clsx';
 import { Sword, Shield, Zap, Info, Star, X, Plus } from 'lucide-react';
+import { getCardImageUrl } from '../lib/utils';
 
 interface CardProps {
   card?: CardType;
@@ -16,6 +17,19 @@ interface CardProps {
   statusBorder?: 'red' | 'blue';
 }
 
+const getRarityClass = (rarity: Rarity) => {
+  switch (rarity) {
+    case 'C':
+    case 'U': return 'rarity-border-cu';
+    case 'R': return 'rarity-border-r';
+    case 'SR': return 'rarity-border-sr';
+    case 'UR': return 'rarity-border-ur';
+    case 'SER': return 'rarity-border-ser';
+    case 'PR': return 'rarity-border-pr';
+    default: return 'border-zinc-700';
+  }
+};
+
 export const CardComponent: React.FC<CardProps> = ({ card, onClick, className, count, isBack, disableZoom, statusBorder, isExhausted }) => {
   if (isBack || !card) {
     return (
@@ -26,9 +40,9 @@ export const CardComponent: React.FC<CardProps> = ({ card, onClick, className, c
           className
         )}
       >
-        <img 
-          src="/assets/card_bg.jpg" 
-          alt="Card Back" 
+        <img
+          src="/assets/card_bg.jpg"
+          alt="Card Back"
           className="absolute inset-0 w-full h-full object-cover"
           referrerPolicy="no-referrer"
         />
@@ -48,6 +62,9 @@ export const CardComponent: React.FC<CardProps> = ({ card, onClick, className, c
     if (onClick) onClick();
   };
 
+  const imageUrl = card.imageUrl || getCardImageUrl(card.id, card.rarity, true);
+  const fullImageUrl = card.fullImageUrl || getCardImageUrl(card.id, card.rarity, false);
+
   return (
     <>
       <motion.div
@@ -59,19 +76,19 @@ export const CardComponent: React.FC<CardProps> = ({ card, onClick, className, c
         className={clsx(
           "relative aspect-[3/4] w-full rounded-xl overflow-hidden border-2 cursor-pointer group transition-all bg-zinc-900",
           statusBorder === 'red' ? "border-red-500 shadow-[0_0_15px_rgba(239,68,68,0.5)]" :
-          statusBorder === 'blue' ? "border-blue-500 shadow-[0_0_15px_rgba(59,130,246,0.5)]" :
-          card.rarity === 'UR' ? "border-yellow-500 card-glow-gold" : "border-zinc-700",
+            statusBorder === 'blue' ? "border-blue-500 shadow-[0_0_15px_rgba(59,130,246,0.5)]" :
+              getRarityClass(card.rarity),
           className
         )}
       >
         {/* Card Image - Always show thumbnail in preview */}
-        <img 
-          src={card.imageUrl} 
-          alt={card.fullName} 
+        <img
+          src={imageUrl}
+          alt={fullImageUrl}
           className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
           referrerPolicy="no-referrer"
         />
-        
+
         {/* Overlay */}
         <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-black/40" />
 
@@ -110,7 +127,7 @@ export const CardComponent: React.FC<CardProps> = ({ card, onClick, className, c
 
         {/* Action Button (e.g. Add to Deck) */}
         {onClick && (
-          <button 
+          <button
             onClick={handleActionClick}
             className="absolute top-2 left-2 w-8 h-8 rounded-full bg-red-600 border border-white/20 flex items-center justify-center shadow-lg opacity-0 group-hover:opacity-100 transition-opacity z-10"
           >

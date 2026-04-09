@@ -59,17 +59,17 @@ const card: Card = {
       description: '【启动】[一局一次][战场] 侵蚀区存在4-6张卡牌时，将此卡横置，选择场上一个[非红色][非侵蚀区]且[费用<3][力量<3000]的单位破坏。',
       condition: (gameState: GameState, playerState: PlayerState, card: Card) => {
         // Manually check erosion count to avoid circular deps in UI
-        const erosionCount = playerState.erosionFront.filter(c => c !== null).length + 
-                             playerState.erosionBack.filter(c => c !== null).length;
+        const erosionCount = playerState.erosionFront.filter(c => c !== null).length +
+          playerState.erosionBack.filter(c => c !== null).length;
         if (erosionCount < 4 || erosionCount > 6) return false;
 
         // Manual target search to avoid AtomicEffectExecutor circular dep in frontend
         const hasTarget = Object.values(gameState.players).some(p => {
-            return p.unitZone.some(u => {
-                if (!u) return false;
-                // [非红色] [费用<3] [力量<3000]
-                return u.color !== 'RED' && u.acValue < 3 && u.power < 3000;
-            });
+          return p.unitZone.some(u => {
+            if (!u) return false;
+            // [非红色] [费用<3] [力量<3000]
+            return u.color !== 'RED' && u.acValue < 3 && u.power < 3000;
+          });
         });
 
         return hasTarget;
@@ -87,8 +87,8 @@ const card: Card = {
           const isMine = uid === playerState.uid;
           p.unitZone.forEach(u => {
             if (u && u.color !== 'RED' && u.acValue < 3 && u.power < 3000) {
-              options.push({ 
-                card: u, 
+              options.push({
+                card: u,
                 source: u.cardlocation as any,
                 isMine: isMine,
                 ownerName: p.displayName
@@ -136,9 +136,9 @@ const card: Card = {
         if (!event) return isOnBattlefield;
 
         // Simple and robust identification for trigger
-        const isSelf = event.type === 'CARD_ENTERED_ZONE' && 
-                       (event.sourceCardId === instance.gamecardId || event.sourceCard === instance);
-        
+        const isSelf = event.type === 'CARD_ENTERED_ZONE' &&
+          (event.sourceCardId === instance.gamecardId || event.sourceCard === instance);
+
         const isTargetZone = event.data?.zone === 'UNIT' || event.data?.zone === 'ITEM';
         return isSelf && isTargetZone && isOnBattlefield;
       },
@@ -154,9 +154,9 @@ const card: Card = {
       ]
     }
   ],
-  imageUrl: 'https://picsum.photos/seed/testdragon/400/600',
-  fullImageUrl: 'https://picsum.photos/seed/testdragon/800/1200',
   rarity: 'UR',
+  availableRarities: ['UR'],
+  uniqueId: null,
 };
 
 export default card;

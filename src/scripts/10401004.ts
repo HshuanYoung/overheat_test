@@ -90,9 +90,9 @@ const card: Card = {
       }
     }
   ],
-  imageUrl: '/pics/10401004_thumb.jpg',
-  fullImageUrl: '/pics/10401004_full.jpg',
   rarity: 'SR',
+  availableRarities: ['SR'],
+  uniqueId: null,
   faction: '百濑之水城',
 };
 

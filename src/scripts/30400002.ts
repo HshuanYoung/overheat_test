@@ -1,4 +1,4 @@
-import { Card,GameState,PlayerState} from '../types/game';
+import { Card, GameState, PlayerState } from '../types/game';
 
 
 const trigger_10400003_1 = (card: Card, gameState: GameState, playerState: PlayerState) => {
@@ -23,14 +23,14 @@ const card: Card = {
       type: 'TRIGGER',
       description: '这个单位进入战场时，所有玩家抽1张卡。',
       playCost: 0,
-      playColorReq: {'BLUE': 2},
+      playColorReq: { 'BLUE': 2 },
       content: 'DRAW',
-      execute:trigger_10400003_1,
+      execute: trigger_10400003_1,
     }
   ],
-  imageUrl: '/pics/30400002_thumb.jpg',
-  fullImageUrl: '/pics/30400002_full.jpg',
   rarity: 'U',
+  availableRarities: ['U'],
+  uniqueId: null,
 };
 
 export default card;

@@ -177,9 +177,9 @@ const card: Card = {
   feijingMark: false,
   canResetCount: 0,
   effects: [trigger_10402006_1],
-  imageUrl: '/pics/10402006_thumb.jpg',
-  fullImageUrl: '/pics/10402006_full.jpg',
   rarity: 'R',
+  availableRarities: ['R'],
+  uniqueId: null,
 };
 
 export default card;

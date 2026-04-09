@@ -30,7 +30,7 @@ const card: Card = {
           onField: true,
           type: 'UNIT',
           // If no Fuhua, must NOT be a God unit
-          godMark: isFuhuaPresent ? undefined : false 
+          godMark: isFuhuaPresent ? undefined : false
         };
 
         // 3. Find and return the first valid target to hand
@@ -41,14 +41,14 @@ const card: Card = {
           targetFilter: filter as any,
           targetCount: 1
         }, card);
-        
+
         gameState.logs.push(`${playerState.displayName} 发动了 [歌月拂风]。`);
       }
     }
   ],
-  imageUrl: '/pics/20400001_thumb.jpg',
-  fullImageUrl: '/pics/20400001_full.jpg',
   rarity: 'R',
+  availableRarities: ['R'],
+  uniqueId: null,
 };
 
 export default card;

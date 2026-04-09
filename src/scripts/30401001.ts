@@ -2,9 +2,9 @@ import { Card, GameState, PlayerState, CardEffect } from '../types/game';
 import { AtomicEffectExecutor } from '../services/AtomicEffectExecutor';
 
 const isNonCombat = (gameState: GameState, cardId: string) => {
-    const isAttacking = (gameState.battleState?.attackers || []).includes(cardId);
-    const isDefending = gameState.battleState?.defender === cardId;
-    return !isAttacking && !isDefending;
+  const isAttacking = (gameState.battleState?.attackers || []).includes(cardId);
+  const isDefending = gameState.battleState?.defender === cardId;
+  return !isAttacking && !isDefending;
 };
 
 const universalEquipEffect: CardEffect = {
@@ -18,7 +18,7 @@ const universalEquipEffect: CardEffect = {
   execute: (card, gameState, playerState) => {
     const currentHostId = card.equipTargetId;
     const otherUnits = playerState.unitZone.filter(u => u && u.gamecardId !== currentHostId) as Card[];
-    
+
     // BUG FIX 4: If already equipped and no other units, skip query and just unequip
     if (currentHostId && otherUnits.length === 0) {
       gameState.logs.push(`${card.fullName} 解除了装备状态 (无其他可装备目标)`);
@@ -47,8 +47,8 @@ const universalEquipEffect: CardEffect = {
       minSelections: 1,
       maxSelections: 1,
       callbackKey: 'EFFECT_RESOLVE',
-      context: { 
-        sourceCardId: card.gamecardId, 
+      context: {
+        sourceCardId: card.gamecardId,
         effectId: 'equip_universal'
       }
     };
@@ -75,8 +75,8 @@ const handActivationEffect: CardEffect = {
   triggerLocation: ['HAND'],
   condition: (gameState, playerState) => {
     // BUG FIX 1 & 2: Only trigger if there are 2+ non-combat blue units
-    const eligibleBlueUnits = playerState.unitZone.filter(u => 
-        u && u.color === 'BLUE' && isNonCombat(gameState, u.gamecardId)
+    const eligibleBlueUnits = playerState.unitZone.filter(u =>
+      u && u.color === 'BLUE' && isNonCombat(gameState, u.gamecardId)
     );
     return eligibleBlueUnits.length >= 2;
   },
@@ -94,8 +94,8 @@ const handActivationEffect: CardEffect = {
       callbackKey: 'EFFECT_RESOLVE',
       paymentCost: 2,
       paymentColor: card.color,
-      context: { 
-        sourceCardId: card.gamecardId, 
+      context: {
+        sourceCardId: card.gamecardId,
         effectIndex: 1, // Index of handActivationEffect
         step: 1
       }
@@ -103,73 +103,73 @@ const handActivationEffect: CardEffect = {
   },
   resolve: (card, gameState, playerState, selections, context) => {
     gameState.logs.push(`[脚本] 30401001 resolve 开始, step: ${context.step}`);
-    
+
     if (context.step === 1) {
       // Step 1: After payment, select 2 units to return to hand
       gameState.logs.push(`[脚本] Step 1: 正在选择返回手牌的目标`);
-      const targets = playerState.unitZone.filter(u => 
-          u && !u.godMark && isNonCombat(gameState, u.gamecardId)
+      const targets = playerState.unitZone.filter(u =>
+        u && !u.godMark && isNonCombat(gameState, u.gamecardId)
       ) as Card[];
-      
+
       gameState.logs.push(`[脚本] 符合条件的目标数量: ${targets.length}`);
-      
+
       if (targets.length < 2) {
         gameState.logs.push(`[错误] 符合条件的非神蚀非战斗单位不足2个`);
         return;
       }
-      
+
       gameState.pendingQuery = {
-          id: Math.random().toString(36).substring(7),
-          type: 'SELECT_CARD',
-          playerUid: playerState.uid,
-          options: targets.map(t => ({ card: t, source: 'UNIT' as any })),
-          title: '选择返回手牌的单位',
-          description: '请选择2个非神蚀且不在战斗中的单位。',
-          minSelections: 2,
-          maxSelections: 2,
-          callbackKey: 'EFFECT_RESOLVE',
-          context: { ...context, step: 2 }
+        id: Math.random().toString(36).substring(7),
+        type: 'SELECT_CARD',
+        playerUid: playerState.uid,
+        options: targets.map(t => ({ card: t, source: 'UNIT' as any })),
+        title: '选择返回手牌的单位',
+        description: '请选择2个非神蚀且不在战斗中的单位。',
+        minSelections: 2,
+        maxSelections: 2,
+        callbackKey: 'EFFECT_RESOLVE',
+        context: { ...context, step: 2 }
       };
       gameState.logs.push(`[脚本] Step 1 完成, 已发送选择卡牌请求`);
     } else if (context.step === 2) {
       gameState.logs.push(`[脚本] Step 2: 正在处理单位返回并移动装备`);
       // Step 2: Return units to hand, move self to field, then select equip target
       for (const id of selections) {
-          const targetCard = playerState.unitZone.find(c => c?.gamecardId === id);
-          if (targetCard) {
-            gameState.logs.push(`[效果] ${targetCard.fullName} 返回了手牌`);
-          }
+        const targetCard = playerState.unitZone.find(c => c?.gamecardId === id);
+        if (targetCard) {
+          gameState.logs.push(`[效果] ${targetCard.fullName} 返回了手牌`);
+        }
       }
-      
+
       // Let's use AtomicEffectExecutor for Step 2
       selections.forEach(id => {
-          AtomicEffectExecutor.execute(gameState, playerState.uid, {
-              type: 'MOVE_FROM_FIELD',
-              targetFilter: { gamecardId: id },
-              destinationZone: 'HAND'
-          }, card);
+        AtomicEffectExecutor.execute(gameState, playerState.uid, {
+          type: 'MOVE_FROM_FIELD',
+          targetFilter: { gamecardId: id },
+          destinationZone: 'HAND'
+        }, card);
       });
 
       // Move self to ITEM zone
       AtomicEffectExecutor.execute(gameState, playerState.uid, {
-          type: 'MOVE_FROM_HAND',
-          targetFilter: { gamecardId: card.gamecardId },
-          destinationZone: 'ITEM'
+        type: 'MOVE_FROM_HAND',
+        targetFilter: { gamecardId: card.gamecardId },
+        destinationZone: 'ITEM'
       }, card);
 
       // Select equip target
       const units = playerState.unitZone.filter(u => u !== null) as Card[];
       gameState.pendingQuery = {
-          id: Math.random().toString(36).substring(7),
-          type: 'SELECT_CARD',
-          playerUid: playerState.uid,
-          options: units.map(u => ({ card: u, source: 'UNIT' as any })),
-          title: '选择装备目标',
-          description: `请选择一个单位装备 ${card.fullName}`,
-          minSelections: 1,
-          maxSelections: 1,
-          callbackKey: 'EFFECT_RESOLVE',
-          context: { ...context, step: 3 }
+        id: Math.random().toString(36).substring(7),
+        type: 'SELECT_CARD',
+        playerUid: playerState.uid,
+        options: units.map(u => ({ card: u, source: 'UNIT' as any })),
+        title: '选择装备目标',
+        description: `请选择一个单位装备 ${card.fullName}`,
+        minSelections: 1,
+        maxSelections: 1,
+        callbackKey: 'EFFECT_RESOLVE',
+        context: { ...context, step: 3 }
       };
     } else if (context.step === 3) {
       // Step 3: Finalize equipment
@@ -209,7 +209,7 @@ const card: Card = {
   isEquip: true,
   color: 'BLUE',
   gamecardId: null,
-  colorReq: {'BLUE': 2},
+  colorReq: { 'BLUE': 2 },
   faction: '无',
   acValue: 3,
   godMark: true,
@@ -225,9 +225,9 @@ const card: Card = {
       applyContinuous: applyContinuousBonus
     }
   ],
-  imageUrl: '/pics/30401001_thumb.jpg',
-  fullImageUrl: '/pics/30401001_full.jpg',
   rarity: 'R',
+  availableRarities: ['R'],
+  uniqueId: null,
 };
 
 export default card;

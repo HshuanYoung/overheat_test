@@ -1,13 +1,11 @@
-let db: any;
 import { getAuthUser } from '../socket';
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Save, Trash2, Plus, Minus, Search, Filter, Loader2, Copy, Edit3, X, ZoomIn } from 'lucide-react';
+import { Save, Trash2, Plus, Search, Loader2, Copy, Edit3, X } from 'lucide-react';
 import { CARD_LIBRARY } from '../data/cards';
 import { Card as CardType, Deck } from '../types/game';
 import { CardComponent } from './Card';
-import { collection, addDoc, query, where, getDocs, deleteDoc, doc, setDoc, updateDoc } from 'firebase/firestore';
-import { cn } from '../lib/utils';
+import { cn, getCardImageUrl } from '../lib/utils';
 
 export const DeckBuilder: React.FC = () => {
   const [deck, setDeck] = useState<CardType[]>([]);
@@ -27,15 +25,31 @@ export const DeckBuilder: React.FC = () => {
 
   const loadDecks = async () => {
     if (!getAuthUser()) return;
-        const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001';
+    const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001';
     const token = localStorage.getItem('token');
-    const res = await fetch(BACKEND_URL + '/api/user/decks', { headers: { 'Authorization': `Bearer ${token}` }});
-    const data = await res.json();
-    const decks: Deck[] = data.decks || [];
-    setMyDecks(decks);
-    if (decks.length > 0 && !selectedDeckId) {
-      loadDeckToEditor(decks[0]);
+    try {
+      const res = await fetch(BACKEND_URL + '/api/user/decks', { headers: { 'Authorization': `Bearer ${token}` } });
+      const data = await res.json();
+      const decks: Deck[] = data.decks || [];
+      setMyDecks(decks);
+      if (decks.length > 0 && !selectedDeckId) {
+        loadDeckToEditor(decks[0]);
+      }
+    } catch (e) {
+      console.error('Failed to load decks:', e);
     }
+  };
+
+  const loadDeckToEditor = (savedDeck: Deck) => {
+    // Attempt to find by uniqueId first, then by legacy id
+    const cards = savedDeck.cards.map(uid => 
+        CARD_LIBRARY.find(c => c.uniqueId === uid) || 
+        CARD_LIBRARY.find(c => c.id === uid)
+    ).filter((c): c is CardType => !!c);
+    
+    setDeck(cards);
+    setDeckName(savedDeck.name);
+    setSelectedDeckId(savedDeck.id);
   };
 
   const handleSave = async () => {
@@ -45,35 +59,35 @@ export const DeckBuilder: React.FC = () => {
       const deckData = {
         userId: getAuthUser().uid,
         name: deckName,
-        cards: deck.map(c => c.id),
+        cards: deck.map(c => c.uniqueId),
         isFavorite: false,
         updatedAt: Date.now()
       };
 
+      const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001';
+      const token = localStorage.getItem('token');
+      
       if (selectedDeckId) {
-        const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001';
-        const token = localStorage.getItem('token');
-await fetch(`${BACKEND_URL}/api/user/decks/${selectedDeckId}`, { method: 'PUT', headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify(deckData) });
+        await fetch(`${BACKEND_URL}/api/user/decks/${selectedDeckId}`, { 
+          method: 'PUT', 
+          headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }, 
+          body: JSON.stringify(deckData) 
+        });
       } else {
-        const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001';
-        const token = localStorage.getItem('token');
-const res = await fetch(`${BACKEND_URL}/api/user/decks`, { method: 'POST', headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify(deckData) });
-const data = await res.json();
-setSelectedDeckId(data.id);
+        const res = await fetch(`${BACKEND_URL}/api/user/decks`, { 
+          method: 'POST', 
+          headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }, 
+          body: JSON.stringify(deckData) 
+        });
+        const data = await res.json();
+        setSelectedDeckId(data.id);
       }
       loadDecks();
     } catch (e) {
-      console.error(e);
+      console.error('Failed to save deck:', e);
     } finally {
       setSaving(false);
     }
-  };
-
-  const loadDeckToEditor = (savedDeck: Deck) => {
-    const cards = savedDeck.cards.map(id => CARD_LIBRARY.find(c => c.id === id)!).filter(Boolean);
-    setDeck(cards);
-    setDeckName(savedDeck.name);
-    setSelectedDeckId(savedDeck.id);
   };
 
   const createNewDeck = () => {
@@ -82,44 +96,60 @@ setSelectedDeckId(data.id);
     setSelectedDeckId(null);
   };
 
-  const deleteDeck = async (id: string, e: React.MouseEvent) => {
-    e.stopPropagation();
+  const deleteDeck = async (id: string, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
     if (!getAuthUser()) return;
     const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001';
-        const token = localStorage.getItem('token');
-await fetch(`${BACKEND_URL}/api/user/decks/${id}`, { method: 'DELETE', headers: { 'Authorization': `Bearer ${token}` }});
-    if (selectedDeckId === id) createNewDeck();
-    setConfirmDeleteId(null);
-    loadDecks();
+    const token = localStorage.getItem('token');
+    try {
+      await fetch(`${BACKEND_URL}/api/user/decks/${id}`, { 
+        method: 'DELETE', 
+        headers: { 'Authorization': `Bearer ${token}` } 
+      });
+      if (selectedDeckId === id) createNewDeck();
+      setConfirmDeleteId(null);
+      loadDecks();
+    } catch (e) {
+      console.error('Failed to delete deck:', e);
+    }
   };
 
   const copyDeck = async (savedDeck: Deck, e: React.MouseEvent) => {
     e.stopPropagation();
     if (!getAuthUser()) return;
-    const copyData = {
-      ...savedDeck,
-      name: `${savedDeck.name} (副本)`,
-      createdAt: Date.now(),
-      updatedAt: Date.now()
-    };
-    delete (copyData as any).id;
     const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001';
-        const token = localStorage.getItem('token');
-await fetch(`${BACKEND_URL}/api/user/decks/${savedDeck.id}/copy`, { method: 'POST', headers: { 'Authorization': `Bearer ${token}` }});
-    loadDecks();
+    const token = localStorage.getItem('token');
+    try {
+      await fetch(`${BACKEND_URL}/api/user/decks/${savedDeck.id}/copy`, { 
+        method: 'POST', 
+        headers: { 'Authorization': `Bearer ${token}` } 
+      });
+      loadDecks();
+    } catch (e) {
+      console.error('Failed to copy deck:', e);
+    }
   };
 
   const renameDeck = async (id: string) => {
     if (!getAuthUser() || !newName.trim()) return;
     const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001';
-        const token = localStorage.getItem('token');
-await fetch(`${BACKEND_URL}/api/user/decks/${id}`, { method: 'PUT', headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ name: newName }) });
-    setIsRenaming(null);
-    if (selectedDeckId === id) setDeckName(newName);
-    loadDecks();
+    const token = localStorage.getItem('token');
+    try {
+      await fetch(`${BACKEND_URL}/api/user/decks/${id}`, { 
+        method: 'PUT', 
+        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }, 
+        body: JSON.stringify({ name: newName }) 
+      });
+      setIsRenaming(null);
+      if (selectedDeckId === id) setDeckName(newName);
+      loadDecks();
+    } catch (e) {
+      console.error('Failed to rename deck:', e);
+    }
   };
 
   const addToDeck = (card: CardType) => {
+    // Count per card ID (not uniqueId) for limit check
     const count = deck.filter(c => c.id === card.id).length;
     const godMarkCount = deck.filter(c => c.godMark).length;
 
@@ -143,7 +173,9 @@ await fetch(`${BACKEND_URL}/api/user/decks/${id}`, { method: 'PUT', headers: { '
   };
 
   const filteredCards = CARD_LIBRARY.filter(c => 
-    c.fullName.includes(searchTerm) || (c.specialName && c.specialName.includes(searchTerm)) || c.effects.some(e => e.description.includes(searchTerm))
+    c.fullName.includes(searchTerm) || 
+    (c.specialName && c.specialName.includes(searchTerm)) || 
+    c.effects?.some(e => e.description.includes(searchTerm))
   );
 
   return (
@@ -218,7 +250,7 @@ await fetch(`${BACKEND_URL}/api/user/decks/${id}`, { method: 'PUT', headers: { '
                   取消
                 </button>
                 <button 
-                  onClick={(e) => deleteDeck(confirmDeleteId, e)}
+                  onClick={() => deleteDeck(confirmDeleteId)}
                   className="flex-1 py-2 bg-red-600 hover:bg-red-700 rounded-xl font-bold transition-colors"
                 >
                   确定删除
@@ -255,7 +287,7 @@ await fetch(`${BACKEND_URL}/api/user/decks/${id}`, { method: 'PUT', headers: { '
         <div className="flex-1 overflow-y-auto p-8">
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-6">
             {deck.map((card, index) => (
-              <div key={`${card.id}-${index}`} className="relative group">
+              <div key={`${card.uniqueId}-${index}`} className="relative group">
                 <div 
                   className="transition-transform hover:scale-105 cursor-zoom-in"
                   onClick={() => setZoomedCard(card)}
@@ -296,7 +328,7 @@ await fetch(`${BACKEND_URL}/api/user/decks/${id}`, { method: 'PUT', headers: { '
         <div className="flex-1 overflow-y-auto p-4 space-y-4">
           {filteredCards.map(card => (
             <div 
-              key={card.id}
+              key={card.uniqueId}
               className="bg-zinc-900/50 border border-zinc-800 rounded-xl p-3 hover:border-zinc-600 transition-all group"
             >
               <div className="flex gap-3 mb-3">
@@ -304,11 +336,11 @@ await fetch(`${BACKEND_URL}/api/user/decks/${id}`, { method: 'PUT', headers: { '
                   className="w-16 h-24 rounded-lg overflow-hidden flex-shrink-0 shadow-lg cursor-zoom-in"
                   onClick={() => setZoomedCard(card)}
                 >
-                  <img src={card.imageUrl} className="w-full h-full object-cover" />
+                  <img src={getCardImageUrl(card.id, card.rarity, true)} className="w-full h-full object-cover" />
                 </div>
                 <div className="flex-1 min-w-0">
                   <h4 className="font-black italic text-sm truncate">{card.fullName}</h4>
-                  <p className="text-[10px] text-zinc-500 uppercase tracking-widest mb-2">{card.type}</p>
+                  <p className="text-[10px] text-zinc-500 uppercase tracking-widest mb-2">{card.type} - {card.rarity}</p>
                   <div className="flex items-center gap-2">
                     <button 
                       onClick={() => addToDeck(card)}
@@ -338,11 +370,11 @@ await fetch(`${BACKEND_URL}/api/user/decks/${id}`, { method: 'PUT', headers: { '
               initial={{ scale: 0.8, y: 20 }}
               animate={{ scale: 1, y: 0 }}
               exit={{ scale: 0.8, y: 20 }}
-              className="max-w-md w-full aspect-[3/4] rounded-2xl overflow-hidden border-2 border-white/10 shadow-2xl"
+              className="max-w-md w-full aspect-[3/4] rounded-2xl overflow-hidden border-2 border-white/10 shadow-2xl relative"
               onClick={e => e.stopPropagation()}
             >
               <img 
-                src={zoomedCard.fullImageUrl} 
+                src={getCardImageUrl(zoomedCard.id, zoomedCard.rarity, false)} 
                 alt={zoomedCard.fullName}
                 className="w-full h-full object-cover"
                 referrerPolicy="no-referrer"

@@ -11,7 +11,7 @@ const activate_10402007_1: CardEffect = {
     instance.isExhausted = true;
     // Note: displayState manipulation might be handled by UI or standard engine logic for horizontal cards,
     // but manually setting it to BACK_UPRIGHT is common in this codebase for exhausted status.
-    instance.displayState = 'BACK_UPRIGHT'; 
+    instance.displayState = 'BACK_UPRIGHT';
     return true;
   },
   execute: (instance: Card, gameState: GameState, playerState: PlayerState) => {
@@ -82,13 +82,13 @@ const activate_10402007_1: CardEffect = {
           gameState.logs.push(`[老练的狐族商人] ${targetPlayer.displayName} 侵蚀前区没有正面向上的卡，效果部分失败。`);
           // Still try to do the deck part
           if (targetPlayer.deck.length > 0) {
-              const topCard = targetPlayer.deck.pop()!;
-              topCard.cardlocation = 'EROSION_FRONT';
-              topCard.displayState = 'FRONT_UPRIGHT';
-              const emptyIdx = targetPlayer.erosionFront.findIndex(c => c === null);
-              if (emptyIdx !== -1) targetPlayer.erosionFront[emptyIdx] = topCard;
-              else targetPlayer.erosionFront.push(topCard);
-              gameState.logs.push(`[老练的狐族商人] 将 ${targetPlayer.displayName} 卡组顶的卡放置在了侵蚀前区`);
+            const topCard = targetPlayer.deck.pop()!;
+            topCard.cardlocation = 'EROSION_FRONT';
+            topCard.displayState = 'FRONT_UPRIGHT';
+            const emptyIdx = targetPlayer.erosionFront.findIndex(c => c === null);
+            if (emptyIdx !== -1) targetPlayer.erosionFront[emptyIdx] = topCard;
+            else targetPlayer.erosionFront.push(topCard);
+            gameState.logs.push(`[老练的狐族商人] 将 ${targetPlayer.displayName} 卡组顶的卡放置在了侵蚀前区`);
           }
         }
       }
@@ -100,7 +100,7 @@ const activate_10402007_1: CardEffect = {
       const erosionCard = targetPlayer.erosionFront.find(c => c?.gamecardId === selectedErosionCardId);
       if (erosionCard) {
         gameState.logs.push(`[老练的狐族商人] 将 ${targetPlayer.displayName} 的侵蚀卡 ${erosionCard.fullName} 送往墓地`);
-        
+
         // Move to Grave
         AtomicEffectExecutor.execute(gameState, selectedPlayerUid, {
           type: 'MOVE_FROM_EROSION',
@@ -220,7 +220,7 @@ const activate_10402007_2: CardEffect = {
       const handCard = targetPlayer.hand.find(c => c.gamecardId === selectedHandCardId);
       if (handCard) {
         gameState.logs.push(`[老练的狐族商人] ${targetPlayer.displayName} 将手牌 ${handCard.fullName} 放置在了侵蚀前区`);
-        
+
         AtomicEffectExecutor.execute(gameState, selectedPlayerUid, {
           type: 'MOVE_FROM_HAND',
           targetFilter: { gamecardId: selectedHandCardId },
@@ -244,7 +244,7 @@ const card: Card = {
   type: 'UNIT',
   color: 'BLUE',
   gamecardId: null as any,
-  colorReq: {'BLUE':1},
+  colorReq: { 'BLUE': 1 },
   faction: '无',
   acValue: 2,
   power: 1500,
@@ -253,15 +253,15 @@ const card: Card = {
   baseDamage: 1,
   godMark: false,
   displayState: 'FRONT_UPRIGHT',
-  isExhausted:false,
+  isExhausted: false,
   isrush: false,
   canAttack: true,
   feijingMark: false,
   canResetCount: 0,
   effects: [activate_10402007_1, activate_10402007_2],
-  imageUrl: '/pics/10402007_thumb.jpg',
-  fullImageUrl: '/pics/10402007_full.jpg',
   rarity: 'PR',
+  availableRarities: ['R', 'PR'],
+  uniqueId: null,
 };
 
 export default card;

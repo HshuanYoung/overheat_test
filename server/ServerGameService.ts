@@ -38,8 +38,8 @@ export function cleanForFirestore(obj: any): any {
 
 export const ServerGameService = {
   hydrateCard(card: Card | null) {
-    if (!card || !card.id) return;
-    const masterCard = SERVER_CARD_LIBRARY[card.id];
+    if (!card || (!card.id && !card.uniqueId)) return;
+    const masterCard = SERVER_CARD_LIBRARY[card.uniqueId] || SERVER_CARD_LIBRARY[card.id];
     if (masterCard && masterCard.effects) {
       // Re-assign effects to restore functions lost during JSON serialization
       card.effects = masterCard.effects.map((originalEffect, idx) => {
