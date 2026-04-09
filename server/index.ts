@@ -505,8 +505,12 @@ app.get('/api/user/profile', async (req, res): Promise<void> => {
     if (!user) { res.status(401).json({ error: 'Invalid token' }); return; }
 
     try {
-        const rows = await pool.query('SELECT favorite_card_id, coins FROM users WHERE id = ?', [user.userId]);
-        res.json({ favoriteCardId: rows.length > 0 ? rows[0].favorite_card_id : null, coins: rows.length > 0 ? Number(rows[0].coins) : 0 });
+        const rows = await pool.query('SELECT favorite_card_id, favorite_back_id, coins FROM users WHERE id = ?', [user.userId]);
+        res.json({ 
+            favoriteCardId: rows.length > 0 ? rows[0].favorite_card_id : null, 
+            favoriteBackId: rows.length > 0 ? rows[0].favorite_back_id : 'default',
+            coins: rows.length > 0 ? Number(rows[0].coins) : 0 
+        });
     } catch (err) {
         res.status(500).json({ error: 'DB Error' });
     }
@@ -519,8 +523,14 @@ app.put('/api/user/profile', async (req, res): Promise<void> => {
     if (!user) { res.status(401).json({ error: 'Invalid token' }); return; }
 
     try {
-        const { favoriteCardId } = req.body;
-        await pool.query('UPDATE users SET favorite_card_id = ? WHERE id = ?', [favoriteCardId, user.userId]);
+        const { favoriteCardId, favoriteBackId } = req.body;
+        if (favoriteCardId !== undefined && favoriteBackId !== undefined) {
+            await pool.query('UPDATE users SET favorite_card_id = ?, favorite_back_id = ? WHERE id = ?', [favoriteCardId, favoriteBackId, user.userId]);
+        } else if (favoriteCardId !== undefined) {
+            await pool.query('UPDATE users SET favorite_card_id = ? WHERE id = ?', [favoriteCardId, user.userId]);
+        } else if (favoriteBackId !== undefined) {
+            await pool.query('UPDATE users SET favorite_back_id = ? WHERE id = ?', [favoriteBackId, user.userId]);
+        }
         res.json({ success: true });
     } catch (err) {
         res.status(500).json({ error: 'DB Error' });

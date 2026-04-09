@@ -1,7 +1,7 @@
 import { getAuthUser } from '../socket';
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Swords, Bot, ShoppingBag, Library, Play, Users, Loader2 } from 'lucide-react';
+import { Swords, Bot, ShoppingBag, Library, Play, Users, Loader2, Layout, CreditCard, Image as ImageIcon, Plus } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '../lib/utils';
 
@@ -17,6 +17,7 @@ export const Home: React.FC = () => {
   const [favoriteCard, setFavoriteCard] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [showBattleMenu, setShowBattleMenu] = useState(false);
+  const [showCollectionMenu, setShowCollectionMenu] = useState(false);
   const navigate = useNavigate();
   const user = getAuthUser();
 
@@ -107,8 +108,48 @@ export const Home: React.FC = () => {
         {/* Store */}
         <MenuButton title="卡牌商店" icon={<ShoppingBag className="w-6 h-6" />} description="购买卡包扩充收藏" to="/store" />
 
-        {/* My Collection */}
-        <MenuButton title="我的收藏" icon={<Library className="w-6 h-6" />} description="查看拥有的所有卡牌" to="/collection" />
+        {/* My Collection - expandable */}
+        <div>
+          <motion.div
+            whileHover={{ x: 16, scale: 1.01 }}
+            whileTap={{ scale: 0.98 }}
+            onClick={() => {
+              // Toggle or navigate? Usually clicking the main button should toggle if it has sub-menu
+              // But if the user clicks the label, maybe they want the hub.
+              // I'll make it toggle.
+              setShowCollectionMenu(!showCollectionMenu);
+            }}
+            className="p-5 rounded-r-full border-l-4 border-red-600 cursor-pointer w-[420px] bg-zinc-900/60 hover:bg-red-600/20 group transition-all"
+          >
+            <div className="flex items-center gap-5">
+              <div className="p-3.5 rounded-full bg-black/50 group-hover:bg-red-600 transition-colors">
+                <Library className="w-6 h-6" />
+              </div>
+              <div>
+                <h2 className="text-2xl font-black italic tracking-tighter">我的收藏</h2>
+                <p className="text-zinc-400 text-xs uppercase tracking-wider">MY COLLECTION</p>
+              </div>
+            </div>
+          </motion.div>
+
+          <AnimatePresence>
+            {showCollectionMenu && (
+              <motion.div
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: 'auto', opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                className="overflow-hidden ml-8"
+              >
+                <div className="pt-3 flex flex-col gap-2">
+                  <SubMenuButton title="我的卡组" desc="管理及编辑你的套牌" icon={<Layout className="w-4 h-4" />} onClick={() => navigate('/collection?tab=DECKS')} />
+                  <SubMenuButton title="所有卡牌" desc="查看及筛选拥有的卡牌" icon={<CreditCard className="w-4 h-4" />} onClick={() => navigate('/collection?tab=CARDS')} />
+                  <SubMenuButton title="卡背样式" desc="自定义你的个性化卡背" icon={<ImageIcon className="w-4 h-4" />} onClick={() => navigate('/collection?tab=BACKS')} />
+                  <SubMenuButton title="雷亚收藏" desc="管理及展示雷亚卡背景" icon={<Plus className="w-4 h-4" />} onClick={() => navigate('/collection?tab=RAY_CARDS')} />
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
       </div>
 
       {/* Bottom quote */}
@@ -137,8 +178,8 @@ const MenuButton = ({ title, icon, description, to }: any) => (
   </Link>
 );
 
-const SubMenuButton = ({ title, desc, icon, to }: any) => (
-  <Link to={to}>
+const SubMenuButton = ({ title, desc, icon, to, onClick }: any) => {
+  const content = (
     <motion.div
       whileHover={{ x: 10, scale: 1.01 }}
       whileTap={{ scale: 0.98 }}
@@ -152,5 +193,10 @@ const SubMenuButton = ({ title, desc, icon, to }: any) => (
         </div>
       </div>
     </motion.div>
-  </Link>
-);
+  );
+
+  if (to) {
+    return <Link to={to}>{content}</Link>;
+  }
+  return <div onClick={onClick}>{content}</div>;
+};

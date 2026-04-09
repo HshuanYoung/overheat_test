@@ -1,17 +1,16 @@
-import { pool } from './db.js';
+import { pool } from './db';
 
 async function migrate() {
     let conn;
     try {
         conn = await pool.getConnection();
 
-        // 1. Add favorite_card_id to users if not exists
+        // 1. Add favorite_card_id and favorite_back_id to users if not exists
         try {
-            await conn.query(`ALTER TABLE users ADD COLUMN favorite_card_id VARCHAR(50) DEFAULT 'fav_card';`);
+            await conn.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS favorite_card_id VARCHAR(50) DEFAULT 'fav_card';`);
+            await conn.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS favorite_back_id VARCHAR(50) DEFAULT 'default';`);
         } catch (e: any) {
-            if (e.code !== 'ER_DUP_FIELDNAME') {
-                console.log('Column add error (ignored if exists):', e.message);
-            }
+            console.log('Column add error:', e.message);
         }
 
         // 2. Create decks table
