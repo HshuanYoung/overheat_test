@@ -1238,16 +1238,19 @@ export const ServerGameService = {
       case 'MULLIGAN':
         gameState.phase = 'START';
         gameState.turnCount = 1;
+        gameState.logs.push(`[阶段切换] 进入开始阶段`);
         EventEngine.dispatchEvent(gameState, { type: 'PHASE_CHANGED', data: { phase: 'START' } });
         this.executeStartPhase(gameState, turnPlayer);
         break;
       case 'START':
         gameState.phase = 'DRAW';
+        gameState.logs.push(`[阶段切换] 进入抽牌阶段`);
         EventEngine.dispatchEvent(gameState, { type: 'PHASE_CHANGED', data: { phase: 'DRAW' } });
         this.executeDrawPhase(gameState, turnPlayer);
         break;
       case 'DRAW':
         gameState.phase = 'EROSION';
+        gameState.logs.push(`[阶段切换] 进入侵蚀阶段`);
         EventEngine.dispatchEvent(gameState, { type: 'PHASE_CHANGED', data: { phase: 'EROSION' } });
         this.executeErosionPhase(gameState, turnPlayer);
         break;
@@ -1262,8 +1265,9 @@ export const ServerGameService = {
           if (action === 'BATTLE_DECLARATION') {
             gameState.phase = 'BATTLE_DECLARATION';
             EventEngine.dispatchEvent(gameState, { type: 'PHASE_CHANGED', data: { phase: 'BATTLE_DECLARATION' } });
-            gameState.logs.push(`${actingPlayer.displayName} 进入战斗阶段`);
+            gameState.logs.push(`[阶段切换] ${actingPlayer.displayName} 进入战斗阶段`);
           } else {
+            gameState.logs.push(`[对抗请求] ${actingPlayer.displayName} 请求进入战斗阶段`);
             this.enterCountering(gameState, actingPlayerId, {
               ownerUid: actingPlayerId,
               type: 'PHASE_END',
@@ -1273,8 +1277,10 @@ export const ServerGameService = {
           }
         } else if (action === 'DECLARE_END' || action === 'DISCARD') {
           if (action === 'DISCARD') {
+            gameState.logs.push(`[阶段切换] 进入弃牌阶段`);
             this.executeEndPhase(gameState, actingPlayer);
           } else {
+            gameState.logs.push(`[对抗请求] ${actingPlayer.displayName} 请求结束回合`);
             this.enterCountering(gameState, actingPlayerId, {
               ownerUid: actingPlayerId,
               type: 'PHASE_END',
@@ -1287,8 +1293,10 @@ export const ServerGameService = {
       case 'BATTLE_DECLARATION':
         if (action === 'DECLARE_END' || action === 'DISCARD') {
           if (action === 'DISCARD') {
+            gameState.logs.push(`[阶段切换] 进入弃牌阶段`);
             this.executeEndPhase(gameState, actingPlayer);
           } else {
+            gameState.logs.push(`[对抗请求] ${actingPlayer.displayName} 请求结束回合`);
             this.enterCountering(gameState, actingPlayerId, {
               ownerUid: actingPlayerId,
               type: 'PHASE_END',
@@ -1300,8 +1308,9 @@ export const ServerGameService = {
           if (action === 'MAIN') {
             gameState.phase = 'MAIN';
             EventEngine.dispatchEvent(gameState, { type: 'PHASE_CHANGED', data: { phase: 'MAIN' } });
-            gameState.logs.push(`${actingPlayer.displayName} 返回主要阶段`);
+            gameState.logs.push(`[阶段切换] ${actingPlayer.displayName} 返回主要阶段`);
           } else {
+            gameState.logs.push(`[对抗请求] ${actingPlayer.displayName} 请求返回主要阶段`);
             this.enterCountering(gameState, actingPlayerId, {
               ownerUid: actingPlayerId,
               type: 'PHASE_END',
@@ -1315,6 +1324,7 @@ export const ServerGameService = {
         if (!gameState.battleState) {
           console.warn('[ServerGameService] BATTLE_FREE without battleState, returning to MAIN');
           gameState.phase = 'MAIN';
+          gameState.logs.push(`[阶段切换] 战斗状态缺失，返回主要阶段`);
           return gameState;
         }
 
@@ -1322,45 +1332,47 @@ export const ServerGameService = {
           if (action === 'DAMAGE_CALCULATION') {
             gameState.phase = 'DAMAGE_CALCULATION';
             gameState.battleState.askConfront = undefined;
+            gameState.logs.push(`[阶段切换] 进入伤害计算阶段`);
             await this.resolveDamage(gameState);
           } else {
             // Propose calculation - ask opponent first
             gameState.battleState.askConfront = 'ASKING_OPPONENT';
             gameState.phaseTimerStart = Date.now();
-            gameState.logs.push(`等待对手确认是否进行对抗`);
+            gameState.logs.push(`[进行对抗] 等待对手确认是否进行对抗`);
           }
         } else if (action === 'CONFIRM_CONFRONTATION') {
           gameState.battleState.askConfront = undefined;
+          gameState.logs.push(`[进行对抗] 确认在自由阶段展开对抗！`);
           this.enterCountering(gameState, actingPlayerId, {
             ownerUid: actingPlayerId,
             type: 'PHASE_END',
             nextPhase: 'DAMAGE_CALCULATION',
             timestamp: Date.now()
           }, 1);
-          gameState.logs.push(`在自由阶段展开对抗！`);
         } else if (action === 'DECLINE_CONFRONTATION') {
           if (gameState.battleState.askConfront === 'ASKING_OPPONENT') {
             // Opponent declined, ask turn player if they want to counter? 
             gameState.battleState.askConfront = 'ASKING_TURN_PLAYER';
             gameState.phaseTimerStart = Date.now();
+            gameState.logs.push(`[进行对抗] 对手选择拒绝，等待当前玩家确认`);
           } else {
             // Both declined or turn player declined
             gameState.phase = 'DAMAGE_CALCULATION';
             gameState.battleState.askConfront = undefined;
-            gameState.logs.push(`进入伤害判定`);
+            gameState.logs.push(`[阶段切换] 对抗结束，进入伤害判定`);
             await this.resolveDamage(gameState);
           }
         } else if (action === 'RETURN_MAIN') {
           gameState.phase = 'MAIN';
           gameState.battleState = undefined;
-          gameState.logs.push(`战斗中止，返回主要阶段`);
+          gameState.logs.push(`[阶段切换] 战斗中止，返回主要阶段`);
         }
         break;
       case 'BATTLE_END':
         gameState.phase = 'MAIN';
         EventEngine.dispatchEvent(gameState, { type: 'PHASE_CHANGED', data: { phase: 'MAIN' } });
         gameState.battleState = undefined;
-        gameState.logs.push(`战斗结束，返回主要阶段`);
+        gameState.logs.push(`[阶段切换] 战斗结束，返回主要阶段`);
         break;
       case 'DISCARD':
         // Handled by discardCard
@@ -1967,6 +1979,7 @@ export const ServerGameService = {
         [playerUid]: myState,
         'BOT_PLAYER': botState
       },
+      mode: 'practice',
       phaseTimerStart: Date.now(),
       mainPhaseTimeRemaining: GAME_TIMEOUTS.MAIN_PHASE_TOTAL
     };
@@ -2007,6 +2020,7 @@ export const ServerGameService = {
       passCount: 0,
       playerIds: [uid1, uid2], gameStatus: 1, logs: ['匹配成功。对局开始'],
       players: { [uid1]: p1, [uid2]: p2 },
+      mode: 'match',
       phaseTimerStart: Date.now(),
       mainPhaseTimeRemaining: GAME_TIMEOUTS.MAIN_PHASE_TOTAL
     };

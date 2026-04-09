@@ -11,6 +11,8 @@ import { generateToken, verifyToken } from './auth';
 import { initServerCardLibrary, SERVER_CARD_LIBRARY } from './card_loader';
 import { ServerGameService } from './ServerGameService';
 import { PlayerState, Card, GAME_TIMEOUTS } from '../src/types/game';
+import fs from 'fs';
+import path from 'path';
 
 // Initialize Game Library
 // Initialize Game Library will be awaited below.
@@ -27,6 +29,10 @@ const io = new Server(httpServer, {
 
 // In-memory locks to prevent concurrent modifications of the same game state
 const gameLocks = new Map<string, Promise<any>>();
+
+// In-memory match log history (not persisted to DB 'state' blob)
+const matchLogHistory = new Map<string, string[]>();
+const lastSyncedLogIndex = new Map<string, number>();
 
 async function withGameLock<T>(gameId: string, action: () => Promise<T>): Promise<T> {
     const existingLock = gameLocks.get(gameId) || Promise.resolve();
@@ -93,8 +99,7 @@ async function handleBotMove(gameState: any, gameId: string) {
 
                 await ServerGameService.botMove(currentGameState);
 
-                await pool.query('UPDATE games SET state = ? WHERE id = ?', [JSON.stringify(currentGameState), gameId]);
-                io.to(gameId).emit('gameStateUpdate', currentGameState);
+                await syncAndSaveState(gameId, currentGameState);
 
                 // Re-trigger if bot still needs to move
                 const nextState = currentGameState;
@@ -130,13 +135,95 @@ function triggerBotIfNeeded(gameState: any, gameId: string) {
     }
 }
 
+async function saveMatchLog(gameState: any, gameId?: string) {
+    if (gameState.gameStatus !== 2 || gameState.logsSaved) return;
+    if (gameState.mode !== 'friend' && gameState.mode !== 'match') return;
+
+    const matchNumber = gameState.gameId || gameId;
+    if (!matchNumber) return;
+
+    // Use full history from memory if available, otherwise fallback to current logs
+    const fullHistory = matchLogHistory.get(matchNumber) || gameState.logs || [];
+    const logContent = fullHistory.join('\n');
+
+    let savedAny = false;
+    for (const uid of gameState.playerIds || []) {
+        if (!uid || uid === 'BOT_PLAYER') continue;
+
+        try {
+            const rows = await pool.query('SELECT username FROM users WHERE id = ?', [uid]);
+            if (rows.length === 0) continue;
+            const username = rows[0].username;
+
+            const logDir = path.join(process.cwd(), username, 'matchlog');
+            if (!fs.existsSync(logDir)) {
+                fs.mkdirSync(logDir, { recursive: true });
+            }
+
+            const filePath = path.join(logDir, `${matchNumber}.log`);
+            fs.writeFileSync(filePath, logContent);
+            console.log(`[Log] Match log saved for ${username}: ${filePath}`);
+            savedAny = true;
+        } catch (err) {
+            console.error(`[Log] Failed to save match log for user ${uid}:`, err);
+        }
+    }
+
+    if (savedAny) {
+        gameState.logsSaved = true;
+        // Final state save to mark logs as saved
+        await pool.query('UPDATE games SET state = ? WHERE id = ?', [JSON.stringify(gameState), matchNumber]);
+    }
+}
+
+async function syncAndSaveState(gameId: string, gameState: any) {
+    if (!gameState) return;
+
+    // Ensure logs exist
+    if (!gameState.logs) gameState.logs = [];
+
+    // 1. Get or create history for this match
+    let history = matchLogHistory.get(gameId) || [];
+    let lastIdx = lastSyncedLogIndex.get(gameId) || 0;
+
+    // 2. Capture new logs added in this step
+    const newLogs = gameState.logs.slice(lastIdx);
+    if (newLogs.length > 0) {
+        history = history.concat(newLogs);
+        matchLogHistory.set(gameId, history);
+        lastSyncedLogIndex.set(gameId, history.length);
+    }
+
+    // 3. Emit full state to clients (they need logs for display)
+    io.to(gameId).emit('gameStateUpdate', gameState);
+
+    // 4. Prune logs in gameState to keep the DB 'state' blob small
+    // satisfies "It should not be pushed to the backend (DB)"
+    const MAX_DB_LOGS = 50;
+    if (gameState.logs.length > MAX_DB_LOGS) {
+        gameState.logs = gameState.logs.slice(-MAX_DB_LOGS);
+        // Update lastIdx so the next sync knows where to start from the pruned array
+        lastSyncedLogIndex.set(gameId, MAX_DB_LOGS);
+    }
+
+    // 5. Persist the pruned state to MariaDB
+    await pool.query('UPDATE games SET state = ? WHERE id = ?', [JSON.stringify(gameState), gameId]);
+
+    // 6. If game ended, write full history to file
+    if (gameState.gameStatus === 2) {
+        await saveMatchLog(gameState, gameId);
+        // Cleanup memory
+        matchLogHistory.delete(gameId);
+        lastSyncedLogIndex.delete(gameId);
+    }
+}
+
 async function advancePhase(gameState: any, gameId: string, playerId?: string, socket?: any, action?: any) {
     try {
         console.log(`[Socket] advancePhase for game ${gameId}, action: ${action}, playerId: ${playerId}`);
         await ServerGameService.advancePhase(gameState, action, playerId);
 
-        await pool.query('UPDATE games SET state = ? WHERE id = ?', [JSON.stringify(gameState), gameId]);
-        io.to(gameId).emit('gameStateUpdate', gameState);
+        await syncAndSaveState(gameId, gameState);
 
         triggerBotIfNeeded(gameState, gameId);
     } catch (err: any) {
@@ -189,8 +276,7 @@ setInterval(async () => {
                             }
 
                             gameState.phaseTimerStart = Date.now();
-                            await pool.query('UPDATE games SET state = ? WHERE id = ?', [JSON.stringify(gameState), gameId]);
-                            io.to(gameId).emit('gameStateUpdate', gameState);
+                            await syncAndSaveState(gameId, gameState);
 
                             const currentPlayerId = gameState.playerIds[gameState.currentTurnPlayer];
                             if (currentPlayerId === 'BOT_PLAYER' || gameState.priorityPlayerId === 'BOT_PLAYER') {
@@ -212,8 +298,7 @@ setInterval(async () => {
                             gameState.phaseTimerStart = Date.now();
                         }
 
-                        await pool.query('UPDATE games SET state = ? WHERE id = ?', [JSON.stringify(gameState), gameId]);
-                        io.to(gameId).emit('gameStateUpdate', gameState);
+                        await syncAndSaveState(gameId, gameState);
 
                         const currentPlayerId = gameState.playerIds[gameState.currentTurnPlayer];
                         if (currentPlayerId === 'BOT_PLAYER' || gameState.priorityPlayerId === 'BOT_PLAYER') {
@@ -253,8 +338,7 @@ setInterval(async () => {
                         }
 
                         gameState.phaseTimerStart = Date.now();
-                        await pool.query('UPDATE games SET state = ? WHERE id = ?', [JSON.stringify(gameState), gameId]);
-                        io.to(gameId).emit('gameStateUpdate', gameState);
+                        await syncAndSaveState(gameId, gameState);
 
                         const currentPlayerId = gameState.playerIds[gameState.currentTurnPlayer];
                         if (currentPlayerId === 'BOT_PLAYER' || gameState.priorityPlayerId === 'BOT_PLAYER') {
@@ -1085,15 +1169,13 @@ io.on('connection', (socket) => {
                         gameState.logs.push('所有玩家已准备就绪。开始调度阶段。');
                     }
 
-                    await pool.query('UPDATE games SET state = ? WHERE id = ?', [JSON.stringify(gameState), gameId]);
+                    await syncAndSaveState(gameId, gameState);
                 } else {
                     console.error(`[Socket] joinGame error: Deck ${deckId} not found`);
                 }
             }
 
-            console.log(`[Socket] joinGame success: Emitting state for ${userIdStr} in ${gameId}`);
-            socket.emit('gameStateUpdate', gameState);
-            io.to(gameId).emit('gameStateUpdate', gameState);
+            console.log(`[Socket] joinGame success: for ${userIdStr} in ${gameId}`);
 
         } catch (err) {
             console.error('[Socket] joinGame exception:', err);
@@ -1169,64 +1251,44 @@ io.on('connection', (socket) => {
                         await advancePhase(gameState, gameId, myUid, socket);
                         return;
                     }
-
-                    await pool.query('UPDATE games SET state = ? WHERE id = ?', [JSON.stringify(gameState), gameId]);
-                    io.to(gameId).emit('gameStateUpdate', gameState);
                 } else if (action === 'PLAY_CARD') {
                     const { cardId, paymentSelection } = payload;
                     await ServerGameService.playCard(gameState, myUid, cardId, paymentSelection);
-                    await pool.query('UPDATE games SET state = ? WHERE id = ?', [JSON.stringify(gameState), gameId]);
-                    io.to(gameId).emit('gameStateUpdate', gameState);
                 } else if (action === 'ATTACK') {
                     const { attackerIds, alliance } = payload;
                     await ServerGameService.declareAttack(gameState, myUid, attackerIds, alliance);
-                    await pool.query('UPDATE games SET state = ? WHERE id = ?', [JSON.stringify(gameState), gameId]);
-                    io.to(gameId).emit('gameStateUpdate', gameState);
                 } else if (action === 'DEFEND') {
                     const { defenderId } = payload;
                     await ServerGameService.declareDefense(gameState, myUid, defenderId);
-                    await pool.query('UPDATE games SET state = ? WHERE id = ?', [JSON.stringify(gameState), gameId]);
-                    io.to(gameId).emit('gameStateUpdate', gameState);
                 } else if (action === 'RESOLVE_DAMAGE') {
                     await ServerGameService.resolveDamage(gameState);
-                    await pool.query('UPDATE games SET state = ? WHERE id = ?', [JSON.stringify(gameState), gameId]);
-                    io.to(gameId).emit('gameStateUpdate', gameState);
                 } else if (action === 'EROSION_CHOICE') {
                     const { choice, selectedCardId } = payload;
                     await ServerGameService.handleErosionChoice(gameState, myUid, choice, selectedCardId);
-                    await pool.query('UPDATE games SET state = ? WHERE id = ?', [JSON.stringify(gameState), gameId]);
-                    io.to(gameId).emit('gameStateUpdate', gameState);
                 } else if (action === 'DISCARD') {
                     const { cardId } = payload;
                     await ServerGameService.discardCard(gameState, myUid, cardId);
-                    await pool.query('UPDATE games SET state = ? WHERE id = ?', [JSON.stringify(gameState), gameId]);
-                    io.to(gameId).emit('gameStateUpdate', gameState);
                 } else if (action === 'ACTIVATE_EFFECT') {
                     const { cardId, effectIndex } = payload;
                     await ServerGameService.activateEffect(gameState, myUid, cardId, effectIndex);
-                    await pool.query('UPDATE games SET state = ? WHERE id = ?', [JSON.stringify(gameState), gameId]);
-                    io.to(gameId).emit('gameStateUpdate', gameState);
                 } else if (action === 'PASS_CONFRONTATION') {
                     await ServerGameService.passConfrontation(gameState, myUid);
-                    await pool.query('UPDATE games SET state = ? WHERE id = ?', [JSON.stringify(gameState), gameId]);
-                    io.to(gameId).emit('gameStateUpdate', gameState);
                 } else if (action === 'RESOLVE_PLAY') {
                     if (gameState.phase === 'COUNTERING') {
                         await ServerGameService.resolveCounterStack(gameState);
-                        await pool.query('UPDATE games SET state = ? WHERE id = ?', [JSON.stringify(gameState), gameId]);
-                        io.to(gameId).emit('gameStateUpdate', gameState);
                     }
                 } else if (action === 'SUBMIT_QUERY_CHOICE') {
                     const { queryId, selections } = payload;
                     await ServerGameService.handleQueryChoice(gameState, myUid, queryId, selections);
-                    await pool.query('UPDATE games SET state = ? WHERE id = ?', [JSON.stringify(gameState), gameId]);
-                    io.to(gameId).emit('gameStateUpdate', gameState);
                 } else if (action === 'END_PHASE') {
                     if (player.isTurn || gameState.phase === 'BATTLE_FREE' || gameState.phase === 'COUNTERING') {
                         await advancePhase(gameState, gameId, myUid, socket, payload);
+                        return; // advancePhase already calls syncAndSaveState
                     }
                 }
 
+                // Final state sync and save
+                await syncAndSaveState(gameId, gameState);
                 triggerBotIfNeeded(gameState, gameId);
             } catch (err) {
                 console.error('Game action error:', err);

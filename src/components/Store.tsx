@@ -31,6 +31,8 @@ export const Store: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [buying, setBuying] = useState<string | null>(null);
   const [drawnCards, setDrawnCards] = useState<{ id: string; rarity: string; revealed: boolean }[]>([]);
+  const [allDrawnPacks, setAllDrawnPacks] = useState<{ id: string; rarity: string; revealed: boolean }[][]>([]);
+  const [currentPackIndex, setCurrentPackIndex] = useState(0);
   const [showResult, setShowResult] = useState(false);
   const [pityInfo, setPityInfo] = useState({ packsSinceSR: 0, packsSinceUR: 0, totalPacks: 0 });
 
@@ -73,8 +75,18 @@ export const Store: React.FC = () => {
 
       setCoins(data.newCoins);
       setCardCrystals(data.newCardCrystals);
-      // Initialize cards as unrevealed
-      setDrawnCards(data.cards.map((c: any) => ({ ...c, revealed: false })));
+      
+      // Group cards into packs (Basic: 5, Prize: 1)
+      const packSize = packType === 'prize' ? 1 : 5;
+      const packs: { id: string; rarity: string; revealed: boolean }[][] = [];
+      for (let i = 0; i < data.cards.length; i += packSize) {
+        packs.push(data.cards.slice(i, i + packSize).map((c: any) => ({ ...c, revealed: false })));
+      }
+      
+      setAllDrawnPacks(packs);
+      setCurrentPackIndex(0);
+      setDrawnCards(packs[0]);
+
       setPityInfo({ 
         packsSinceSR: data.packsSinceSR, 
         packsSinceUR: data.packsSinceUR, 
@@ -95,6 +107,16 @@ export const Store: React.FC = () => {
 
   const revealAll = () => {
     setDrawnCards(prev => prev.map(c => ({ ...c, revealed: true })));
+  };
+
+  const nextPack = () => {
+    if (currentPackIndex < allDrawnPacks.length - 1) {
+      const nextIdx = currentPackIndex + 1;
+      setCurrentPackIndex(nextIdx);
+      setDrawnCards(allDrawnPacks[nextIdx]);
+    } else {
+      setShowResult(false);
+    }
   };
 
   const getCardInfo = (id: string) => CARD_LIBRARY.find(c => c.id === id);
@@ -145,8 +167,9 @@ export const Store: React.FC = () => {
               )}
             >
               <div className="absolute inset-0 bg-gradient-to-b from-red-950/40 via-black to-red-950/20" />
+              <img src="/Pics/SR/10401004.jpg" className="absolute inset-0 w-full h-full object-cover opacity-60 group-hover:scale-110 transition-transform duration-700" />
               <div className="absolute inset-0 flex flex-col items-center justify-center gap-6 z-10 text-center px-6">
-                <ShoppingBag className="w-20 h-20 text-red-500 group-hover:scale-110 transition-transform duration-500" />
+                {/* <ShoppingBag className="w-20 h-20 text-red-500 group-hover:scale-110 transition-transform duration-500" /> */}
                 <div>
                   <h2 className="text-3xl font-black italic tracking-tighter uppercase mb-1">基础包</h2>
                   <p className="text-zinc-500 text-[10px] font-black tracking-[0.2em] uppercase">Basic Edition</p>
@@ -194,8 +217,9 @@ export const Store: React.FC = () => {
               )}
             >
               <div className="absolute inset-0 bg-gradient-to-b from-rose-950/40 via-black to-rose-950/20" />
+              <img src="/Pics/PR/10402007.jpg" className="absolute inset-0 w-full h-full object-cover opacity-60 group-hover:scale-110 transition-transform duration-700" />
               <div className="absolute inset-0 flex flex-col items-center justify-center gap-6 z-10 text-center px-6">
-                <Sparkles className="w-20 h-20 text-rose-500 group-hover:scale-110 transition-transform duration-500" />
+                {/* <Sparkles className="w-20 h-20 text-rose-500 group-hover:scale-110 transition-transform duration-500" /> */}
                 <div>
                   <h2 className="text-3xl font-black italic tracking-tighter uppercase mb-1">奖品包</h2>
                   <p className="text-zinc-500 text-[10px] font-black tracking-[0.2em] uppercase">Prize Collector</p>
@@ -260,7 +284,9 @@ export const Store: React.FC = () => {
                     </div>
                     <div>
                       <h2 className="text-2xl font-black italic uppercase tracking-tighter">开包成果 Drawn Result</h2>
-                      <p className="text-zinc-500 text-[10px] font-black uppercase tracking-widest">{drawnCards.length} 张卡牌 • 点击卡牌以揭开</p>
+                      <p className="text-zinc-500 text-[10px] font-black uppercase tracking-widest">
+                        第 {currentPackIndex + 1} / {allDrawnPacks.length} 包 • 点击卡牌以揭开
+                      </p>
                     </div>
                   </div>
                   <button
@@ -271,9 +297,9 @@ export const Store: React.FC = () => {
                   </button>
                 </div>
 
-                {/* Cards Grid */}
-                <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar">
-                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8 gap-6 p-4">
+                {/* Cards Grid - Centered items with larger size */}
+                <div className="flex-1 flex flex-col items-center justify-center">
+                  <div className="flex flex-wrap items-center justify-center gap-10 p-4 max-w-6xl mx-auto">
                     {drawnCards.map((drawn, i) => {
                       const card = getCardInfo(drawn.id);
                       return (
@@ -281,9 +307,18 @@ export const Store: React.FC = () => {
                           key={i}
                           layout
                           initial={{ scale: 0.8, opacity: 0 }}
-                          animate={{ scale: 1, opacity: 1 }}
-                          transition={{ delay: i * 0.02 }}
-                          className="relative aspect-[3/4] perspective-1000 group cursor-pointer"
+                          animate={{ 
+                            scale: drawn.revealed ? 1.05 : 1, 
+                            opacity: 1,
+                            y: drawn.revealed ? -10 : 0
+                          }}
+                          transition={{ 
+                            type: 'spring', 
+                            damping: 15, 
+                            stiffness: 100,
+                            delay: i * 0.05 
+                          }}
+                          className="relative w-56 sm:w-64 aspect-[3/4] perspective-1000 group cursor-pointer"
                           onClick={() => revealCard(i)}
                         >
                           {/* Hover Halo */}
@@ -302,13 +337,17 @@ export const Store: React.FC = () => {
                               "shadow-[0_10px_30px_rgba(0,0,0,0.5)]"
                             )}>
                               <img src="/assets/card_bg.jpg" className="absolute inset-0 w-full h-full object-cover opacity-20 rounded-2xl grayscale" />
-                              <ShoppingBag className="w-10 h-10 text-zinc-700 group-hover:text-red-500 animation-pulse" />
+                              <div className="relative z-10 flex flex-col items-center gap-2">
+                                <ShoppingBag className="w-10 h-10 text-zinc-700 group-hover:text-red-500 animation-pulse" />
+                                <span className="text-[10px] font-black text-zinc-700 uppercase tracking-widest">Pack Card</span>
+                              </div>
                             </div>
 
                             {/* Card Front (Revealed) */}
                             <div className={cn(
                               "absolute inset-0 backface-hidden rotateY-180 rounded-2xl border-2 bg-zinc-900 overflow-hidden",
                               RARITY_COLORS[drawn.rarity] || "border-zinc-800",
+                              drawn.revealed && "shadow-[0_0_40px_rgba(255,255,255,0.1)] ring-2 ring-white/10",
                               "shadow-[0_15px_40px_rgba(0,0,0,0.7)]"
                             )}>
                               {card ? (
@@ -334,7 +373,7 @@ export const Store: React.FC = () => {
                 {/* Confirm Button */}
                 <div className="mt-12 text-center pb-8 border-t border-white/5 pt-8">
                   <button
-                    onClick={() => setShowResult(false)}
+                    onClick={nextPack}
                     className={cn(
                       "px-20 py-5 rounded-full text-xl font-black italic tracking-tighter uppercase transition-all hover:scale-110 active:scale-95",
                       drawnCards.every(c => c.revealed) 
@@ -342,10 +381,12 @@ export const Store: React.FC = () => {
                         : "bg-zinc-900 text-zinc-500 cursor-not-allowed"
                     )}
                   >
-                    确认 Confirm
+                    {currentPackIndex < allDrawnPacks.length - 1 ? "下一包 Next Pack" : "确认 Confirm"}
                   </button>
                   <p className="text-[10px] text-zinc-600 mt-4 font-bold uppercase tracking-widest transition-opacity duration-300">
-                    {drawnCards.every(c => c.revealed) ? "所有卡牌已入库" : "请先揭开所有卡牌"}
+                    {drawnCards.every(c => c.revealed) 
+                      ? (currentPackIndex < allDrawnPacks.length - 1 ? `已揭开第 ${currentPackIndex + 1} 包` : "所有卡牌已入库") 
+                      : "请先揭开本包所有卡牌"}
                   </p>
                 </div>
               </motion.div>
