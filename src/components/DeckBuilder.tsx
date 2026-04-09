@@ -52,7 +52,7 @@ export const DeckBuilder: React.FC = () => {
 
   const loadCollection = async () => {
     if (!getAuthUser()) return;
-    const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001';
+    const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || '';
     const token = localStorage.getItem('token');
     try {
       const res = await fetch(`${BACKEND_URL}/api/user/collection`, { headers: { 'Authorization': `Bearer ${token}` } });
@@ -65,7 +65,7 @@ export const DeckBuilder: React.FC = () => {
 
   const loadProfile = async () => {
     if (!getAuthUser()) return;
-    const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001';
+    const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || '';
     const token = localStorage.getItem('token');
     try {
       const res = await fetch(`${BACKEND_URL}/api/user/profile`, { headers: { 'Authorization': `Bearer ${token}` } });
@@ -76,7 +76,7 @@ export const DeckBuilder: React.FC = () => {
 
   const handleDecompose = async (cardId: string) => {
     setActionLoading(true);
-    const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001';
+    const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || '';
     const token = localStorage.getItem('token');
     try {
       const res = await fetch(`${BACKEND_URL}/api/user/decompose`, {
@@ -110,7 +110,7 @@ export const DeckBuilder: React.FC = () => {
     if (cardCrystals < cost) { alert('卡晶不足'); return; }
 
     setActionLoading(true);
-    const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001';
+    const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || '';
     const token = localStorage.getItem('token');
     try {
       const res = await fetch(`${BACKEND_URL}/api/user/craft`, {
@@ -137,7 +137,7 @@ export const DeckBuilder: React.FC = () => {
 
   const loadDecks = async () => {
     if (!getAuthUser()) return;
-    const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001';
+    const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || '';
     const token = localStorage.getItem('token');
     try {
       const res = await fetch(BACKEND_URL + '/api/user/decks', { headers: { 'Authorization': `Bearer ${token}` } });
@@ -176,7 +176,7 @@ export const DeckBuilder: React.FC = () => {
         updatedAt: Date.now()
       };
 
-      const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001';
+      const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || '';
       const token = localStorage.getItem('token');
       
       if (selectedDeckId) {
@@ -211,7 +211,7 @@ export const DeckBuilder: React.FC = () => {
   const deleteDeck = async (id: string, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
     if (!getAuthUser()) return;
-    const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001';
+    const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || '';
     const token = localStorage.getItem('token');
     try {
       await fetch(`${BACKEND_URL}/api/user/decks/${id}`, { 
@@ -229,7 +229,7 @@ export const DeckBuilder: React.FC = () => {
   const copyDeck = async (savedDeck: Deck, e: React.MouseEvent) => {
     e.stopPropagation();
     if (!getAuthUser()) return;
-    const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001';
+    const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || '';
     const token = localStorage.getItem('token');
     try {
       await fetch(`${BACKEND_URL}/api/user/decks/${savedDeck.id}/copy`, { 
@@ -244,7 +244,7 @@ export const DeckBuilder: React.FC = () => {
 
   const renameDeck = async (id: string) => {
     if (!getAuthUser() || !newName.trim()) return;
-    const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001';
+    const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || '';
     const token = localStorage.getItem('token');
     try {
       await fetch(`${BACKEND_URL}/api/user/decks/${id}`, { 

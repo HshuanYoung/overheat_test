@@ -1,8 +1,8 @@
 import { io } from 'socket.io-client';
 
 const BACKEND_URL = (typeof import.meta !== 'undefined' && import.meta.env) 
-    ? (import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001') 
-    : 'http://localhost:3001';
+    ? (import.meta.env.VITE_BACKEND_URL || '') 
+    : '';
 
 
 export const socket = io(BACKEND_URL, {

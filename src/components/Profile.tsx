@@ -28,7 +28,7 @@ export const Profile: React.FC = () => {
     const loadProfile = async () => {
       if (!user) return;
       try {
-        const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001';
+        const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || '';
         const token = localStorage.getItem('token');
         const res = await fetch(`${BACKEND_URL}/api/user/profile`, { headers: { 'Authorization': `Bearer ${token}` }});
         const data = await res.json();
@@ -45,7 +45,7 @@ export const Profile: React.FC = () => {
     if (!user) return;
     setSaving(true);
     try {
-      const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001';
+      const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || '';
       const token = localStorage.getItem('token');
       await fetch(`${BACKEND_URL}/api/user/profile`, { 
           method: 'PUT', 

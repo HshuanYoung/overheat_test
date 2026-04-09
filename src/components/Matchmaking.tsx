@@ -16,7 +16,7 @@ export const Matchmaking: React.FC = () => {
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001';
+  const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || '';
   const token = localStorage.getItem('token');
 
   useEffect(() => {

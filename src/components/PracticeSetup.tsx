@@ -13,7 +13,7 @@ export const PracticeSetup: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [starting, setStarting] = useState(false);
 
-  const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001';
+  const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || '';
   const token = localStorage.getItem('token');
 
   useEffect(() => {

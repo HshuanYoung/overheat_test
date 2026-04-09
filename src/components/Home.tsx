@@ -29,7 +29,7 @@ export const Home: React.FC = () => {
         return;
       }
       try {
-        const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001';
+        const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || '';
         const res = await fetch(`${BACKEND_URL}/api/user/profile`, { headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }});
         const data = await res.json();
         if (data.favoriteCardId) {

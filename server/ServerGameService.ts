@@ -1,40 +1,8 @@
-// Firebase imports removed - logic is now database-agnostic
 import { GameState, PlayerState, Card, Deck, TriggerLocation, CardEffect, StackItem, GamePhase, GAME_TIMEOUTS } from '../src/types/game';
 import { CARD_LIBRARY } from '../src/data/cards';
 import { EventEngine } from '../src/services/EventEngine';
 import { AtomicEffectExecutor } from '../src/services/AtomicEffectExecutor';
 import { SERVER_CARD_LIBRARY } from './card_loader';
-
-export function cleanForFirestore(obj: any): any {
-  if (obj === undefined) {
-    return undefined;
-  }
-  if (obj === null) {
-    return null;
-  }
-  if (typeof obj === 'function') {
-    return undefined;
-  }
-  if (Array.isArray(obj)) {
-    return obj.map(item => cleanForFirestore(item)).filter(item => item !== undefined);
-  }
-  if (typeof obj === 'object') {
-    if (obj instanceof Date) {
-      return obj;
-    }
-    const cleaned: any = {};
-    for (const key in obj) {
-      if (Object.prototype.hasOwnProperty.call(obj, key)) {
-        const value = cleanForFirestore(obj[key]);
-        if (value !== undefined) {
-          cleaned[key] = value;
-        }
-      }
-    }
-    return cleaned;
-  }
-  return obj;
-}
 
 export const ServerGameService = {
   hydrateCard(card: Card | null) {

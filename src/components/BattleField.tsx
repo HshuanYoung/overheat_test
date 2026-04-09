@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 
-import { onSnapshot, doc, updateDoc, arrayUnion } from 'firebase/firestore';
 import { GameState, PlayerState, Card, StackItem, CardEffect, TriggerLocation, GAME_TIMEOUTS } from '../types/game';
 import { socket, getAuthUser, onceAuthenticated, isSocketAuthenticated } from '../socket';
 

@@ -55,7 +55,8 @@ export default function App() {
     e.preventDefault();
     setLoginError('');
     try {
-      const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001';
+      // Use relative path for proxy support
+      const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || '';
       const res = await fetch(`${BACKEND_URL}/api/login`, {
         method: 'POST',
         headers: {
