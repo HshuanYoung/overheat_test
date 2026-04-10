@@ -55,6 +55,7 @@ export const setupGameHandlers = (io: Server, socket: Socket) => {
             await pool.query('UPDATE games SET state = ? WHERE id = ?', [JSON.stringify(gameState), gameId]);
             
             // Broadcast new state to room
+                        gameState.gameId = gameId;
             io.to(gameId).emit('gameStateUpdate', gameState);
             
         } catch (err: any) {

@@ -191,6 +191,9 @@ async function saveMatchLog(gameState: any, gameId?: string) {
 async function syncAndSaveState(gameId: string, gameState: any) {
     if (!gameState) return;
 
+    // Ensure gameId is always set for client identification
+    gameState.gameId = gameId;
+
     // Ensure logs exist
     if (!gameState.logs) gameState.logs = [];
 
@@ -440,6 +443,7 @@ app.post('/api/games/friend', async (req, res): Promise<void> => {
         const gameId = 'friend_' + roomCode;
         const userIdStr = user.userId.toString();
         const initialState = {
+            gameId: gameId,
             playerIds: [userIdStr],
             players: {},
             status: 'WAITING',
@@ -492,7 +496,8 @@ app.post('/api/games/friend/join', async (req, res): Promise<void> => {
         }
         gameState.playerIds.push(user.userId);
         gameState.status = 'READY';
-        await pool.query('UPDATE games SET state = ? WHERE id = ?', [JSON.stringify(gameState), gameId]);
+        
+        await syncAndSaveState(gameId, gameState);
         res.json({ gameId });
     } catch (err) {
         console.error('Join friend game error:', err);
