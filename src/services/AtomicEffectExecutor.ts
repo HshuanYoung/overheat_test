@@ -30,19 +30,19 @@ export class AtomicEffectExecutor {
         break;
 
       case 'TURN_EROSION_FACE_DOWN':
-        this.turnErosionFaceDown(gameState, playerUid, effect.value || 0);
+        this.turnErosionFaceDown(gameState, playerUid, effect.value || 0, sourceCard, querySelections);
         break;
 
       case 'SET_CAN_RESET_COUNT':
-        this.applyCanResetChange(gameState, effect, sourceCard);
+        this.applyCanResetChange(gameState, effect, sourceCard, querySelections);
         break;
 
       case 'ROTATE_HORIZONTAL':
-        this.rotateCards(gameState, playerUid, effect, 'HORIZONTAL', sourceCard);
+        this.rotateCards(gameState, playerUid, effect, 'HORIZONTAL', sourceCard, querySelections);
         break;
 
       case 'ROTATE_VERTICAL':
-        this.rotateCards(gameState, playerUid, effect, 'VERTICAL', sourceCard);
+        this.rotateCards(gameState, playerUid, effect, 'VERTICAL', sourceCard, querySelections);
         break;
 
       case 'SHUFFLE_DECK':
@@ -58,19 +58,19 @@ export class AtomicEffectExecutor {
         break;
 
       case 'MOVE_FROM_HAND':
-        this.moveCards(gameState, playerUid, effect, effect.destinationZone || 'GRAVE', 'HAND', sourceCard);
+        this.moveCards(gameState, playerUid, effect, effect.destinationZone || 'GRAVE', 'HAND', sourceCard, querySelections);
         break;
 
       case 'MOVE_FROM_EROSION':
-        this.moveCards(gameState, playerUid, effect, effect.destinationZone || 'HAND', 'EROSION_FRONT', sourceCard);
+        this.moveCards(gameState, playerUid, effect, effect.destinationZone || 'HAND', 'EROSION_FRONT', sourceCard, querySelections);
         break;
 
       case 'MOVE_FROM_EROSION_BACK':
-        this.moveCards(gameState, playerUid, effect, effect.destinationZone || 'GRAVE', 'EROSION_BACK', sourceCard);
+        this.moveCards(gameState, playerUid, effect, effect.destinationZone || 'GRAVE', 'EROSION_BACK', sourceCard, querySelections);
         break;
 
       case 'MOVE_FROM_FIELD':
-        this.moveCards(gameState, playerUid, effect, effect.destinationZone || 'HAND', 'UNIT', sourceCard);
+        this.moveCards(gameState, playerUid, effect, effect.destinationZone || 'HAND', 'UNIT', sourceCard, querySelections);
         break;
 
       case 'NEGATE_EFFECT':
@@ -86,19 +86,16 @@ export class AtomicEffectExecutor {
         break;
 
       case 'CHANGE_POWER':
-        this.applyStatChange(gameState, effect, 'power', sourceCard);
+        this.applyStatChange(gameState, effect, 'power', sourceCard, querySelections);
         break;
-
       case 'CHANGE_DAMAGE':
-        this.applyStatChange(gameState, effect, 'damage', sourceCard);
+        this.applyStatChange(gameState, effect, 'damage', sourceCard, querySelections);
         break;
-
       case 'CHANGE_AC':
-        this.applyStatChange(gameState, effect, 'acValue', sourceCard);
+        this.applyStatChange(gameState, effect, 'acValue', sourceCard, querySelections);
         break;
-
       case 'CHANGE_GOD_MARK':
-        this.applyStatChange(gameState, effect, 'godMark', sourceCard);
+        this.applyStatChange(gameState, effect, 'godMark', sourceCard, querySelections);
         break;
 
       case 'DEAL_EFFECT_DAMAGE':
@@ -110,7 +107,7 @@ export class AtomicEffectExecutor {
         break;
 
       case 'DESTROY_CARD':
-        this.destroyCards(gameState, playerUid, effect);
+        this.destroyCards(gameState, playerUid, effect, sourceCard, querySelections);
         break;
 
       case 'BANISH_CARD':
@@ -355,8 +352,8 @@ export class AtomicEffectExecutor {
     }
   }
 
-  private static negateEffect(gameState: GameState, effect: AtomicEffect, sourceCard?: Card) {
-    const targets = this.findTargets(gameState, effect.targetFilter, sourceCard);
+  private static negateEffect(gameState: GameState, effect: AtomicEffect, sourceCard?: Card, querySelections?: string[]) {
+    const targets = this.findTargets(gameState, effect.targetFilter, sourceCard, querySelections);
     targets.forEach(card => {
       // logic to negate card effects
       gameState.logs.push(`${card.fullName} 的效果被无效了`);
@@ -364,8 +361,8 @@ export class AtomicEffectExecutor {
     });
   }
 
-  private static applyImmunity(gameState: GameState, effect: AtomicEffect, type: 'COMBAT' | 'EFFECT', sourceCard?: Card) {
-    const targets = this.findTargets(gameState, effect.targetFilter, sourceCard);
+  private static applyImmunity(gameState: GameState, effect: AtomicEffect, type: 'COMBAT' | 'EFFECT', sourceCard?: Card, querySelections?: string[]) {
+    const targets = this.findTargets(gameState, effect.targetFilter, sourceCard, querySelections);
     targets.forEach(card => {
       // Implementation depends on where immunities are checked (EventEngine or GameService)
       gameState.logs.push(`${card.fullName} 获得了对${type === 'COMBAT' ? '战斗' : '效果'}的免疫`);
@@ -506,12 +503,18 @@ export class AtomicEffectExecutor {
     }
   }
 
-  private static turnErosionFaceDown(gameState: GameState, playerUid: string, count: number) {
+  private static turnErosionFaceDown(gameState: GameState, playerUid: string, count: number, sourceCard?: Card, querySelections?: string[]) {
     const player = gameState.players[playerUid];
-    const faceUpCards = [...player.erosionFront, ...player.erosionBack]
-      .filter(c => c !== null && c.displayState === 'FRONT_UPRIGHT');
-
-    const targets = faceUpCards.slice(0, count);
+    
+    // If we have specific targets selected, use them. Otherwise use the general logic.
+    let targets: (Card | null)[] = [];
+    if (querySelections && querySelections.length > 0) {
+      targets = this.findTargets(gameState, { querySelection: true }, sourceCard, querySelections);
+    } else {
+      const faceUpCards = [...player.erosionFront, ...player.erosionBack]
+        .filter(c => c !== null && c.displayState === 'FRONT_UPRIGHT');
+      targets = faceUpCards.slice(0, count);
+    }
     targets.forEach(card => {
       if (card) {
         card.displayState = 'FRONT_FACEDOWN';
