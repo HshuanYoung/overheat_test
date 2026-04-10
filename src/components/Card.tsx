@@ -102,6 +102,30 @@ export const CardComponent: React.FC<CardProps> = ({ card, onClick, className, c
           <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-black/40" />
         </div>
 
+        {/* Top Left: Keyword Indicators */}
+        <div className="absolute top-1 left-1 z-10 flex flex-col gap-0.5">
+          {card.isrush && (
+            <div className="w-5 h-5 rounded-md bg-[#4a0d4a] border border-white/20 flex items-center justify-center shadow-lg" title="速攻">
+              <span className="text-[10px] font-black text-white italic">速</span>
+            </div>
+          )}
+          {card.isAnnihilation && (
+            <div className="w-5 h-5 rounded-md bg-[#4a0d4a] border border-white/20 flex items-center justify-center shadow-lg" title="歼灭">
+              <span className="text-[10px] font-black text-white italic">歼</span>
+            </div>
+          )}
+          {card.isShenyi && (
+            <div className="w-5 h-5 rounded-md bg-[#4a0d4a] border border-white/20 flex items-center justify-center shadow-lg" title="神依">
+              <span className="text-[10px] font-black text-white italic">依</span>
+            </div>
+          )}
+          {card.isHeroic && (
+            <div className="w-5 h-5 rounded-md bg-[#4a0d4a] border border-white/20 flex items-center justify-center shadow-lg" title="英勇">
+              <span className="text-[10px] font-black text-white italic">勇</span>
+            </div>
+          )}
+        </div>
+
         {/* Top Right: Access Cost (Ac值) */}
         {showAC && (
           <div className="absolute top-1 right-1 z-10">

@@ -2,7 +2,7 @@ import { Faction } from '../data/factions';
 
 export const GAME_TIMEOUTS = {
   MAIN_PHASE_TOTAL: 300000, // 300 seconds (5 minutes)
-  INDEPENDENT_PHASE: 5000,  // 15 seconds
+  INDEPENDENT_PHASE: 15000,  // 15 seconds
   CHECK_INTERVAL: 1000      // 1 seconds
 };
 
@@ -183,6 +183,14 @@ export interface Card {
   displayState: 'FRONT_UPRIGHT' | 'FRONT_FACEDOWN' | 'BACK_UPRIGHT';
   isrush?: boolean;
   baseIsrush?: boolean;
+  isAnnihilation?: boolean;
+  baseAnnihilation?: boolean;
+  isShenyi?: boolean;
+  baseShenyi?: boolean;
+  isHeroic?: boolean;
+  baseHeroic?: boolean;
+  hasAttackedThisTurn?: boolean;
+  usedShenyiThisTurn?: boolean;
   isExhausted?: boolean;
   canAttack?: boolean;
   baseCanAttack?: boolean;
@@ -276,7 +284,13 @@ export type GamePhase =
   | 'COUNTERING'
   | 'END'
   | 'MULLIGAN'
-  | 'INIT';
+  | 'INIT'
+  | 'SHENYI_CHOICE';
+
+export interface PendingShenyi {
+  playerUid: string;
+  cardIds: string[];
+}
 
 export interface GameState {
   gameId: string;
@@ -306,6 +320,7 @@ export interface GameState {
   mainPhaseTimeRemaining?: number;
   previousPhase?: GamePhase;
   pendingQuery?: EffectQuery;
+  pendingShenyi?: PendingShenyi;
 }
 
 export interface Deck {

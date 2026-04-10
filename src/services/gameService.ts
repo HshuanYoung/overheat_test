@@ -57,6 +57,10 @@ export const GameService = {
     socket.emit('gameAction', { gameId, action: 'EROSION_CHOICE', payload: { choice, selectedCardId } });
   },
 
+  async handleShenyiChoice(gameId: string, action: 'CONFIRM_SHENYI' | 'DECLINE_SHENYI') {
+    socket.emit('gameAction', { gameId, action });
+  },
+
   async discardCard(gameId: string, playerId: string, cardId: string) {
     socket.emit('gameAction', { gameId, action: 'DISCARD', payload: { cardId } });
   },

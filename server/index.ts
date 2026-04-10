@@ -1,6 +1,6 @@
 // VERSION: 2026-04-07-IND-FIX-01
 import express from 'express';
-// console.log('[Server] index.ts is starting up...');
+console.log('[Server] index.ts is starting up...');
 import { createServer } from 'http';
 
 import { Server } from 'socket.io';
@@ -1173,17 +1173,25 @@ io.on('connection', (socket) => {
                         gameState.players['BOT_PLAYER'] = botPlayer;
                     }
 
-                    const initializedPlayerCount = Object.keys(gameState.players).length;
-                    if (gameState.phase === 'INIT' && initializedPlayerCount >= 2) {
-                        gameState.phase = 'MULLIGAN';
-                        gameState.status = 'ACTIVE';
-                        gameState.logs.push('所有玩家已准备就绪。开始调度阶段。');
-                    }
+
 
                     await syncAndSaveState(gameId, gameState);
                 } else {
                     // console.error(`[Socket] joinGame error: Deck ${deckId} not found`);
                 }
+            }
+
+            // Start the phase timer if it hasn't started yet and players are ready
+            const initializedCount = Object.keys(gameState.players).length;
+            const isInitial = gameState.phase === 'INIT' || gameState.phase === 'MULLIGAN';
+            if (isInitial && initializedCount >= 2 && (!gameState.phaseTimerStart || gameState.phaseTimerStart === 0)) {
+                if (gameState.phase === 'INIT') {
+                    gameState.phase = 'MULLIGAN';
+                    gameState.status = 'ACTIVE';
+                    gameState.logs.push('所有玩家已准备就绪。开始调度阶段。');
+                }
+                gameState.phaseTimerStart = Date.now();
+                await syncAndSaveState(gameId, gameState);
             }
 
             // console.log(`[Socket] joinGame success: for ${userIdStr} in ${gameId}`);
@@ -1308,6 +1316,13 @@ io.on('connection', (socket) => {
             }
         });
     });
+ 
+    socket.on('leaveGame', (gameId: string) => {
+        if (gameId) {
+            // console.log(`[Socket] User ${((socket as any).user?.userId) || socket.id} leaving game ${gameId}`);
+            socket.leave(gameId);
+        }
+    });
 
     socket.on('disconnect', () => {
         // console.log('Client disconnected:', socket.id);
@@ -1317,14 +1332,14 @@ io.on('connection', (socket) => {
 // Main bootstrap function
 const start = async () => {
     try {
-        // console.log('[Server] Initializing card library...');
+        console.log('[Server] Initializing card library...');
         await initServerCardLibrary();
-        // console.log('[Server] Connecting to database...');
+        console.log('[Server] Connecting to database...');
         await dbInit();
 
         const PORT = process.env.PORT || 3001;
         httpServer.listen(PORT, () => {
-            // console.log(`Server running on port ${PORT}`);
+        console.log(`Server running on port ${PORT}`);
         });
     } catch (err) {
         console.error('[Server] Fatal initialization error:', err);

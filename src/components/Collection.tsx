@@ -16,11 +16,11 @@ const RARITY_BADGE: Record<string, string> = {
 
 const RAY_CARDS = [
   { id: 'fav_card', name: '默认雷亚卡', url: '/assets/fav_card/fav_card.jpg' },
-  { id: 'fav_card_1', name: '雷亚卡 01', url: '/assets/fav_card/fav_card_1.jpg' },
-  { id: 'fav_card_2', name: '雷亚卡 02', url: '/assets/fav_card/fav_card_2.jpg' },
-  { id: 'fav_card_3', name: '雷亚卡 03', url: '/assets/fav_card/fav_card_3.jpg' },
-  { id: 'fav_card_4', name: '雷亚卡 04', url: '/assets/fav_card/fav_card_4.jpg' },
-  { id: 'fav_card_5', name: '雷亚卡 05', url: '/assets/fav_card/fav_card_5.jpg' },
+  { id: 'fav_card_1', name: '雷亚卡:风花', url: '/assets/fav_card/fav_card_1.jpg' },
+  { id: 'fav_card_2', name: '雷亚卡:真理', url: '/assets/fav_card/fav_card_2.jpg' },
+  { id: 'fav_card_3', name: '雷亚卡:萨拉拉', url: '/assets/fav_card/fav_card_3.jpg' },
+  { id: 'fav_card_4', name: '雷亚卡:王女', url: '/assets/fav_card/fav_card_4.jpg' },
+  { id: 'fav_card_5', name: '雷亚卡:小天使', url: '/assets/fav_card/fav_card_5.jpg' },
 ];
 
 const CARD_BACKS = [

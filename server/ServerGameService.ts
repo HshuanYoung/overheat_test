@@ -896,9 +896,10 @@ export const ServerGameService = {
       const isRush = !!unit.isrush;
       const wasPlayedThisTurn = unit.playedTurn === gameState.turnCount;
       if (!isRush && wasPlayedThisTurn) {
-        throw new Error(`单位 [${unit.fullName}] 在本回合打出，没有【疾走】不能攻击`);
+        throw new Error(`单位 [${unit.fullName}] 在本回合打出，没有【速攻】不能攻击`);
       }
 
+      unit.hasAttackedThisTurn = true;
       attackers.push(unit);
     }
 
@@ -1002,6 +1003,12 @@ export const ServerGameService = {
         if (attackerPower > defenderPower) {
           this.destroyUnit(gameState, defenderId, defendingUnit.gamecardId);
           gameState.logs.push(`${attackingUnit.fullName} 破坏了 ${defendingUnit.fullName}`);
+
+          // Annihilation Effect
+          if (attackingUnit.isAnnihilation) {
+            gameState.logs.push(`【歼灭】效果触发！${attackingUnit.fullName} 对对手造成额外伤害`);
+            this.applyDamageToPlayer(gameState, defenderId, attackingUnit.damage || 0, 'BATTLE');
+          }
         } else if (attackerPower < defenderPower) {
           this.destroyUnit(gameState, attackerId, attackingUnit.gamecardId);
           gameState.logs.push(`${defendingUnit.fullName} 破坏了 ${attackingUnit.fullName}`);
@@ -1009,6 +1016,10 @@ export const ServerGameService = {
           this.destroyUnit(gameState, attackerId, attackingUnit.gamecardId);
           this.destroyUnit(gameState, defenderId, defendingUnit.gamecardId);
           gameState.logs.push(`${attackingUnit.fullName} 和 ${defendingUnit.fullName} 同归于尽`);
+
+          // Annihilation Effect (Trigger only if attacker survived)
+          // Point c: When an attacking unit with annihilation effect is destroyed, the annihilation effect of this unit is not triggered
+          // In this case (mutual destruction), attacker is destroyed, so no Annihilation.
         }
       } else {
         // Alliance combat
@@ -1016,10 +1027,58 @@ export const ServerGameService = {
         const powerA = attackingUnits[0].power || 0;
         const powerB = attackingUnits[1].power || 0;
 
+        if (defenderPower < Math.min(powerA, powerB) || defenderPower < totalAttackerPower) {
+          // If defender is destroyed (either by weakest or by total)
+          const isDestroyed = defenderPower < Math.min(powerA, powerB) || (defenderPower >= Math.min(powerA, powerB) && defenderPower <= totalAttackerPower);
+
+          if (isDestroyed) {
+            this.destroyUnit(gameState, defenderId, defendingUnit.gamecardId);
+            gameState.logs.push(`${defendingUnit.fullName} 被联军破坏`);
+
+            // Annihilation Effect for Alliances (Survivor only logic)
+            // Point d: When allied, only deal damage to units that have the effect of annihilating.
+            const survivors = attackingUnits.filter(u => {
+              // Check if unit survived. In alliance, units are destroyed below (lines 1052-1067)
+              // But resolveDamage logic is sequential. Wait, I should calculate survivors carefully.
+              const powerA = attackingUnits[0].power || 0;
+              const powerB = attackingUnits[1].power || 0;
+              const totalAttackerPower = powerA + powerB;
+
+              const isUnitA = u.gamecardId === attackingUnits[0].gamecardId;
+              const isUnitB = u.gamecardId === attackingUnits[1].gamecardId;
+
+              // Determination of survival based on rules:
+              if (defenderPower < Math.min(powerA, powerB)) return true; // Both survive
+              if (defenderPower > totalAttackerPower) return false; // Both destroyed
+
+              // If power is between:
+              if (powerA <= powerB) {
+                // Unit A (weaker) is destroyed
+                return isUnitB;
+              } else {
+                // Unit B (weaker) is destroyed
+                return isUnitA;
+              }
+            });
+
+            const annihilators = survivors.filter(u => u.isAnnihilation);
+            if (annihilators.length > 0) {
+              const totalAnnihilationDamage = annihilators.reduce((sum, u) => sum + (u.damage || 0), 0);
+              gameState.logs.push(`【歼灭】效果触发！幸存的联军单位造成额外伤害 (${totalAnnihilationDamage})`);
+              this.applyDamageToPlayer(gameState, defenderId, totalAnnihilationDamage, 'BATTLE');
+            }
+          }
+        }
+
+        if (gameState.phase === 'SHENYI_CHOICE') {
+          // If a player entered Goddess Mode during damage resolution, we handle it after battle cleanup
+          gameState.previousPhase = 'MAIN';
+        } else {
+          gameState.phase = 'MAIN';
+        }
+
         if (defenderPower < Math.min(powerA, powerB)) {
-          // Defender destroyed
-          this.destroyUnit(gameState, defenderId, defendingUnit.gamecardId);
-          gameState.logs.push(`${defendingUnit.fullName} 被联军破坏`);
+          // Already handled above for destruction
         } else if (defenderPower > totalAttackerPower) {
           // Both attackers destroyed
           this.destroyUnit(gameState, attackerId, attackingUnits[0].gamecardId);
@@ -1044,7 +1103,11 @@ export const ServerGameService = {
       if (unit) unit.isExhausted = true;
     });
 
-    gameState.phase = 'MAIN';
+    if (gameState.phase !== 'SHENYI_CHOICE') {
+      gameState.phase = 'MAIN';
+    } else {
+      gameState.previousPhase = 'MAIN';
+    }
     gameState.battleState = undefined;
     gameState.phaseTimerStart = Date.now();
     return gameState;
@@ -1077,9 +1140,22 @@ export const ServerGameService = {
 
       // Check for goddess mode
       const totalErosion = player.erosionFront.filter(c => c !== null).length + player.erosionBack.filter(c => c !== null).length;
-      if (totalErosion >= 10) {
+      if (totalErosion >= 10 && !player.isGoddessMode) {
         player.isGoddessMode = true;
         gameState.logs.push(`${player.displayName} 进入了女神化状态！`);
+
+        // Shenyi Effect (Interactive)
+        const shenyiUnits = player.unitZone.filter(u => u && u.isShenyi && !u.usedShenyiThisTurn && u.isExhausted);
+        if (shenyiUnits.length > 0) {
+          gameState.pendingShenyi = {
+            playerUid: playerId,
+            cardIds: shenyiUnits.map(u => u!.gamecardId)
+          };
+          gameState.priorityPlayerId = playerId;
+          gameState.previousPhase = gameState.phase;
+          gameState.phase = 'SHENYI_CHOICE';
+          gameState.logs.push(`等待 ${player.displayName} 确认是否触发【神依】`);
+        }
       }
 
       // If more than 10, excess to grave
@@ -1158,6 +1234,19 @@ export const ServerGameService = {
     nextPlayer.isTurn = true;
 
     gameState.logs.push(`--- 回合 ${gameState.turnCount}: ${nextPlayer.displayName} ---`);
+
+    // Heroic Effect and Multi-turn flags reset for PREVIOUS player
+    currentPlayer.unitZone.forEach(unit => {
+      if (unit) {
+        if (unit.isHeroic && unit.hasAttackedThisTurn) {
+          gameState.logs.push(`【英勇】效果触发！${unit.fullName} 在回合结束时重置`);
+          this.readyCard(unit);
+        }
+        unit.hasAttackedThisTurn = false;
+        unit.usedShenyiThisTurn = false;
+      }
+    });
+
     gameState.mainPhaseTimeRemaining = GAME_TIMEOUTS.MAIN_PHASE_TOTAL;
     this.executeStartPhase(gameState, nextPlayer);
   },
@@ -1349,6 +1438,34 @@ export const ServerGameService = {
       case 'END':
         // This case is now handled automatically in DECLARE_END
         break;
+      case 'SHENYI_CHOICE':
+        if (action === 'CONFIRM_SHENYI') {
+          const cardIds = gameState.pendingShenyi?.cardIds || [];
+          const player = gameState.players[actingPlayerId];
+          cardIds.forEach(cid => {
+            const unit = player.unitZone.find(u => u?.gamecardId === cid);
+            if (unit) {
+              this.readyCard(unit);
+              unit.usedShenyiThisTurn = true;
+            }
+          });
+          gameState.logs.push(`【神依】效果已触发！`);
+        } else if (action === 'DECLINE_SHENYI') {
+          const cardIds = gameState.pendingShenyi?.cardIds || [];
+          const player = gameState.players[actingPlayerId];
+          cardIds.forEach(cid => {
+            const unit = player.unitZone.find(u => u?.gamecardId === cid);
+            if (unit) unit.usedShenyiThisTurn = true;
+          });
+          gameState.logs.push(`已跳过【神依】触发。`);
+        }
+
+        gameState.phase = gameState.previousPhase || 'MAIN';
+        gameState.previousPhase = undefined;
+        gameState.pendingShenyi = undefined;
+        gameState.priorityPlayerId = undefined;
+        gameState.phaseTimerStart = Date.now();
+        break;
     }
 
     return gameState;
@@ -1535,6 +1652,14 @@ export const ServerGameService = {
       basePower: card.basePower ?? card.power,
       baseDamage: card.baseDamage ?? card.damage,
       baseIsrush: card.baseIsrush ?? card.isrush,
+      isAnnihilation: card.isAnnihilation,
+      baseAnnihilation: card.baseAnnihilation ?? card.isAnnihilation,
+      isShenyi: card.isShenyi,
+      baseShenyi: card.baseShenyi ?? card.isShenyi,
+      isHeroic: card.isHeroic,
+      baseHeroic: card.baseHeroic ?? card.isHeroic,
+      hasAttackedThisTurn: false,
+      usedShenyiThisTurn: false,
       baseCanAttack: card.baseCanAttack ?? card.canAttack,
       baseGodMark: card.baseGodMark ?? card.godMark,
       baseAcValue: card.baseAcValue ?? card.acValue,
@@ -1596,6 +1721,14 @@ export const ServerGameService = {
       basePower: card.basePower ?? card.power,
       baseDamage: card.baseDamage ?? card.damage,
       baseIsrush: card.baseIsrush ?? card.isrush,
+      isAnnihilation: card.isAnnihilation,
+      baseAnnihilation: card.baseAnnihilation ?? card.isAnnihilation,
+      isShenyi: card.isShenyi,
+      baseShenyi: card.baseShenyi ?? card.isShenyi,
+      isHeroic: card.isHeroic,
+      baseHeroic: card.baseHeroic ?? card.isHeroic,
+      hasAttackedThisTurn: false,
+      usedShenyiThisTurn: false,
       baseCanAttack: card.baseCanAttack ?? card.canAttack,
       baseGodMark: card.baseGodMark ?? card.godMark,
       baseAcValue: card.baseAcValue ?? card.acValue,
@@ -1758,6 +1891,12 @@ export const ServerGameService = {
       return;
     }
 
+    // Handle Shenyi Choice (Bot chooses to confirm)
+    if (gameState.phase === 'SHENYI_CHOICE' && gameState.priorityPlayerId === 'BOT_PLAYER') {
+      await this.advancePhase(gameState, 'CONFIRM_SHENYI', 'BOT_PLAYER');
+      return;
+    }
+
     // Handle Defense Declaration (Bot chooses not to defend)
     if (gameState.phase === 'DEFENSE_DECLARATION') {
       const attackerUid = Object.keys(gameState.players).find(uid => gameState.players[uid].isTurn);
@@ -1890,6 +2029,14 @@ export const ServerGameService = {
       basePower: card.basePower ?? card.power,
       baseDamage: card.baseDamage ?? card.damage,
       baseIsrush: card.baseIsrush ?? card.isrush,
+      isAnnihilation: card.isAnnihilation,
+      baseAnnihilation: card.baseAnnihilation ?? card.isAnnihilation,
+      isShenyi: card.isShenyi,
+      baseShenyi: card.baseShenyi ?? card.isShenyi,
+      isHeroic: card.isHeroic,
+      baseHeroic: card.baseHeroic ?? card.isHeroic,
+      hasAttackedThisTurn: false,
+      usedShenyiThisTurn: false,
       baseCanAttack: card.baseCanAttack ?? card.canAttack,
       baseGodMark: card.baseGodMark ?? card.godMark,
       baseAcValue: card.baseAcValue ?? card.acValue,
@@ -1962,7 +2109,7 @@ export const ServerGameService = {
         'BOT_PLAYER': botState
       },
       mode: 'practice',
-      phaseTimerStart: Date.now(),
+      phaseTimerStart: 0,
       mainPhaseTimeRemaining: GAME_TIMEOUTS.MAIN_PHASE_TOTAL
     };
 
@@ -2003,7 +2150,7 @@ export const ServerGameService = {
       playerIds: [uid1, uid2], gameStatus: 1, logs: ['匹配成功。对局开始'],
       players: { [uid1]: p1, [uid2]: p2 },
       mode: 'match',
-      phaseTimerStart: Date.now(),
+      phaseTimerStart: 0,
       mainPhaseTimeRemaining: GAME_TIMEOUTS.MAIN_PHASE_TOTAL
     };
 

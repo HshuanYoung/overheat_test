@@ -11,7 +11,7 @@ import { CardComponent } from './Card';
 import { PlayField } from './PlayField';
 import { Rulebook } from './Rulebook';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Flag, Trophy, Frown, Home, Sword, Shield, Zap, LogOut, BookOpen, Send, Loader2, Trash2, X, Play, Search, ChevronRight, ShieldCheck, Layers } from 'lucide-react';
+import { Flag, Trophy, Frown, Home, Sword, Shield, Zap, LogOut, BookOpen, Send, Loader2, Trash2, X, Play, Search, ChevronRight, ShieldCheck, Layers, Sparkles } from 'lucide-react';
 import { cn, getCardImageUrl } from '../lib/utils';
 
 export const BattleField: React.FC = () => {
@@ -131,6 +131,11 @@ export const BattleField: React.FC = () => {
     const joinAndListen = () => {
       console.log('[BattleField] Joining game:', gameId);
       socket.off('gameStateUpdate').on('gameStateUpdate', (newState: any) => {
+        // Only update if the event is for the current game
+        if (newState.gameId !== gameId) {
+          console.warn(`[BattleField] Ignoring state update for wrong game: ${newState.gameId} (expected ${gameId})`);
+          return;
+        }
         hydrateGameState(newState);
         setGame(newState);
       });
@@ -148,7 +153,9 @@ export const BattleField: React.FC = () => {
     }
 
     return () => {
+      console.log('[BattleField] Leaving game:', gameId);
       socket.off('gameStateUpdate');
+      socket.emit('leaveGame', gameId);
     };
   }, [gameId, deckId]);
 
@@ -517,6 +524,15 @@ export const BattleField: React.FC = () => {
           : [...prev.erosionFrontIds, gamecardId]
       };
     });
+  };
+
+  const handleShenyiChoice = async (action: 'CONFIRM_SHENYI' | 'DECLINE_SHENYI') => {
+    if (!gameId) return;
+    try {
+      await GameService.handleShenyiChoice(gameId, action);
+    } catch (error: any) {
+      alert(error.message);
+    }
   };
 
   if (game.phase === 'MULLIGAN' && !me.mulliganDone) {
@@ -1093,6 +1109,57 @@ export const BattleField: React.FC = () => {
                   ))}
                 </div>
               </div>
+            </div>
+          )}
+        </AnimatePresence>
+
+        <AnimatePresence>
+          {game.phase === 'SHENYI_CHOICE' && game.pendingShenyi && game.pendingShenyi.playerUid === myUid && (
+            <div className="absolute inset-0 z-[160] flex items-center justify-center bg-black/70 backdrop-blur-lg">
+              <motion.div
+                initial={{ scale: 0.8, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 0.8, opacity: 0 }}
+                className="bg-[#1a0f1a] border-2 border-[#4a0d4a] p-10 rounded-3xl flex flex-col items-center gap-8 shadow-[0_0_100px_rgba(74,13,74,0.4)] max-w-2xl"
+              >
+                <div className="flex flex-col items-center gap-2">
+                  <div className="w-20 h-20 bg-[#4a0d4a] rounded-2xl flex items-center justify-center shadow-[0_0_30px_rgba(74,13,74,0.6)] animate-pulse">
+                    <Sparkles className="w-12 h-12 text-white" />
+                  </div>
+                  <h2 className="text-4xl font-black italic text-white uppercase tracking-[0.15em] mt-4">女神之辉：神依</h2>
+                  <p className="text-zinc-400 text-center text-sm font-medium tracking-wide">
+                    你已进入女神化状态。是否触发【神依】效果，将指定单位重置为竖直状态？
+                  </p>
+                </div>
+
+                <div className="flex gap-4">
+                  {game.pendingShenyi.cardIds.map(cid => {
+                    const card = me.unitZone.find(u => u?.gamecardId === cid);
+                    if (!card) return null;
+                    return (
+                      <div key={cid} className="w-40 h-56 rounded-xl overflow-hidden border-2 border-[#4a0d4a]/50 shadow-2xl relative group">
+                        <CardComponent card={card} disableZoom />
+                        <div className="absolute inset-0 bg-purple-500/20 animate-pulse pointer-events-none" />
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <div className="flex gap-6 w-full">
+                  <button
+                    onClick={() => handleShenyiChoice('CONFIRM_SHENYI')}
+                    className="flex-1 py-5 bg-[#4a0d4a] hover:bg-[#5d115d] text-white font-black italic uppercase tracking-widest rounded-2xl transition-all shadow-2xl hover:scale-[1.02] border border-white/10"
+                  >
+                    确认触发 (CONFIRM)
+                  </button>
+                  <button
+                    onClick={() => handleShenyiChoice('DECLINE_SHENYI')}
+                    className="flex-1 py-5 bg-zinc-800 hover:bg-zinc-700 text-white font-black italic uppercase tracking-widest rounded-2xl transition-all border border-white/10"
+                  >
+                    忽略 (SKIP)
+                  </button>
+                </div>
+              </motion.div>
             </div>
           )}
         </AnimatePresence>
@@ -1736,12 +1803,12 @@ export const BattleField: React.FC = () => {
               initial={{ scale: 0.9, opacity: 0, y: 30 }}
               animate={{ scale: 1, opacity: 1, y: 0 }}
               exit={{ scale: 0.9, opacity: 0, y: 30 }}
-              className="relative flex flex-col md:flex-row items-stretch gap-12 max-h-[92vh] w-full max-w-5xl p-10 bg-zinc-900/95 rounded-[3rem] border border-white/10 shadow-[0_0_100px_rgba(0,0,0,0.8)] overflow-hidden"
+              className="relative flex flex-col md:flex-row items-stretch gap-12 max-h-[92vh] w-full max-w-6xl p-10 bg-[#120a12]/95 rounded-[3.5rem] border-2 border-[#4a0d4a]/30 shadow-[0_0_150px_rgba(74,13,74,0.3)] overflow-hidden backdrop-blur-3xl"
               onClick={(e) => e.stopPropagation()}
             >
-              {/* Decorative Background Accents */}
-              <div className="absolute top-0 right-0 w-[600px] h-[600px] bg-[#f27d26]/5 blur-[150px] rounded-full -translate-y-1/2 translate-x-1/2" />
-              <div className="absolute bottom-0 left-0 w-[600px] h-[600px] bg-blue-600/5 blur-[150px] rounded-full translate-y-1/2 -translate-x-1/2" />
+              {/* Premium Decorative Accents */}
+              <div className="absolute top-0 right-0 w-[800px] h-[800px] bg-[#4a0d4a]/10 blur-[180px] rounded-full -translate-y-1/2 translate-x-1/2 animate-pulse" />
+              <div className="absolute bottom-0 left-0 w-[800px] h-[800px] bg-red-600/5 blur-[180px] rounded-full translate-y-1/2 -translate-x-1/2" />
 
               {/* Left Column: Name & Image Area */}
               <div className="relative shrink-0 flex flex-col gap-6 w-[45%]">
@@ -1775,6 +1842,45 @@ export const BattleField: React.FC = () => {
                       <div className="w-2 h-2 rounded-full bg-[#f27d26] shadow-[0_0_10px_#f27d26]" />
                       <span className="text-xs font-black uppercase text-white/40 tracking-[0.4em]">Registry Data</span>
                     </div>
+                  </div>
+
+                  <div className="flex flex-wrap gap-2 mb-4">
+                    {previewCard.isrush && (
+                      <div className="px-5 py-2 bg-[#4a0d4a] border-2 border-white/20 rounded-xl text-white text-xs font-black group/kw relative cursor-help uppercase italic shadow-[0_0_20px_rgba(74,13,74,0.6)]">
+                        速攻
+                        <div className="absolute bottom-full left-0 mb-3 w-64 p-4 bg-[#1a0f1a] border-2 border-[#4a0d4a] rounded-2xl text-white text-[11px] opacity-0 group-hover/kw:opacity-100 transition-all duration-300 z-[1000] pointer-events-none shadow-[0_10px_40px_rgba(0,0,0,0.8)] leading-relaxed normal-case font-medium">
+                          <span className="text-[#f27d26] font-black italic block mb-1">【速攻】</span>
+                          此单位在登场的第一个回合可以进行攻击。
+                        </div>
+                      </div>
+                    )}
+                    {previewCard.isAnnihilation && (
+                      <div className="px-5 py-2 bg-[#4a0d4a] border-2 border-white/20 rounded-xl text-white text-xs font-black group/kw relative cursor-help uppercase italic shadow-[0_0_20px_rgba(74,13,74,0.6)]">
+                        歼灭
+                        <div className="absolute bottom-full left-0 mb-3 w-72 p-4 bg-[#1a0f1a] border-2 border-[#4a0d4a] rounded-2xl text-white text-[11px] opacity-0 group-hover/kw:opacity-100 transition-all duration-300 z-[1000] pointer-events-none shadow-[0_10px_40px_rgba(0,0,0,0.8)] leading-relaxed normal-case font-medium">
+                          <span className="text-[#f27d26] font-black italic block mb-1">【歼灭】</span>
+                          此单位参加攻击并在战斗中破坏对手单位时，给予对手等同于此单位伤害值的战斗伤害。
+                        </div>
+                      </div>
+                    )}
+                    {previewCard.isShenyi && (
+                      <div className="px-5 py-2 bg-[#4a0d4a] border-2 border-white/20 rounded-xl text-white text-xs font-black group/kw relative cursor-help uppercase italic shadow-[0_0_20px_rgba(74,13,74,0.6)]">
+                        神依
+                        <div className="absolute bottom-full left-0 mb-3 w-72 p-4 bg-[#1a0f1a] border-2 border-[#4a0d4a] rounded-2xl text-white text-[11px] opacity-0 group-hover/kw:opacity-100 transition-all duration-300 z-[1000] pointer-events-none shadow-[0_10px_40px_rgba(0,0,0,0.8)] leading-relaxed normal-case font-medium">
+                          <span className="text-[#f27d26] font-black italic block mb-1">【神依】</span>
+                          每回合一次，当玩家进入女神化状态时，可以将此单位由横置变为竖置。
+                        </div>
+                      </div>
+                    )}
+                    {previewCard.isHeroic && (
+                      <div className="px-5 py-2 bg-[#4a0d4a] border-2 border-white/20 rounded-xl text-white text-xs font-black group/kw relative cursor-help uppercase italic shadow-[0_0_20px_rgba(74,13,74,0.6)]">
+                        英勇
+                        <div className="absolute bottom-full left-0 mb-3 w-72 p-4 bg-[#1a0f1a] border-2 border-[#4a0d4a] rounded-2xl text-white text-[11px] opacity-0 group-hover/kw:opacity-100 transition-all duration-300 z-[1000] pointer-events-none shadow-[0_10px_40px_rgba(0,0,0,0.8)] leading-relaxed normal-case font-medium">
+                          <span className="text-[#f27d26] font-black italic block mb-1">【英勇】</span>
+                          如果此单位在本回合发动过攻击，在回合结束时重置。
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   <div className="flex-1 overflow-y-auto pr-4 custom-scrollbar space-y-4">

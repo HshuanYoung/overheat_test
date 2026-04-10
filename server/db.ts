@@ -17,7 +17,7 @@ export const dbInit = async () => {
     let conn;
     try {
         conn = await pool.getConnection();
-        // console.log("Connected to MariaDB successfully");
+        console.log("Connected to MariaDB successfully");
         
         // Initialize tables
         await conn.query(`
@@ -31,7 +31,7 @@ export const dbInit = async () => {
                 INDEX (user_id)
             )
         `);
-        // console.log("Database tables initialized.");
+        console.log("Database tables initialized.");
     } catch (err) {
         console.error("Failed to connect to MariaDB:", err);
     } finally {
