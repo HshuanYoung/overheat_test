@@ -256,6 +256,7 @@ export const ServerGameService = {
 
     // 3. There are 10 cards on the back of the erosion area
     this.checkWinConditions(gameState);
+    this.checkBattleInterruption(gameState);
 
     return true;
   },
@@ -703,6 +704,7 @@ export const ServerGameService = {
     gameState.passCount = 0;
     gameState.phaseTimerStart = Date.now();
 
+    this.checkBattleInterruption(gameState);
     return gameState;
   },
 
@@ -789,6 +791,52 @@ export const ServerGameService = {
       }
     }
 
+    if (query.callbackKey === 'ALLIANCE_DESTRUCTION_RESOLVE') {
+      const selectedId = selections[0];
+      const attackerId = query.context?.attackerId;
+      const defenderId = query.context?.defenderPlayerId;
+
+      const attacker = gameState.players[attackerId];
+      if (!attacker) return gameState;
+
+      const selectedUnit = attacker.unitZone.find(u => u?.gamecardId === selectedId);
+
+      if (selectedUnit) {
+        this.destroyUnit(gameState, attackerId, selectedId);
+        gameState.logs.push(`[联军结算] ${attacker.displayName} 选择了牺牲 ${selectedUnit.fullName}。`);
+      }
+
+      // Continue to finalize battle
+      const attackingUnits = gameState.battleState!.attackers.map(id =>
+        attacker.unitZone.find(c => c?.gamecardId === id)
+      ).filter(Boolean) as Card[];
+
+      // Exhaust remaining units
+      attackingUnits.forEach(u => {
+        const unit = attacker.unitZone.find(uz => uz?.gamecardId === u.gamecardId);
+        if (unit) unit.isExhausted = true;
+      });
+
+      // Annihilation for survivor
+      const survivors = attackingUnits.filter(u => u.gamecardId !== selectedId);
+      const annihilators = survivors.filter(u => u.isAnnihilation);
+      if (annihilators.length > 0) {
+        const totalAnnihilationDamage = annihilators.reduce((sum, u) => sum + (u.damage || 0), 0);
+        gameState.logs.push(`【歼灭】效果触发！幸存的联军单位造成额外伤害 (${totalAnnihilationDamage})`);
+        this.applyDamageToPlayer(gameState, defenderId, totalAnnihilationDamage, 'BATTLE');
+      }
+
+      // Cleanup battle state
+      if (gameState.phase === 'SHENYI_CHOICE') {
+        gameState.previousPhase = 'MAIN';
+      } else {
+        gameState.phase = 'MAIN';
+      }
+      gameState.battleState = undefined;
+      gameState.phaseTimerStart = Date.now();
+      return gameState;
+    }
+
 
     if (afterEffects.length > 0) {
       for (let i = 0; i < afterEffects.length; i++) {
@@ -842,6 +890,7 @@ export const ServerGameService = {
       }
     }
 
+    this.checkBattleInterruption(gameState);
     return gameState;
   },
 
@@ -1086,14 +1135,33 @@ export const ServerGameService = {
           gameState.logs.push(`联军被 ${defendingUnit.fullName} 击溃，两个单位都被破坏`);
         } else {
           // Defender power is between min and total
-          // Prompt user to choose? For now, automatic logic as per rules
-          // aa. 如果防御单位的力量值高于其中一个的力量值但是不高于联军总力量值，则力量值最低的被破坏送去墓地。
-          // ab. 如果防御单位的力量值高于任意一个攻击单位的力量值但是不高于联军总力量值，则攻击方玩家选择一个攻击单位送去墓地。
-          // These rules seem to imply the same thing if powers are different.
-          // Let's just pick the lower power one to destroy.
-          const unitToDestroy = powerA <= powerB ? attackingUnits[0] : attackingUnits[1];
-          this.destroyUnit(gameState, attackerId, unitToDestroy.gamecardId);
-          gameState.logs.push(`${defendingUnit.fullName} 抵挡了联军，${unitToDestroy.fullName} 被破坏`);
+          if (powerA < defenderPower && powerB < defenderPower) {
+            // Both are lower than defender, but total is higher -> Attacker chooses
+            gameState.pendingQuery = {
+              id: Math.random().toString(36).substring(7),
+              type: 'SELECT_CARD',
+              playerUid: attackerId,
+              options: attackingUnits.map(u => ({ card: u, source: 'UNIT' as TriggerLocation })),
+              title: '联军牺牲选择',
+              description: `联军总力量 (${totalAttackerPower}) 高于防御单位 (${defenderPower})，但两个单位力量均低于防御单位。请选择一个单位破坏并送去墓地。`,
+              minSelections: 1,
+              maxSelections: 1,
+              callbackKey: 'ALLIANCE_DESTRUCTION_RESOLVE',
+              context: {
+                defenderId: defendingUnit.gamecardId,
+                attackerId: attackerId,
+                defenderPlayerId: defenderId
+              }
+            };
+            gameState.priorityPlayerId = attackerId;
+            gameState.logs.push(`等待 ${attacker.displayName} 选择联军中要破坏的单位...`);
+            return gameState;
+          } else {
+            // Only one is lower (or equal) -> Lower one destroyed automatically
+            const unitToDestroy = powerA <= powerB ? attackingUnits[0] : attackingUnits[1];
+            this.destroyUnit(gameState, attackerId, unitToDestroy.gamecardId);
+            gameState.logs.push(`${defendingUnit.fullName} 抵挡了联军，${unitToDestroy.fullName} 被破坏`);
+          }
         }
       }
     }
@@ -1189,6 +1257,7 @@ export const ServerGameService = {
         targetCardId: gamecardId,
         playerUid: playerId
       });
+      this.checkBattleInterruption(gameState);
     }
   },
 
@@ -1266,6 +1335,52 @@ export const ServerGameService = {
       }
     }
     return false;
+  },
+
+  checkBattleInterruption(gameState: GameState) {
+    if (!gameState.battleState) return;
+
+    // We only check for interruption during strictly the BATTLE_DECLARATION and BATTLE_FREE phase
+    // Damage calculation handles its own cleanup, and declarations are allowed to proceed
+    // if units leave (e.g. if the attacker is swapped or removed before battle officially begins).
+    const battlePhases: GamePhase[] = ['BATTLE_DECLARATION', 'BATTLE_FREE'];
+    if (!battlePhases.includes(gameState.phase)) return;
+
+    const turnPlayerId = gameState.playerIds[gameState.currentTurnPlayer];
+    const opponentId = gameState.playerIds[gameState.currentTurnPlayer === 0 ? 1 : 0];
+
+    const turnPlayer = gameState.players[turnPlayerId];
+    const opponent = gameState.players[opponentId];
+
+    // Check defenders
+    let defenderGone = false;
+    if (gameState.battleState.defender) {
+      const defenderFound = opponent.unitZone.some(c => c && c.gamecardId === gameState.battleState!.defender);
+      if (!defenderFound) {
+        defenderGone = true;
+      }
+    }
+
+    // Check attackers
+    const attackersFound = gameState.battleState.attackers.filter(id => {
+      return turnPlayer.unitZone.some(c => c && c.gamecardId === id);
+    });
+
+    const allAttackersGone = attackersFound.length === 0;
+
+    if (defenderGone || allAttackersGone) {
+      gameState.logs.push(`[战斗中止] ${defenderGone ? '防御单位' : '所有攻击单位'}已离开字段，战斗中止。`);
+      gameState.phase = 'MAIN';
+      gameState.battleState = undefined;
+      gameState.phaseTimerStart = Date.now();
+      EventEngine.dispatchEvent(gameState, { type: 'PHASE_CHANGED', data: { phase: 'MAIN' } });
+    } else if (gameState.battleState.attackers.length !== attackersFound.length) {
+      // At least one attacker remains, update battle state attackers list
+      gameState.logs.push(`[战斗继续] 其中一个攻击单位已离开，剩余单位继续攻击。`);
+      gameState.battleState.attackers = attackersFound;
+      // Requirement: "the remaining units will continue to attack, which is also considered a coalition attack"
+      // So we keep isAlliance=true if it was already true.
+    }
   },
 
   async advancePhase(gameState: GameState, action?: string, playerId?: string) {
