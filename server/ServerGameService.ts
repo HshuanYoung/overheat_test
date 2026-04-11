@@ -550,7 +550,7 @@ export const ServerGameService = {
     return gameState;
   },
 
-  async passConfrontation(gameState: GameState, playerId: string) {
+  async passConfrontation(gameState: GameState, playerId: string, onUpdate?: (state: GameState) => Promise<void>) {
     if (gameState.phase !== 'COUNTERING') return;
     if (gameState.priorityPlayerId !== playerId) throw new Error('尚未轮到你进行响应');
 
@@ -566,15 +566,16 @@ export const ServerGameService = {
     }
 
     // RULE 4 & Note 1: Once either side no longer confronts, settlement begins.
-    await this.resolveCounterStack(gameState);
+    await this.resolveCounterStack(gameState, onUpdate);
 
     return gameState;
   },
 
-  async resolveCounterStack(gameState: GameState) {
+  async resolveCounterStack(gameState: GameState, onUpdate?: (state: GameState) => Promise<void>) {
     if (gameState.counterStack.length === 0) return;
 
     gameState.isResolvingStack = true;
+    gameState.priorityPlayerId = undefined;
     const isPhaseEndOnly = gameState.counterStack.length === 1 && gameState.counterStack[0].type === 'PHASE_END';
     const phaseEndItem = isPhaseEndOnly ? gameState.counterStack[0] : null;
 
@@ -590,6 +591,8 @@ export const ServerGameService = {
         gameState.previousPhase = undefined;
       }
 
+      if (onUpdate) await onUpdate(gameState);
+
       if (nextPhase) {
         return this.advancePhase(gameState, nextPhase);
       }
@@ -597,10 +600,21 @@ export const ServerGameService = {
     }
 
     gameState.logs.push(`[连锁结算] 开始逆向结算 (LIFO)...`);
+    if (onUpdate) await onUpdate(gameState);
 
     // Resolve the entire stack from top to bottom (LIFO)
     while (gameState.counterStack.length > 0) {
+      const topItem = gameState.counterStack[gameState.counterStack.length - 1];
+      
+      // 1. Visual Highlight: Show which item is being processed
+      gameState.currentProcessingItem = topItem;
+      if (onUpdate) await onUpdate(gameState);
+      
+      // Wait for the front-end to display the effect
+      await new Promise(resolve => setTimeout(resolve, 1500));
+
       const stackItem = gameState.counterStack.pop();
+      if (!stackItem) continue;
       if (!stackItem) continue;
 
       // If we encounter a PHASE_END in a multi-item stack, it means the phase end was interrupted.
@@ -686,6 +700,15 @@ export const ServerGameService = {
           gameState.previousPhase = undefined;
           break;
       }
+
+      // 2. Clear Highlight: Item has been processed and removed from stack
+      gameState.currentProcessingItem = null;
+      if (onUpdate) await onUpdate(gameState);
+      
+      // Small pause between multiple items
+      if (gameState.counterStack.length > 0) {
+        await new Promise(resolve => setTimeout(resolve, 500));
+      }
     }
 
     gameState.isResolvingStack = false;
@@ -723,8 +746,8 @@ export const ServerGameService = {
     return gameState;
   },
 
-  async resolvePlay(gameState: GameState) {
-    return this.resolveCounterStack(gameState);
+  async resolvePlay(gameState: GameState, onUpdate?: (state: GameState) => Promise<void>) {
+    return this.resolveCounterStack(gameState, onUpdate);
   },
 
   async handleQueryChoice(gameState: GameState, playerUid: string, queryId: string, selections: string[]) {
@@ -1989,7 +2012,7 @@ export const ServerGameService = {
   },
 
   // Bot logic
-  async botMove(gameState: GameState) {
+  async botMove(gameState: GameState, onUpdate?: (state: GameState) => Promise<void>) {
     const bot = gameState.players['BOT_PLAYER'];
     if (!bot) return;
 
@@ -1997,7 +2020,7 @@ export const ServerGameService = {
     if (gameState.phase === 'COUNTERING') {
       if (gameState.priorityPlayerId === 'BOT_PLAYER') {
         // console.log('[Bot] Passing confrontation priority');
-        await this.passConfrontation(gameState, 'BOT_PLAYER');
+        await this.passConfrontation(gameState, 'BOT_PLAYER', onUpdate);
       }
       return;
     }

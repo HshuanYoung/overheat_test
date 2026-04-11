@@ -1020,6 +1020,78 @@ export const BattleField: React.FC = () => {
         </div>
 
         <AnimatePresence>
+          {game.currentProcessingItem && (
+            <motion.div
+              initial={{ opacity: 0, backdropFilter: "blur(0px)" }}
+              animate={{ opacity: 1, backdropFilter: "blur(12px)" }}
+              exit={{ opacity: 0, backdropFilter: "blur(0px)" }}
+              className="fixed inset-0 z-[600] bg-black/40 flex items-center justify-center pointer-events-none"
+            >
+              <div className="flex flex-col items-center gap-12">
+                <motion.div 
+                  initial={{ y: 20, opacity: 0 }}
+                  animate={{ y: 0, opacity: 1 }}
+                  className="flex flex-col items-center gap-4"
+                >
+                  <div className="flex items-center gap-4 text-red-500">
+                    <Zap className="w-8 h-8 animate-pulse" />
+                    <h2 className="text-5xl font-black italic uppercase tracking-tighter">
+                      RESOLVING EFFECT
+                    </h2>
+                    <Zap className="w-8 h-8 animate-pulse" />
+                  </div>
+                  <div className="h-1 w-48 bg-gradient-to-r from-transparent via-red-500 to-transparent" />
+                </motion.div>
+
+                <motion.div
+                  initial={{ scale: 0.5, opacity: 0, rotateY: 90 }}
+                  animate={{ scale: 1, opacity: 1, rotateY: 0 }}
+                  exit={{ scale: 1.5, opacity: 0, filter: "brightness(2)" }}
+                  transition={{ type: "spring", damping: 15 }}
+                  className="relative"
+                >
+                  <div className="absolute -inset-8 bg-red-600/20 blur-[60px] rounded-full animate-pulse" />
+                  <div className="w-72 relative z-10">
+                    {game.currentProcessingItem.card ? (
+                      <div className="relative group">
+                        <CardComponent card={game.currentProcessingItem.card} disableZoom />
+                        <div className="absolute -inset-0.5 bg-gradient-to-t from-red-600/50 to-transparent opacity-50 rounded-2xl" />
+                      </div>
+                    ) : (
+                      <div className="aspect-[3/4] bg-zinc-900 border-2 border-red-500/30 rounded-2xl flex flex-col items-center justify-center p-8 text-center shadow-2xl">
+                        <Sword className="w-20 h-20 text-red-500/40 mb-6" />
+                        <span className="text-2xl font-black text-white uppercase tracking-widest leading-none">
+                          {game.currentProcessingItem.type === 'PHASE_END' ? "PHASE TRANSITION" : game.currentProcessingItem.type.replace(/_/g, ' ')}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                  
+                  {/* Link Badge */}
+                  <div className="absolute -top-6 -left-6 w-20 h-20 bg-red-600 rounded-full border-4 border-zinc-900 flex items-center justify-center shadow-2xl z-20">
+                    <span className="text-2xl font-black italic text-white uppercase tracking-tighter">LINK</span>
+                  </div>
+                </motion.div>
+
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  className="flex flex-col items-center gap-2"
+                >
+                  <span className="text-white/40 text-[10px] font-black uppercase tracking-[0.5em]">Initiated By</span>
+                  <span className={cn(
+                    "px-6 py-2 rounded-full border text-xs font-black uppercase tracking-widest italic shadow-lg",
+                    game.currentProcessingItem.ownerUid === myUid ? "bg-blue-600/20 border-blue-500/50 text-blue-400" : "bg-red-600/20 border-red-500/50 text-red-400"
+                  )}>
+                    {game.currentProcessingItem.ownerUid === myUid ? "Friendly Forces / 我方" : "Hostile Forces / 对方"}
+                  </span>
+                </motion.div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        <AnimatePresence>
           {game.phase === 'COUNTERING' && (
             <motion.div
               initial={{ opacity: 0 }}
@@ -1037,13 +1109,15 @@ export const BattleField: React.FC = () => {
                     CONFRONTATION / 对抗阶段
                   </p>
                   <p className="text-white text-[11px] uppercase tracking-[0.2em] font-black">
-                    {game.priorityPlayerId === myUid 
-                      ? `RESPOND AS LINK ${game.counterStack.length + 1} / 请响应 (Link ${game.counterStack.length + 1})` 
-                      : `WAITING FOR ${game.players[game.priorityPlayerId!].displayName.toUpperCase()}`}
+                    {game.isResolvingStack 
+                      ? "RESOLVING CHAIN / 正在结算连锁"
+                      : game.priorityPlayerId === myUid 
+                        ? `RESPOND AS LINK ${game.counterStack.length + 1} / 请响应 (Link ${game.counterStack.length + 1})` 
+                        : `WAITING FOR ${game.players[game.priorityPlayerId!]?.displayName?.toUpperCase() || 'OPPONENT'}`}
                   </p>
                 </div>
 
-                {game.priorityPlayerId === myUid && (
+                {game.priorityPlayerId === myUid && !game.isResolvingStack && (
                   <div className="flex items-center gap-3 pointer-events-auto">
                     <button
                       onClick={handleResolve}

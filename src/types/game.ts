@@ -309,6 +309,7 @@ export interface GameState {
   counterStack: StackItem[]; // LIFO
   priorityPlayerId?: string; // Player who currently has the option to respond
   isResolvingStack?: boolean; // True when chain is resolving
+  currentProcessingItem?: StackItem | null; // Currently resolving item for visual feedback
   triggeredEffectsQueue: TriggeredEffectRecord[]; // Queue of effects met conditions during chain/resolution
   passCount: number; // Number of consecutive passes during identification
   playerIds: [string, string]; // [FirstPlayerID, SecondPlayerID]

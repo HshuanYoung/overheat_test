@@ -96,8 +96,12 @@ async function handleBotMove(gameState: any, gameId: string) {
                 if (stateRows.length === 0) return;
                 const currentGameState = typeof stateRows[0].state === 'string' ? JSON.parse(stateRows[0].state) : stateRows[0].state;
                 ServerGameService.hydrateGameState(currentGameState);
-
-                await ServerGameService.botMove(currentGameState);
+                
+                const syncCallback = async (state: any) => {
+                    await syncAndSaveState(gameId, state);
+                };
+                
+                await ServerGameService.botMove(currentGameState, syncCallback);
 
                 await syncAndSaveState(gameId, currentGameState);
 
@@ -311,7 +315,10 @@ setInterval(async () => {
                 // Bot action check
                 const currentPlayerId = gameState.playerIds[gameState.currentTurnPlayer];
                 if (currentPlayerId === 'BOT_PLAYER' || gameState.priorityPlayerId === 'BOT_PLAYER') {
-                    handleBotMove(gameState, gameId);
+                    const syncCallback = async (state: any) => {
+                        await syncAndSaveState(gameId, state);
+                    };
+                    handleBotMove(gameState, gameId); // handleBotMove already does its own lock/fetch
                 }
             });
         }
@@ -1182,6 +1189,10 @@ io.on('connection', (socket) => {
                     return;
                 }
 
+                const syncCallback = async (state: GameState) => {
+                    await syncAndSaveState(gameId, state);
+                };
+
                 if (action === 'MULLIGAN') {
                     const selectedIds: string[] = payload || [];
                     if (player.mulliganDone) return;
@@ -1250,10 +1261,10 @@ io.on('connection', (socket) => {
                     const { cardId, effectIndex } = payload;
                     await ServerGameService.activateEffect(gameState, myUid, cardId, effectIndex);
                 } else if (action === 'PASS_CONFRONTATION') {
-                    await ServerGameService.passConfrontation(gameState, myUid);
+                    await ServerGameService.passConfrontation(gameState, myUid, syncCallback);
                 } else if (action === 'RESOLVE_PLAY') {
                     if (gameState.phase === 'COUNTERING') {
-                        await ServerGameService.resolveCounterStack(gameState);
+                        await ServerGameService.resolveCounterStack(gameState, syncCallback);
                     }
                 } else if (action === 'SUBMIT_QUERY_CHOICE') {
                     const { queryId, selections } = payload;
