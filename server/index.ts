@@ -80,11 +80,12 @@ async function handleBotMove(gameState: any, gameId: string) {
     const bot = gameState.players['BOT_PLAYER'];
     if (!bot) return;
 
-    // The bot should move if it's its turn OR if it's being asked for a confrontation response
+    // The bot should move if it's its turn, if it's being asked for a confrontation response, or if it has priority
     const isBotAsked = gameState.battleState && gameState.battleState.askConfront === 'ASKING_OPPONENT';
-    const shouldBotMove = bot.isTurn || isBotAsked;
+    const isBotPriority = gameState.priorityPlayerId === 'BOT_PLAYER';
+    const shouldBotMove = bot.isTurn || isBotAsked || isBotPriority;
 
-    // console.log(`[Bot] handleBotMove checking: bot.isTurn? ${bot.isTurn}, isBotAsked? ${isBotAsked}`);
+    // console.log(`[Bot] handleBotMove checking: bot.isTurn? ${bot.isTurn}, isBotAsked? ${isBotAsked}, isBotPriority? ${isBotPriority}`);
     if (!shouldBotMove) return;
 
     // Use a delay to simulate thinking and allow final state propagation
@@ -1272,15 +1273,23 @@ io.on('connection', (socket) => {
                 } else if (action === 'END_PHASE') {
                     if (player.isTurn || gameState.phase === 'BATTLE_FREE' || gameState.phase === 'COUNTERING') {
                         await advancePhase(gameState, gameId, myUid, socket, payload);
+                        await ServerGameService.checkTriggeredEffects(gameState);
                         return; // advancePhase already calls syncAndSaveState
                     }
                 } else if (action === 'SURRENDER') {
                     await ServerGameService.surrender(gameState, myUid);
                 }
 
+                // Ensure any dangling triggers are checked before saving state (Skip if game is over)
+                if (gameState.gameStatus !== 2) {
+                    await ServerGameService.checkTriggeredEffects(gameState);
+                }
+                
                 // Final state sync and save
                 await syncAndSaveState(gameId, gameState);
-                triggerBotIfNeeded(gameState, gameId);
+                if (gameState.gameStatus !== 2) {
+                    triggerBotIfNeeded(gameState, gameId);
+                }
             } catch (err) {
                 // console.error('Game action error:', err);
             }

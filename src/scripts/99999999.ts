@@ -115,7 +115,7 @@ const card: Card = {
           };
         }
       },
-      resolve: (instance: Card, gameState: GameState, playerState: PlayerState, selections: string[]) => {
+      onQueryResolve: (instance: Card, gameState: GameState, playerState: PlayerState, selections: string[]) => {
         const targetId = selections[0];
         AtomicEffectExecutor.execute(gameState, playerState.uid, {
           type: 'DESTROY_CARD',

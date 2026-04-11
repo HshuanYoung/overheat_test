@@ -5,7 +5,7 @@ import { AtomicEffectExecutor } from './AtomicEffectExecutor';
 export class EventEngine {
   static dispatchEvent(gameState: GameState, event: GameEvent) {
     // 1. Find all active effects that listen to this event
-    const triggeredEffects: { card: Card, effect: CardEffect, playerUid: string }[] = [];
+    const triggeredEffects: { card: Card, effect: CardEffect, effectIndex: number, playerUid: string }[] = [];
 
     const BATTLEFIELD_ZONES: TriggerLocation[] = ['UNIT', 'ITEM'];
 
@@ -17,7 +17,7 @@ export class EventEngine {
 
       activeZones.forEach(card => {
         if (card && card.effects) {
-          card.effects.forEach(effect => {
+          card.effects.forEach((effect, index) => {
             if ((effect.type === 'TRIGGERED' || effect.type === 'TRIGGER') && effect.triggerEvent === event.type) {
 
               // New: Check if the card's current location is in the effect's triggerLocation array
@@ -54,7 +54,7 @@ export class EventEngine {
                   const sourceGID = event.sourceCard?.gamecardId || event.sourceCardId || 'N/A';
                   gameState.logs.push(`[Induction-Check] ${card.fullName} (${card.gamecardId}) evaluates ${sourceName} (${sourceGID}). Match!`);
                 }
-                triggeredEffects.push({ card, effect, playerUid: player.uid });
+                triggeredEffects.push({ card, effect, effectIndex: index, playerUid: player.uid });
               }
             }
           });
@@ -64,39 +64,11 @@ export class EventEngine {
 
     Object.values(gameState.players).forEach(checkPlayerCards);
 
-    // 2. Execute mandatory effects first, then optional (or add to stack)
-    for (const { card, effect, playerUid } of triggeredEffects) {
-      if (gameState.isCountering === 1 || gameState.isResolvingStack) {
-        if (!gameState.triggeredEffectsQueue) gameState.triggeredEffectsQueue = [];
-        gameState.triggeredEffectsQueue.push({ card, effect, playerUid, event });
-        gameState.logs.push(`[诱发入队] ${card.fullName} 的效果已入队，待结算后处理。`);
-        continue;
-      }
-
-      const player = gameState.players[playerUid];
-
-      // Execute Atomic Effects if present
-      if (effect.atomicEffects && effect.atomicEffects.length > 0) {
-        effect.atomicEffects.forEach(atomic => {
-          AtomicEffectExecutor.execute(gameState, playerUid, atomic, card, event);
-        });
-      }
-
-      // Execute legacy callback if present
-      if (effect.execute) {
-        effect.execute(card, gameState, player, event);
-      }
-
-      GameService.recordEffectUsage(gameState, playerUid, card, effect);
-      gameState.logs.push(`[诱发效果] ${player.displayName} 的 ${card.fullName} 触发了效果: ${effect.description}`);
-
-      // Special event for triggering
-      this.dispatchEvent(gameState, {
-        type: 'EFFECT_TRIGGERED',
-        playerUid,
-        sourceCardId: card.gamecardId,
-        data: { effectId: effect.id }
-      });
+    // 2. Queue all valid triggers into the triggeredEffectsQueue for sequential resolution
+    for (const { card, effect, effectIndex, playerUid } of triggeredEffects) {
+      if (!gameState.triggeredEffectsQueue) gameState.triggeredEffectsQueue = [];
+      gameState.triggeredEffectsQueue.push({ card, effect, effectIndex, playerUid, event });
+      gameState.logs.push(`[诱发入队] ${card.fullName} 的效果已入队，待系统处理。`);
     }
   }
 

@@ -53,7 +53,7 @@ const universalEquipEffect: CardEffect = {
       }
     };
   },
-  resolve: (card, gameState, playerState, selections, context) => {
+  onQueryResolve: (card, gameState, playerState, selections, context) => {
     const selectedId = selections[0];
     if (selectedId === card.gamecardId) {
       // Unequip
@@ -101,7 +101,7 @@ const handActivationEffect: CardEffect = {
       }
     };
   },
-  resolve: (card, gameState, playerState, selections, context) => {
+  onQueryResolve: (card, gameState, playerState, selections, context) => {
     gameState.logs.push(`[脚本] 30401001 resolve 开始, step: ${context.step}`);
 
     if (context.step === 1) {

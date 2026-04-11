@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 
 import { GameState, PlayerState, Card, StackItem, CardEffect, TriggerLocation, GAME_TIMEOUTS } from '../types/game';
@@ -18,8 +18,9 @@ export const BattleField: React.FC = () => {
   const { gameId } = useParams<{ gameId: string }>();
   const navigate = useNavigate();
   const location = useLocation() as any;
-  const authUser = getAuthUser();
-  const myUid = authUser?.uid;
+  const authUser = useMemo(() => getAuthUser(), []);
+  const myUid = useMemo(() => authUser?.uid, [authUser]);
+  const deckId = useMemo(() => location.state?.deckId || localStorage.getItem(`deck_${gameId}`), [gameId, location.state?.deckId]);
 
   const [game, setGame] = useState<GameState | null>(null);
   const [isRulebookOpen, setIsRulebookOpen] = useState(false);
@@ -64,21 +65,28 @@ export const BattleField: React.FC = () => {
     attacker2: Card;
   } | null>(null);
 
-  // Universal Visual Timer Logic
+  const lastAutoResolveRef = useRef<string | null>(null);
+  const [showSurrenderConfirm, setShowSurrenderConfirm] = useState(false);
+  const gameRef = useRef<GameState | null>(null);
+  useEffect(() => { gameRef.current = game; }, [game]);
+
+  // Universal Visual Timer Logic - Stabilized with gameRef
   useEffect(() => {
+    if (!gameId || !myUid) return;
+
     const updateTimer = () => {
+      const game = gameRef.current;
       if (!game) return;
+
       const now = Date.now();
       const elapsed = now - (game.phaseTimerStart || now);
 
       let activePlayerUid: string | undefined;
-
       if (game.pendingQuery) {
         activePlayerUid = game.pendingQuery.playerUid;
       } else if (game.priorityPlayerId) {
         activePlayerUid = game.priorityPlayerId;
       } else {
-        // currentTurnPlayer is an index 0 or 1, map to uid
         activePlayerUid = game.playerIds[game.currentTurnPlayer];
       }
 
@@ -86,19 +94,21 @@ export const BattleField: React.FC = () => {
       let remaining = activePlayer ? Math.max(0, (activePlayer.timeRemaining || 0) - elapsed) : 0;
 
       const newTimerValue = Math.ceil(remaining / 1000);
-      setTimer(newTimerValue);
+      setTimer(prev => prev !== newTimerValue ? newTimerValue : prev);
 
       // Auto-resolve for player if timeout during Countering
       if (game.phase === 'COUNTERING' && game.priorityPlayerId === myUid && remaining <= 0) {
-        handleResolve();
+        const resolveKey = `${game.phase}-${game.priorityPlayerId}-${game.counterStack.length}`;
+        if (lastAutoResolveRef.current !== resolveKey) {
+          lastAutoResolveRef.current = resolveKey;
+          handleResolve();
+        }
       }
     };
 
-    updateTimer();
     const interval = setInterval(updateTimer, 500);
-
     return () => clearInterval(interval);
-  }, [game?.phase, game?.phaseTimerStart, game?.priorityPlayerId, game?.pendingQuery?.id, game?.playerIds, game?.currentTurnPlayer, myUid]);
+  }, [gameId, myUid]);
 
   useEffect(() => {
     const audio = new Audio('/assets/music_bg.wav');
@@ -118,7 +128,7 @@ export const BattleField: React.FC = () => {
     };
   }, []);
 
-  const deckId = location.state?.deckId || localStorage.getItem(`deck_${gameId}`);
+  // deckId calculation removed, now memoized above
 
   useEffect(() => {
     if (location.state?.deckId) {
@@ -126,40 +136,57 @@ export const BattleField: React.FC = () => {
     }
   }, [gameId, location.state?.deckId]);
 
+  // Listener management effect
   useEffect(() => {
-    if (!gameId || gameId === 'undefined') {
-      console.error('[BattleField] Invalid gameId:', gameId);
-      navigate('/');
-      return;
-    }
+    if (!gameId || gameId === 'undefined') return;
 
-    const joinAndListen = () => {
-      console.log('[BattleField] Joining game:', gameId);
-      socket.off('gameStateUpdate').on('gameStateUpdate', (newState: any) => {
-        // Only update if the event is for the current game
-        if (newState.gameId !== gameId) {
-          console.warn(`[BattleField] Ignoring state update for wrong game: ${newState.gameId} (expected ${gameId})`);
-          return;
-        }
-        hydrateGameState(newState);
-        setGame(newState);
-      });
+    console.log('[BattleField] Registering socket listeners for game:', gameId);
+
+    const onGameStateUpdate = (newState: any) => {
+      if (newState.gameId !== gameId) return;
+
+      hydrateGameState(newState);
+      setGame(newState);
+
+      // Robust clearing of query-related state
+      if (!newState.pendingQuery) {
+        setSelectedQueryIds([]);
+        setPaymentSelection({ useFeijing: [], exhaustIds: [], erosionFrontIds: [] });
+      }
+    };
+
+    socket.on('gameStateUpdate', onGameStateUpdate);
+
+    return () => {
+      console.log('[BattleField] Unregistering socket listeners for game:', gameId);
+      socket.off('gameStateUpdate', onGameStateUpdate);
+    };
+  }, [gameId]);
+
+  // Join game effect
+  useEffect(() => {
+    if (!gameId || !deckId || gameId === 'undefined') return;
+
+    const performJoin = () => {
+      console.log('[BattleField] Emitting joinGame:', gameId);
       socket.emit('joinGame', { gameId, deckId });
     };
 
     const token = localStorage.getItem('token');
+    const authAndJoin = () => {
+      if (isSocketAuthenticated()) {
+        performJoin();
+      } else if (token) {
+        if (!socket.connected) socket.connect();
+        socket.once('authenticated', performJoin);
+        socket.emit('authenticate', token);
+      }
+    };
 
-    if (isSocketAuthenticated()) {
-      joinAndListen();
-    } else if (token) {
-      if (!socket.connected) socket.connect();
-      socket.once('authenticated', joinAndListen);
-      socket.emit('authenticate', token);
-    }
+    authAndJoin();
 
     return () => {
-      console.log('[BattleField] Leaving game:', gameId);
-      socket.off('gameStateUpdate');
+      console.log('[BattleField] Emitting leaveGame:', gameId);
       socket.emit('leaveGame', gameId);
     };
   }, [gameId, deckId]);
@@ -198,7 +225,13 @@ export const BattleField: React.FC = () => {
       }, 2000);
       return () => clearTimeout(timer);
     }
-  }, [game, gameId]);
+  }, [
+    game?.phase,
+    game?.counterStack?.length,
+    game?.priorityPlayerId,
+    game?.pendingQuery?.id,
+    gameId
+  ]);
 
   // Effect Selection Keyboard Shortcuts
   useEffect(() => {
@@ -240,9 +273,9 @@ export const BattleField: React.FC = () => {
 
   // const authUser = getAuthUser();
   // const myUid = authUser?.uid;
-  const me = (game && myUid) ? game.players[myUid] : null;
-  const opponentUid = (game && myUid) ? Object.keys(game.players).find(uid => uid !== myUid) : null;
-  const opponent = (game && opponentUid) ? game.players[opponentUid] : null;
+  const me = useMemo(() => (game && myUid) ? game.players[myUid] : null, [game, myUid]);
+  const opponentUid = useMemo(() => (game && myUid) ? Object.keys(game.players).find(uid => uid !== myUid) : null, [game, myUid]);
+  const opponent = useMemo(() => (game && opponentUid) ? game.players[opponentUid] : null, [game, opponentUid]);
 
   if (!game || !myUid || !me) {
     return (
@@ -894,12 +927,23 @@ export const BattleField: React.FC = () => {
       {/* Main Arena */}
       <div className="flex-1 relative flex flex-col overflow-hidden bg-[#050505] p-2">
         {/* Top Bar: Phase & Turn */}
-        <div className="h-16 flex items-center justify-between px-6 bg-black/40 border-b border-white/5 backdrop-blur-md">
+        <div className="h-16 flex items-center justify-between px-6 bg-black/40 border-b border-white/5 backdrop-blur-md relative z-[1100]">
           <div className="flex items-center gap-8">
             <div className="flex flex-col">
               <span className="text-[10px] text-white/40 uppercase font-black tracking-[0.2em]">Turn Count</span>
               <span className="text-2xl font-black italic text-[#f27d26]">ROUND {game.turnCount}</span>
             </div>
+            
+            <motion.button
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              onClick={() => setShowSurrenderConfirm(true)}
+              className="px-4 py-1.5 bg-red-600/20 hover:bg-red-600/40 text-red-500 border border-red-500/30 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2"
+            >
+              <Flag className="w-3 h-3" />
+              SURRENDER
+            </motion.button>
+
             <div className="h-8 w-px bg-white/10" />
             <div className="flex flex-col relative group">
               <div
@@ -929,8 +973,8 @@ export const BattleField: React.FC = () => {
                       {game.phase === 'BATTLE_FREE' && <Sword className="w-6 h-6 text-orange-500" />}
                       {game.phase === 'END' && <LogOut className="w-6 h-6 text-zinc-400" />}
                       {(game.phase === 'BATTLE_DECLARATION' || game.phase === 'BATTLE_FREE' || game.currentTurnPlayer === (game.playerIds[0] === myUid ? 0 : 1)) && game.battleState?.attackers.length > 0 && <Flame className="w-6 h-6 text-red-500 animate-pulse" />}
-                      {game.phase === 'COUNTERING' 
-                        ? `${game.previousPhase?.replace(/_/g, ' ') || 'MAIN'}|COUNTERING` 
+                      {game.phase === 'COUNTERING'
+                        ? `${game.previousPhase?.replace(/_/g, ' ') || 'MAIN'}|COUNTERING`
                         : game.phase.replace(/_/g, ' ')}
                     </span>
                   </div>
@@ -1048,7 +1092,7 @@ export const BattleField: React.FC = () => {
               className="fixed inset-0 z-[600] bg-black/40 flex items-center justify-center pointer-events-none"
             >
               <div className="flex flex-col items-center gap-12">
-                <motion.div 
+                <motion.div
                   initial={{ y: 20, opacity: 0 }}
                   animate={{ y: 0, opacity: 1 }}
                   className="flex flex-col items-center gap-4"
@@ -1086,7 +1130,7 @@ export const BattleField: React.FC = () => {
                       </div>
                     )}
                   </div>
-                  
+
                   {/* Link Badge */}
                   <div className="absolute -top-6 -left-6 w-20 h-20 bg-red-600 rounded-full border-4 border-zinc-900 flex items-center justify-center shadow-2xl z-20">
                     <span className="text-2xl font-black italic text-white uppercase tracking-tighter">LINK</span>
@@ -1129,10 +1173,10 @@ export const BattleField: React.FC = () => {
                     CONFRONTATION / 对抗阶段
                   </p>
                   <p className="text-white text-[11px] uppercase tracking-[0.2em] font-black">
-                    {game.isResolvingStack 
+                    {game.isResolvingStack
                       ? "RESOLVING CHAIN / 正在结算连锁"
-                      : game.priorityPlayerId === myUid 
-                        ? `RESPOND AS LINK ${game.counterStack.length + 1} / 请响应 (Link ${game.counterStack.length + 1})` 
+                      : game.priorityPlayerId === myUid
+                        ? `RESPOND AS LINK ${game.counterStack.length + 1} / 请响应 (Link ${game.counterStack.length + 1})`
                         : `WAITING FOR ${game.players[game.priorityPlayerId!]?.displayName?.toUpperCase() || 'OPPONENT'}`}
                   </p>
                 </div>
@@ -1159,8 +1203,8 @@ export const BattleField: React.FC = () => {
                     animate={{ y: 0, opacity: 1, scale: idx === game.counterStack.length - 1 ? 1.15 : 1 }}
                     className={cn(
                       "w-36 h-52 rounded-xl overflow-hidden border-2 shadow-2xl relative transition-all duration-300",
-                      idx === game.counterStack.length - 1 
-                        ? "border-red-500 z-10 ring-4 ring-red-500/20" 
+                      idx === game.counterStack.length - 1
+                        ? "border-red-500 z-10 ring-4 ring-red-500/20"
                         : "border-white/10 opacity-60 grayscale-[0.5]"
                     )}
                   >
@@ -1890,7 +1934,7 @@ export const BattleField: React.FC = () => {
                     );
                   })}
                 </div>
-              ) : (
+              ) : game.pendingQuery.type.replace(/-/g, '_').toUpperCase() === 'SELECT_PAYMENT' ? (
                 /* Payment Selection for Query */
                 <div className="flex flex-col gap-8 w-full max-w-4xl max-h-[50vh] overflow-y-auto p-4 custom-scrollbar">
                   {/* Feijing Section */}
@@ -1955,21 +1999,38 @@ export const BattleField: React.FC = () => {
                     Note: Any remaining cost will be automatically deducted from your deck as Erosion Damage.
                   </p>
                 </div>
-              )}
-
-              <div className="flex flex-col items-center gap-6">
-                <button
-                  onClick={handleQuerySubmit}
-                  disabled={game.pendingQuery.type.replace(/-/g, '_').toUpperCase() === 'SELECT_CARD' && selectedQueryIds.length < game.pendingQuery.minSelections}
-                  className="px-16 py-5 bg-[#f27d26] text-white font-black italic uppercase tracking-[0.2em] rounded-2xl hover:bg-[#f27d26]/80 transition-all disabled:opacity-30 disabled:cursor-not-allowed shadow-[0_20px_50px_rgba(242,125,38,0.3)] hover:scale-105 active:scale-95"
-                >
-                  {game.pendingQuery.type.replace(/-/g, '_').toUpperCase() === 'SELECT_CARD' ? 'CONFIRM SELECTION' : 'CONFIRM PAYMENT'}
-                </button>
-                <div className="flex items-center gap-2 text-zinc-600 uppercase text-[10px] font-black tracking-widest">
-                  <Loader2 className="w-3 h-3 animate-spin" />
-                  Awaiting player input
+              ) : game.pendingQuery.type.replace(/-/g, '_').toUpperCase() === 'ASK_TRIGGER' ? (
+                <div className="flex gap-8 mt-4 w-full justify-center max-w-md">
+                  <button
+                    onClick={() => GameService.submitQueryChoice(gameId!, game.pendingQuery!.id, ['YES'])}
+                    className="flex-1 py-5 bg-[#f27d26] text-white font-black italic uppercase tracking-[0.2em] rounded-2xl hover:bg-[#f27d26]/80 transition-all shadow-[0_20px_50px_rgba(242,125,38,0.3)] hover:scale-105 active:scale-95"
+                  >
+                    CONFIRM
+                  </button>
+                  <button
+                    onClick={() => GameService.submitQueryChoice(gameId!, game.pendingQuery!.id, ['NO'])}
+                    className="flex-1 py-5 bg-zinc-800 text-white border border-white/20 font-black italic uppercase tracking-[0.2em] rounded-2xl hover:bg-zinc-700 transition-all hover:scale-105 active:scale-95"
+                  >
+                    CANCEL
+                  </button>
                 </div>
-              </div>
+              ) : null}
+
+              {game.pendingQuery.type.replace(/-/g, '_').toUpperCase() !== 'ASK_TRIGGER' && (
+                <div className="flex flex-col items-center gap-6">
+                  <button
+                    onClick={handleQuerySubmit}
+                    disabled={game.pendingQuery.type.replace(/-/g, '_').toUpperCase() === 'SELECT_CARD' && selectedQueryIds.length < game.pendingQuery.minSelections}
+                    className="px-16 py-5 bg-[#f27d26] text-white font-black italic uppercase tracking-[0.2em] rounded-2xl hover:bg-[#f27d26]/80 transition-all disabled:opacity-30 disabled:cursor-not-allowed shadow-[0_20px_50px_rgba(242,125,38,0.3)] hover:scale-105 active:scale-95"
+                  >
+                    {game.pendingQuery.type.replace(/-/g, '_').toUpperCase() === 'SELECT_CARD' ? 'CONFIRM SELECTION' : 'CONFIRM PAYMENT'}
+                  </button>
+                  <div className="flex items-center gap-2 text-zinc-600 uppercase text-[10px] font-black tracking-widest">
+                    <Loader2 className="w-3 h-3 animate-spin" />
+                    Awaiting player input
+                  </div>
+                </div>
+              )}
             </div>
           </motion.div>
         )}
@@ -2349,6 +2410,55 @@ export const BattleField: React.FC = () => {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Surrender Confirmation Modal */}
+      <AnimatePresence>
+        {showSurrenderConfirm && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[1200] bg-black/80 backdrop-blur-xl flex items-center justify-center p-6"
+            onClick={() => setShowSurrenderConfirm(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0, y: 20 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.9, opacity: 0, y: 20 }}
+              className="max-w-md w-full bg-zinc-900/90 border border-white/10 rounded-[2.5rem] p-10 shadow-3xl text-center relative overflow-hidden"
+              onClick={e => e.stopPropagation()}
+            >
+              <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-red-500 via-orange-500 to-red-500" />
+
+              <div className="w-20 h-20 bg-red-500/10 rounded-full flex items-center justify-center mx-auto mb-6 border border-red-500/20">
+                <Flag className="w-10 h-10 text-red-500" />
+              </div>
+
+              <h3 className="text-2xl font-black italic text-white uppercase tracking-wider mb-2">Confirm Surrender?</h3>
+              <p className="text-white/50 text-sm mb-8 leading-relaxed font-medium">Are you sure you want to concede this duel? This action cannot be undone and will count as a defeat.</p>
+
+              <div className="grid grid-cols-2 gap-4">
+                <button
+                  className="py-4 px-6 bg-zinc-800 hover:bg-zinc-700 text-white/70 rounded-2xl text-xs font-black uppercase tracking-widest transition-all"
+                  onClick={() => setShowSurrenderConfirm(false)}
+                >
+                  CANCEL
+                </button>
+                <button
+                  className="py-4 px-6 bg-gradient-to-r from-red-600 to-orange-600 hover:from-red-500 hover:to-orange-500 text-white rounded-2xl text-xs font-black uppercase tracking-widest transition-all shadow-xl shadow-red-900/20"
+                  onClick={() => {
+                    handleSurrender();
+                    setShowSurrenderConfirm(false);
+                  }}
+                >
+                  CONCEDE
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Game Over Modal */}
       <AnimatePresence>
         {game?.gameStatus === 2 && (

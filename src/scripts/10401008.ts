@@ -34,7 +34,7 @@ const activation_10401008_1: CardEffect = {
       }
     };
   },
-  resolve: (instance: Card, gameState: GameState, playerState: PlayerState, selections: string[], context: any) => {
+  onQueryResolve: (instance: Card, gameState: GameState, playerState: PlayerState, selections: string[], context: any) => {
     if (context.step === 1) {
       const targetCardId = selections[0];
       const targetCard = playerState.itemZone.find(c => c?.gamecardId === targetCardId);
@@ -96,7 +96,7 @@ const activation_10401008_2: CardEffect = {
 
     return true;
   },
-  resolve: (instance: Card, gameState: GameState, playerState: PlayerState, selections: string[], context: any) => {
+  onQueryResolve: (instance: Card, gameState: GameState, playerState: PlayerState, selections: string[], context: any) => {
     if (context.step === 1) {
       const discardId = selections[0];
       const discardCard = playerState.hand.find(c => c.gamecardId === discardId);

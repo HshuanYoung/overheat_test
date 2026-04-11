@@ -47,7 +47,7 @@ const trigger_10402006_1: CardEffect = {
       };
     }
   },
-  resolve: (instance: Card, gameState: GameState, playerState: PlayerState, selections: string[], context: any) => {
+  onQueryResolve: (instance: Card, gameState: GameState, playerState: PlayerState, selections: string[], context: any) => {
     if (context.step === 1) {
       const selectedGamecardId = selections[0];
       let selectedPlayerUid = '';

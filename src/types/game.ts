@@ -155,7 +155,8 @@ export interface CardEffect {
   removeContinuous?: (gameState: GameState, card: Card) => void;
 
   execute?: (card: Card, gameState: GameState, playerState: PlayerState, event?: GameEvent) => void; // The function to execute when the effect is triggered
-  resolve?: (card: Card, gameState: GameState, playerState: PlayerState, selections: string[], context?: any) => void; // Resolve sequential steps after a query
+  onQueryResolve?: (card: Card, gameState: GameState, playerState: PlayerState, selections: string[], context?: any) => void; // Resolve sequential steps after a query
+  resolve?: (card: Card, gameState: GameState, playerState: PlayerState) => void; // Post-processing logic (e.g. end of turn)
   atomicEffects?: AtomicEffect[]; // Structured atomic effects
   content?: string; // Description of the effect: Move, Draw, Add Power, etc.
   description: string; // Human readable text
@@ -252,7 +253,7 @@ export interface StackItem {
 
 export interface EffectQuery {
   id: string; // Unique ID for this query to match response
-  type: 'SELECT_CARD' | 'SELECT_PAYMENT';
+  type: 'SELECT_CARD' | 'SELECT_PAYMENT' | 'ASK_TRIGGER';
   playerUid: string;
   options: {
     card: Card;
@@ -291,6 +292,7 @@ export type GamePhase =
 export interface TriggeredEffectRecord {
   card: Card;
   effect: CardEffect;
+  effectIndex: number;
   playerUid: string;
   event?: GameEvent;
 }
@@ -311,6 +313,7 @@ export interface GameState {
   isResolvingStack?: boolean; // True when chain is resolving
   currentProcessingItem?: StackItem | null; // Currently resolving item for visual feedback
   triggeredEffectsQueue: TriggeredEffectRecord[]; // Queue of effects met conditions during chain/resolution
+  pendingResolutions: TriggeredEffectRecord[]; // Effects to be resolved at the end of the turn
   passCount: number; // Number of consecutive passes during identification
   playerIds: [string, string]; // [FirstPlayerID, SecondPlayerID]
   gameStatus: 1 | 2; // 1: Normal, 2: Interrupted

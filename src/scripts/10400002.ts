@@ -29,17 +29,12 @@ const card: Card = {
       description: '【计略发动】[侵蚀区正面限定] 若你的战场上已有2张或以上的蓝色单位，且当前非对抗阶段：支付0费并舍弃一张手牌，将这张卡以重置状态放置到战场上。',
       playCost: 0,
       triggerLocation: ['EROSION_FRONT'],
-      condition: (gameState: GameState, playerState: PlayerState) => {
+      condition: (gameState, playerState) => {
         const blueUnits = playerState.unitZone.filter(c => c && c.color === 'BLUE');
         const isNotCountering = gameState.phase !== 'COUNTERING';
-        return blueUnits.length >= 2 && isNotCountering;
+        return blueUnits.length >= 2 && isNotCountering && playerState.hand.length >= 1;
       },
-      execute: (card: Card, gameState: GameState, playerState: PlayerState) => {
-        if (playerState.hand.length === 0) {
-          gameState.logs.push(`[翡翠水蜥] 手牌不足，无法发动效果。`);
-          return;
-        }
-
+      cost: (gameState, playerState, card) => {
         gameState.pendingQuery = {
           id: Math.random().toString(36).substring(7),
           type: 'SELECT_CARD',
@@ -49,25 +44,35 @@ const card: Card = {
           description: '请选择一张手牌作为发动的代价舍弃到墓地。',
           minSelections: 1,
           maxSelections: 1,
-          callbackKey: 'GENERIC_RESOLVE',
-          context: { sourceCardId: card.gamecardId },
-          afterSelectionEffects: [
-            {
-              type: 'DISCARD_CARD',
-              targetFilter: { querySelection: true }
-            },
-            {
-              type: 'MOVE_FROM_EROSION',
-              targetFilter: { gamecardId: card.gamecardId },
-              destinationZone: 'UNIT'
-            },
-            {
-              type: 'ROTATE_VERTICAL',
-              targetFilter: { gamecardId: card.gamecardId }
-            }
-          ],
-          executionMode: 'IMMEDIATE'
+          callbackKey: 'ACTIVATE_COST_RESOLVE',
+          context: { sourceCardId: card.gamecardId }
         };
+        return true;
+      },
+      onQueryResolve: (card, gameState, playerState, selections) => {
+        const cardId = selections[0];
+        const sourcePlayer = gameState.players[playerState.uid];
+        const cardInHand = sourcePlayer.hand.find(c => c.gamecardId === cardId);
+        if (cardInHand) {
+          sourcePlayer.hand = sourcePlayer.hand.filter(c => c.gamecardId !== cardId);
+          cardInHand.cardlocation = 'GRAVE';
+          sourcePlayer.grave.push(cardInHand);
+          gameState.logs.push(`${playerState.displayName} 舍弃了 ${cardInHand.fullName}。`);
+        }
+      },
+      execute: (card, gameState, playerState) => {
+        // Move from erosion to unit zone
+        const sourcePlayer = gameState.players[playerState.uid];
+        const emptyIndex = sourcePlayer.unitZone.findIndex(c => c === null);
+        if (emptyIndex !== -1) {
+          // Remove from erosion
+          sourcePlayer.erosionFront = sourcePlayer.erosionFront.map(c => c?.gamecardId === card.gamecardId ? null : c);
+          
+          card.cardlocation = 'UNIT';
+          card.displayState = 'FRONT_UPRIGHT';
+          sourcePlayer.unitZone[emptyIndex] = card;
+          gameState.logs.push(`${card.fullName} 已放置到单位区（重置状态）。`);
+        }
       }
     }
   ],

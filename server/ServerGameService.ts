@@ -17,6 +17,7 @@ export const ServerGameService = {
           condition: originalEffect.condition,
           execute: originalEffect.execute,
           cost: originalEffect.cost,
+          onQueryResolve: originalEffect.onQueryResolve,
           resolve: originalEffect.resolve
         };
       });
@@ -531,7 +532,21 @@ export const ServerGameService = {
 
     // 3. Payment/Cost Check
     if (effect.cost) {
-      if (!effect.cost(gameState, player, card)) {
+      const player = gameState.players[playerId];
+      const costResult = effect.cost(gameState, player, card);
+      
+      // If cost triggered a query, wait for it
+      if (gameState.pendingQuery) {
+        gameState.pendingQuery.callbackKey = 'ACTIVATE_COST_RESOLVE';
+        gameState.pendingQuery.context = {
+          ...gameState.pendingQuery.context,
+          sourceCardId: card.gamecardId,
+          effectIndex: effectIndex
+        };
+        return gameState;
+      }
+      
+      if (!costResult) {
         throw new Error('发动费用不足或无法支付费用');
       }
     }
@@ -679,6 +694,13 @@ export const ServerGameService = {
               }
 
               gameState.logs.push(`[效果结算] ${card.fullName} 的效果已结算。`);
+              if (effect.resolve) {
+                gameState.pendingResolutions.push({
+                  card,
+                  effect,
+                  playerUid: stackItem.ownerUid
+                });
+              }
               EventEngine.dispatchEvent(gameState, {
                 type: 'EFFECT_ACTIVATED',
                 playerUid: stackItem.ownerUid,
@@ -717,6 +739,15 @@ export const ServerGameService = {
         await new Promise(resolve => setTimeout(resolve, 500));
       }
     }
+    
+    await this.finishCounteringStack(gameState);
+    return gameState;
+  },
+
+  async finishCounteringStack(gameState: GameState) {
+    if (gameState.isResolvingStack || gameState.isCountering > 0) {
+      gameState.logs.push(`[连锁结算] 所有项目结算完成，正在恢复游戏流程...`);
+    }
 
     // CLEANUP: All items resolved
     gameState.isResolvingStack = false;
@@ -730,28 +761,44 @@ export const ServerGameService = {
       gameState.previousPhase = undefined;
     }
 
-    // RULE 6: Process triggered effects that were queued during confrontation
-    if (gameState.triggeredEffectsQueue && gameState.triggeredEffectsQueue.length > 0) {
-       gameState.logs.push(`[诱发结算] 开始处理对抗期间触发的 ${gameState.triggeredEffectsQueue.length} 个诱发效果...`);
-       while (gameState.triggeredEffectsQueue && gameState.triggeredEffectsQueue.length > 0) {
-         const record = gameState.triggeredEffectsQueue.shift()!;
-         const player = gameState.players[record.playerUid];
-         
-         if (record.effect.atomicEffects) {
-           record.effect.atomicEffects.forEach(atomic => {
-             AtomicEffectExecutor.execute(gameState, record.playerUid, atomic, record.card, record.event);
-           });
-         }
-         if (record.effect.execute) {
-           record.effect.execute(record.card, gameState, player, record.event);
-         }
-         this.recordEffectUsage(gameState, record.playerUid, record.card, record.effect);
-         gameState.logs.push(`[诱发结果] ${record.card.fullName} 的诱发效果已执行。`);
-       }
-    }
+    await this.checkTriggeredEffects(gameState);
 
     this.checkBattleInterruption(gameState);
-    return gameState;
+  },
+
+  async checkTriggeredEffects(gameState: GameState) {
+    if (gameState.gameStatus === 2 || gameState.isCountering === 1 || gameState.isResolvingStack || gameState.pendingQuery || gameState.currentProcessingItem) {
+      return;
+    }
+
+    if (gameState.triggeredEffectsQueue && gameState.triggeredEffectsQueue.length > 0) {
+      const trigger = gameState.triggeredEffectsQueue.shift()!;
+      const { card, effect, effectIndex, playerUid, event } = trigger;
+      const isMandatory = effect.isMandatory;
+
+      if (isMandatory) {
+        gameState.logs.push(`[强制诱发] 发动 ${card.fullName} 的效果。`);
+        await this.executeTriggeredEffect(gameState, playerUid, {
+          effectIndex: effectIndex,
+          card,
+          event
+        });
+      } else {
+        gameState.pendingQuery = {
+          id: Math.random().toString(36).substring(7),
+          type: 'ASK_TRIGGER',
+          playerUid: playerUid,
+          options: [],
+          title: `发动提示`,
+          description: `是否发动 [${card.fullName}] 的诱发效果：${effect.description}`,
+          minSelections: 1,
+          maxSelections: 1,
+          callbackKey: 'TRIGGER_CHOICE',
+          context: { effectIndex, sourceCardId: card.gamecardId, event }
+        };
+        gameState.logs.push(`[可选诱发] 等待 ${gameState.players[playerUid].displayName} 选择是否发动 ${card.fullName} 的效果...`);
+      }
+    }
   },
 
   async resolvePlay(gameState: GameState, onUpdate?: (state: GameState) => Promise<void>) {
@@ -809,7 +856,23 @@ export const ServerGameService = {
       }
     }
 
-    // 2. Generic Effect Resolution (Script-Driven via resolve callback)
+    // 2. Trigger Option Processing
+    if (query.callbackKey === 'TRIGGER_CHOICE') {
+      if (currentSelections[0] === 'YES') {
+        gameState.logs.push(`[系统] ${gameState.players[playerUid].displayName} 选择发动 ${sourceCard?.fullName} 的诱发效果。`);
+        this.executeTriggeredEffect(gameState, playerUid, {
+          effectIndex: query.context.effectIndex,
+          card: sourceCard!,
+          event: query.context.event
+        }, onUpdate);
+      } else {
+        gameState.logs.push(`[系统] ${gameState.players[playerUid].displayName} 放弃发动 ${sourceCard?.fullName} 的诱发效果。`);
+        await this.checkTriggeredEffects(gameState);
+      }
+      return gameState;
+    }
+
+    // 3. Generic Effect Resolution (Script-Driven via resolve callback)
     if (query.callbackKey === 'EFFECT_RESOLVE') {
       if (!sourceCard) {
         gameState.logs.push(`[错误] EFFECT_RESOLVE 找不到来源卡 ID: ${sourceCardId}`);
@@ -827,19 +890,60 @@ export const ServerGameService = {
         effect = sourceCard.effects?.find(e => e.id === effectId);
       }
 
-      if (effect && effect.resolve) {
+      if (effect && effect.onQueryResolve) {
         gameState.logs.push(`[系统] 正在执行脚本回调 ${effect.id || effectIndex}`);
-        effect.resolve(sourceCard, gameState, gameState.players[playerUid], selections, query.context);
+        effect.onQueryResolve(sourceCard, gameState, gameState.players[playerUid], selections, query.context);
         EventEngine.recalculateContinuousEffects(gameState);
         
         // RESUME RESOLUTION: If this choice was part of a sequential settlement, resume it.
         if (gameState.isResolvingStack) {
-          await this.resolveCounterStack(gameState, onUpdate);
+          if (gameState.counterStack.length > 0) {
+            await this.resolveCounterStack(gameState, onUpdate);
+          } else {
+            // If the stack is now empty, ensure we clean up the "Resolving" state
+            await this.finishCounteringStack(gameState);
+            if (onUpdate) await onUpdate(gameState);
+          }
+        } else if (!gameState.isCountering) {
+          // If not in a stack resolution and not in priority window, likely resuming a triggered effect chain
+          await this.checkTriggeredEffects(gameState);
         }
         return gameState;
       } else {
         gameState.logs.push(`[错误] EFFECT_RESOLVE 找不到有效回调 (index: ${effectIndex}, id: ${effectId})`);
       }
+    }
+
+    if (query.callbackKey === 'ACTIVATE_COST_RESOLVE') {
+      if (!sourceCard) {
+        gameState.logs.push(`[错误] ACTIVATE_COST_RESOLVE 找不到来源卡 ID: ${sourceCardId}`);
+        return gameState;
+      }
+      const effectIndex = query.context?.effectIndex;
+      const effect = sourceCard.effects?.[effectIndex];
+      
+      if (effect && effect.onQueryResolve) {
+        effect.onQueryResolve(sourceCard, gameState, gameState.players[playerUid], selections, query.context);
+      }
+      
+      // If it was a trigger cost, execute immediately, otherwise enter countering
+      if (query.context?.isTrigger) {
+        await this.executeTriggeredEffect(gameState, playerUid, {
+          card: sourceCard,
+          effectIndex,
+          event: query.context.event,
+          skipCost: true
+        }, onUpdate);
+      } else {
+        this.enterCountering(gameState, playerUid, {
+          card: sourceCard,
+          ownerUid: playerUid,
+          type: 'EFFECT',
+          effectIndex,
+          timestamp: Date.now()
+        });
+      }
+      return gameState;
     }
 
     if (query.callbackKey === 'ALLIANCE_DESTRUCTION_RESOLVE') {
@@ -1366,6 +1470,19 @@ export const ServerGameService = {
 
     gameState.logs.push(`--- 回合 ${gameState.turnCount}: ${nextPlayer.displayName} ---`);
 
+    // New: Process pending resolutions at the end of the turn
+    if (gameState.pendingResolutions && gameState.pendingResolutions.length > 0) {
+      gameState.logs.push(`[系统] 正在处理阶段结束效果...`);
+      const resolutions = [...gameState.pendingResolutions];
+      gameState.pendingResolutions = []; // Clear queue
+      resolutions.forEach(record => {
+        if (record.effect.resolve) {
+          const player = gameState.players[record.playerUid];
+          record.effect.resolve(record.card, gameState, player);
+        }
+      });
+    }
+
     // Heroic Effect and Multi-turn flags reset for PREVIOUS player
     currentPlayer.unitZone.forEach(unit => {
       if (unit) {
@@ -1442,6 +1559,101 @@ export const ServerGameService = {
       gameState.battleState.attackers = attackersFound;
       // Requirement: "the remaining units will continue to attack, which is also considered a coalition attack"
       // So we keep isAlliance=true if it was already true.
+    }
+  },
+
+  async executeTriggeredEffect(
+    gameState: GameState,
+    playerUid: string,
+    trigger: { card: Card; effect: CardEffect; effectIndex: number; event?: any; skipCost?: boolean },
+    onUpdate?: (state: GameState) => Promise<void>
+  ) {
+    const { card, effectIndex, event, skipCost } = trigger;
+    const effect = trigger.effect || card.effects?.[effectIndex];
+
+    if (!effect) {
+      await this.checkTriggeredEffects(gameState);
+      return;
+    }
+
+    // 1. Cost check (If needed and not skipped)
+    if (effect.cost && !skipCost) {
+      const player = gameState.players[playerUid];
+      const costResult = effect.cost(gameState, player, card);
+      
+      if (gameState.pendingQuery) {
+        // If query triggered by cost, we must wait
+        gameState.pendingQuery.context = {
+          ...gameState.pendingQuery.context,
+          sourceCardId: card.gamecardId,
+          effectIndex: effectIndex,
+          isTrigger: true, // IMPORTANT: mark as trigger to avoid countering after cost
+          event
+        };
+        return;
+      }
+      
+      if (!costResult) {
+        // Cost failed, proceed to next trigger
+        await this.checkTriggeredEffects(gameState);
+        return;
+      }
+    }
+
+    // 2. Record usage
+    this.recordEffectUsage(gameState, playerUid, card, effect);
+
+    // 3. Highlight for UI
+    gameState.currentProcessingItem = {
+      type: 'EFFECT',
+      card,
+      ownerUid: playerUid,
+      effectIndex,
+      timestamp: Date.now(),
+      data: { event }
+    };
+    if (onUpdate) await onUpdate(gameState);
+    
+    // Small pause for visual feedback
+    await new Promise(resolve => setTimeout(resolve, 1000));
+
+    // 4. Atomic Effects
+    if (effect.atomicEffects) {
+      effect.atomicEffects.forEach(atomic => {
+        AtomicEffectExecutor.execute(gameState, playerUid, atomic, card, event);
+      });
+    }
+
+    // 5. Execute Legacy Callback
+    if (effect.execute) {
+      effect.execute(card, gameState, gameState.players[playerUid]);
+    }
+
+    // 6. Dispatch Event
+    EventEngine.dispatchEvent(gameState, {
+      type: 'EFFECT_ACTIVATED',
+      playerUid,
+      sourceCardId: card.gamecardId
+    });
+
+    gameState.logs.push(`[诱发结算] ${card.fullName} 的展示效果已结算。`);
+    
+    // 7. Cleanup highlight
+    gameState.currentProcessingItem = null;
+    if (onUpdate) await onUpdate(gameState);
+
+    // 8. Resolve persistence
+    if (effect.resolve) {
+      gameState.pendingResolutions.push({
+        card,
+        effect,
+        playerUid
+      });
+    }
+
+    // 9. Continue trigger queue if no new query was opened
+    if (!gameState.pendingQuery) {
+      await this.checkTriggeredEffects(gameState);
     }
   },
 
@@ -2056,12 +2268,24 @@ export const ServerGameService = {
       return;
     }
 
-    // Handle Defense Declaration (Bot chooses not to defend)
+    // Handle Defense Declaration (Smart Defense)
     if (gameState.phase === 'DEFENSE_DECLARATION') {
       const attackerUid = Object.keys(gameState.players).find(uid => gameState.players[uid].isTurn);
       if (attackerUid !== 'BOT_PLAYER') {
-        // Bot is the defender - skip defense
-        await this.declareDefense(gameState, 'BOT_PLAYER', undefined);
+        const attacker = gameState.players[attackerUid!];
+        const attackingUnits = (gameState.battleState?.attackers || []).map(id =>
+          attacker.unitZone.find(c => c?.gamecardId === id)
+        ).filter(Boolean) as Card[];
+        const totalAttackerPower = attackingUnits.reduce((sum, u) => sum + (u.power || 0), 0);
+
+        // Find a unit with higher power than the attacker(s) for defense
+        const defender = bot.unitZone.find(c => c && !c.isExhausted && (c.power || 0) > totalAttackerPower);
+
+        if (defender) {
+          await this.declareDefense(gameState, 'BOT_PLAYER', defender.gamecardId);
+        } else {
+          await this.declareDefense(gameState, 'BOT_PLAYER', undefined);
+        }
         return;
       }
     }
@@ -2110,6 +2334,7 @@ export const ServerGameService = {
       // If no cards can be played, try to enter battle or end turn
       const canAttack = bot.unitZone.some(c => {
         if (!c || c.isExhausted || c.canAttack === false) return false;
+        if ((c.damage || 0) < 1) return false; // Rule 2: Robots will not attack with units having damage < 1
         const isRush = !!c.isrush;
         const wasPlayedThisTurn = c.playedTurn === gameState.turnCount;
         return isRush || !wasPlayedThisTurn;
@@ -2131,6 +2356,7 @@ export const ServerGameService = {
     if (gameState.phase === 'BATTLE_DECLARATION' && bot.isTurn) {
       const attacker = bot.unitZone.find(c => {
         if (!c || c.isExhausted || c.canAttack === false) return false;
+        if ((c.damage || 0) < 1) return false; // Rule 2: Robots will not attack with units having damage < 1
         const isRush = !!c.isrush;
         const wasPlayedThisTurn = c.playedTurn === gameState.turnCount;
         return isRush || !wasPlayedThisTurn;
@@ -2321,16 +2547,4 @@ export const ServerGameService = {
 
     return gameState;
   },
-
-  async surrender(gameState: GameState, playerUid: string) {
-    const player = gameState.players[playerUid];
-    if (!player) return;
-
-    gameState.gameStatus = 2; // Game Over
-    gameState.winnerId = gameState.playerIds.find(id => id !== playerUid);
-    gameState.winReason = 'SURRENDER';
-    gameState.logs.push(`[对局结束] ${player.displayName} 选择了投降。`);
-
-    return gameState;
-  }
 };
