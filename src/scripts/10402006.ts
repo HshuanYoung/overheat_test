@@ -9,23 +9,38 @@ const trigger_10402006_1: CardEffect = {
   triggerEvent: 'CARD_ENTERED_ZONE',
   playCost: 0,
   condition: (gameState: GameState, playerState: PlayerState, instance: Card, event?: GameEvent) => {
-    // Check if this card entered the unit zone
-    const isSelf = event?.sourceCardId === instance.gamecardId || (event?.sourceCard && event.sourceCard.gamecardId === instance.gamecardId);
-    if (!isSelf || event?.data?.zone !== 'UNIT') return false;
+    // 1. Check if this card entered the battlefield (UNIT or ITEM zone)
+    const isOnBattlefield = instance.cardlocation === 'UNIT' || instance.cardlocation === 'ITEM';
+    if (!event) return isOnBattlefield;
 
-    // Check for exactly 2 blue units on my field
+    const isSelf = event.type === 'CARD_ENTERED_ZONE' &&
+      (event.sourceCardId === instance.gamecardId || event.sourceCard === instance);
+    const isTargetZone = event.data?.zone === 'UNIT' || event.data?.zone === 'ITEM';
+
+    if (!isSelf || !isTargetZone || !isOnBattlefield) return false;
+
+    // 2. Check for at least 2 blue units on my field (including itself)
     const blueUnitsCount = playerState.unitZone.filter(u => u && u.color === 'BLUE' && u.type === 'UNIT').length;
     return blueUnitsCount >= 2;
   },
   execute: (instance: Card, gameState: GameState, playerState: PlayerState) => {
-    // Step 1: Choose a player
-    const options: { card: Card; source: TriggerLocation }[] = [];
+    // Step 1: Choose a player (Me or Opponent)
+    const options: any[] = [];
+    
     Object.values(gameState.players).forEach(p => {
-      // Find a card to represent the player (preferably a unit or goddess-like card)
-      const repCard = p.unitZone.find(u => u !== null) || p.erosionFront.find(e => e !== null) || p.hand[0] || p.grave[0] || p.deck[0];
-      if (repCard) {
-        options.push({ card: { ...repCard }, source: repCard.cardlocation as any });
-      }
+      const isMe = p.uid === playerState.uid;
+      // We use a special ID system for player selection that the BattleField UI can recognize
+      options.push({
+        card: {
+          gamecardId: isMe ? 'PLAYER_SELF' : 'PLAYER_OPPONENT',
+          id: isMe ? 'PLAYER_SELF' : 'PLAYER_OPPONENT',
+          fullName: isMe ? '我方玩家' : '对手玩家',
+          type: 'UNIT', // Dummy type
+          color: 'NONE',
+          rarity: 'C'
+        },
+        source: 'HAND' // Dummy source
+      });
     });
 
     if (options.length > 0) {
@@ -35,7 +50,7 @@ const trigger_10402006_1: CardEffect = {
         playerUid: playerState.uid,
         options,
         title: '选择玩家',
-        description: '请选择一名玩家以执行效果（选择该玩家的一张卡以确认）',
+        description: '请选择一名玩家以执行效果',
         minSelections: 1,
         maxSelections: 1,
         callbackKey: 'EFFECT_RESOLVE',
@@ -51,12 +66,20 @@ const trigger_10402006_1: CardEffect = {
     if (context.step === 1) {
       const selectedGamecardId = selections[0];
       let selectedPlayerUid = '';
-      for (const uid of Object.keys(gameState.players)) {
-        const p = gameState.players[uid];
-        const allCards = [...p.hand, ...p.unitZone, ...p.itemZone, ...p.grave, ...p.exile, ...p.erosionFront, ...p.erosionBack, ...p.deck];
-        if (allCards.some(c => c && c.gamecardId === selectedGamecardId)) {
-          selectedPlayerUid = uid;
-          break;
+
+      if (selectedGamecardId === 'PLAYER_SELF') {
+        selectedPlayerUid = playerState.uid;
+      } else if (selectedGamecardId === 'PLAYER_OPPONENT') {
+        selectedPlayerUid = Object.keys(gameState.players).find(uid => uid !== playerState.uid) || '';
+      } else {
+        // Fallback for old style selection
+        for (const uid of Object.keys(gameState.players)) {
+          const p = gameState.players[uid];
+          const allCards = [...p.hand, ...p.unitZone, ...p.itemZone, ...p.grave, ...p.exile, ...p.erosionFront, ...p.erosionBack, ...p.deck];
+          if (allCards.some(c => c && c.gamecardId === selectedGamecardId)) {
+            selectedPlayerUid = uid;
+            break;
+          }
         }
       }
 

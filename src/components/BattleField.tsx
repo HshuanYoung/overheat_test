@@ -1906,7 +1906,18 @@ export const BattleField: React.FC = () => {
                                 : "border-white/5 opacity-80 hover:opacity-100"
                             )}
                           >
-                            <CardComponent card={option.card} disableZoom={true} />
+                            {(option.card.id === 'PLAYER_SELF' || option.card.id === 'PLAYER_OPPONENT') ? (
+                              <div className="w-48 aspect-[3/4] bg-zinc-800 rounded-2xl flex flex-col items-center justify-center p-4 border border-white/10">
+                                <img
+                                  src={`/assets/icons/${option.card.id === 'PLAYER_SELF' ? 'myself' : 'opponent'}.JPG`}
+                                  alt={option.card.fullName}
+                                  className="w-32 h-32 object-contain mb-4 rounded-full border-4 border-[#f27d26]/30"
+                                />
+                                <span className="text-[#f27d26] font-display font-black text-xl uppercase italic tracking-widest">{option.card.fullName}</span>
+                              </div>
+                            ) : (
+                              <CardComponent card={option.card} disableZoom={true} />
+                            )}
 
                             {/* Selected Badge */}
                             <AnimatePresence>

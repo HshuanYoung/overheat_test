@@ -1615,7 +1615,7 @@ export const ServerGameService = {
     if (onUpdate) await onUpdate(gameState);
     
     // Small pause for visual feedback
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    await new Promise(resolve => setTimeout(resolve, 1500));
 
     // 4. Atomic Effects
     if (effect.atomicEffects) {

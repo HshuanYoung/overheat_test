@@ -25,6 +25,17 @@ export default defineConfig(({ mode }) => {
         '/socket.io': {
           target: 'http://localhost:3001',
           ws: true,
+          changeOrigin: true,
+          configure: (proxy, _options) => {
+            proxy.on('error', (err, _req, _res) => {
+              // Silent proxy errors which are common during dev restarts
+            });
+            proxy.on('proxyReqWs', (proxyReq, req, socket, options, head) => {
+              socket.on('error', (err) => {
+                // Silent socket errors to prevent terminal noise
+              });
+            });
+          },
         },
       },
       hmr: process.env.DISABLE_HMR !== 'true' ? {
