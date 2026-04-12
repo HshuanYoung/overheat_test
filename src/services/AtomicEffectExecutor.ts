@@ -1,8 +1,53 @@
 import { GameState, PlayerState, Card, AtomicEffect, CardFilter, TriggerLocation } from '../types/game';
 import { GameService } from './gameService';
 import { EventEngine } from './EventEngine';
+import { getCardIdentity } from '../lib/utils';
 
 export class AtomicEffectExecutor {
+  /**
+   * Enriches query options with ownership metadata.
+   */
+  static enrichQueryOptions(gameState: GameState, viewerUid: string, options: any[]): any[] {
+    return options.map(opt => {
+      const cardId = opt.card.gamecardId;
+      let cardOwner: PlayerState | undefined;
+      
+      // Special handles for player-as-card selection
+      if (cardId === 'PLAYER_SELF') {
+        return {
+          ...opt,
+          isMine: true,
+          ownerName: gameState.players[viewerUid].displayName
+        };
+      }
+      if (cardId === 'PLAYER_OPPONENT') {
+        const opponentId = Object.keys(gameState.players).find(id => id !== viewerUid);
+        return {
+          ...opt,
+          isMine: false,
+          ownerName: opponentId ? gameState.players[opponentId].displayName : 'OPPONENT'
+        };
+      }
+
+      // Find real owner
+      for (const uid of Object.keys(gameState.players)) {
+        const p = gameState.players[uid];
+        const hasCard = [...p.hand, ...p.unitZone, ...p.itemZone, ...p.grave, ...p.exile, ...p.erosionFront, ...p.erosionBack, ...p.deck]
+          .some(c => c && c.gamecardId === cardId);
+        if (hasCard) {
+          cardOwner = p;
+          break;
+        }
+      }
+
+      return {
+        ...opt,
+        isMine: cardOwner ? cardOwner.uid === viewerUid : false,
+        ownerName: cardOwner ? cardOwner.displayName : 'UNKNOWN'
+      };
+    });
+  }
+
   /**
    * Main entry point for executing atomic effects.
    */
@@ -316,7 +361,7 @@ export class AtomicEffectExecutor {
         }
       }
 
-      this.moveCard(gameState, ownerUid, currentZone, ownerUid, toZone, card.gamecardId);
+      this.moveCard(gameState, ownerUid, currentZone, ownerUid, toZone, card.gamecardId, true);
 
       // If moving to unit zone from anywhere, mark as played this turn to ensure summon sickness applies
       if (toZone === 'UNIT' && card) {
@@ -347,7 +392,7 @@ export class AtomicEffectExecutor {
       // In a real game, this would be a UI choice if there are multiple. 
       // For atomic execution, we might pick the first one or the specific one.
       const card = results[0];
-      this.moveCard(gameState, playerUid, 'DECK', playerUid, effect.destinationZone || 'HAND', card.gamecardId);
+      this.moveCard(gameState, playerUid, 'DECK', playerUid, effect.destinationZone || 'HAND', card.gamecardId, true);
       this.shuffleDeck(gameState, playerUid);
     }
   }
@@ -356,7 +401,9 @@ export class AtomicEffectExecutor {
     const targets = this.findTargets(gameState, effect.targetFilter, sourceCard, querySelections);
     targets.forEach(card => {
       // logic to negate card effects
-      gameState.logs.push(`${card.fullName} 的效果被无效了`);
+      const ownerUid = this.findCardOwnerKey(gameState, card.gamecardId) || '';
+      const identity = getCardIdentity(gameState, ownerUid, card);
+      gameState.logs.push(`${identity} ${card.fullName} 的效果被无效了`);
       EventEngine.dispatchEvent(gameState, { type: 'EFFECT_COUNTERED', targetCardId: card.gamecardId });
     });
   }
@@ -364,9 +411,20 @@ export class AtomicEffectExecutor {
   private static applyImmunity(gameState: GameState, effect: AtomicEffect, type: 'COMBAT' | 'EFFECT', sourceCard?: Card, querySelections?: string[]) {
     const targets = this.findTargets(gameState, effect.targetFilter, sourceCard, querySelections);
     targets.forEach(card => {
-      // Implementation depends on where immunities are checked (EventEngine or GameService)
-      gameState.logs.push(`${card.fullName} 获得了对${type === 'COMBAT' ? '战斗' : '效果'}的免疫`);
+      const ownerUid = this.findCardOwnerKey(gameState, card.gamecardId) || '';
+      const identity = getCardIdentity(gameState, ownerUid, card);
+      gameState.logs.push(`${identity} ${card.fullName} 获得了对${type === 'COMBAT' ? '战斗' : '效果'}的免疫`);
     });
+  }
+
+  private static findCardOwnerKey(gameState: GameState, cardId: string): string | undefined {
+    for (const uid of Object.keys(gameState.players)) {
+      const p = gameState.players[uid];
+      const hasCard = [...p.hand, ...p.unitZone, ...p.itemZone, ...p.grave, ...p.exile, ...p.erosionFront, ...p.erosionBack, ...p.deck]
+        .some(c => c && c.gamecardId === cardId);
+      if (hasCard) return uid;
+    }
+    return undefined;
   }
 
   static matchesFilter(card: Card, filter?: CardFilter, sourceCard?: Card, querySelections?: string[]): boolean {
@@ -422,7 +480,7 @@ export class AtomicEffectExecutor {
     return results;
   }
 
-  private static moveCard(gameState: GameState, playerUid: string, fromZone: TriggerLocation, toPlayerUid: string, toZone: TriggerLocation, cardId: string) {
+  private static moveCard(gameState: GameState, playerUid: string, fromZone: TriggerLocation, toPlayerUid: string, toZone: TriggerLocation, cardId: string, isEffect?: boolean) {
     const sourcePlayer = gameState.players[playerUid];
     const targetPlayer = gameState.players[toPlayerUid];
 
@@ -477,14 +535,14 @@ export class AtomicEffectExecutor {
     }
 
     // Specific Events based on movement
-    this.dispatchMovementEvents(gameState, playerUid, card, fromZone, toZone);
+    this.dispatchMovementEvents(gameState, playerUid, card, fromZone, toZone, isEffect);
   }
 
-  private static dispatchMovementEvents(gameState: GameState, playerUid: string, card: Card, from: TriggerLocation, to: TriggerLocation) {
+  private static dispatchMovementEvents(gameState: GameState, playerUid: string, card: Card, from: TriggerLocation, to: TriggerLocation, isEffect?: boolean) {
     // Use centralized EventEngine handlers for movement events to avoid double dispatches
     if (from !== to) {
-      EventEngine.handleCardLeftZone(gameState, playerUid, card, from);
-      EventEngine.handleCardEnteredZone(gameState, playerUid, card, to);
+      EventEngine.handleCardLeftZone(gameState, playerUid, card, from, isEffect);
+      EventEngine.handleCardEnteredZone(gameState, playerUid, card, to, isEffect);
     }
 
     // Dispatch specific movement-related sub-events if necessary

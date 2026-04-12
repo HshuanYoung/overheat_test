@@ -12,7 +12,7 @@ import { PlayField } from './PlayField';
 import { Rulebook } from './Rulebook';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Flag, Trophy, Frown, Home, Sword, Shield, Zap, LogOut, BookOpen, Send, Loader2, Trash2, X, Play, Search, ChevronRight, ShieldCheck, Layers, Sparkles, Flame } from 'lucide-react';
-import { cn, getCardImageUrl } from '../lib/utils';
+import { cn, getCardImageUrl, getCardIdentity } from '../lib/utils';
 
 export const BattleField: React.FC = () => {
   const { gameId } = useParams<{ gameId: string }>();
@@ -1046,10 +1046,15 @@ export const BattleField: React.FC = () => {
                 )}
                 <div className={cn(
                   "absolute -top-1 -left-1 px-1.5 py-0.5 rounded text-[8px] font-black uppercase italic shadow-lg z-10",
-                  item.ownerUid === myUid ? "bg-[#f27d26] text-black" : "bg-red-600 text-white"
+                  item.ownerUid === myUid ? "bg-blue-600 text-white" : "bg-red-600 text-white"
                 )}>
-                  {item.ownerUid === myUid ? "ME" : "OPP"}
+                  {item.ownerUid === myUid ? "我方 / ME" : "对方 / OPP"}
                 </div>
+                {item.card && (
+                  <div className="absolute -top-1 -right-1 px-1.5 py-0.5 bg-black/80 rounded text-[8px] font-bold text-white/70 uppercase z-10">
+                    {getCardIdentity(game, item.ownerUid, item.card).split('|')[1].replace(']', '')}
+                  </div>
+                )}
               </motion.div>
             ))}
             {game.counterStack.length === 0 && (
@@ -1139,6 +1144,17 @@ export const BattleField: React.FC = () => {
                       <div className="relative group">
                         <CardComponent card={game.currentProcessingItem.card} disableZoom />
                         <div className="absolute -inset-0.5 bg-gradient-to-t from-red-600/50 to-transparent opacity-50 rounded-2xl" />
+                        
+                        {/* UL/UR Labels for Resolving Card */}
+                        <div className={cn(
+                          "absolute -top-2 -left-2 px-3 py-1 rounded-full text-[10px] font-black uppercase italic shadow-lg z-[20] border border-white/20",
+                          game.currentProcessingItem.ownerUid === myUid ? "bg-blue-600 text-white" : "bg-red-600 text-white"
+                        )}>
+                          {game.currentProcessingItem.ownerUid === myUid ? "我方 / ME" : "对方 / OPP"}
+                        </div>
+                        <div className="absolute -top-2 -right-2 px-3 py-1 bg-black/80 rounded-full text-[10px] font-bold text-white uppercase z-[20] border border-white/20">
+                          {getCardIdentity(game, game.currentProcessingItem.ownerUid, game.currentProcessingItem.card).split('|')[1].replace(']', '')}
+                        </div>
                       </div>
                     ) : (
                       <div className="aspect-[3/4] bg-zinc-900 border-2 border-red-500/30 rounded-2xl flex flex-col items-center justify-center p-8 text-center shadow-2xl">
@@ -1163,10 +1179,15 @@ export const BattleField: React.FC = () => {
                 >
                   <span className="text-white/40 text-[10px] font-black uppercase tracking-[0.5em]">Initiated By</span>
                   <span className={cn(
-                    "px-6 py-2 rounded-full border text-xs font-black uppercase tracking-widest italic shadow-lg",
+                    "px-6 py-2 rounded-full border text-xs font-black uppercase tracking-widest italic shadow-lg flex items-center gap-3",
                     game.currentProcessingItem.ownerUid === myUid ? "bg-blue-600/20 border-blue-500/50 text-blue-400" : "bg-red-600/20 border-red-500/50 text-red-400"
                   )}>
                     {game.currentProcessingItem.ownerUid === myUid ? "Friendly Forces / 我方" : "Hostile Forces / 对方"}
+                    {game.currentProcessingItem.card && (
+                      <span className="opacity-60 text-[10px] border-l border-current pl-3 ml-2">
+                        {getCardIdentity(game, game.currentProcessingItem.ownerUid, game.currentProcessingItem.card).split('|')[1].replace(']', '')}
+                      </span>
+                    )}
                   </span>
                 </motion.div>
               </div>
@@ -1240,6 +1261,19 @@ export const BattleField: React.FC = () => {
                     <div className="absolute top-2 left-2 px-2 py-0.5 bg-red-600 rounded-full border border-white/40 flex items-center justify-center text-[11px] font-black italic text-white shadow-xl z-20">
                       LINK {idx + 1}
                     </div>
+
+                    {/* UL/UR Labels for Countering Stack */}
+                    <div className={cn(
+                      "absolute top-2 left-2 px-2 py-0.5 rounded-full text-[8px] font-black uppercase italic shadow-lg z-10 translate-y-6",
+                      item.ownerUid === myUid ? "bg-blue-600 text-white" : "bg-red-600 text-white"
+                    )}>
+                      {item.ownerUid === myUid ? "我方" : "对方"}
+                    </div>
+                    {item.card && (
+                      <div className="absolute top-2 right-2 px-2 py-0.5 bg-black/80 rounded-full text-[8px] font-bold text-white uppercase z-10">
+                        {getCardIdentity(game, item.ownerUid, item.card).split('|')[1].replace(']', '')}
+                      </div>
+                    )}
                   </motion.div>
                 ))}
               </div>
@@ -1435,6 +1469,9 @@ export const BattleField: React.FC = () => {
 
                 const activateEffects = latestCard.effects?.map((effect, index) => ({ effect, index }))
                   .filter(e => e.effect.type === 'ACTIVATE' || e.effect.type === 'ACTIVATED') || [];
+
+                // RULE: STORY cards in HAND can only be PLAYED, not ACTIVATED
+                if (latestCard.type === 'STORY' && cardMenu.zone === 'hand') return null;
 
                 const zoneMap: Record<string, string> = {
                   'unit': 'UNIT',
@@ -1944,19 +1981,16 @@ export const BattleField: React.FC = () => {
                             </AnimatePresence>
                           </motion.div>
 
-                          <div className={cn(
-                            "absolute -top-3 -right-3 px-3 py-1 bg-black border rounded-lg text-[10px] font-black uppercase tracking-widest shadow-2xl z-20",
-                            isDiscardQuery ? "border-red-500/50 text-red-500" : "border-white/10 text-[#f27d26]"
-                          )}>
+                          <div className="absolute -top-3 -right-3 px-3 py-1 bg-black/80 border border-white/10 rounded-lg text-[10px] font-black uppercase tracking-widest shadow-2xl z-20 text-white/70">
                             {option.source}
                           </div>
 
                           {(option.isMine !== undefined || option.ownerName) && (
                             <div className={cn(
-                              "absolute -bottom-2 -left-2 px-3 py-1 bg-zinc-900 border rounded-lg text-[9px] font-black uppercase tracking-widest shadow-2xl z-20",
-                              option.isMine ? "border-blue-500/50 text-blue-400" : "border-red-400/50 text-red-400"
+                              "absolute -top-3 -left-3 px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest shadow-2xl z-20 border border-white/20",
+                              option.isMine ? "bg-blue-600 text-white" : "bg-red-600 text-white"
                             )}>
-                              {option.isMine ? 'YOU' : (option.ownerName || 'OPPONENT')}
+                              {option.isMine ? '我方' : '对方'}
                             </div>
                           )}
                         </div>

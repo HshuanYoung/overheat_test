@@ -6,22 +6,30 @@ const activate_10402007_1: CardEffect = {
   type: 'ACTIVATED',
   description: '【启动】在单位区放置为横置：我方选择一名玩家（我方或对手），选择该玩家侵蚀前区的一张正面表示卡并将其送去墓地。之后，将该玩家卡组顶的一张卡放置在侵蚀前区。',
   triggerLocation: ['UNIT'],
+  condition: (gameState: GameState, playerState: PlayerState, instance: Card) => {
+    return !instance.isExhausted;
+  },
   cost: (gameState: GameState, playerState: PlayerState, instance: Card) => {
     if (instance.isExhausted) return false;
     instance.isExhausted = true;
-    // Note: displayState manipulation might be handled by UI or standard engine logic for horizontal cards,
-    // but manually setting it to BACK_UPRIGHT is common in this codebase for exhausted status.
     instance.displayState = 'BACK_UPRIGHT';
     return true;
   },
   execute: (instance: Card, gameState: GameState, playerState: PlayerState) => {
-    // Step 1: Choose a player
-    const options: { card: Card; source: TriggerLocation }[] = [];
+    const options: any[] = [];
     Object.values(gameState.players).forEach(p => {
-      const repCard = p.unitZone.find(u => u !== null) || p.erosionFront.find(e => e !== null) || p.hand[0] || p.grave[0] || p.deck[0];
-      if (repCard) {
-        options.push({ card: { ...repCard }, source: repCard.cardlocation as any });
-      }
+      const isMe = p.uid === playerState.uid;
+      options.push({
+        card: {
+          gamecardId: isMe ? 'PLAYER_SELF' : 'PLAYER_OPPONENT',
+          id: isMe ? 'PLAYER_SELF' : 'PLAYER_OPPONENT',
+          fullName: isMe ? '我方玩家' : '对手玩家',
+          type: 'UNIT',
+          color: 'NONE',
+          rarity: 'C'
+        },
+        source: 'HAND'
+      });
     });
 
     if (options.length > 0) {
@@ -47,12 +55,20 @@ const activate_10402007_1: CardEffect = {
     if (context.step === 1) {
       const selectedGamecardId = selections[0];
       let selectedPlayerUid = '';
-      for (const uid of Object.keys(gameState.players)) {
-        const p = gameState.players[uid];
-        const allCards = [...p.hand, ...p.unitZone, ...p.itemZone, ...p.grave, ...p.exile, ...p.erosionFront, ...p.erosionBack, ...p.deck];
-        if (allCards.some(c => c && c.gamecardId === selectedGamecardId)) {
-          selectedPlayerUid = uid;
-          break;
+      
+      if (selectedGamecardId === 'PLAYER_SELF') {
+        selectedPlayerUid = playerState.uid;
+      } else if (selectedGamecardId === 'PLAYER_OPPONENT') {
+        selectedPlayerUid = Object.keys(gameState.players).find(uid => uid !== playerState.uid) || '';
+      } else {
+        // Fallback
+        for (const uid of Object.keys(gameState.players)) {
+          const p = gameState.players[uid];
+          const allCards = [...p.hand, ...p.unitZone, ...p.itemZone, ...p.grave, ...p.exile, ...p.erosionFront, ...p.erosionBack, ...p.deck];
+          if (allCards.some(c => c && c.gamecardId === selectedGamecardId)) {
+            selectedPlayerUid = uid;
+            break;
+          }
         }
       }
 
@@ -130,7 +146,8 @@ const activate_10402007_2: CardEffect = {
   triggerLocation: ['UNIT'],
   limitCount: 1,
   limitNameType: true,
-  condition: (gameState: GameState, playerState: PlayerState) => {
+  condition: (gameState: GameState, playerState: PlayerState, instance: Card) => {
+    if (instance.isExhausted) return false;
     const totalErosion = playerState.erosionFront.filter(c => c !== null).length + playerState.erosionBack.filter(c => c !== null).length;
     return totalErosion >= 4 && totalErosion <= 6;
   },
@@ -141,13 +158,20 @@ const activate_10402007_2: CardEffect = {
     return true;
   },
   execute: (instance: Card, gameState: GameState, playerState: PlayerState) => {
-    // Step 1: Choose a player
-    const options: { card: Card; source: TriggerLocation }[] = [];
+    const options: any[] = [];
     Object.values(gameState.players).forEach(p => {
-      const repCard = p.unitZone.find(u => u !== null) || p.erosionFront.find(e => e !== null) || p.hand[0] || p.grave[0] || p.deck[0];
-      if (repCard) {
-        options.push({ card: { ...repCard }, source: repCard.cardlocation as any });
-      }
+      const isMe = p.uid === playerState.uid;
+      options.push({
+        card: {
+          gamecardId: isMe ? 'PLAYER_SELF' : 'PLAYER_OPPONENT',
+          id: isMe ? 'PLAYER_SELF' : 'PLAYER_OPPONENT',
+          fullName: isMe ? '我方玩家' : '对手玩家',
+          type: 'UNIT',
+          color: 'NONE',
+          rarity: 'C'
+        },
+        source: 'HAND'
+      });
     });
 
     if (options.length > 0) {
@@ -173,12 +197,20 @@ const activate_10402007_2: CardEffect = {
     if (context.step === 1) {
       const selectedGamecardId = selections[0];
       let selectedPlayerUid = '';
-      for (const uid of Object.keys(gameState.players)) {
-        const p = gameState.players[uid];
-        const allCards = [...p.hand, ...p.unitZone, ...p.itemZone, ...p.grave, ...p.exile, ...p.erosionFront, ...p.erosionBack, ...p.deck];
-        if (allCards.some(c => c && c.gamecardId === selectedGamecardId)) {
-          selectedPlayerUid = uid;
-          break;
+
+      if (selectedGamecardId === 'PLAYER_SELF') {
+        selectedPlayerUid = playerState.uid;
+      } else if (selectedGamecardId === 'PLAYER_OPPONENT') {
+        selectedPlayerUid = Object.keys(gameState.players).find(uid => uid !== playerState.uid) || '';
+      } else {
+        // Fallback
+        for (const uid of Object.keys(gameState.players)) {
+          const p = gameState.players[uid];
+          const allCards = [...p.hand, ...p.unitZone, ...p.itemZone, ...p.grave, ...p.exile, ...p.erosionFront, ...p.erosionBack, ...p.deck];
+          if (allCards.some(c => c && c.gamecardId === selectedGamecardId)) {
+            selectedPlayerUid = uid;
+            break;
+          }
         }
       }
 

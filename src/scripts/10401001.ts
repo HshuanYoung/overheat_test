@@ -43,15 +43,49 @@ const card: Card = {
         return true;
       },
       execute: (card, gameState, playerState) => {
+        const checkCardViable = (c: Card) => {
+          // 1. Basic Type and Name Check
+          if (!(c.fullName.includes('歌月') && c.type === 'STORY')) return false;
+
+          // 2. Cost Check (AC Value)
+          const cost = c.acValue || 0;
+          if (cost > 0) {
+            // Check if player has enough space in erosion zone (limit 9)
+            const currentErosion = playerState.erosionFront.filter(e => e !== null).length + 
+                                   playerState.erosionBack.filter(e => e !== null).length;
+            if (currentErosion + cost >= 10) return false;
+          } else if (cost < 0) {
+            // Negative cost requires enough face-up erosion cards
+            const frontCount = playerState.erosionFront.filter(e => e !== null && e.displayState === 'FRONT_UPRIGHT').length;
+            if (frontCount < Math.abs(cost)) return false;
+          }
+
+          // 3. Condition Check
+          const activateEffect = c.effects?.find(e => e.type === 'ACTIVATE');
+          if (activateEffect && activateEffect.condition) {
+            try {
+              // Note: Passing the card instance as the third argument which corresponds to 'instance' or 'card' in scripts
+              if (!activateEffect.condition(gameState, playerState, c)) return false;
+            } catch (e) {
+              return false;
+            }
+          }
+
+          return true;
+        };
+
         const options: { card: Card; source: any }[] = [];
         playerState.deck.forEach(c => {
-          if (c.fullName.includes('歌月') && c.type === 'STORY') options.push({ card: { ...c }, source: 'DECK' });
+          if (checkCardViable(c)) options.push({ card: { ...c }, source: 'DECK' });
         });
         playerState.grave.forEach(c => {
-          if (c.fullName.includes('歌月') && c.type === 'STORY') options.push({ card: { ...c }, source: 'GRAVE' });
+          if (checkCardViable(c)) options.push({ card: { ...c }, source: 'GRAVE' });
         });
 
-        if (options.length === 0) return;
+        if (options.length === 0) {
+          gameState.logs.push(`[风花] 没有符合执行条件的「歌月」卡牌。`);
+          return;
+        }
 
         gameState.pendingQuery = {
           id: Math.random().toString(36).substring(7),
@@ -186,10 +220,11 @@ const card: Card = {
         Object.values(gameState.players).forEach(player => {
           player.unitZone.forEach((unit, idx) => {
             if (unit) {
-              const u = unit;
-              player.unitZone[idx] = null;
-              u.cardlocation = 'HAND';
-              player.hand.push(u);
+              AtomicEffectExecutor.execute(gameState, player.uid, {
+                type: 'MOVE_FROM_FIELD',
+                destinationZone: 'HAND',
+                targetFilter: { gamecardId: unit.gamecardId }
+              }, card);
             }
           });
         });

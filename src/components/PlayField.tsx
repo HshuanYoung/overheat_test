@@ -81,8 +81,7 @@ const CardSlot: React.FC<{
           <div className={cn(
             "h-full w-full relative transition-[transform,opacity] duration-500",
             isOpponent && "rotate-180",
-            isExhausted && "opacity-80",
-            card.inAllianceGroup && (isOpponent ? "rotate-[270deg]" : "rotate-90")
+            isExhausted && "opacity-80"
           )}>
             {isFaceUp ? (
               <CardComponent card={card} className="border-0" isExhausted={isExhausted} statusBorder={isAttacking ? 'red' : isDefending ? 'blue' : undefined} displayMode={displayMode} />

@@ -258,6 +258,8 @@ export interface EffectQuery {
   options: {
     card: Card;
     source: TriggerLocation;
+    ownerName?: string;
+    isMine?: boolean;
   }[];
   title: string;
   description: string;

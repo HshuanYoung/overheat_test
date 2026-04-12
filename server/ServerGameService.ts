@@ -2,6 +2,7 @@ import { GameState, PlayerState, Card, Deck, TriggerLocation, CardEffect, StackI
 import { CARD_LIBRARY } from '../src/data/cards';
 import { EventEngine } from '../src/services/EventEngine';
 import { AtomicEffectExecutor } from '../src/services/AtomicEffectExecutor';
+import { getCardIdentity } from '../src/lib/utils';
 import { SERVER_CARD_LIBRARY } from './card_loader';
 
 export const ServerGameService = {
@@ -176,7 +177,7 @@ export const ServerGameService = {
     targetPlayerId: string,
     targetZone: TriggerLocation,
     cardId: string,
-    options?: { targetIndex?: number; faceDown?: boolean; insertAtBottom?: boolean }
+    options?: { targetIndex?: number; faceDown?: boolean; insertAtBottom?: boolean; isEffect?: boolean }
   ): boolean {
     const sourcePlayer = gameState.players[sourcePlayerId];
     const targetPlayer = gameState.players[targetPlayerId];
@@ -205,7 +206,7 @@ export const ServerGameService = {
       } else {
         sourceArray.splice(index, 1);
       }
-      EventEngine.handleCardLeftZone(gameState, sourcePlayerId, card, sourceZone);
+      EventEngine.handleCardLeftZone(gameState, sourcePlayerId, card, sourceZone, options?.isEffect);
     }
 
     if (!card) return false;
@@ -253,12 +254,7 @@ export const ServerGameService = {
       }
     }
 
-    EventEngine.handleCardEnteredZone(gameState, targetPlayerId, card, targetZone);
-
-    // 3. There are 10 cards on the back of the erosion area
-    this.checkWinConditions(gameState);
-    this.checkBattleInterruption(gameState);
-
+    EventEngine.handleCardEnteredZone(gameState, targetPlayerId, card, targetZone, options?.isEffect);
     return true;
   },
 
@@ -453,7 +449,7 @@ export const ServerGameService = {
     const opponentId = gameState.playerIds.find(id => id !== sourcePlayerId);
     gameState.priorityPlayerId = opponentId;
 
-    const actionDesc = stackItem.type === 'PHASE_END' ? "请求结束阶段" : (stackItem.card ? `发动 ${stackItem.card.fullName}` : "执行动作");
+    const actionDesc = stackItem.type === 'PHASE_END' ? "请求结束阶段" : (stackItem.card ? `发动 ${getCardIdentity(gameState, sourcePlayerId, stackItem.card)} ${stackItem.card.fullName}` : "执行动作");
     gameState.logs.push(`[连锁 Link ${linkNumber}] ${gameState.players[sourcePlayerId].displayName} ${actionDesc}。等待 ${gameState.players[opponentId!].displayName} 响应 (Link ${linkNumber + 1})。`);
   },
 
@@ -475,7 +471,8 @@ export const ServerGameService = {
     if (!paymentResult.success) throw new Error(paymentResult.reason);
 
     this.moveCard(gameState, playerId, 'HAND', playerId, 'PLAY', cardId);
-    gameState.logs.push(`${player.displayName} 打出了 ${card.fullName}`);
+    const identity = getCardIdentity(gameState, playerId, card);
+    gameState.logs.push(`${player.displayName} 打出了 ${identity} ${card.fullName}`);
 
     EventEngine.dispatchEvent(gameState, {
       type: 'CARD_PLAYED',
@@ -525,6 +522,11 @@ export const ServerGameService = {
       throw new Error('不满足发动条件或已达到使用次数限制');
     }
 
+    // RULE: STORY cards in HAND must be PLAYED, not ACTIVATED
+    if (card.type === 'STORY' && location === 'HAND') {
+      throw new Error('手牌中的故事卡只能通过打出来发动');
+    }
+
     // RULE 2: During countering phase, only ACTIVATE/ACTIVATED effects can be used
     if (gameState.phase === 'COUNTERING' && effect.type !== 'ACTIVATE' && effect.type !== 'ACTIVATED') {
       throw new Error('对抗阶段只能发动主动效果');
@@ -552,7 +554,8 @@ export const ServerGameService = {
     }
 
     this.recordEffectUsage(gameState, playerId, card, effect);
-    gameState.logs.push(`${player.displayName} 发动了 ${card.fullName} 的效果: ${effect.description}`);
+    const identity = getCardIdentity(gameState, playerId, card);
+    gameState.logs.push(`${player.displayName} 发动了 ${identity} ${card.fullName} 的效果: ${effect.description}`);
 
     this.enterCountering(gameState, playerId, {
       card,
@@ -666,7 +669,8 @@ export const ServerGameService = {
             }
             this.moveCard(gameState, stackItem.ownerUid, 'PLAY', stackItem.ownerUid, 'GRAVE', card.gamecardId);
           }
-          gameState.logs.push(`${card.fullName} 结算完成`);
+          const identity = getCardIdentity(gameState, stackItem.ownerUid, card);
+          gameState.logs.push(`${identity} ${card.fullName} 结算完成`);
           break;
 
         case 'EFFECT':
@@ -693,7 +697,8 @@ export const ServerGameService = {
                 effect.execute(card, gameState, owner);
               }
 
-              gameState.logs.push(`[效果结算] ${card.fullName} 的效果已结算。`);
+              const identity = getCardIdentity(gameState, stackItem.ownerUid, card);
+              gameState.logs.push(`[效果结算] ${identity} ${card.fullName} 的效果已结算。`);
               if (effect.resolve) {
                 gameState.pendingResolutions.push({
                   card,
@@ -740,19 +745,20 @@ export const ServerGameService = {
       }
     }
     
-    await this.finishCounteringStack(gameState);
+    await this.finishCounteringStack(gameState, onUpdate);
     return gameState;
   },
 
-  async finishCounteringStack(gameState: GameState) {
+  async finishCounteringStack(gameState: GameState, onUpdate?: (state: GameState) => Promise<void>) {
     if (gameState.isResolvingStack || gameState.isCountering > 0) {
-      gameState.logs.push(`[连锁结算] 所有项目结算完成，正在恢复游戏流程...`);
+      // console.log(`[连锁结算] 所有项目结算完成，正在恢复游戏流程...`);
     }
 
     // CLEANUP: All items resolved
     gameState.isResolvingStack = false;
     gameState.isCountering = 0;
     gameState.priorityPlayerId = undefined;
+    gameState.currentProcessingItem = null; // Ensure this is cleared
     gameState.phaseTimerStart = Date.now();
 
     // After resolving the stack, return to previous phase if it exists
@@ -761,12 +767,12 @@ export const ServerGameService = {
       gameState.previousPhase = undefined;
     }
 
-    await this.checkTriggeredEffects(gameState);
+    await this.checkTriggeredEffects(gameState, onUpdate);
 
     this.checkBattleInterruption(gameState);
   },
 
-  async checkTriggeredEffects(gameState: GameState) {
+  async checkTriggeredEffects(gameState: GameState, onUpdate?: (state: GameState) => Promise<void>) {
     if (gameState.gameStatus === 2 || gameState.isCountering === 1 || gameState.isResolvingStack || gameState.pendingQuery || gameState.currentProcessingItem) {
       return;
     }
@@ -777,12 +783,13 @@ export const ServerGameService = {
       const isMandatory = effect.isMandatory;
 
       if (isMandatory) {
-        gameState.logs.push(`[强制诱发] 发动 ${card.fullName} 的效果。`);
+        const identity = getCardIdentity(gameState, playerUid, card);
+        gameState.logs.push(`[强制诱发] 发动 ${identity} ${card.fullName} 的效果。`);
         await this.executeTriggeredEffect(gameState, playerUid, {
           effectIndex: effectIndex,
           card,
           event
-        });
+        }, onUpdate);
       } else {
         gameState.pendingQuery = {
           id: Math.random().toString(36).substring(7),
@@ -790,7 +797,7 @@ export const ServerGameService = {
           playerUid: playerUid,
           options: [],
           title: `发动提示`,
-          description: `是否发动 [${card.fullName}] 的诱发效果：${effect.description}`,
+          description: `是否发动 ${getCardIdentity(gameState, playerUid, card)} [${card.fullName}] 的诱发效果：${effect.description}`,
           minSelections: 1,
           maxSelections: 1,
           callbackKey: 'TRIGGER_CHOICE',
@@ -867,7 +874,7 @@ export const ServerGameService = {
         }, onUpdate);
       } else {
         gameState.logs.push(`[系统] ${gameState.players[playerUid].displayName} 放弃发动 ${sourceCard?.fullName} 的诱发效果。`);
-        await this.checkTriggeredEffects(gameState);
+        await this.checkTriggeredEffects(gameState, onUpdate);
       }
       return gameState;
     }
@@ -906,7 +913,7 @@ export const ServerGameService = {
           }
         } else if (!gameState.isCountering) {
           // If not in a stack resolution and not in priority window, likely resuming a triggered effect chain
-          await this.checkTriggeredEffects(gameState);
+          await this.checkTriggeredEffects(gameState, onUpdate);
         }
         return gameState;
       } else {
@@ -1572,7 +1579,7 @@ export const ServerGameService = {
     const effect = trigger.effect || card.effects?.[effectIndex];
 
     if (!effect) {
-      await this.checkTriggeredEffects(gameState);
+      await this.checkTriggeredEffects(gameState, onUpdate);
       return;
     }
 
@@ -1595,7 +1602,7 @@ export const ServerGameService = {
       
       if (!costResult) {
         // Cost failed, proceed to next trigger
-        await this.checkTriggeredEffects(gameState);
+        await this.checkTriggeredEffects(gameState, onUpdate);
         return;
       }
     }
@@ -1653,11 +1660,11 @@ export const ServerGameService = {
 
     // 9. Continue trigger queue if no new query was opened
     if (!gameState.pendingQuery) {
-      await this.checkTriggeredEffects(gameState);
+      await this.checkTriggeredEffects(gameState, onUpdate);
     }
   },
 
-  async advancePhase(gameState: GameState, action?: string, playerId?: string) {
+  async advancePhase(gameState: GameState, action?: string, playerId?: string, onUpdate?: (state: GameState) => Promise<void>) {
     // Identity of the player performing the action
     const actingPlayerId = playerId || gameState.playerIds[gameState.currentTurnPlayer];
     const actingPlayer = gameState.players[actingPlayerId];
@@ -2252,6 +2259,40 @@ export const ServerGameService = {
   async botMove(gameState: GameState, onUpdate?: (state: GameState) => Promise<void>) {
     const bot = gameState.players['BOT_PLAYER'];
     if (!bot) return;
+
+    // Handle Generic Queries (New)
+    if (gameState.pendingQuery && gameState.pendingQuery.playerUid === 'BOT_PLAYER') {
+      const query = gameState.pendingQuery;
+      // console.log(`[Bot] Handling query: ${query.type} (${query.callbackKey})`);
+      
+      let selections: string[] = [];
+
+      if (query.type === 'SELECT_PAYMENT') {
+        // Simple payment: pick the first N cards needed to cover cost
+        const player = gameState.players['BOT_PLAYER'];
+        const handIds = player.hand.map(c => c.gamecardId);
+        const unitsInZone = player.unitZone.filter(c => c && !c.isExhausted).map(c => c!.gamecardId);
+        
+        // Mock a simple payment selection
+        const payment = {
+          trashIds: handIds.slice(0, query.paymentCost || 0),
+          exhaustIds: unitsInZone.slice(0, Math.max(0, (query.paymentCost || 0) - handIds.length))
+        };
+        selections = [JSON.stringify(payment)];
+      } else if (query.callbackKey === 'TRIGGER_CHOICE') {
+        selections = ['YES'];
+      } else if (query.options && query.options.length > 0) {
+        // Pick first N valid options
+        const min = query.minSelections || 1;
+        selections = query.options.slice(0, min).map(o => o.id);
+      } else if (query.type === 'SELECT_TARGET') {
+         // If no options but title/description, might be manual click? 
+         // But server queries usually have options.
+      }
+
+      await this.handleQueryChoice(gameState, 'BOT_PLAYER', query.id, selections, onUpdate);
+      return;
+    }
 
     // Handle Countering (Bot chooses to pass priority)
     if (gameState.phase === 'COUNTERING') {

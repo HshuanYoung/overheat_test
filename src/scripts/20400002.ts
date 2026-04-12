@@ -19,7 +19,10 @@ const card: Card = {
     {
       id: 'yingwu_activate',
       type: 'ACTIVATE',
-      triggerLocation: ['PLAY'],
+      condition: (gameState: GameState, playerState: PlayerState) => {
+        // Can only be played if the player has at least one unit on the battlefield
+        return playerState.unitZone.some(c => c !== null);
+      },
       description: '选择你战场上的一个单位返回持有者手牌。若返回的是「风花」单位，可以选择对方一个单位变为横置，且该单位在下一回合开始时无法变为纵置。',
       execute: (card: Card, gameState: GameState, playerState: PlayerState) => {
         const friendlyUnits = playerState.unitZone.filter(c => c !== null) as Card[];

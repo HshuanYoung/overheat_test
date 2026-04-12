@@ -35,11 +35,13 @@ const card: Card = {
       },
       cost: (gameState, playerState, card) => {
         const sourcePlayer = gameState.players[playerState.uid];
-        const idx = sourcePlayer.unitZone.findIndex(c => c?.gamecardId === card.gamecardId);
-        if (idx !== -1) {
-          sourcePlayer.unitZone[idx] = null;
-          card.cardlocation = 'HAND';
-          sourcePlayer.hand.push(card);
+        const isOnField = sourcePlayer.unitZone.some(c => c?.gamecardId === card.gamecardId);
+        if (isOnField) {
+          AtomicEffectExecutor.execute(gameState, playerState.uid, {
+            type: 'MOVE_FROM_FIELD',
+            destinationZone: 'HAND',
+            targetFilter: { gamecardId: card.gamecardId }
+          }, card);
           gameState.logs.push(`${card.fullName} 已返回手牌 (作为发动代价)。`);
           return true;
         }

@@ -1,6 +1,7 @@
 import { GameState, PlayerState, Card, GameEvent, CardEffect, TriggerLocation } from '../types/game';
 import { GameService } from './gameService';
 import { AtomicEffectExecutor } from './AtomicEffectExecutor';
+import { getCardIdentity } from '../lib/utils';
 
 export class EventEngine {
   static dispatchEvent(gameState: GameState, event: GameEvent) {
@@ -50,9 +51,10 @@ export class EventEngine {
               if (!effect.condition || effect.condition(gameState, player, card, event)) {
                 // Diagnostic log
                 if (event.type === 'CARD_ENTERED_ZONE') {
+                  const sourceIdentity = getCardIdentity(gameState, event.playerUid || player.uid, event.sourceCard || { gamecardId: event.sourceCardId });
                   const sourceName = event.sourceCard?.fullName || '未知卡牌';
-                  const sourceGID = event.sourceCard?.gamecardId || event.sourceCardId || 'N/A';
-                  gameState.logs.push(`[Induction-Check] ${card.fullName} (${card.gamecardId}) evaluates ${sourceName} (${sourceGID}). Match!`);
+                  const targetIdentity = getCardIdentity(gameState, player.uid, card);
+                  gameState.logs.push(`[Induction-Check] ${targetIdentity} ${card.fullName} evaluates ${sourceIdentity} ${sourceName}. Match!`);
                 }
                 triggeredEffects.push({ card, effect, effectIndex: index, playerUid: player.uid });
               }
@@ -68,7 +70,8 @@ export class EventEngine {
     for (const { card, effect, effectIndex, playerUid } of triggeredEffects) {
       if (!gameState.triggeredEffectsQueue) gameState.triggeredEffectsQueue = [];
       gameState.triggeredEffectsQueue.push({ card, effect, effectIndex, playerUid, event });
-      gameState.logs.push(`[诱发入队] ${card.fullName} 的效果已入队，待系统处理。`);
+      const identity = getCardIdentity(gameState, playerUid, card);
+      gameState.logs.push(`[诱发入队] ${identity} ${card.fullName} 的效果已入队，待系统处理。`);
     }
   }
 
@@ -117,7 +120,7 @@ export class EventEngine {
     Object.values(gameState.players).forEach(applyEffects);
   }
 
-  static handleCardEnteredZone(gameState: GameState, playerUid: string, card: Card, zone: string) {
+  static handleCardEnteredZone(gameState: GameState, playerUid: string, card: Card, zone: string, isEffect?: boolean) {
     this.recalculateContinuousEffects(gameState);
 
     this.dispatchEvent(gameState, {
@@ -125,11 +128,11 @@ export class EventEngine {
       sourceCard: card,
       sourceCardId: card.gamecardId,
       playerUid,
-      data: { zone }
+      data: { zone, isEffect: !!isEffect }
     });
   }
 
-  static handleCardLeftZone(gameState: GameState, playerUid: string, card: Card, zone: string) {
+  static handleCardLeftZone(gameState: GameState, playerUid: string, card: Card, zone: string, isEffect?: boolean) {
     this.recalculateContinuousEffects(gameState);
 
     this.dispatchEvent(gameState, {
@@ -137,7 +140,7 @@ export class EventEngine {
       sourceCard: card,
       sourceCardId: card.gamecardId,
       playerUid,
-      data: { zone }
+      data: { zone, isEffect: !!isEffect }
     });
   }
 }

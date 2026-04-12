@@ -33,6 +33,7 @@ const gameLocks = new Map<string, Promise<any>>();
 // In-memory match log history (not persisted to DB 'state' blob)
 const matchLogHistory = new Map<string, string[]>();
 const lastSyncedLogIndex = new Map<string, number>();
+const botMovingGames = new Set<string>();
 
 async function withGameLock<T>(gameId: string, action: () => Promise<T>): Promise<T> {
     const existingLock = gameLocks.get(gameId) || Promise.resolve();
@@ -77,52 +78,74 @@ async function validateUserDeck(uId: string, dId: string): Promise<{ valid: bool
 }
 
 async function handleBotMove(gameState: any, gameId: string) {
+    if (botMovingGames.has(gameId)) {
+        // console.log(`[Bot] Bot is already moving for game ${gameId}, skipping trigger`);
+        return;
+    }
+
     const bot = gameState.players['BOT_PLAYER'];
     if (!bot) return;
 
-    // The bot should move if it's its turn, if it's being asked for a confrontation response, or if it has priority
+    // The bot should move if it's its turn, if it's being asked for a confrontation response, if it has priority, or has a query
     const isBotAsked = gameState.battleState && gameState.battleState.askConfront === 'ASKING_OPPONENT';
     const isBotPriority = gameState.priorityPlayerId === 'BOT_PLAYER';
-    const shouldBotMove = bot.isTurn || isBotAsked || isBotPriority;
+    const isBotQuery = gameState.pendingQuery && gameState.pendingQuery.playerUid === 'BOT_PLAYER';
+    const shouldBotMove = bot.isTurn || isBotAsked || isBotPriority || isBotQuery;
 
-    // console.log(`[Bot] handleBotMove checking: bot.isTurn? ${bot.isTurn}, isBotAsked? ${isBotAsked}, isBotPriority? ${isBotPriority}`);
     if (!shouldBotMove) return;
+
+    botMovingGames.add(gameId);
 
     // Use a delay to simulate thinking and allow final state propagation
     setTimeout(async () => {
-        await withGameLock(gameId, async () => {
-            try {
-                // Re-fetch state inside the lock to get the most recent version
-                const stateRows = await pool.query('SELECT state FROM games WHERE id = ?', [gameId]);
-                if (stateRows.length === 0) return;
-                const currentGameState = typeof stateRows[0].state === 'string' ? JSON.parse(stateRows[0].state) : stateRows[0].state;
-                ServerGameService.hydrateGameState(currentGameState);
-                
-                const syncCallback = async (state: any) => {
-                    await syncAndSaveState(gameId, state);
-                };
-                
-                await ServerGameService.botMove(currentGameState, syncCallback);
-
-                await syncAndSaveState(gameId, currentGameState);
-
-                // Re-trigger if bot still needs to move
-                const nextState = currentGameState;
-                const bot = nextState.players['BOT_PLAYER'];
-                if (bot) {
-                    const currentPlayerId = nextState.playerIds[nextState.currentTurnPlayer];
-                    const isBotAsked = nextState.battleState && nextState.battleState.askConfront === 'ASKING_OPPONENT';
-                    const isBotPriority = nextState.priorityPlayerId === 'BOT_PLAYER';
-
-                    if (currentPlayerId === 'BOT_PLAYER' || isBotAsked || isBotPriority) {
-                        // console.log('[Bot] Bot still needs to move, queuing next move...');
-                        handleBotMove(nextState, gameId);
+        try {
+            await withGameLock(gameId, async () => {
+                try {
+                    // Re-fetch state inside the lock to get the most recent version
+                    const stateRows = await pool.query('SELECT state FROM games WHERE id = ?', [gameId]);
+                    if (stateRows.length === 0) {
+                        botMovingGames.delete(gameId);
+                        return;
                     }
+                    const currentGameState = typeof stateRows[0].state === 'string' ? JSON.parse(stateRows[0].state) : stateRows[0].state;
+                    ServerGameService.hydrateGameState(currentGameState);
+                    
+                    const syncCallback = async (state: any) => {
+                        await syncAndSaveState(gameId, state);
+                    };
+                    
+                    await ServerGameService.botMove(currentGameState, syncCallback);
+
+                    await syncAndSaveState(gameId, currentGameState);
+
+                    // Re-trigger if bot still needs to move
+                    const nextState = currentGameState;
+                    const botObj = nextState.players['BOT_PLAYER'];
+                    if (botObj) {
+                        const currentPlayerId = nextState.playerIds[nextState.currentTurnPlayer];
+                        const isBotAskedNext = nextState.battleState && nextState.battleState.askConfront === 'ASKING_OPPONENT';
+                        const isBotPriorityNext = nextState.priorityPlayerId === 'BOT_PLAYER';
+                        const isBotQueryNext = nextState.pendingQuery && nextState.pendingQuery.playerUid === 'BOT_PLAYER';
+
+                        if (currentPlayerId === 'BOT_PLAYER' || isBotAskedNext || isBotPriorityNext || isBotQueryNext) {
+                            // Release before recursive call to allow the next move to be scheduled
+                            botMovingGames.delete(gameId);
+                            handleBotMove(nextState, gameId);
+                        } else {
+                            botMovingGames.delete(gameId);
+                        }
+                    } else {
+                        botMovingGames.delete(gameId);
+                    }
+                } catch (err) {
+                    // console.error('[Bot] handleBotMove inner error:', err);
+                    botMovingGames.delete(gameId);
                 }
-            } catch (err) {
-                // console.error('[Bot] handleBotMove error:', err);
-            }
-        });
+            });
+        } catch (err) {
+            // console.error('[Bot] handleBotMove outer error:', err);
+            botMovingGames.delete(gameId);
+        }
     }, 1000);
 }
 
@@ -133,9 +156,10 @@ function triggerBotIfNeeded(gameState: any, gameId: string) {
     const currentPlayerId = gameState.playerIds[gameState.currentTurnPlayer];
     const isBotAsked = gameState.battleState && gameState.battleState.askConfront === 'ASKING_OPPONENT';
     const isBotPriority = gameState.priorityPlayerId === 'BOT_PLAYER';
+    const isBotQuery = gameState.pendingQuery && gameState.pendingQuery.playerUid === 'BOT_PLAYER';
 
-    if (currentPlayerId === 'BOT_PLAYER' || isBotAsked || isBotPriority) {
-        // console.log(`[Bot] Triggering bot move for game ${gameId}. Reason: ${currentPlayerId === 'BOT_PLAYER' ? 'Turn' : isBotAsked ? 'Confrontation' : 'Priority'}`);
+    if (currentPlayerId === 'BOT_PLAYER' || isBotAsked || isBotPriority || isBotQuery) {
+        // console.log(`[Bot] Triggering bot move for game ${gameId}. Reason: ${currentPlayerId === 'BOT_PLAYER' ? 'Turn' : isBotAsked ? 'Confrontation' : isBotPriority ? 'Priority' : 'Query'}`);
         handleBotMove(gameState, gameId);
     }
 }
@@ -241,7 +265,9 @@ async function syncAndSaveState(gameId: string, gameState: any) {
 async function advancePhase(gameState: any, gameId: string, playerId?: string, socket?: any, action?: any) {
     try {
         // console.log(`[Socket] advancePhase for game ${gameId}, action: ${action}, playerId: ${playerId}`);
-        await ServerGameService.advancePhase(gameState, action, playerId);
+        await ServerGameService.advancePhase(gameState, action, playerId, async (state) => {
+            await syncAndSaveState(gameId, state);
+        });
 
         await syncAndSaveState(gameId, gameState);
 
@@ -315,7 +341,8 @@ setInterval(async () => {
 
                 // Bot action check
                 const currentPlayerId = gameState.playerIds[gameState.currentTurnPlayer];
-                if (currentPlayerId === 'BOT_PLAYER' || gameState.priorityPlayerId === 'BOT_PLAYER') {
+                const isBotQuery = gameState.pendingQuery && gameState.pendingQuery.playerUid === 'BOT_PLAYER';
+                if (currentPlayerId === 'BOT_PLAYER' || gameState.priorityPlayerId === 'BOT_PLAYER' || isBotQuery) {
                     const syncCallback = async (state: any) => {
                         await syncAndSaveState(gameId, state);
                     };

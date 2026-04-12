@@ -19,7 +19,19 @@ const card: Card = {
     {
       id: 'fufeng_activate',
       type: 'ACTIVATE',
-      triggerLocation: ['PLAY'],
+      condition: (gameState: GameState, playerState: PlayerState, card: Card) => {
+        // Can only be played if there is at least one valid target unit on the battlefield
+        const isFuhuaPresent = playerState.unitZone.some(c => c && c.specialName === '风花');
+        const filter = {
+          onField: true,
+          type: 'UNIT',
+          godMark: isFuhuaPresent ? undefined : false
+        };
+
+        return Object.values(gameState.players).some(p => 
+          p.unitZone.some(u => u && AtomicEffectExecutor.matchesFilter(u, filter as any, card))
+        );
+      },
       description: '选择战场上一个非神格的单位卡返回持有者手牌。若你的战场上存在「风花」单位，可以选择战场上一个神格单位返回持有者手牌。',
       execute: (card: Card, gameState: GameState, playerState: PlayerState) => {
         // 1. Check for Fuhua on your side
@@ -53,7 +65,7 @@ const card: Card = {
           id: Math.random().toString(36).substring(7),
           type: 'SELECT_CARD',
           playerUid: playerState.uid,
-          options: allPotentialTargets.map(t => ({ card: t, source: 'UNIT' as any })),
+          options: AtomicEffectExecutor.enrichQueryOptions(gameState, playerState.uid, allPotentialTargets.map(t => ({ card: t, source: 'UNIT' as any }))),
           title: '选择返回手牌的单位',
           description: isFuhuaPresent ? '选择战场上一个单位返回持有者手牌。' : '选择战场上一个非神格单位返回持有者手牌。',
           minSelections: 1,
