@@ -90,7 +90,8 @@ async function handleBotMove(gameState: any, gameId: string) {
     const isBotAsked = gameState.battleState && gameState.battleState.askConfront === 'ASKING_OPPONENT';
     const isBotPriority = gameState.priorityPlayerId === 'BOT_PLAYER';
     const isBotQuery = gameState.pendingQuery && gameState.pendingQuery.playerUid === 'BOT_PLAYER';
-    const shouldBotMove = bot.isTurn || isBotAsked || isBotPriority || isBotQuery;
+    const isBotDefending = gameState.phase === 'DEFENSE_DECLARATION' && !bot.isTurn;
+    const shouldBotMove = bot.isTurn || isBotAsked || isBotPriority || isBotQuery || isBotDefending;
 
     if (!shouldBotMove) return;
 
@@ -127,7 +128,8 @@ async function handleBotMove(gameState: any, gameId: string) {
                         const isBotPriorityNext = nextState.priorityPlayerId === 'BOT_PLAYER';
                         const isBotQueryNext = nextState.pendingQuery && nextState.pendingQuery.playerUid === 'BOT_PLAYER';
 
-                        if (currentPlayerId === 'BOT_PLAYER' || isBotAskedNext || isBotPriorityNext || isBotQueryNext) {
+                        const isBotDefendingNext = nextState.phase === 'DEFENSE_DECLARATION' && !botObj.isTurn;
+                        if (currentPlayerId === 'BOT_PLAYER' || isBotAskedNext || isBotPriorityNext || isBotQueryNext || isBotDefendingNext) {
                             // Release before recursive call to allow the next move to be scheduled
                             botMovingGames.delete(gameId);
                             handleBotMove(nextState, gameId);

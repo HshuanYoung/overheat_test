@@ -42,6 +42,7 @@ export class AtomicEffectExecutor {
 
       return {
         ...opt,
+        id: cardId, // Ensure ID is present for bot and frontend selection
         isMine: cardOwner ? cardOwner.uid === viewerUid : false,
         ownerName: cardOwner ? cardOwner.displayName : 'UNKNOWN'
       };
@@ -435,7 +436,7 @@ export class AtomicEffectExecutor {
     }
 
     if (filter.id && card.id !== filter.id) return false;
-    if (filter.gamecardId && card.gamecardId !== filter.gamecardId) return false;
+    if (filter.hasOwnProperty('gamecardId') && card.gamecardId !== filter.gamecardId) return false;
     if (filter.type) {
       if (filter.type === 'ITEM') {
         if (card.type !== 'ITEM' && !card.isEquip) return false;

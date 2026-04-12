@@ -807,6 +807,9 @@ export const ServerGameService = {
         };
         gameState.logs.push(`[可选诱发] 等待 ${gameState.players[playerUid].displayName} 选择是否发动 ${card.fullName} 的效果...`);
       }
+    } else {
+      // Queue is empty, settlement is truly complete
+      this.checkBattleInterruption(gameState);
     }
   },
 
@@ -1528,10 +1531,8 @@ export const ServerGameService = {
   checkBattleInterruption(gameState: GameState) {
     if (!gameState.battleState) return;
 
-    // We only check for interruption during strictly the BATTLE_DECLARATION and BATTLE_FREE phase
-    // Damage calculation handles its own cleanup, and declarations are allowed to proceed
-    // if units leave (e.g. if the attacker is swapped or removed before battle officially begins).
-    const battlePhases: GamePhase[] = ['BATTLE_DECLARATION', 'BATTLE_FREE'];
+    // We only check for interruption during strictly the BATTLE_DECLARATION, DEFENSE_DECLARATION and BATTLE_FREE phase
+    const battlePhases: GamePhase[] = ['BATTLE_DECLARATION', 'DEFENSE_DECLARATION', 'BATTLE_FREE'];
     if (!battlePhases.includes(gameState.phase)) return;
 
     const turnPlayerId = gameState.playerIds[gameState.currentTurnPlayer];
@@ -2314,15 +2315,31 @@ export const ServerGameService = {
     // Handle Defense Declaration (Smart Defense)
     if (gameState.phase === 'DEFENSE_DECLARATION') {
       const attackerUid = Object.keys(gameState.players).find(uid => gameState.players[uid].isTurn);
-      if (attackerUid !== 'BOT_PLAYER') {
-        const attacker = gameState.players[attackerUid!];
+      if (attackerUid && attackerUid !== 'BOT_PLAYER') {
+        const attacker = gameState.players[attackerUid];
         const attackingUnits = (gameState.battleState?.attackers || []).map(id =>
           attacker.unitZone.find(c => c?.gamecardId === id)
         ).filter(Boolean) as Card[];
         const totalAttackerPower = attackingUnits.reduce((sum, u) => sum + (u.power || 0), 0);
+        const totalAttackerDamage = attackingUnits.reduce((sum, u) => sum + (u.damage || 0), 0);
+        const botErosionCount = bot.erosionFront.filter(Boolean).length + bot.erosionBack.filter(Boolean).length;
 
-        // Find a unit with higher power than the attacker(s) for defense
-        const defender = bot.unitZone.find(c => c && !c.isExhausted && (c.power || 0) > totalAttackerPower);
+        const availableDefenders = bot.unitZone.filter(c => c && !c.isExhausted);
+        
+        // 1. Find best "Winner" (Power > Attacker)
+        let defender = availableDefenders.find(c => (c.power || 0) > totalAttackerPower);
+        
+        // 2. If no winner, find a "Trader" (Power == Attacker)
+        if (!defender) {
+          defender = availableDefenders.find(c => (c.power || 0) === totalAttackerPower);
+        }
+        
+        // 3. If still no defender, consider a "Sacrifice" block (Power < Attacker)
+        // Heuristic: Sacrifice if health is low (erosion >= 7) OR incoming damage is high (damage >= 2)
+        if (!defender && (botErosionCount >= 7 || totalAttackerDamage >= 2)) {
+          // Choose the weakest available unit to sacrifice
+          defender = [...availableDefenders].sort((a, b) => (a.power || 0) - (b.power || 0))[0];
+        }
 
         if (defender) {
           await this.declareDefense(gameState, 'BOT_PLAYER', defender.gamecardId);

@@ -68,6 +68,7 @@ export const BattleField: React.FC = () => {
   const lastAutoResolveRef = useRef<string | null>(null);
   const gameRef = useRef<GameState | null>(null);
   const pendingPlayCardRef = useRef<Card | null>(null);
+  const [interruptionNotice, setInterruptionNotice] = useState<string | null>(null);
   useEffect(() => { gameRef.current = game; }, [game]);
   useEffect(() => { pendingPlayCardRef.current = pendingPlayCard; }, [pendingPlayCard]);
 
@@ -155,6 +156,16 @@ export const BattleField: React.FC = () => {
       socket.off('gameStateUpdate', onGameStateUpdate);
     };
   }, [gameId]);
+
+  // Monitor logs for battle interruption
+  useEffect(() => {
+    if (game?.logs?.length > 0) {
+      const lastLog = game.logs[game.logs.length - 1];
+      if (lastLog.includes('[战斗中止]') && !lastLog.includes('战斗状态缺失')) {
+        setInterruptionNotice(lastLog);
+      }
+    }
+  }, [game?.logs?.length]);
 
   // Join game effect
   useEffect(() => {
@@ -2572,6 +2583,46 @@ export const BattleField: React.FC = () => {
               >
                 <Home className="w-5 h-5" />
                 Return to Home
+              </motion.button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+      {/* Battle Interruption Modal */}
+      <AnimatePresence>
+        {interruptionNotice && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[1000] bg-black/80 backdrop-blur-md flex items-center justify-center p-6"
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0, y: 20 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.9, opacity: 0, y: 20 }}
+              className="max-w-md w-full bg-zinc-900 border border-white/10 rounded-[2rem] p-8 shadow-2xl flex flex-col items-center gap-6 text-center relative overflow-hidden"
+            >
+              <div className="absolute top-0 inset-x-0 h-1 bg-gradient-to-r from-red-500 via-orange-500 to-red-500" />
+              
+              <div className="w-16 h-16 rounded-2xl bg-orange-500/10 flex items-center justify-center border border-orange-500/20">
+                <Flag className="w-8 h-8 text-orange-500" />
+              </div>
+
+              <div className="space-y-2">
+                <h3 className="text-2xl font-black italic uppercase tracking-tighter text-white">战斗已中止</h3>
+                <p className="text-zinc-500 text-xs font-bold uppercase tracking-widest leading-relaxed">
+                  {interruptionNotice.replace('[战斗中止] ', '')}
+                </p>
+              </div>
+
+              <motion.button
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                onClick={() => setInterruptionNotice(null)}
+                className="w-full py-4 bg-white text-black rounded-2xl font-black uppercase italic tracking-widest text-sm"
+              >
+                确认
               </motion.button>
             </motion.div>
           </motion.div>
