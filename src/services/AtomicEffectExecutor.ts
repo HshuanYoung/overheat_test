@@ -284,6 +284,8 @@ export class AtomicEffectExecutor {
   private static applyStatChange(gameState: GameState, effect: AtomicEffect, stat: 'power' | 'damage' | 'acValue' | 'godMark', sourceCard?: Card, querySelections?: string[]) {
     const targets = this.findTargets(gameState, effect.targetFilter, sourceCard, querySelections);
     targets.forEach(card => {
+      if (this.shouldSkipEffect(gameState, card)) return;
+      
       if (effect.value !== undefined) {
         if (stat === 'power') {
           if (effect.turnDuration === 0 || effect.turnDuration === -1) {
@@ -354,6 +356,8 @@ export class AtomicEffectExecutor {
     const finalTargets = effect.targetCount ? targets.slice(0, effect.targetCount) : targets;
      
     for (const card of finalTargets) {
+      if (this.shouldSkipEffect(gameState, card)) continue;
+      
       // Find which player owns the card
       for (const pUid of Object.keys(gameState.players)) {
         const p = gameState.players[pUid];
@@ -374,6 +378,8 @@ export class AtomicEffectExecutor {
     const finalTargets = effect.targetCount ? targets.slice(0, effect.targetCount) : targets;
 
     finalTargets.forEach(card => {
+      if (this.shouldSkipEffect(gameState, card)) return;
+      
       // Find current zone and OWNER
       const currentZone = card.cardlocation as TriggerLocation;
 
@@ -400,7 +406,9 @@ export class AtomicEffectExecutor {
   private static rotateCards(gameState: GameState, playerUid: string, effect: AtomicEffect, direction: 'HORIZONTAL' | 'VERTICAL', sourceCard?: Card, querySelections?: string[]) {
     const targets = this.findTargets(gameState, effect.targetFilter, sourceCard, querySelections);
     targets.forEach(card => {
-      card.displayState = direction === 'HORIZONTAL' ? 'BACK_UPRIGHT' : 'FRONT_UPRIGHT'; // Simplified for now
+      if (this.shouldSkipEffect(gameState, card)) return;
+      
+      card.isExhausted = direction === 'HORIZONTAL';
       EventEngine.dispatchEvent(gameState, { type: 'CARD_ROTATED', targetCardId: card.gamecardId, data: { direction } });
     });
   }
@@ -427,6 +435,8 @@ export class AtomicEffectExecutor {
   private static setCanResetCount(gameState: GameState, effect: AtomicEffect, sourceCard?: Card, querySelections?: string[]) {
     const targets = this.findTargets(gameState, effect.targetFilter, sourceCard, querySelections);
     targets.forEach(card => {
+      if (this.shouldSkipEffect(gameState, card)) return;
+      
       card.canResetCount = effect.value || 0;
       const ownerUid = this.findCardOwnerKey(gameState, card.gamecardId) || '';
       const identity = getCardIdentity(gameState, ownerUid, card);
@@ -437,6 +447,8 @@ export class AtomicEffectExecutor {
   private static negateEffect(gameState: GameState, effect: AtomicEffect, sourceCard?: Card, querySelections?: string[]) {
     const targets = this.findTargets(gameState, effect.targetFilter, sourceCard, querySelections);
     targets.forEach(card => {
+      if (this.shouldSkipEffect(gameState, card)) return;
+      
       // logic to negate card effects
       const ownerUid = this.findCardOwnerKey(gameState, card.gamecardId) || '';
       const identity = getCardIdentity(gameState, ownerUid, card);
@@ -694,9 +706,18 @@ export class AtomicEffectExecutor {
         if (effect.turnDuration === 0 || effect.turnDuration === -1) {
           card.baseIsImmuneToUnitEffects = val;
         }
-        card.isImmuneToUnitEffects = val;
-        gameState.logs.push(`${card.fullName} 在本回合内不会受到其他单位效果的影响。`);
       }
     });
+  }
+
+  private static shouldSkipEffect(gameState: GameState, card: Card): boolean {
+    if (card && card.nextEffectProtection) {
+      card.nextEffectProtection = false;
+      const ownerUid = this.findCardOwnerKey(gameState, card.gamecardId) || '';
+      const identity = ownerUid ? getCardIdentity(gameState, ownerUid, card) : `[${card.fullName}]`;
+      gameState.logs.push(`${identity} 的护盾生效，抵消了本次效果！`);
+      return true;
+    }
+    return false;
   }
 }

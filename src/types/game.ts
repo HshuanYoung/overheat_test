@@ -225,6 +225,8 @@ export interface Card {
   equipTargetId?: string;
   isEquip?: boolean;
   allowPlayFromErosionFront?: boolean;
+  nextEffectProtection?: boolean;
+  silencedEffectIds?: string[];
 }
 
 export interface PlayerState {

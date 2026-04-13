@@ -144,12 +144,19 @@ export const ServerGameService = {
       }
     }
 
-    // 5. Name-lock Check
     if (player.negatedNames && player.negatedNames.includes(card.fullName)) {
       return false;
     }
 
-    // 6. Faction-lock Check
+    // 6. Effect Negation Check
+    if (card.canActivateEffect === false) {
+      return false;
+    }
+    if (card.silencedEffectIds && card.silencedEffectIds.includes(effect.id)) {
+      return false;
+    }
+
+    // 7. Faction-lock Check
     if (player.factionLock && card.faction !== player.factionLock) {
       return false;
     }
@@ -2059,6 +2066,14 @@ export const ServerGameService = {
           gameState.logs.push(`${p.displayName} 的手牌已恢复私密状态`);
         }
       }
+
+      // Reset target protection and effect negation
+      [...p.unitZone, ...p.itemZone].forEach(c => {
+        if (c) {
+          c.nextEffectProtection = false;
+          c.silencedEffectIds = [];
+        }
+      });
     });
 
     player.timeRemaining = (gameState.turnTimerLimit ? gameState.turnTimerLimit * 1000 : GAME_TIMEOUTS.MAIN_PHASE_TOTAL);
