@@ -517,8 +517,17 @@ export const ServerGameService = {
 
   async playCard(gameState: GameState, playerId: string, cardId: string, paymentSelection: { feijingCardId?: string, exhaustUnitIds?: string[], erosionFrontIds?: string[] }) {
     const player = gameState.players[playerId];
-    const card = player.hand.find(c => c.gamecardId === cardId);
-    if (!card) throw new Error('Card not found in hand');
+    let card = player.hand.find(c => c.gamecardId === cardId);
+    let sourceZone: TriggerLocation = 'HAND';
+
+    if (!card) {
+      card = player.erosionFront.find(c => c?.gamecardId === cardId) as Card;
+      if (card && card.allowPlayFromErosionFront) {
+        sourceZone = 'EROSION_FRONT' as TriggerLocation;
+      }
+    }
+
+    if (!card) throw new Error('Card not found in valid zones for playing');
 
     const canPlay = this.canPlayCard(player, card);
     if (!canPlay.canPlay) throw new Error(canPlay.reason);
@@ -532,7 +541,7 @@ export const ServerGameService = {
     const paymentResult = this.payCost(gameState, playerId, cost, paymentSelection, card.color, cardId);
     if (!paymentResult.success) throw new Error(paymentResult.reason);
 
-    this.moveCard(gameState, playerId, 'HAND', playerId, 'PLAY', cardId);
+    this.moveCard(gameState, playerId, sourceZone, playerId, 'PLAY', cardId);
     
     // Record faction used
     if (card.faction) {
@@ -1042,7 +1051,7 @@ export const ServerGameService = {
     }
 
     if (query.callbackKey === 'SUBSTITUTION_CHOICE') {
-      const { subCardId, targetUnitId } = query.context;
+      const { subCardId, targetUnitId, isEffect, sourcePlayerId } = query.context;
       if (currentSelections[0] === 'YES') {
         // Find equipment
         const player = gameState.players[playerUid];
@@ -1055,7 +1064,7 @@ export const ServerGameService = {
         }
       } else {
         // Resume default destruction (skip substitution)
-        await this.destroyUnit(gameState, playerUid, targetUnitId, true);
+        await this.destroyUnit(gameState, playerUid, targetUnitId, isEffect, sourcePlayerId, true);
       }
       return gameState;
     }
@@ -1556,7 +1565,7 @@ export const ServerGameService = {
     this.checkWinConditions(gameState);
   },
 
-  async destroyUnit(gameState: GameState, playerId: string, gamecardId: string, skipSubstitution: boolean = false) {
+  async destroyUnit(gameState: GameState, playerId: string, gamecardId: string, isEffect: boolean = false, sourcePlayerId?: string, skipSubstitution: boolean = false) {
     const player = gameState.players[playerId];
     const unitIdx = player.unitZone.findIndex(c => c?.gamecardId === gamecardId);
     if (unitIdx === -1) return;
@@ -1586,13 +1595,9 @@ export const ServerGameService = {
           title: '效果发动确认',
           description: `是否发动 [${subCard.fullName}] 的效果，将其送入墓地代替 [${unit.fullName}] 的破坏？`,
           callbackKey: 'SUBSTITUTION_CHOICE',
-          context: { subCardId: subCard.gamecardId, targetUnitId: gamecardId }
+          context: { subCardId: subCard.gamecardId, targetUnitId: gamecardId, isEffect, sourcePlayerId }
         };
 
-        // Pause and wait for query resolution is not possible in a sync-like loop here 
-        // without refactoring the whole state machine to handle sub-steps.
-        // However, for this engine, we can use a "Interrupt" pattern.
-        // For now, I'll return and wait for the query to resolve.
         return; 
       }
     }
@@ -1603,15 +1608,24 @@ export const ServerGameService = {
     player.grave.push(unit);
     player.unitZone[unitIdx] = null;
 
-    EventEngine.dispatchEvent(gameState, {
-      type: 'CARD_DESTROYED_BATTLE',
-      targetCardId: gamecardId,
-      playerUid: playerId,
-      data: { 
-        attackerIds: gameState.battleState?.attackers || [],
-        isAlliance: gameState.battleState?.isAlliance || false
-      }
-    });
+    if (isEffect) {
+      EventEngine.dispatchEvent(gameState, {
+        type: 'CARD_DESTROYED_EFFECT',
+        targetCardId: gamecardId,
+        playerUid: playerId,
+        data: { sourcePlayerId }
+      });
+    } else {
+      EventEngine.dispatchEvent(gameState, {
+        type: 'CARD_DESTROYED_BATTLE',
+        targetCardId: gamecardId,
+        playerUid: playerId,
+        data: { 
+          attackerIds: gameState.battleState?.attackers || [],
+          isAlliance: gameState.battleState?.isAlliance || false
+        }
+      });
+    }
     this.checkBattleInterruption(gameState);
   },
 

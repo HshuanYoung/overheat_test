@@ -361,7 +361,7 @@ export class AtomicEffectExecutor {
           p.itemZone.some(c => c?.gamecardId === card.gamecardId)) {
           
           // Use ServerGameService.destroyUnit for proper logic/substitution
-          await GameService.destroyUnit(gameState, pUid, card.gamecardId);
+          await GameService.destroyUnit(gameState, pUid, card.gamecardId, true, playerUid);
           break;
         }
       }
@@ -623,6 +623,10 @@ export class AtomicEffectExecutor {
     }
 
     // Dispatch specific movement-related sub-events if necessary
+    if (to === 'EROSION_FRONT') {
+      EventEngine.dispatchEvent(gameState, { type: 'CARD_TO_EROSION_FRONT', playerUid, sourceCardId: card.gamecardId });
+    }
+    
     if (from === 'DECK' && to === 'EROSION_FRONT') {
       EventEngine.dispatchEvent(gameState, { type: 'CARD_DECK_TO_EROSION_UP', playerUid, sourceCardId: card.gamecardId });
     } else if (from === 'EROSION_FRONT' && ['UNIT', 'ITEM'].includes(to)) {

@@ -1,0 +1,147 @@
+import { Card, GameState, PlayerState, CardEffect, TriggerLocation, GameEvent } from '../types/game';
+import { AtomicEffectExecutor } from '../services/AtomicEffectExecutor';
+
+const effect_10400049_activate: CardEffect = {
+  id: 'mina_salvage_activate',
+  type: 'ACTIVATE',
+  description: '【起】每回合一次。在你的回合中，舍弃一张手牌：选择一张你侵蚀区域最前方的卡牌加入手牌。',
+  limitCount: 1,
+  limitNameType: true,
+  condition: (gameState: GameState, playerState: PlayerState) => {
+    return playerState.isTurn && playerState.hand.length > 0 && playerState.erosionFront.some(c => c !== null);
+  },
+  execute: async (gameState: GameState, playerState: PlayerState, instance: Card) => {
+    // 1. Discard 1
+    gameState.pendingQuery = {
+      id: Math.random().toString(36).substring(7),
+      type: 'SELECT_CARD',
+      playerUid: playerState.uid,
+      options: AtomicEffectExecutor.enrichQueryOptions(gameState, playerState.uid, playerState.hand.map(c => ({ card: c, source: 'HAND' }))),
+      title: '选择弃置的卡牌',
+      description: '选择一张手牌作为代价弃入墓地。',
+      minSelections: 1,
+      maxSelections: 1,
+      callbackKey: 'EFFECT_RESOLVE',
+      context: {
+        effectId: 'mina_salvage_activate',
+        sourceCardId: instance.gamecardId,
+        step: 'COST'
+      }
+    };
+  },
+  onQueryResolve: (instance: Card, gameState: GameState, playerState: PlayerState, selections: string[], context: any) => {
+    if (context.step === 'COST' && selections.length > 0) {
+      const discardId = selections[0];
+      const pUid = playerState.uid;
+      AtomicEffectExecutor.moveCard(gameState, pUid, 'HAND', pUid, 'GRAVE', discardId, true);
+      gameState.logs.push(`[${instance.fullName}] 支付发动代价：弃置了一张手牌。`);
+
+      // 2. Select 1 from Erosion Front
+      const frontCards = playerState.erosionFront.filter(c => c !== null) as Card[];
+      if (frontCards.length > 0) {
+        gameState.pendingQuery = {
+          id: Math.random().toString(36).substring(7),
+          type: 'SELECT_CARD',
+          playerUid: playerState.uid,
+          options: AtomicEffectExecutor.enrichQueryOptions(gameState, playerState.uid, frontCards.map(c => ({ card: c, source: 'EROSION_FRONT' }))),
+          title: '选择加入手牌的卡牌',
+          description: '选择一张侵蚀区域最前方的卡牌加入手牌。',
+          minSelections: 1,
+          maxSelections: 1,
+          callbackKey: 'EFFECT_RESOLVE',
+          context: {
+            effectId: 'mina_salvage_activate',
+            sourceCardId: instance.gamecardId,
+            step: 'SALVAGE'
+          }
+        };
+      }
+    } else if (context.step === 'SALVAGE' && selections.length > 0) {
+      const targetId = selections[0];
+      const pUid = playerState.uid;
+      AtomicEffectExecutor.moveCard(gameState, pUid, 'EROSION_FRONT' as TriggerLocation, pUid, 'HAND', targetId, true);
+      gameState.logs.push(`[${instance.fullName}] 激活效果：将侵蚀区域的一张卡牌回收至手牌。`);
+    }
+  }
+};
+
+const effect_10400049_trigger: CardEffect = {
+  id: 'mina_salvage_trigger',
+  type: 'TRIGGER',
+  triggerLocation: ['GRAVE'],
+  description: '【诱发】当此单位因战斗或对手的卡牌效果破坏并送入墓地时：选择最多两张你侵蚀区域最前方的卡牌加入手牌。',
+  condition: (gameState: GameState, playerState: PlayerState, instance: Card, event?: GameEvent) => {
+    if (!event) return false;
+    
+    // Check destruction type and source
+    if (event.type === 'CARD_DESTROYED_BATTLE' && event.targetCardId === instance.gamecardId) {
+      return true;
+    }
+    if (event.type === 'CARD_DESTROYED_EFFECT' && event.targetCardId === instance.gamecardId) {
+      // Must be opponent's effect
+      return event.data.sourcePlayerId !== playerState.uid;
+    }
+    return false;
+  },
+  execute: async (gameState: GameState, playerState: PlayerState, instance: Card) => {
+    const frontCards = playerState.erosionFront.filter(c => c !== null) as Card[];
+    if (frontCards.length > 0) {
+      gameState.pendingQuery = {
+        id: Math.random().toString(36).substring(7),
+        type: 'SELECT_CARD',
+        playerUid: playerState.uid,
+        options: AtomicEffectExecutor.enrichQueryOptions(gameState, playerState.uid, frontCards.map(c => ({ card: c, source: 'EROSION_FRONT' }))),
+        title: '选择回收至手牌的卡牌',
+        description: '选择最多两张侵蚀区域最前方的卡牌加入手牌。',
+        minSelections: 1,
+        maxSelections: Math.min(2, frontCards.length),
+        callbackKey: 'EFFECT_RESOLVE',
+        context: {
+          effectId: 'mina_salvage_trigger',
+          sourceCardId: instance.gamecardId
+        }
+      };
+    }
+  },
+  onQueryResolve: (instance: Card, gameState: GameState, playerState: PlayerState, selections: string[]) => {
+    if (selections.length > 0) {
+      const pUid = playerState.uid;
+      selections.forEach(targetId => {
+        AtomicEffectExecutor.moveCard(gameState, pUid, 'EROSION_FRONT' as TriggerLocation, pUid, 'HAND', targetId, true);
+      });
+      gameState.logs.push(`[${instance.fullName}] 诱发效果：回收了 ${selections.length} 张侵蚀区域的卡牌。`);
+    }
+  }
+};
+
+const card: Card = {
+  id: '10400049',
+  gamecardId: null as any,
+  fullName: '心灵手巧【米米娜】',
+  specialName: '米米娜',
+  type: 'UNIT',
+  color: 'BLUE',
+  colorReq: { 'BLUE': 2 },
+  faction: '无',
+  acValue: 2,
+  power: 500,
+  basePower: 500,
+  damage: 0,
+  baseDamage: 0,
+  godMark: true,
+  displayState: 'FRONT_UPRIGHT',
+  isExhausted: false,
+  isrush: false,
+  canAttack: true,
+  feijingMark: false,
+  canResetCount: 0,
+  effects: [
+    effect_10400049_activate,
+    effect_10400049_trigger
+  ],
+  rarity: 'SR',
+  availableRarities: ['SR'],
+  uniqueId: null,
+};
+
+export default card;

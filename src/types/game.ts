@@ -25,6 +25,7 @@ export type GameEventType =
   | 'CARD_AC_CHANGED'
   | 'CARD_DESTROYED_BATTLE'
   | 'CARD_DESTROYED_EFFECT'
+  | 'CARD_TO_EROSION_FRONT'
   | 'CARD_DECK_TO_EROSION_UP'
   | 'CARD_EROSION_TO_FIELD'
   | 'CARD_EROSION_TO_HAND'
@@ -216,13 +217,14 @@ export interface Card {
   inAllianceGroup?: boolean;
   imageUrl?: string;
   fullImageUrl?: string;
-  rarity: Rarity;
+  rarity?: Rarity;
   availableRarities?: Rarity[];
   faction: Faction | string;
   baseFaction?: Faction | string;
   runtimeFingerprint?: string;
   equipTargetId?: string;
   isEquip?: boolean;
+  allowPlayFromErosionFront?: boolean;
 }
 
 export interface PlayerState {
@@ -244,7 +246,7 @@ export interface PlayerState {
   isGoddessMode?: boolean;
   isHandPublic?: number;
   timeRemaining: number;
-  negatedNames?: string[]; // Names of cards that cannot be used this turn
+  negatedNames?: string[];
   effectDamageModifier?: number; // Bonus damage dealt by this player's card effects
   hasUnitReturnedThisTurn?: boolean; // Track if any unit returned from field (bounce)
   factionsUsedThisTurn?: string[]; // Log of factions used (played/activated) this turn
