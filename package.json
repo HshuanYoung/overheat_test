@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "init": "tsx server/init_db.ts && tsx server/init_store.ts && tsx server/seed_admin.ts",
+    "deletecards": "tsx server/delete_user_cards.ts",
     "dev": "concurrently \"npm run frontend\" \"npm run backend\"",
     "frontend": "vite --port=3000 --host=0.0.0.0",
     "backend": "tsx watch server/index.ts",

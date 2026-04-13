@@ -29,26 +29,30 @@ async function seedAdmin() {
             )
         `);
 
-        // 2. Set Admin balance
-        const adminId = 'admin'; // Based on init_db.ts
-        await conn.query(
-            'UPDATE users SET coins = 100000, card_crystals = 100000 WHERE id = ?',
-            [adminId]
-        );
-        // console.log("✅ Admin balance set to 100k/100k");
-
-        // 3. Seed 8 copies of every card to Admin
-        const cardIds = Object.keys(SERVER_CARD_LIBRARY).filter(id => !id.includes(':legacy'));
-        // console.log(`Found ${cardIds.length} cards to seed.`);
-
-        for (const cardId of cardIds) {
+        // 2. Set account balances
+        const targetUserIds = ['admin', 'user_guest1', 'user_guest2', 'user_guest3', 'user_guest4', 'user_guest5'];
+        
+        for (const uid of targetUserIds) {
             await conn.query(
-                `INSERT INTO user_cards (user_id, card_id, quantity) VALUES (?, ?, 8)
-                 ON DUPLICATE KEY UPDATE quantity = 8`,
-                [adminId, cardId]
+                'UPDATE users SET coins = 100000, card_crystals = 100000 WHERE id = ?',
+                [uid]
             );
         }
-        // console.log(`✅ Seeded 8 copies of each card for admin.`);
+        // console.log("✅ Admin and test account balances set to 100k/100k");
+
+        const cardIds = Object.keys(SERVER_CARD_LIBRARY).filter(id => !id.includes(':legacy'));
+        
+        for (const uid of targetUserIds) {
+
+            for (const cardId of cardIds) {
+                await conn.query(
+                    `INSERT INTO user_cards (user_id, card_id, quantity) VALUES (?, ?, 4)
+                     ON DUPLICATE KEY UPDATE quantity = 4`,
+                    [uid, cardId]
+                );
+            }
+        }
+        // console.log(`✅ Seeded 4 copies of each card for admin and test accounts.`);
 
         // console.log("🚀 Admin seeding complete!");
     } catch (err) {

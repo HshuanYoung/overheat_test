@@ -775,21 +775,39 @@ app.get('/api/user/collection', async (req, res): Promise<void> => {
     }
 });
 
-// Store - Buy Pack Endpoint
-const CARD_POOL = [
-    '10400002', '10400003', '10401001', '10401004', '10401005', '10401008',
-    '10402006', '10402007', '20400001', '20400002', '20400013', '20400004',
-    '20400005', '20400007', '20403006', '30400002', '30401001', '99999999'
-];
+let CARD_POOL: string[] = [];
+let CARD_RARITIES: Record<string, string> = {};
 
-// Rarity mapping for each card (must match the card scripts)
-const CARD_RARITIES: Record<string, string> = {
-    '10400002': 'U', '10400003': 'U', '10401001': 'SR', '10401004': 'SR',
-    '10401005': 'C', '10401008': 'SR', '10402006': 'R', '10402007': 'PR',
-    '20400001': 'R', '20400002': 'U', '20400013': 'R', '20400004': 'U',
-    '20400005': 'U', '20400007': 'U', '20403006': 'U', '30400002': 'U',
-    '30401001': 'R', '99999999': 'UR',
-};
+function syncStoreFromPics() {
+    const picsDir = path.join(process.cwd(), 'pics');
+    if (!fs.existsSync(picsDir)) {
+        console.warn('[Store] pics directory not found, skipping sync.');
+        return;
+    }
+
+    const newPool: string[] = [];
+    const newRarities: Record<string, string> = {};
+
+    const rarities = fs.readdirSync(picsDir);
+    for (const r of rarities) {
+        const rPath = path.join(picsDir, r);
+        if (fs.statSync(rPath).isDirectory()) {
+            const files = fs.readdirSync(rPath);
+            for (const file of files) {
+                if (file.endsWith('.jpg')) {
+                    const cardId = file.replace('.jpg', '');
+                    newPool.push(cardId);
+                    newRarities[cardId] = r;
+                }
+            }
+        }
+    }
+
+    CARD_POOL = newPool;
+    CARD_RARITIES = newRarities;
+    console.log(`[Store] Synced ${CARD_POOL.length} cards from pics folder.`);
+}
+
 
 const CRYSTAL_VALUES: Record<string, { decompose: number, produce: number }> = {
     C: { decompose: 1, produce: 5 },
@@ -1344,6 +1362,8 @@ const start = async () => {
     try {
         console.log('[Server] Initializing card library...');
         await initServerCardLibrary();
+        console.log('[Server] Syncing store from pics...');
+        syncStoreFromPics();
         console.log('[Server] Connecting to database...');
         await dbInit();
 

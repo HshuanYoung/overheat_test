@@ -1,4 +1,7 @@
 import { pool } from './db';
+import fs from 'fs';
+import path from 'path';
+
 
 async function initStore() {
     // console.log("Starting Store Schema Migration...");
@@ -49,11 +52,25 @@ async function initStore() {
 
         // 4. Give all existing users the initial card collection (4 copies of each card)
         const users = await conn.query('SELECT id FROM users');
-        const cardIds = [
-            '10400002', '10400003', '10401001', '10401004', '10401005', '10401008',
-            '10402006', '10402007', '20400001', '20400002', '20400013', '20400004',
-            '20400005', '20400007', '20403006', '30400002', '30401001', '99999999'
-        ];
+        
+        // Scan pics folder for card IDs
+        const cardIds: string[] = [];
+        const picsDir = path.join(process.cwd(), 'pics');
+        if (fs.existsSync(picsDir)) {
+            const rarities = fs.readdirSync(picsDir);
+            for (const r of rarities) {
+                const rPath = path.join(picsDir, r);
+                if (fs.statSync(rPath).isDirectory()) {
+                    const files = fs.readdirSync(rPath);
+                    for (const file of files) {
+                        if (file.endsWith('.jpg')) {
+                            cardIds.push(file.replace('.jpg', ''));
+                        }
+                    }
+                }
+            }
+        }
+
 
         for (const user of users) {
             for (const cardId of cardIds) {
