@@ -2516,10 +2516,12 @@ export const BattleField: React.FC = () => {
                 )}
 
                 <motion.button
-                  whileHover={{ scale: 1.1, color: '#f27d26' }}
-                  className="w-full h-14 mt-4 px-8 bg-transparent text-white/30 rounded-2xl text-[12px] font-black uppercase tracking-[0.5em] transition-all flex items-center justify-center"
+                  whileHover={{ scale: 1.05, y: -5 }}
+                  whileTap={{ scale: 0.95 }}
+                  className="w-full h-18 py-5 px-10 bg-gradient-to-r from-zinc-800 to-zinc-700 hover:from-zinc-700 hover:to-zinc-600 text-white rounded-3xl text-sm font-black uppercase italic tracking-widest transition-all border border-white/10 flex items-center justify-center gap-5 shadow-2xl mt-4"
                   onClick={() => setShowPhaseMenu(false)}
                 >
+                  <X className="w-6 h-6" />
                   CANCEL
                 </motion.button>
               </div>
