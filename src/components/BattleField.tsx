@@ -84,9 +84,9 @@ export const BattleField: React.FC = () => {
       const elapsed = now - (game.phaseTimerStart || now);
 
       const me = game.players[myUid];
-      const isWaiting = game.isResolvingStack || 
-        game.currentProcessingItem || 
-        game.pendingQuery || 
+      const isWaiting = game.isResolvingStack ||
+        game.currentProcessingItem ||
+        game.pendingQuery ||
         (game.battleState && game.battleState.askConfront);
 
       let remaining = me ? Math.max(0, (me.timeRemaining || 0) - ((!isWaiting && me.uid === (game.priorityPlayerId || game.playerIds[game.currentTurnPlayer])) ? elapsed : 0)) : 0;
@@ -565,9 +565,6 @@ export const BattleField: React.FC = () => {
 
   const togglePaymentExhaust = (gamecardId: string) => {
     setPaymentSelection(prev => {
-      // Mutual Exclusivity: cannot select units if Feijing is selected
-      if (prev.useFeijing.length > 0) return prev;
-
       const isExhausted = prev.exhaustIds.includes(gamecardId);
       if (!isExhausted) {
         const required = pendingPlayCard ? pendingPlayCard.acValue : (game.pendingQuery?.paymentCost || 0);
@@ -587,10 +584,9 @@ export const BattleField: React.FC = () => {
     setPaymentSelection(prev => {
       const isUsed = prev.useFeijing.includes(gamecardId);
       // Feijing is always allowed if not already in use (allows overpayment up to 3)
-      // When selected, it clears any unit exhaustion selections (mutual exclusivity)
+      // Choosing Feijing no longer clears unit exhaustion selections
       return {
         ...prev,
-        exhaustIds: isUsed ? prev.exhaustIds : [],
         useFeijing: isUsed
           ? [] // Only allow one feijing card
           : [gamecardId]
@@ -1028,49 +1024,61 @@ export const BattleField: React.FC = () => {
           </div>
         </div>
 
-        {/* Global Stack Display at the Top */}
-        <div className="h-20 bg-black/60 border-b border-white/5 flex items-center px-6 gap-4 overflow-x-auto custom-scrollbar">
-          <div className="flex items-center gap-3 h-full py-2">
-            {game.counterStack.map((item, i) => (
-              <motion.div
-                key={`${i}-${item.timestamp}`}
-                initial={{ scale: 0.8, opacity: 0, x: -20 }}
-                animate={{ scale: 1, opacity: 1, x: 0 }}
-                className="h-full aspect-[3/4] relative group cursor-pointer"
-                onClick={() => setPreviewCard(item.card || null)}
-              >
-                {item.card ? (
-                  <CardComponent card={item.card} disableZoom />
-                ) : (
-                  <div className="w-full h-full bg-zinc-900 border border-red-500/30 rounded flex items-center justify-center">
-                    <Zap className="w-4 h-4 text-red-500/50" />
-                  </div>
-                )}
-                <div className={cn(
-                  "absolute -top-1 -left-1 px-1.5 py-0.5 rounded text-[8px] font-black uppercase italic shadow-lg z-10",
-                  item.ownerUid === myUid ? "bg-blue-600 text-white" : "bg-red-600 text-white"
-                )}>
-                  {item.ownerUid === myUid ? "我方 / ME" : "对方 / OPP"}
-                </div>
-                {item.card && (
-                  <div className="absolute -top-1 -right-1 px-1.5 py-0.5 bg-black/80 rounded text-[8px] font-bold text-white/70 uppercase z-10">
-                    {getCardIdentity(game, item.ownerUid, item.card).split('|')[1].replace(']', '')}
-                  </div>
-                )}
-              </motion.div>
-            ))}
-            {game.counterStack.length === 0 && (
-              <span className="text-[10px] text-white/10 uppercase font-bold italic tracking-widest">No active effects in stack</span>
-            )}
-          </div>
-        </div>
 
         <div className="flex-1 flex min-h-0">
           {/* Playground Area */}
 
 
-          {/* Left Sidebar: Logs */}
-          <div className="w-64 flex flex-col border-r border-white/5 bg-black/20 p-4">
+          {/* Left Sidebar: Logs & Stats */}
+          <div className="w-96 flex flex-col border-r border-white/5 bg-black/20 p-4">
+            {/* Game Status Summary */}
+            <div className="mb-6 space-y-4">
+              <span className="text-[10px] font-black uppercase italic tracking-widest text-white/40 flex items-center gap-2">
+                <div className="w-1 h-1 bg-[#f27d26] rounded-full" />
+                Battle Areas
+              </span>
+              
+              <div className="grid grid-cols-2 gap-4">
+                {/* Me Stats */}
+                <div className="bg-blue-500/5 border border-blue-500/20 rounded-xl p-3">
+                  <div className="text-[9px] font-black text-blue-400 uppercase mb-2">My Forces / 我方</div>
+                  <div className="grid grid-cols-3 gap-1">
+                    <div className="flex flex-col items-center">
+                      <span className="text-[8px] text-zinc-500 uppercase">Deck</span>
+                      <span className="text-sm font-bold">{me.deck.length}</span>
+                    </div>
+                    <div className="flex flex-col items-center">
+                      <span className="text-[8px] text-zinc-500 uppercase">Grave</span>
+                      <span className="text-sm font-bold">{me.grave.length}</span>
+                    </div>
+                    <div className="flex flex-col items-center">
+                      <span className="text-[8px] text-zinc-500 uppercase">Exile</span>
+                      <span className="text-sm font-bold">{me.exile.length}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Opponent Stats */}
+                <div className="bg-red-500/5 border border-red-500/20 rounded-xl p-3">
+                  <div className="text-[9px] font-black text-red-400 uppercase mb-2">Hostile / 对方</div>
+                  <div className="grid grid-cols-3 gap-1">
+                    <div className="flex flex-col items-center">
+                      <span className="text-[8px] text-zinc-500 uppercase">Deck</span>
+                      <span className="text-sm font-bold">{opponent?.deck.length || 0}</span>
+                    </div>
+                    <div className="flex flex-col items-center">
+                      <span className="text-[8px] text-zinc-500 uppercase">Grave</span>
+                      <span className="text-sm font-bold">{opponent?.grave.length || 0}</span>
+                    </div>
+                    <div className="flex flex-col items-center">
+                      <span className="text-[8px] text-zinc-500 uppercase">Exile</span>
+                      <span className="text-sm font-bold">{opponent?.exile.length || 0}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
             <span className="text-[10px] font-black uppercase italic tracking-widest text-white/40 mb-4 flex items-center gap-2">
               <div className="w-1 h-1 bg-[#f27d26] rounded-full" />
               Battle Logs
@@ -1146,7 +1154,7 @@ export const BattleField: React.FC = () => {
                       <div className="relative group">
                         <CardComponent card={game.currentProcessingItem.card} disableZoom />
                         <div className="absolute -inset-0.5 bg-gradient-to-t from-red-600/50 to-transparent opacity-50 rounded-2xl" />
-                        
+
                         {/* UL/UR Labels for Resolving Card */}
                         <div className={cn(
                           "absolute -top-2 -left-2 px-3 py-1 rounded-full text-[10px] font-black uppercase italic shadow-lg z-[20] border border-white/20",
@@ -1538,7 +1546,7 @@ export const BattleField: React.FC = () => {
                         )}
                         <motion.button
                           whileHover={{ scale: 1.1 }}
-                          className="px-4 py-1.5 text-[10px] font-bold text-white bg-[#ef4444] rounded-full shadow-lg border border-white/20 flex items-center justify-center min-w-[70px]"
+                          className="px-4 py-1.5 text-[10px] font-bold text-white bg-[#ef4444] rounded-full shadow-lg border border-white/20 flex items-center justify-center w-full"
                           onClick={() => {
                             setAllianceTargetSelection(cardMenu.card.gamecardId);
                             setCardMenu(null);
@@ -2624,7 +2632,7 @@ export const BattleField: React.FC = () => {
               className="max-w-md w-full bg-zinc-900 border border-white/10 rounded-[2rem] p-8 shadow-2xl flex flex-col items-center gap-6 text-center relative overflow-hidden"
             >
               <div className="absolute top-0 inset-x-0 h-1 bg-gradient-to-r from-red-500 via-orange-500 to-red-500" />
-              
+
               <div className="w-16 h-16 rounded-2xl bg-orange-500/10 flex items-center justify-center border border-orange-500/20">
                 <Flag className="w-8 h-8 text-orange-500" />
               </div>

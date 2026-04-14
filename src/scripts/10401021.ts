@@ -11,12 +11,10 @@ const effect_10401021_continuous: CardEffect = {
 const effect_10401021_trigger: CardEffect = {
   id: 'fuka_end_turn_bounce',
   type: 'TRIGGER',
-  triggerEvent: 'PHASE_CHANGED',
+  triggerEvent: 'TURN_END',
   description: '【诱发】在你的回合结束时，如果你的战场上只有蓝色单位，你可以选择发动：选择对手战场上一个AC+2以下且非神迹的卡牌返回持有者手牌。',
   condition: (gameState: GameState, playerState: PlayerState) => {
-    // Turn just ended logic: phase is now START, but it's not our turn anymore.
-    // Also check if we were the player who just finished (turnCount must have been incremented)
-    return !playerState.isTurn && gameState.phase === 'START' && gameState.turnCount > 1;
+    return playerState.isTurn;
   },
   execute: async (instance: Card, gameState: GameState, playerState: PlayerState) => {
     const units = playerState.unitZone.filter(u => u !== null) as Card[];
@@ -72,11 +70,25 @@ const effect_10401021_trigger: CardEffect = {
 const effect_10401021_activate: CardEffect = {
   id: 'fuka_exile_bounce',
   type: 'ACTIVATE',
+  triggerLocation: ['UNIT'],
   description: '【起】每回合此卡名限一次，从你的手牌、卡组或墓地中将两张“风花”神迹卡牌移出对战，且仅在你的主要阶段可以发动：选择一张横置状态的单位或道具卡牌（不包括该单位本身）返回其持有者手牌。',
   limitCount: 1,
   limitNameType: true,
-  condition: (gameState: GameState, playerState: PlayerState) => {
-    return playerState.isTurn && gameState.phase === 'MAIN';
+  condition: (gameState: GameState, playerState: PlayerState, instance: Card) => {
+    if (!playerState.isTurn || gameState.phase !== 'MAIN') return false;
+
+    // Search for '风花' godmark cards in Hand, Deck, Grave (excluding this one)
+    const zones = [playerState.hand, playerState.deck, playerState.grave];
+    let count = 0;
+    zones.forEach(zone => {
+      zone.forEach(c => {
+        if (c && c.fullName.includes('风花') && c.godMark && c.gamecardId !== instance.gamecardId) {
+          count++;
+        }
+      });
+    });
+
+    return count >= 2;
   },
   execute: async (instance: Card, gameState: GameState, playerState: PlayerState) => {
     // Search for '风花' godmark cards in Hand, Deck, Grave (excluding this one)
@@ -93,8 +105,6 @@ const effect_10401021_activate: CardEffect = {
         }
       });
     });
-
-    if (options.length < 2) throw new Error('没有足够的“风花”神蚀卡作为代价');
 
     gameState.pendingQuery = {
       id: Math.random().toString(36).substring(7),

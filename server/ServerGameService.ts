@@ -939,6 +939,15 @@ export const ServerGameService = {
     } else {
       // Queue is empty, settlement is truly complete
       this.checkBattleInterruption(gameState);
+
+      // If we were in the middle of ending a turn, resume the transition
+      if (gameState.phase === 'END') {
+        const currentPlayerId = gameState.playerIds[gameState.currentTurnPlayer];
+        const currentPlayer = gameState.players[currentPlayerId];
+        if (currentPlayer) {
+          await this.executeEndPhase(gameState, currentPlayer, true);
+        }
+      }
     }
   },
 
@@ -2413,9 +2422,26 @@ export const ServerGameService = {
     }
   },
 
-  async executeEndPhase(gameState: GameState, player: PlayerState) {
-    gameState.logs.push(`${player.displayName} 的结束阶段`);
+  async executeEndPhase(gameState: GameState, player: PlayerState, skipEvents: boolean = false) {
+    if (!skipEvents) {
+      gameState.phase = 'END';
+      gameState.logs.push(`${player.displayName} 的结束阶段`);
 
+      // Dispatch TURN_END event to allow end-of-turn triggers to fire while it's still the player's turn
+      EventEngine.dispatchEvent(gameState, {
+        type: 'TURN_END' as any,
+        playerUid: player.uid
+      });
+      
+      // Check if any triggers were added to the queue
+      if (gameState.triggeredEffectsQueue && gameState.triggeredEffectsQueue.length > 0) {
+        await this.checkTriggeredEffects(gameState);
+        // If we now have a pending query, don't proceed to turn transition yet
+        if (gameState.pendingQuery) return;
+      }
+    }
+
+    // This block is reachable either initially (if no triggers) or via resumption from checkTriggeredEffects
     if (player.hand.length > 6) {
       gameState.phase = 'DISCARD';
       gameState.logs.push(`${player.displayName} 手牌超过 6 张，请弃置卡牌。`);

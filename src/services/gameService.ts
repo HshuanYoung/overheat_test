@@ -97,6 +97,26 @@ export const GameService = {
       if (card.specialName && player.unitZone.some((c: any) => c?.specialName === card.specialName)) {
         return { canPlay: false, reason: 'ALREADY HAS UNIQUE UNIT' };
       }
+      
+      // Godmark Limit Check (e.g. 浪漫歌月【风花】)
+      if (card.godMark) {
+        // Find if any card on field has a limitGodmarkCount restriction, or if this card has one
+        const fieldEffects = player.unitZone
+          .filter((u: any) => u !== null)
+          .flatMap((u: any) => u.effects || []);
+        
+        const fieldLimitEffect = fieldEffects.find((e: any) => e.type === 'CONTINUOUS' && e.limitGodmarkCount !== undefined);
+        const selfLimitEffect = card.effects.find((e: any) => e.type === 'CONTINUOUS' && e.limitGodmarkCount !== undefined);
+        
+        const effectiveLimit = fieldLimitEffect?.limitGodmarkCount ?? selfLimitEffect?.limitGodmarkCount;
+        
+        if (effectiveLimit !== undefined) {
+          const currentGodmarkCount = player.unitZone.filter((u: any) => u && u.godMark).length;
+          if (currentGodmarkCount >= effectiveLimit) {
+            return { canPlay: false, reason: `GODMARK LIMIT REACHED (${effectiveLimit})` };
+          }
+        }
+      }
     } else if (card.type === 'ITEM') {
       if (card.specialName && player.itemZone.some((c: any) => c?.specialName === card.specialName)) {
         return { canPlay: false, reason: 'ALREADY HAS UNIQUE ITEM' };

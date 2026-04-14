@@ -219,7 +219,10 @@ const PlayerHalf: React.FC<{
       </div>
 
       {/* CENTER COLUMN: HAND, UNIT, EROSION */}
-      <div className="flex flex-col gap-2 h-full min-h-0 justify-center">
+      <div className={cn(
+        "flex flex-col h-full min-h-0 justify-center",
+        isOpponent ? "gap-12" : "gap-6"
+      )}>
         {isOpponent ? (
           <>
             {/* Opponent Hand Area */}
@@ -260,7 +263,7 @@ const PlayerHalf: React.FC<{
             </div>
 
             {/* Opponent Erosion Zone */}
-            <div className="grid grid-cols-10 gap-1 h-16 scale-90 origin-bottom mb-1">
+            <div className="grid grid-cols-10 gap-1 h-16 scale-90 origin-bottom mb-8">
               {(() => {
                 const backCards = player.erosionBack?.filter(c => c !== null) || [];
                 const frontCards = player.erosionFront?.filter(c => c !== null) || [];
@@ -304,7 +307,7 @@ const PlayerHalf: React.FC<{
             </div>
 
             {/* Opponent Unit Zone */}
-            <div className="grid grid-cols-6 gap-2 min-h-[200px] items-center relative z-10">
+            <div className="grid grid-cols-6 gap-2 min-h-[200px] items-center relative z-10 mt-6">
               {Array.from({ length: 6 }).map((_, i) => {
                 const unit = player.unitZone?.[i];
                 return (
@@ -329,7 +332,7 @@ const PlayerHalf: React.FC<{
         ) : (
           <>
             {/* Player Unit Zone */}
-            <div className="grid grid-cols-6 gap-2 min-h-[200px] items-center relative z-10">
+            <div className="grid grid-cols-6 gap-2 min-h-[200px] items-center relative z-10 mb-8">
               {Array.from({ length: 6 }).map((_, i) => {
                 const unit = player.unitZone?.[i];
                 return (
@@ -352,7 +355,7 @@ const PlayerHalf: React.FC<{
             </div>
 
             {/* Player Erosion Zone */}
-            <div className="grid grid-cols-10 gap-1 h-16 scale-90 origin-top mt-1">
+            <div className="grid grid-cols-10 gap-1 h-16 scale-90 origin-top mt-1 mb-10">
               {(() => {
                 const backCards = player.erosionBack?.filter(c => c !== null) || [];
                 const frontCards = player.erosionFront?.filter(c => c !== null) || [];

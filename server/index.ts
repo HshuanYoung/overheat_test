@@ -1294,8 +1294,8 @@ io.on('connection', (socket) => {
                     const { cardId, paymentSelection } = payload;
                     await ServerGameService.playCard(gameState, myUid, cardId, paymentSelection);
                 } else if (action === 'ATTACK') {
-                    const { attackerIds, alliance } = payload;
-                    await ServerGameService.declareAttack(gameState, myUid, attackerIds, alliance);
+                    const { attackerIds, isAlliance } = payload;
+                    await ServerGameService.declareAttack(gameState, myUid, attackerIds, isAlliance);
                 } else if (action === 'DEFEND') {
                     const { defenderId } = payload;
                     await ServerGameService.declareDefense(gameState, myUid, defenderId);
