@@ -41,20 +41,19 @@ const CardSlot: React.FC<{
   isAllianceInitiator?: boolean;
   displayMode?: 'deck' | 'unit' | 'erosion_item' | 'none';
 }> = ({ card, label, onClick, onPreview, className, isFaceUp = true, isExhausted, isSelectedForPayment, isDeck, count = 0, showCount = true, isAttacking, isDefending, isOpponent, isAllianceInitiator, displayMode }) => {
-  // Calculate thickness layers (max 8 for visual performance)
-  const layers = Math.min(Math.floor(count / 3), 8);
+  // Dynamic height scaling for stack areas (Deck, Grave, Exile)
+  const isStackArea = isDeck || label === 'GRAVE' || label === 'EXILE';
+  const heightScale = isStackArea ? 1 + Math.min(count / 100, 0.2) : 1;
+  const isErosion = displayMode === 'erosion_item' && !isStackArea && label?.startsWith('ITEM') === false && label !== 'PLAY';
 
   return (
-    <div className="relative w-full aspect-[3/4]">
-      {/* Thickness Layers */}
-      {Array.from({ length: layers }).map((_, i) => (
-        <div
-          key={i}
-          className="absolute inset-0 rounded-md border border-white/10 bg-zinc-900"
-          style={{ transform: `translate(${(i + 1) * 1.5}px, -${(i + 1) * 1.5}px)`, zIndex: -i - 1 }}
-        />
-      ))}
-
+    <div 
+      className={cn(
+        "relative transition-all duration-300",
+        displayMode === 'unit' ? "w-full aspect-[3/4] max-w-[130px]" : "w-full aspect-[3/4]"
+      )}
+      style={{ transform: `scaleY(${heightScale})`, transformOrigin: isOpponent ? 'top' : 'bottom' }}
+    >
       <div
         className={cn(
           "relative h-full w-full rounded-md border border-white/10 transition-all flex items-center justify-center group overflow-hidden cursor-pointer",
@@ -66,8 +65,6 @@ const CardSlot: React.FC<{
         )}
         onClick={(e) => {
           if (onClick) onClick(e);
-          // If it's a card (even face down), handle preview on click if no other handler or just always?
-          // The user specifically asked for erosion back cards to be clickable for details.
           if (!isFaceUp && card && onPreview) onPreview(card);
         }}
         onContextMenu={(e) => {
@@ -97,10 +94,12 @@ const CardSlot: React.FC<{
           </span>
         )}
 
-        {/* Count Badge */}
+        {/* Count Badge - Repositioned to center and enlarged */}
         {showCount && count > 0 && (
-          <div className="absolute bottom-0.5 right-0.5 bg-black/80 text-[8px] px-1 rounded border border-white/20 z-20">
-            {count}
+          <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-20">
+            <div className="bg-black/60 backdrop-blur-sm text-[16px] font-black px-3 py-1 rounded-full border border-white/30 text-white shadow-2xl">
+              {count}
+            </div>
           </div>
         )}
       </div>
@@ -261,7 +260,7 @@ const PlayerHalf: React.FC<{
             </div>
 
             {/* Opponent Erosion Zone */}
-            <div className="grid grid-cols-10 gap-1">
+            <div className="grid grid-cols-10 gap-1 h-16 scale-90 origin-bottom mb-1">
               {(() => {
                 const backCards = player.erosionBack?.filter(c => c !== null) || [];
                 const frontCards = player.erosionFront?.filter(c => c !== null) || [];
@@ -305,7 +304,7 @@ const PlayerHalf: React.FC<{
             </div>
 
             {/* Opponent Unit Zone */}
-            <div className="grid grid-cols-6 gap-2">
+            <div className="grid grid-cols-6 gap-2 min-h-[200px] items-center relative z-10">
               {Array.from({ length: 6 }).map((_, i) => {
                 const unit = player.unitZone?.[i];
                 return (
@@ -330,7 +329,7 @@ const PlayerHalf: React.FC<{
         ) : (
           <>
             {/* Player Unit Zone */}
-            <div className="grid grid-cols-6 gap-2">
+            <div className="grid grid-cols-6 gap-2 min-h-[200px] items-center relative z-10">
               {Array.from({ length: 6 }).map((_, i) => {
                 const unit = player.unitZone?.[i];
                 return (
@@ -353,7 +352,7 @@ const PlayerHalf: React.FC<{
             </div>
 
             {/* Player Erosion Zone */}
-            <div className="grid grid-cols-10 gap-1">
+            <div className="grid grid-cols-10 gap-1 h-16 scale-90 origin-top mt-1">
               {(() => {
                 const backCards = player.erosionBack?.filter(c => c !== null) || [];
                 const frontCards = player.erosionFront?.filter(c => c !== null) || [];
@@ -447,20 +446,21 @@ const PlayerHalf: React.FC<{
       {/* RIGHT COLUMN */}
       <div className="flex flex-col gap-4 h-full min-h-0 justify-center">
         {isOpponent ? (
-          // Opponent Right: Item Zone
+          // Opponent Right: Item Zone - Centered layout
           <div className="grid grid-cols-2 grid-rows-5 gap-1 h-full">
-            {Array.from({ length: 10 }).map((_, i) => {
-              const item = player.itemZone?.[i];
+            {[4, 5, 2, 3, 6, 7, 0, 1, 8, 9].map((idx) => {
+              const item = player.itemZone?.[idx];
               return (
                 <CardSlot
-                  key={i}
+                  key={idx}
                   card={item || null}
-                  label={`ITEM ${i + 1}`}
-                  onClick={(e) => item && onCardClick?.(item, 'item', i, e)}
+                  label={`ITEM ${idx + 1}`}
+                  onClick={(e) => item && onCardClick?.(item, 'item', idx, e)}
                   isExhausted={item ? item.isExhausted : false}
                   isSelectedForPayment={false}
                   showCount={false}
                   displayMode="erosion_item"
+                  isOpponent={isOpponent}
                 />
               );
             })}

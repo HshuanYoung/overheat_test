@@ -1030,11 +1030,6 @@ export const BattleField: React.FC = () => {
 
         {/* Global Stack Display at the Top */}
         <div className="h-20 bg-black/60 border-b border-white/5 flex items-center px-6 gap-4 overflow-x-auto custom-scrollbar">
-          <div className="flex items-center gap-2">
-            <Layers className="w-4 h-4 text-[#f27d26]" />
-            <span className="text-[10px] font-black uppercase text-white/40 tracking-widest">Stack / 对抗链</span>
-          </div>
-          <div className="h-8 w-px bg-white/10" />
           <div className="flex items-center gap-3 h-full py-2">
             {game.counterStack.map((item, i) => (
               <motion.div
