@@ -31,62 +31,62 @@ export const ServerGameService = {
   hydrateGameState(gameState: GameState) {
     if (!gameState || !gameState.players) return;
     Object.values(gameState.players).forEach(player => {
-          player.hand.forEach(card => {
-            if (card) {
-              card.cardlocation = 'HAND';
-              ServerGameService.hydrateCard(card);
-            }
-          });
-          player.deck.forEach(card => {
-            if (card) {
-              card.cardlocation = 'DECK';
-              ServerGameService.hydrateCard(card);
-            }
-          });
-          player.grave.forEach(card => {
-            if (card) {
-              card.cardlocation = 'GRAVE';
-              ServerGameService.hydrateCard(card);
-            }
-          });
-          player.exile.forEach(card => {
-            if (card) {
-              card.cardlocation = 'EXILE';
-              ServerGameService.hydrateCard(card);
-            }
-          });
-          player.unitZone.forEach(card => {
-            if (card) {
-              card.cardlocation = 'UNIT';
-              ServerGameService.hydrateCard(card);
-            }
-          });
-          player.itemZone.forEach(card => {
-            if (card) {
-              card.cardlocation = 'ITEM';
-              ServerGameService.hydrateCard(card);
-            }
-          });
-          player.erosionFront.forEach(card => {
-            if (card) {
-              card.cardlocation = 'EROSION_FRONT';
-              ServerGameService.hydrateCard(card);
-            }
-          });
-          player.erosionBack.forEach(card => {
-            if (card) {
-              card.cardlocation = 'EROSION_BACK';
-              ServerGameService.hydrateCard(card);
-            }
-          });
-          player.playZone.forEach(card => {
-            if (card) {
-              card.cardlocation = 'PLAY';
-              ServerGameService.hydrateCard(card);
-            }
-          });
+      player.hand.forEach(card => {
+        if (card) {
+          card.cardlocation = 'HAND';
+          ServerGameService.hydrateCard(card);
         }
-      );
+      });
+      player.deck.forEach(card => {
+        if (card) {
+          card.cardlocation = 'DECK';
+          ServerGameService.hydrateCard(card);
+        }
+      });
+      player.grave.forEach(card => {
+        if (card) {
+          card.cardlocation = 'GRAVE';
+          ServerGameService.hydrateCard(card);
+        }
+      });
+      player.exile.forEach(card => {
+        if (card) {
+          card.cardlocation = 'EXILE';
+          ServerGameService.hydrateCard(card);
+        }
+      });
+      player.unitZone.forEach(card => {
+        if (card) {
+          card.cardlocation = 'UNIT';
+          ServerGameService.hydrateCard(card);
+        }
+      });
+      player.itemZone.forEach(card => {
+        if (card) {
+          card.cardlocation = 'ITEM';
+          ServerGameService.hydrateCard(card);
+        }
+      });
+      player.erosionFront.forEach(card => {
+        if (card) {
+          card.cardlocation = 'EROSION_FRONT';
+          ServerGameService.hydrateCard(card);
+        }
+      });
+      player.erosionBack.forEach(card => {
+        if (card) {
+          card.cardlocation = 'EROSION_BACK';
+          ServerGameService.hydrateCard(card);
+        }
+      });
+      player.playZone.forEach(card => {
+        if (card) {
+          card.cardlocation = 'PLAY';
+          ServerGameService.hydrateCard(card);
+        }
+      });
+    }
+    );
     // Also hydrate cards in the counter stack
     if (gameState.counterStack) {
       gameState.counterStack.forEach(item => {
@@ -112,7 +112,7 @@ export const ServerGameService = {
         return record;
       });
     }
-    
+
     // New: After restoring all functions, recalculate all continuous effects to ensure stats are correct
     EventEngine.recalculateContinuousEffects(gameState);
   },
@@ -360,7 +360,7 @@ export const ServerGameService = {
     return true;
   },
 
-  canPlayCard(player: PlayerState, card: Card): { canPlay: boolean; reason?: string } {
+  canPlayCard(gameState: GameState, player: PlayerState, card: Card): { canPlay: boolean; reason?: string } {
     if (card.type === 'UNIT') {
       if (!player.unitZone.some(c => c === null)) {
         return { canPlay: false, reason: '单位区已满' };
@@ -464,11 +464,27 @@ export const ServerGameService = {
     }
 
     // 5. Specific Effect Limits (e.g. erosionBackLimit)
-    const playEffect = card.effects.find(e => e.type === 'ACTIVATE' || e.type === 'TRIGGER' || e.type === 'ALWAYS');
-    if (playEffect?.erosionBackLimit) {
-      const backCount = player.erosionBack.filter(c => c !== null).length;
-      if (backCount < playEffect.erosionBackLimit[0] || backCount > playEffect.erosionBackLimit[1]) {
-        return { canPlay: false, reason: '侵蚀区背面卡数量不符合要求' };
+    const playEffect = card.effects?.find(e => e.type === 'ACTIVATE' || e.type === 'TRIGGER' || e.type === 'ALWAYS');
+    if (playEffect) {
+      // Determine if this effect's conditions should block playing the card from hand
+      const isStory = card.type === 'STORY';
+      const isAlways = playEffect.type === 'ALWAYS';
+      const isHandTrigger = playEffect.type === 'TRIGGER' && playEffect.triggerLocation?.includes('HAND');
+      
+      const shouldValidate = isStory || isAlways || isHandTrigger;
+
+      if (shouldValidate) {
+        if (playEffect.erosionBackLimit) {
+          const backCount = player.erosionBack.filter(c => c !== null).length;
+          if (backCount < playEffect.erosionBackLimit[0] || backCount > playEffect.erosionBackLimit[1]) {
+            return { canPlay: false, reason: '侵蚀区背面卡数量不符合要求' };
+          }
+        }
+
+        // Check condition
+        if (playEffect.condition && !playEffect.condition(gameState, player, card)) {
+          return { canPlay: false, reason: '不满足发动条件' };
+        }
       }
     }
 
@@ -630,7 +646,7 @@ export const ServerGameService = {
 
     if (!card) throw new Error('Card not found in valid zones for playing');
 
-    const canPlay = ServerGameService.canPlayCard(player, card);
+    const canPlay = ServerGameService.canPlayCard(gameState, player, card);
     if (!canPlay.canPlay) throw new Error(canPlay.reason);
 
     // RULE 2: During countering phase, only story cards can be played
@@ -915,7 +931,9 @@ export const ServerGameService = {
 
         case 'ATTACK':
           // Set battle state and transition to defense declaration
+          // Merge with existing battleState to preserve unitTargetId and other metadata
           gameState.battleState = {
+            ...gameState.battleState,
             attackers: stackItem.attackerIds || [],
             isAlliance: !!stackItem.isAlliance
           };
@@ -923,7 +941,7 @@ export const ServerGameService = {
           gameState.logs.push(`[攻击宣告] 连锁结算完成，进入防御宣言阶段`);
           // Clear previous phase so we don't return to MAIN
           gameState.previousPhase = undefined;
-          
+
           // Re-calculate effects to ensure 30205010's defensePowerRestriction is applied to the new battleState
           EventEngine.recalculateContinuousEffects(gameState);
           break;
@@ -1173,27 +1191,46 @@ export const ServerGameService = {
 
     if (query.callbackKey === 'SUBSTITUTION_CHOICE') {
       const { subCardId, targetUnitId, isEffect, sourcePlayerId } = query.context;
+      gameState.pendingQuery = undefined;
+
       if (currentSelections[0] === 'YES') {
         // Find equipment
         const player = gameState.players[playerUid];
         const subCardIdx = player.itemZone.findIndex(c => c?.gamecardId === subCardId);
-        if (subCardIdx !== -1) {
-          const subCard = player.itemZone.splice(subCardIdx, 1)[0]!;
-          subCard.cardlocation = 'GRAVE';
-          player.grave.push(subCard);
+        const subCard = player.itemZone[subCardIdx];
+        if (subCardIdx !== -1 && subCard) {
+          ServerGameService.moveCard(gameState, playerUid, 'ITEM', playerUid, 'GRAVE', subCardId);
           gameState.logs.push(`[系统] ${subCard.fullName} 代替了破坏`);
 
-          // Dispatch event to trigger "When destroyed" effects
-          EventEngine.dispatchEvent(gameState, {
-            type: 'CARD_LEFT_FIELD',
-            playerUid,
-            sourceCardId: subCardId
-          });
+          // Mark the unit as resolved (it survived)
+          if (gameState.battleState) {
+            if (!gameState.battleState.resolvedUnitIds) gameState.battleState.resolvedUnitIds = [];
+            if (!gameState.battleState.resolvedUnitIds.includes(targetUnitId)) {
+              gameState.battleState.resolvedUnitIds.push(targetUnitId);
+            }
+          }
+
+          // CRITICAL: Trigger check after substitution
+          await ServerGameService.checkTriggeredEffects(gameState);
         }
       } else {
         // Resume default destruction (skip substitution)
         await ServerGameService.destroyUnit(gameState, playerUid, targetUnitId, isEffect, sourcePlayerId, true);
+
+        // Mark the unit as resolved (it was destroyed)
+        if (gameState.battleState) {
+          if (!gameState.battleState.resolvedUnitIds) gameState.battleState.resolvedUnitIds = [];
+          if (!gameState.battleState.resolvedUnitIds.includes(targetUnitId)) {
+            gameState.battleState.resolvedUnitIds.push(targetUnitId);
+          }
+        }
       }
+
+      // Resume battle resolution if in damage calculation
+      if (gameState.phase === 'DAMAGE_CALCULATION') {
+        await ServerGameService.resolveDamage(gameState);
+      }
+
       return gameState;
     }
 
@@ -1220,8 +1257,11 @@ export const ServerGameService = {
       const selectedUnit = attacker.unitZone.find(u => u?.gamecardId === selectedId);
 
       if (selectedUnit) {
-        await ServerGameService.destroyUnit(gameState, attackerId, selectedId);
-        gameState.logs.push(`[联军结算] ${attacker.displayName} 选择了牺牲 ${selectedUnit.fullName}。`);
+        const destroyed = await ServerGameService.destroyUnit(gameState, attackerId, selectedId);
+        if (destroyed !== false) {
+          gameState.logs.push(`[联军结算] ${attacker.displayName} 选择了牺牲 ${selectedUnit.fullName}。`);
+        }
+        if (destroyed === undefined) return gameState;
       }
 
       // Continue to finalize battle
@@ -1456,6 +1496,10 @@ export const ServerGameService = {
     if (gameState.phase !== 'DAMAGE_CALCULATION') throw new Error('Not in damage calculation phase');
     if (!gameState.battleState) throw new Error('No battle state found');
 
+    if (!gameState.battleState.resolvedUnitIds) {
+      gameState.battleState.resolvedUnitIds = [];
+    }
+
     const attackerId = gameState.playerIds[gameState.currentTurnPlayer];
     const defenderId = gameState.playerIds[gameState.currentTurnPlayer === 0 ? 1 : 0];
     const attacker = gameState.players[attackerId];
@@ -1464,6 +1508,24 @@ export const ServerGameService = {
     const attackingUnits = gameState.battleState.attackers.map(id =>
       attacker.unitZone.find(c => c?.gamecardId === id)
     ).filter(Boolean) as Card[];
+
+    // Safety check: Ensure attackers still on field
+    if (attackingUnits.length === 0) {
+      gameState.logs.push(`[系统] 由于所有攻击单位均已离开战场，战斗被中断。`);
+      gameState.battleState = undefined;
+      gameState.phase = 'MAIN';
+      await ServerGameService.checkTriggeredEffects(gameState);
+      return gameState;
+    }
+
+    // Safety check: Ensure alliance attack still has both units
+    if (gameState.battleState.isAlliance && attackingUnits.length < 2) {
+      gameState.logs.push(`[系统] 由于联军攻击单位数量不足，战斗被中断。`);
+      gameState.battleState = undefined;
+      gameState.phase = 'MAIN';
+      await ServerGameService.checkTriggeredEffects(gameState);
+      return gameState;
+    }
 
     // Handle forced attack target (Effect-based)
     if (!gameState.battleState.defender && gameState.battleState.unitTargetId) {
@@ -1493,7 +1555,17 @@ export const ServerGameService = {
       ServerGameService.applyDamageToPlayer(gameState, defenderId, totalDamage, 'BATTLE');
     } else {
       // Unit combat
-      const defendingUnit = defender.unitZone.find(c => c?.gamecardId === gameState.battleState!.defender) as Card;
+      const defendingUnitId = gameState.battleState!.defender;
+      const defendingUnit = defender.unitZone.find(c => c?.gamecardId === defendingUnitId);
+
+      if (!defendingUnit) {
+        gameState.logs.push(`[系统] 由于指定防御单位离开战场，战斗宣告无效。`);
+        gameState.battleState = undefined;
+        gameState.phase = 'MAIN';
+        await ServerGameService.checkTriggeredEffects(gameState);
+        return gameState;
+      }
+
       const defenderPower = defendingUnit.power || 0;
 
       if (!gameState.battleState.isAlliance) {
@@ -1501,25 +1573,46 @@ export const ServerGameService = {
         const attackerPower = attackingUnit.power || 0;
 
         if (attackerPower > defenderPower) {
-          await ServerGameService.destroyUnit(gameState, defenderId, defendingUnit.gamecardId);
-          gameState.logs.push(`${attackingUnit.fullName} 破坏了 ${defendingUnit.fullName}`);
+          if (!gameState.battleState.resolvedUnitIds.includes(defendingUnit.gamecardId)) {
+            const destroyed = await ServerGameService.destroyUnit(gameState, defenderId, defendingUnit.gamecardId);
+            if (destroyed !== false) {
+              gameState.logs.push(`${attackingUnit.fullName} 破坏了 ${defendingUnit.fullName}`);
+              gameState.battleState.resolvedUnitIds.push(defendingUnit.gamecardId);
 
-          // Annihilation Effect
-          if (attackingUnit.isAnnihilation) {
-            gameState.logs.push(`【歼灭】效果触发！${attackingUnit.fullName} 对对手造成额外伤害`);
-            ServerGameService.applyDamageToPlayer(gameState, defenderId, attackingUnit.damage || 0, 'BATTLE');
+              // Annihilation Effect
+              if (attackingUnit.isAnnihilation) {
+                gameState.logs.push(`【歼灭】效果触发！${attackingUnit.fullName} 对对手造成额外伤害`);
+                ServerGameService.applyDamageToPlayer(gameState, defenderId, attackingUnit.damage || 0, 'BATTLE');
+              }
+            }
+            if (destroyed === undefined) return gameState; // Wait for substitution choice
           }
         } else if (attackerPower < defenderPower) {
-          await ServerGameService.destroyUnit(gameState, attackerId, attackingUnit.gamecardId);
-          gameState.logs.push(`${defendingUnit.fullName} 破坏了 ${attackingUnit.fullName}`);
+          if (!gameState.battleState.resolvedUnitIds.includes(attackingUnit.gamecardId)) {
+            const destroyed = await ServerGameService.destroyUnit(gameState, attackerId, attackingUnit.gamecardId);
+            if (destroyed !== false) {
+              gameState.logs.push(`${defendingUnit.fullName} 破坏了 ${attackingUnit.fullName}`);
+              gameState.battleState.resolvedUnitIds.push(attackingUnit.gamecardId);
+            }
+            if (destroyed === undefined) return gameState; // Wait for substitution choice
+          }
         } else {
-          await ServerGameService.destroyUnit(gameState, attackerId, attackingUnit.gamecardId);
-          await ServerGameService.destroyUnit(gameState, defenderId, defendingUnit.gamecardId);
-          gameState.logs.push(`${attackingUnit.fullName} 和 ${defendingUnit.fullName} 同归于尽`);
+          // Mutual destruction
+          const alreadyA = gameState.battleState.resolvedUnitIds.includes(attackingUnit.gamecardId);
+          const alreadyD = gameState.battleState.resolvedUnitIds.includes(defendingUnit.gamecardId);
 
-          // Annihilation Effect (Trigger only if attacker survived)
-          // Point c: When an attacking unit with annihilation effect is destroyed, the annihilation effect of this unit is not triggered
-          // In this case (mutual destruction), attacker is destroyed, so no Annihilation.
+          if (!alreadyA || !alreadyD) {
+            const destroyedA = alreadyA ? true : await ServerGameService.destroyUnit(gameState, attackerId, attackingUnit.gamecardId);
+            const destroyedD = alreadyD ? true : await ServerGameService.destroyUnit(gameState, defenderId, defendingUnit.gamecardId);
+
+            if (destroyedA !== false && !alreadyA) gameState.battleState.resolvedUnitIds.push(attackingUnit.gamecardId);
+            if (destroyedD !== false && !alreadyD) gameState.battleState.resolvedUnitIds.push(defendingUnit.gamecardId);
+
+            if (destroyedA !== false && destroyedD !== false) {
+              gameState.logs.push(`${attackingUnit.fullName} 和 ${defendingUnit.fullName} 同归于尽`);
+            }
+            if (destroyedA === undefined || destroyedD === undefined) return gameState; // Wait for substitution choice
+          }
         }
       } else {
         // Alliance combat
@@ -1531,59 +1624,56 @@ export const ServerGameService = {
           // If defender is destroyed (either by weakest or by total)
           const isDestroyed = defenderPower < Math.min(powerA, powerB) || (defenderPower >= Math.min(powerA, powerB) && defenderPower <= totalAttackerPower);
 
-          if (isDestroyed) {
-            await ServerGameService.destroyUnit(gameState, defenderId, defendingUnit.gamecardId);
-            gameState.logs.push(`${defendingUnit.fullName} 被联军破坏`);
+          if (isDestroyed && !gameState.battleState.resolvedUnitIds.includes(defendingUnit.gamecardId)) {
+            const destroyed = await ServerGameService.destroyUnit(gameState, defenderId, defendingUnit.gamecardId);
+            if (destroyed !== false) {
+              gameState.logs.push(`${defendingUnit.fullName} 被联军破坏`);
+              gameState.battleState.resolvedUnitIds.push(defendingUnit.gamecardId);
 
-            // Annihilation Effect for Alliances (Survivor only logic)
-            // Point d: When allied, only deal damage to units that have the effect of annihilating.
-            const survivors = attackingUnits.filter(u => {
-              // Check if unit survived. In alliance, units are destroyed below (lines 1052-1067)
-              // But resolveDamage logic is sequential. Wait, I should calculate survivors carefully.
-              const powerA = attackingUnits[0].power || 0;
-              const powerB = attackingUnits[1].power || 0;
-              const totalAttackerPower = powerA + powerB;
+              // Annihilation Effect for Alliances (Survivor only logic)
+              const survivors = attackingUnits.filter(u => {
+                const isUnitA = u.gamecardId === attackingUnits[0].gamecardId;
+                const isUnitB = u.gamecardId === attackingUnits[1].gamecardId;
 
-              const isUnitA = u.gamecardId === attackingUnits[0].gamecardId;
-              const isUnitB = u.gamecardId === attackingUnits[1].gamecardId;
+                if (defenderPower < Math.min(powerA, powerB)) return true; // Both survive
+                if (defenderPower > totalAttackerPower) return false; // Both destroyed
 
-              // Determination of survival based on rules:
-              if (defenderPower < Math.min(powerA, powerB)) return true; // Both survive
-              if (defenderPower > totalAttackerPower) return false; // Both destroyed
+                if (powerA <= powerB) return isUnitB;
+                else return isUnitA;
+              });
 
-              // If power is between:
-              if (powerA <= powerB) {
-                // Unit A (weaker) is destroyed
-                return isUnitB;
-              } else {
-                // Unit B (weaker) is destroyed
-                return isUnitA;
+              const annihilators = survivors.filter(u => u.isAnnihilation);
+              if (annihilators.length > 0) {
+                const totalAnnihilationDamage = annihilators.reduce((sum, u) => sum + (u.damage || 0), 0);
+                gameState.logs.push(`【歼灭】效果触发！幸存的联军单位造成额外伤害 (${totalAnnihilationDamage})`);
+                ServerGameService.applyDamageToPlayer(gameState, defenderId, totalAnnihilationDamage, 'BATTLE');
               }
-            });
-
-            const annihilators = survivors.filter(u => u.isAnnihilation);
-            if (annihilators.length > 0) {
-              const totalAnnihilationDamage = annihilators.reduce((sum, u) => sum + (u.damage || 0), 0);
-              gameState.logs.push(`【歼灭】效果触发！幸存的联军单位造成额外伤害 (${totalAnnihilationDamage})`);
-              ServerGameService.applyDamageToPlayer(gameState, defenderId, totalAnnihilationDamage, 'BATTLE');
             }
+            if (destroyed === undefined) return gameState;
           }
         }
 
-        if (gameState.phase === 'SHENYI_CHOICE') {
-          // If a player entered Goddess Mode during damage resolution, we handle it after battle cleanup
-          gameState.previousPhase = 'MAIN';
-        } else {
-          gameState.phase = 'MAIN';
-        }
+        // Phase transition delayed until resolution of all damage and current triggers (at bottom of function)
 
         if (defenderPower < Math.min(powerA, powerB)) {
           // Already handled above for destruction
         } else if (defenderPower > totalAttackerPower) {
           // Both attackers destroyed
-          await ServerGameService.destroyUnit(gameState, attackerId, attackingUnits[0].gamecardId);
-          await ServerGameService.destroyUnit(gameState, attackerId, attackingUnits[1].gamecardId);
-          gameState.logs.push(`联军被 ${defendingUnit.fullName} 击溃，两个单位都被破坏`);
+          const already0 = gameState.battleState.resolvedUnitIds.includes(attackingUnits[0].gamecardId);
+          const already1 = gameState.battleState.resolvedUnitIds.includes(attackingUnits[1].gamecardId);
+
+          if (!already0 || !already1) {
+            const res1 = already0 ? true : await ServerGameService.destroyUnit(gameState, attackerId, attackingUnits[0].gamecardId);
+            const res2 = already1 ? true : await ServerGameService.destroyUnit(gameState, attackerId, attackingUnits[1].gamecardId);
+
+            if (res1 !== false && !already0) gameState.battleState.resolvedUnitIds.push(attackingUnits[0].gamecardId);
+            if (res2 !== false && !already1) gameState.battleState.resolvedUnitIds.push(attackingUnits[1].gamecardId);
+
+            if (res1 !== false && res2 !== false) {
+              gameState.logs.push(`联军被 ${defendingUnit.fullName} 击溃，两个单位都被破坏`);
+            }
+            if (res1 === undefined || res2 === undefined) return gameState;
+          }
         } else {
           // Defender power is between min and total
           if (powerA < defenderPower && powerB < defenderPower) {
@@ -1610,8 +1700,14 @@ export const ServerGameService = {
           } else {
             // Only one is lower (or equal) -> Lower one destroyed automatically
             const unitToDestroy = powerA <= powerB ? attackingUnits[0] : attackingUnits[1];
-            await ServerGameService.destroyUnit(gameState, attackerId, unitToDestroy.gamecardId);
-            gameState.logs.push(`${defendingUnit.fullName} 抵挡了联军，${unitToDestroy.fullName} 被破坏`);
+            if (!gameState.battleState.resolvedUnitIds.includes(unitToDestroy.gamecardId)) {
+              const destroyed = await ServerGameService.destroyUnit(gameState, attackerId, unitToDestroy.gamecardId);
+              if (destroyed !== false) {
+                gameState.logs.push(`${defendingUnit.fullName} 抵挡了联军，${unitToDestroy.fullName} 被破坏`);
+                gameState.battleState.resolvedUnitIds.push(unitToDestroy.gamecardId);
+              }
+              if (destroyed === undefined) return gameState;
+            }
           }
         }
       }
@@ -1626,6 +1722,13 @@ export const ServerGameService = {
     // Process triggers while still in DAMAGE_CALCULATION and with valid battleState
     await ServerGameService.checkTriggeredEffects(gameState);
 
+    // Now set phase back to MAIN or SHENYI if triggered
+    if (gameState.phase !== 'SHENYI_CHOICE') {
+      gameState.phase = 'MAIN';
+      gameState.phaseTimerStart = Date.now();
+      gameState.logs.push(`${attacker.displayName} 主要阶段 (战斗结算后)`);
+    }
+
     // After all triggers are checked, see if we need to enter Shenyi choice
     if (gameState.pendingShenyi && !gameState.pendingQuery) {
       gameState.previousPhase = gameState.phase === 'DAMAGE_CALCULATION' ? 'MAIN' : gameState.phase;
@@ -1634,11 +1737,11 @@ export const ServerGameService = {
     }
 
     if (gameState.phase !== 'SHENYI_CHOICE' && gameState.phase !== 'DAMAGE_CALCULATION') {
-       // Phase might have been changed by a trigger, otherwise move to MAIN
+      // Phase might have been changed by a trigger, otherwise move to MAIN
     } else if (gameState.phase === 'DAMAGE_CALCULATION') {
-       gameState.phase = 'MAIN';
+      gameState.phase = 'MAIN';
     }
-    
+
     gameState.battleState = undefined;
     gameState.phaseTimerStart = Date.now();
     await ServerGameService.checkTriggeredEffects(gameState);
@@ -1648,40 +1751,47 @@ export const ServerGameService = {
   applyDamageToPlayer(gameState: GameState, playerId: string, damage: number, source: 'BATTLE' | 'EFFECT' = 'BATTLE') {
     const player = gameState.players[playerId];
 
-    // 2. The cards in the damaged deck do not have enough damage value
-    if (player.deck.length < damage) {
-      gameState.logs.push(`[游戏结束] ${player.displayName} 的卡组中没有足够的卡牌来承受 ${damage} 点伤害，判负。`);
+    let finalAmount = damage;
+    let finalDestination: TriggerLocation = 'EROSION_FRONT';
+
+    if (player.isGoddessMode) {
+      finalAmount *= 2;
+      finalDestination = 'GRAVE';
+      gameState.logs.push(`[女神化状态] ${player.displayName} 受到的伤害翻倍并直接进入墓地！`);
+    }
+
+    if (player.deck.length < finalAmount) {
+      gameState.logs.push(`[游戏结束] ${player.displayName} 的卡组中没有足够的卡牌来承受 ${finalAmount} 点伤害，判负。`);
       gameState.gameStatus = 2;
       gameState.winReason = source === 'BATTLE' ? 'DECK_OUT_BATTLE_DAMAGE' : 'DECK_OUT_EFFECT_DAMAGE';
       gameState.winnerId = gameState.playerIds.find(id => id !== playerId);
       return;
     }
 
-    for (let i = 0; i < damage; i++) {
+    for (let i = 0; i < finalAmount; i++) {
       let card = player.deck.pop()!;
-      let destination: TriggerLocation = 'EROSION_FRONT';
+      let loopDestination = finalDestination;
 
-      // Check for movement substitution (e.g. 10401041)
-      if (card.effects) {
+      // Check for movement substitution (e.g. 10401041) - Only if not already forced to Grave by Goddess mode
+      if (loopDestination === 'EROSION_FRONT' && card.effects) {
         for (const effect of card.effects) {
           if (effect.type === 'CONTINUOUS' && effect.movementReplacementDestination) {
             if (!effect.condition || effect.condition(gameState, player, card)) {
               gameState.logs.push(`[替换效果] ${card.fullName} 的移动目的地从 EROSION_FRONT 被替换为 ${effect.movementReplacementDestination}`);
-              destination = effect.movementReplacementDestination;
+              loopDestination = effect.movementReplacementDestination;
               break;
             }
           }
         }
       }
 
-      if (destination === 'EROSION_FRONT') {
+      if (loopDestination === 'EROSION_FRONT') {
         card.cardlocation = 'EROSION_FRONT';
         card.displayState = 'FRONT_UPRIGHT';
-        // Find empty spot in erosionFront
         const emptyIdx = player.erosionFront.findIndex(c => c === null);
         if (emptyIdx !== -1) player.erosionFront[emptyIdx] = card;
         else player.erosionFront.push(card);
-      } else if (destination === 'UNIT') {
+      } else if (loopDestination === 'UNIT') {
         card.cardlocation = 'UNIT';
         card.displayState = 'FRONT_UPRIGHT';
         card.playedTurn = gameState.turnCount;
@@ -1689,33 +1799,20 @@ export const ServerGameService = {
         if (emptyIdx !== -1) player.unitZone[emptyIdx] = card;
         else player.unitZone.push(card);
         EventEngine.handleCardEnteredZone(gameState, playerId, card, 'UNIT', true);
+      } else if (loopDestination === 'GRAVE') {
+        card.cardlocation = 'GRAVE';
+        card.displayState = 'FRONT_UPRIGHT';
+        player.grave.push(card);
       }
 
-      // Check for goddess mode
+      // Check for goddess mode transformation
       const totalErosion = player.erosionFront.filter(c => c !== null).length + player.erosionBack.filter(c => c !== null).length;
       if (totalErosion >= 10 && !player.isGoddessMode) {
-        player.isGoddessMode = true;
-        gameState.logs.push(`${player.displayName} 进入了女神化状态！`);
-
-        EventEngine.dispatchEvent(gameState, {
-          type: 'GODDESS_TRANSFORMATION',
-          playerUid: playerId
-        });
-
-        // Shenyi Effect (Interactive)
-        const shenyiUnits = player.unitZone.filter(u => u && u.isShenyi && !u.usedShenyiThisTurn && (u.isExhausted || u.displayState.includes('EXHAUSTED')));
-        if (shenyiUnits.length > 0) {
-          gameState.pendingShenyi = {
-            playerUid: playerId,
-            cardIds: shenyiUnits.map(u => u!.gamecardId)
-          };
-          gameState.priorityPlayerId = playerId;
-          // Phase transition delayed until resolution of all damage and current triggers
-          gameState.logs.push(`${player.displayName} 进入女神化，满足【神依】触发条件。`);
-        }
+        ServerGameService.triggerGoddessTransformation(gameState, playerId);
+        // Note: doubling and direct grave destination apply only to damage received thereafter.
       }
 
-      // If more than 10, excess to grave
+      // If more than 10 (non-goddess or legacy check), excess to grave
       const currentTotal = player.erosionFront.filter(c => c !== null).length;
       if (currentTotal > 10) {
         const lastIdx = player.erosionFront.length - 1;
@@ -1728,21 +1825,44 @@ export const ServerGameService = {
       }
     }
 
-    // Check 10 erosion back condition just in case (though it's mostly in moveCard)
     ServerGameService.checkWinConditions(gameState);
   },
 
-  async destroyUnit(gameState: GameState, playerId: string, gamecardId: string, isEffect: boolean = false, sourcePlayerId?: string, skipSubstitution: boolean = false) {
+  triggerGoddessTransformation(gameState: GameState, playerId: string) {
+    const player = gameState.players[playerId];
+    if (player.isGoddessMode) return;
+
+    player.isGoddessMode = true;
+    gameState.logs.push(`${player.displayName} 进入了女神化状态！`);
+
+    EventEngine.dispatchEvent(gameState, {
+      type: 'GODDESS_TRANSFORMATION',
+      playerUid: playerId
+    });
+
+    // Shenyi Effect (Interactive)
+    const shenyiUnits = player.unitZone.filter(u => u && u.isShenyi && !u.usedShenyiThisTurn && (u.isExhausted || u.displayState.includes('EXHAUSTED')));
+    if (shenyiUnits.length > 0) {
+      gameState.pendingShenyi = {
+        playerUid: playerId,
+        cardIds: shenyiUnits.map(u => u!.gamecardId)
+      };
+      gameState.priorityPlayerId = playerId;
+      gameState.logs.push(`${player.displayName} 进入女神化，满足【神依】触发条件。`);
+    }
+  },
+
+  async destroyUnit(gameState: GameState, playerId: string, gamecardId: string, isEffect: boolean = false, sourcePlayerId?: string, skipSubstitution: boolean = false): Promise<boolean | undefined> {
     const player = gameState.players[playerId];
     let unitIdx = player.unitZone.findIndex(c => c?.gamecardId === gamecardId);
     let zone: 'UNIT' | 'ITEM' = 'UNIT';
-    
+
     if (unitIdx === -1) {
       unitIdx = player.itemZone.findIndex(c => c?.gamecardId === gamecardId);
-      if (unitIdx === -1) return;
+      if (unitIdx === -1) return false;
       zone = 'ITEM';
     }
-    
+
     const unit = zone === 'UNIT' ? player.unitZone[unitIdx]! : player.itemZone[unitIdx]!;
 
     // Check for Substitution effects
@@ -1771,24 +1891,24 @@ export const ServerGameService = {
             callbackKey: 'SUBSTITUTION_CHOICE',
             context: { subCardId: subCard.gamecardId, targetUnitId: gamecardId, isEffect, sourcePlayerId }
           };
-
-          return;
+          return undefined; // Indicates pending choice
         }
       }
     }
 
     // Detect fromZone
+    // Detect fromZone
     let fromZone: TriggerLocation = 'UNIT';
-    if (player.itemZone.some(c => c?.gamecardId === unitId)) {
+    if (player.itemZone.some(c => c?.gamecardId === gamecardId)) {
       fromZone = 'ITEM';
-    } else if (player.erosionFront.some(c => c?.gamecardId === unitId)) {
+    } else if (player.erosionFront.some(c => c?.gamecardId === gamecardId)) {
       fromZone = 'EROSION_FRONT';
-    } else if (player.erosionBack.some(c => c?.gamecardId === unitId)) {
+    } else if (player.erosionBack.some(c => c?.gamecardId === gamecardId)) {
       fromZone = 'EROSION_BACK';
     }
 
     // Default destruction using standard moveCard
-    ServerGameService.moveCard(gameState, playerId, fromZone, playerId, 'GRAVE', unitId, { isEffect });
+    ServerGameService.moveCard(gameState, playerId, fromZone, playerId, 'GRAVE', gamecardId, { isEffect });
 
     // Ensure movement events are dispatched
     EventEngine.handleCardLeftZone(gameState, playerId, unit, zone, isEffect, 'GRAVE');
@@ -1812,7 +1932,8 @@ export const ServerGameService = {
         }
       });
     }
-    ServerGameService.checkBattleInterruption(gameState);
+    await ServerGameService.checkTriggeredEffects(gameState);
+    return true; // Successfully destroyed
   },
 
   async discardCard(gameState: GameState, playerId: string, cardId: string) {
@@ -1965,15 +2086,17 @@ export const ServerGameService = {
       }
     }
 
+    // Verify attackers exist in their respective owner's zones
     const attackersFound = gameState.battleState.attackers.filter(id => {
-      return turnPlayer.unitZone.some(c => c && c.gamecardId === id);
+      // Check both players since turn order might have shifted or an out-of-turn attack could occur
+      return Object.values(gameState.players).some(p => p.unitZone.some(c => c && c.gamecardId === id));
     });
 
     const allAttackersGone = attackersFound.length === 0;
 
     if (defenderGone || allAttackersGone) {
       gameState.logs.push(`[战斗中止] ${defenderGone ? '防御/目标单位' : '所有攻击单位'}已离开字段，战斗中止。`);
-      
+
       const inConfrontation = gameState.isResolvingStack || (gameState.counterStack && gameState.counterStack.length > 0) || gameState.isCountering > 0;
 
       if (inConfrontation) {
@@ -2126,9 +2249,9 @@ export const ServerGameService = {
     const elapsed = now - (gameState.phaseTimerStart || now);
     const sharedPhases: GamePhase[] = ['MAIN', 'BATTLE_DECLARATION', 'BATTLE_FREE'];
     const isWaiting = (gameState.counterStack && gameState.counterStack.length > 0) ||
-      (gameState.battleState && gameState.battleState.askConfront) || 
-      gameState.isResolvingStack || 
-      gameState.currentProcessingItem || 
+      (gameState.battleState && gameState.battleState.askConfront) ||
+      gameState.isResolvingStack ||
+      gameState.currentProcessingItem ||
       gameState.pendingQuery;
 
     if (sharedPhases.includes(gameState.phase) && !isWaiting) {
@@ -2549,7 +2672,7 @@ export const ServerGameService = {
         type: 'TURN_END' as any,
         playerUid: player.uid
       });
-      
+
       // Check if any triggers were added to the queue
       if (gameState.triggeredEffectsQueue && gameState.triggeredEffectsQueue.length > 0) {
         await ServerGameService.checkTriggeredEffects(gameState);
@@ -2930,7 +3053,7 @@ export const ServerGameService = {
     if (gameState.phase === 'MAIN') {
       // Sequentially play all possible cards from hand
       for (const card of bot.hand) {
-        const canPlay = ServerGameService.canPlayCard(bot, card);
+        const canPlay = ServerGameService.canPlayCard(gameState, bot, card);
         if (canPlay.canPlay) {
           try {
             await ServerGameService.playCard(gameState, 'BOT_PLAYER', card.gamecardId, {});
@@ -3170,3 +3293,4 @@ export const ServerGameService = {
 
 // Link shared service to server-side implementation
 (GameService as any).destroyUnit = ServerGameService.destroyUnit;
+(GameService as any).triggerGoddessTransformation = ServerGameService.triggerGoddessTransformation;

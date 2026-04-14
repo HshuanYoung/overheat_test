@@ -1443,7 +1443,7 @@ export const BattleField: React.FC = () => {
                 const canPlayInPhase = isMainTurn || isBattleFreeTurn || (isCounteringTurn && cardMenu.card.type === 'STORY');
 
                 if (cardMenu.zone === 'hand' && canPlayInPhase) {
-                  const check = GameService.canPlayCard(me, cardMenu.card);
+                  const check = GameService.canPlayCard(game, me, cardMenu.card);
                   if (check.canPlay) {
                     return (
                       <motion.button
@@ -2139,9 +2139,22 @@ export const BattleField: React.FC = () => {
                     CANCEL
                   </button>
                 </div>
+              ) : game.pendingQuery.type.replace(/-/g, '_').toUpperCase() === 'SELECT_CHOICE' ? (
+                <div className="flex gap-4 mt-4 w-full justify-center flex-wrap max-w-2xl px-12">
+                  {game.pendingQuery.options.map((option, i) => (
+                    <button
+                      key={i}
+                      onClick={() => GameService.submitQueryChoice(gameId!, game.pendingQuery!.id, [option.id || option.card?.gamecardId || ''])}
+                      className="px-10 py-5 bg-zinc-900/80 backdrop-blur-md text-white border-2 border-white/10 font-black italic uppercase tracking-[0.15em] rounded-2xl hover:bg-[#f27d26] hover:text-black hover:border-transparent transition-all hover:scale-105 active:scale-95 shadow-[0_10px_30px_rgba(0,0,0,0.5)] group relative overflow-hidden"
+                    >
+                      <div className="absolute inset-0 bg-gradient-to-tr from-white/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+                      <span className="relative z-10">{option.label || option.card?.fullName || option.id}</span>
+                    </button>
+                  ))}
+                </div>
               ) : null}
 
-              {game.pendingQuery.type.replace(/-/g, '_').toUpperCase() !== 'ASK_TRIGGER' && (
+              {!['ASK_TRIGGER', 'SELECT_CHOICE'].includes(game.pendingQuery.type.replace(/-/g, '_').toUpperCase()) && (
                 <div className="flex flex-col items-center gap-6">
                   <button
                     onClick={handleQuerySubmit}

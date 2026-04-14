@@ -22,7 +22,7 @@ const card: Card = {
       limitCount: 1,
       limitNameType: true,
       description: '【同名回合1次】只能在你的主要阶段发动。在本回合发动过这个效果的回合，你只能打出「冒险家工会」的卡牌，以及发动「冒险家工会」卡牌的效果。选择你的2张卡正面向上的摆放进入侵蚀区，随后抽3张卡。',
-      condition: (gameState, playerState) => {
+      condition: (gameState, playerState, card) => {
         if (gameState.phase !== 'MAIN') return false;
         
         if (playerState.factionsUsedThisTurn && playerState.factionsUsedThisTurn.length > 0) {
@@ -31,13 +31,16 @@ const card: Card = {
           }
         }
 
-        return playerState.hand.length >= 2;
+        const handExcludingSelf = playerState.hand.filter(c => c.gamecardId !== card.gamecardId);
+        return handExcludingSelf.length >= 2;
       },
       execute: async (card, gameState, playerState) => {
         playerState.factionLock = '冒险家工会';
         gameState.logs.push(`[张贴委托] 效果生效：本回合进入「冒险家工会」派系限制状态。`);
 
-        const handOptions = playerState.hand.map(c => ({ card: c, source: 'HAND' as any }));
+        // Important: card is already in PLAY zone, but just in case, we filter hand again
+        const handExcludingSelf = playerState.hand.filter(c => c.gamecardId !== card.gamecardId);
+        const handOptions = handExcludingSelf.map(c => ({ card: c, source: 'HAND' as any }));
 
         gameState.pendingQuery = {
           id: Math.random().toString(36).substring(7),

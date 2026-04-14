@@ -16,6 +16,23 @@ const findCardInUnitZone = (gameState: GameState, gamecardId: string): Card | un
   return undefined;
 };
 
+const moveAndShiftToErosionBack = (player: PlayerState, targetCard: Card) => {
+  // 1. Remove from Front
+  const frontIdx = player.erosionFront.findIndex(c => c?.gamecardId === targetCard.gamecardId);
+  if (frontIdx !== -1) player.erosionFront[frontIdx] = null;
+
+  // 2. State update
+  targetCard.displayState = 'BACK_UPRIGHT';
+  targetCard.cardlocation = 'EROSION_BACK';
+
+  // 3. Shift Back Erosion backwards
+  // Move 0->1, 1->2... 8->9. Slot 9 is overwritten if any.
+  for (let i = 9; i > 0; i--) {
+    player.erosionBack[i] = player.erosionBack[i - 1];
+  }
+  player.erosionBack[0] = targetCard;
+};
+
 const universalEquipEffect: CardEffect = {
   id: 'equip_universal',
   type: 'ACTIVATED',
@@ -105,8 +122,8 @@ const goddessTriggerEffect: CardEffect = {
     const opponentUid = Object.keys(gameState.players).find(uid => uid !== playerState.uid);
     if (event.playerUid !== opponentUid) return false;
 
-    // 3. Check if current phase is damage calculation (caused by attack)
-    if (gameState.phase !== 'DAMAGE_CALCULATION') return false;
+    // 3. Check if current phase is damage calculation (caused by attack) or just transitioned to MAIN
+    if (gameState.phase !== 'DAMAGE_CALCULATION' && gameState.phase !== 'MAIN' && gameState.phase !== 'BATTLE_FREE') return false;
 
     // 4. Check if equipped unit is in attackers
     if (!card.equipTargetId || !gameState.battleState?.attackers.includes(card.equipTargetId)) return false;
@@ -126,12 +143,8 @@ const goddessTriggerEffect: CardEffect = {
 
     if (frontalCards.length === 1) {
       const targetCard = frontalCards[0];
-      await AtomicEffectExecutor.execute(gameState, opponentUid, {
-        type: 'TURN_EROSION_FACE_DOWN',
-        value: 1
-      }, card, undefined, [targetCard.gamecardId]);
-      
-      gameState.logs.push(`[效果] ${opponent.displayName} 的侵蚀卡 [${targetCard.fullName}] 已翻为背面。`);
+      moveAndShiftToErosionBack(opponent, targetCard);
+      gameState.logs.push(`[效果] ${opponent.displayName} 的侵蚀卡 [${targetCard.fullName}] 已由于 ${card.fullName} 的效果移动到侵蚀区背面。`);
     } else {
       gameState.pendingQuery = {
         id: Math.random().toString(36).substring(7),
@@ -152,13 +165,18 @@ const goddessTriggerEffect: CardEffect = {
   },
   onQueryResolve: async (card, gameState, playerState, selections) => {
     const opponentUid = Object.keys(gameState.players).find(uid => uid !== playerState.uid)!;
+    const opponent = gameState.players[opponentUid];
     
-    await AtomicEffectExecutor.execute(gameState, opponentUid, {
-       type: 'TURN_EROSION_FACE_DOWN',
-       value: selections.length
-    }, card, undefined, selections);
+    // Explicitly flip and move selected cards
+    selections.forEach(sid => {
+      const c = opponent.erosionFront.find(card => card?.gamecardId === sid);
+      if (c) {
+        moveAndShiftToErosionBack(opponent, c);
+        gameState.logs.push(`[系统] ${opponent.displayName} 的卡片 [${c.fullName}] 移动到侵蚀区背面 (雅典娜效果)`);
+      }
+    });
 
-    gameState.logs.push(`[效果] ${gameState.players[opponentUid].displayName} 的侵蚀卡已翻为背面。`);
+    gameState.logs.push(`[效果] ${gameState.players[opponentUid].displayName} 的侵蚀卡已成功翻为背面。`);
   }
 };
 

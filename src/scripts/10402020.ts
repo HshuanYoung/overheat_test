@@ -62,7 +62,7 @@ const effect_10402020_activate: CardEffect = {
   limitGlobal: true,
   limitNameType: true,
   condition: (gameState: GameState, playerState: PlayerState) => {
-    return playerState.isTurn && playerState.isGoddessMode && playerState.erosionFront.filter(c => c !== null).length >= 2;
+    return !!playerState.isGoddessMode && playerState.erosionFront.filter(c => c !== null).length >= 2;
   },
   execute: async (instance: Card, gameState: GameState, playerState: PlayerState) => {
     // 1. Cost: Select 2 from Erosion Front
@@ -124,7 +124,7 @@ const effect_10402020_activate: CardEffect = {
         const target = AtomicEffectExecutor.findCardById(gameState, id)!;
         const owner = AtomicEffectExecutor.findCardOwnerKey(gameState, id)!;
         const sourceZone = target.cardlocation as TriggerLocation;
-        
+
         let type: any = 'MOVE_FROM_FIELD';
         if (sourceZone === 'ITEM') type = 'MOVE_FROM_FIELD'; // Atomic handles both in MOVE_FROM_FIELD usually, or I should check implementation
 
@@ -136,21 +136,94 @@ const effect_10402020_activate: CardEffect = {
       }
       gameState.logs.push(`[${instance.fullName}] 使 ${selections.length} 张卡牌回到了手牌。`);
 
-      // 3. Self damage - Note: current execute DEAL_EFFECT_DAMAGE targets opponent. 
-      // For self-damage, we might need a direct call if execute doesn't support target player override,
-      // but to stay async-safe we should at least update AtomicEffectExecutor or use a workaround.
-      // Since the goal is async-safety, let's assume we want damage to be awaited.
-      // I'll use a direct dealDamage call but we should ideally standardize this in AtomicEffectExecutor.
-      // For now, I'll keep it as is but mark for potential improvement if dealDamage becomes async.
-      // Actually, I can use execute with a special flag or just await the manual logic if I make it async.
-      
-      // I'll check dealDamage again. It's sync. 
-      // To strictly follow the "standardize on execute" rule:
-      // await AtomicEffectExecutor.execute(gameState, playerState.uid, { type: 'DEAL_EFFECT_DAMAGE_SELF', value: 2 }, instance);
-      // But that type doesn't exist.
-      
-      // I'll just keep the manual call but wrap in promise if needed? No, it's sync.
-      (AtomicEffectExecutor as any).dealDamage(gameState, playerState.uid, playerState.uid, 2, 'EFFECT');
+       // Self damage
+       await AtomicEffectExecutor.execute(gameState, playerState.uid, {
+         type: 'DEAL_EFFECT_DAMAGE_SELF',
+         value: 2
+       }, instance);
+     }
+   }
+ };
+
+const effect_10402020_activate_play: CardEffect = {
+  id: 'aketi_play_from_erosion',
+  type: 'ACTIVATE',
+  triggerLocation: ['EROSION_FRONT'],
+  description: '【起】此卡在侵蚀区域正面时：可以支付AC值使用这张卡。',
+  condition: (gameState, playerState, instance) => {
+    // 1. Basic Turn/Phase/Space check
+    if (!playerState.isTurn || gameState.phase !== 'MAIN' || !playerState.unitZone.some(u => u === null)) return false;
+
+    // 2. Same Name Check (Unique Unit)
+    if (instance.specialName && playerState.unitZone.some(u => u?.specialName === instance.specialName)) return false;
+
+    // 3. Color Requirement Check
+    const availableColors: Record<string, number> = { BLUE: 0, RED: 0, WHITE: 0, YELLOW: 0, GREEN: 0 };
+    let omniCount = 0;
+    playerState.unitZone.forEach(c => {
+      if (!c) return;
+      const isOmni = String(c.id) === '10500055' || (c.effects && c.effects.some(e => e.id === '10500055_omni'));
+      if (isOmni) {
+        omniCount++;
+      } else if (c.color !== 'NONE') {
+        availableColors[c.color] = (availableColors[c.color] || 0) + 1;
+      }
+    });
+
+    let totalDeficit = 0;
+    for (const [color, req] of Object.entries(instance.colorReq || {})) {
+      totalDeficit += Math.max(0, (req as number) - (availableColors[color] || 0));
+    }
+    if (totalDeficit > omniCount) return false;
+
+    // 4. Cost Sufficiency Check (AC Value vs Erosion Capacity)
+    let remainingCost = instance.acValue;
+    const hasFeijing = playerState.hand.some(c => c.feijingMark && c.color === instance.color);
+    if (hasFeijing) remainingCost = Math.max(0, remainingCost - 3);
+
+    const readyUnitsCount = playerState.unitZone.filter(u => u && !u.isExhausted).length;
+    remainingCost = Math.max(0, remainingCost - readyUnitsCount);
+
+    if (remainingCost > 0) {
+      const currentErosionCount = playerState.erosionFront.filter(c => c !== null).length +
+        playerState.erosionBack.filter(c => c !== null).length;
+      if (currentErosionCount + remainingCost >= 10) return false;
+    }
+
+    return true;
+  },
+  cost: async (gameState, playerState, instance) => {
+    // Collect potential payment sources (Erosion Front cards)
+    const available = playerState.erosionFront.filter(c => c !== null);
+
+    gameState.pendingQuery = {
+      id: Math.random().toString(36).substring(7),
+      type: 'SELECT_PAYMENT',
+      playerUid: playerState.uid,
+      paymentCost: instance.acValue,
+      paymentColor: instance.color,
+      options: AtomicEffectExecutor.enrichQueryOptions(gameState, playerState.uid, available.map(c => ({ card: c, source: 'EROSION_FRONT' }))),
+      title: '支付发动代价',
+      description: `支付 ${instance.acValue} 点费用以将此卡从侵蚀区域置入战场。`,
+      minSelections: 1,
+      maxSelections: 1,
+      callbackKey: 'EFFECT_RESOLVE',
+      context: {
+        effectId: 'aketi_play_from_erosion',
+        sourceCardId: instance.gamecardId,
+        step: 'COST'
+      }
+    };
+    return true;
+  },
+  onQueryResolve: async (instance, gameState, playerState, selections, context) => {
+    if (context.step === 'COST') {
+      await AtomicEffectExecutor.execute(gameState, playerState.uid, {
+        type: 'MOVE_FROM_EROSION',
+        targetFilter: { gamecardId: instance.gamecardId },
+        destinationZone: 'UNIT'
+      }, instance);
+      gameState.logs.push(`[${instance.fullName}] 通过支付费用从侵蚀区域进入了战场。`);
     }
   }
 };
@@ -176,10 +249,10 @@ const card: Card = {
   canAttack: true,
   feijingMark: false,
   canResetCount: 0,
-  allowPlayFromErosionFront: true,
   effects: [
     effect_10402020_trigger,
-    effect_10402020_activate
+    effect_10402020_activate,
+    effect_10402020_activate_play
   ],
   rarity: 'SR',
   availableRarities: ['SR'],

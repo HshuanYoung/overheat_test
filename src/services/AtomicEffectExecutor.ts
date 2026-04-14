@@ -9,9 +9,10 @@ export class AtomicEffectExecutor {
    */
   static enrichQueryOptions(gameState: GameState, viewerUid: string, options: any[]): any[] {
     return options.map(opt => {
+      if (!opt.card) return opt;
       const cardId = opt.card.gamecardId;
       let cardOwner: PlayerState | undefined;
-      
+
       // Special handles for player-as-card selection
       if (cardId === 'PLAYER_SELF') {
         return {
@@ -124,7 +125,7 @@ export class AtomicEffectExecutor {
       case 'MOVE_FROM_FIELD':
         this.moveCards(gameState, playerUid, effect, effect.destinationZone || 'HAND', 'UNIT', sourceCard, querySelections);
         break;
-      
+
       case 'MOVE_FROM_GRAVE':
         this.moveCards(gameState, playerUid, effect, effect.destinationZone || 'HAND', 'GRAVE', sourceCard, querySelections);
         break;
@@ -153,13 +154,13 @@ export class AtomicEffectExecutor {
       case 'CHANGE_GOD_MARK':
         this.applyStatChange(gameState, effect, 'godMark', sourceCard, querySelections);
         break;
-      
+
       case 'SET_CAN_RESET_COUNT':
         this.setCanResetCount(gameState, effect, sourceCard, querySelections);
         break;
 
       case 'DEAL_EFFECT_DAMAGE':
-        if (effect.value) this.dealDamage(gameState, opponentUid, playerUid, effect.value, 'EFFECT');
+        if (effect.value) this.dealDamage(gameState, opponentUid, playerUid, effect.value, 'EFFECT', effect.destinationZone);
         break;
 
       case 'DEAL_COMBAT_DAMAGE':
@@ -193,14 +194,14 @@ export class AtomicEffectExecutor {
         {
           const targets = this.findTargets(gameState, effect.targetFilter, sourceCard, querySelections);
           targets.forEach(c => {
-             const ownerUid = this.findCardOwnerKey(gameState, c.gamecardId) || playerUid;
-             this.moveCard(gameState, ownerUid, c.cardlocation as any, ownerUid, 'PLAY', c.gamecardId, true);
-             EventEngine.dispatchEvent(gameState, {
-               type: 'CARD_PLAYED',
-               sourceCard: c,
-               playerUid: ownerUid,
-               sourceCardId: c.gamecardId
-             });
+            const ownerUid = this.findCardOwnerKey(gameState, c.gamecardId) || playerUid;
+            this.moveCard(gameState, ownerUid, c.cardlocation as any, ownerUid, 'PLAY', c.gamecardId, true);
+            EventEngine.dispatchEvent(gameState, {
+              type: 'CARD_PLAYED',
+              sourceCard: c,
+              playerUid: ownerUid,
+              sourceCardId: c.gamecardId
+            });
           });
         }
         break;
@@ -219,6 +220,10 @@ export class AtomicEffectExecutor {
 
       case 'IMMUNE_UNIT_EFFECTS':
         this.applyUnitImmunity(gameState, effect, sourceCard, querySelections);
+        break;
+
+      case 'DEAL_EFFECT_DAMAGE_SELF':
+        if (effect.value) this.dealDamage(gameState, playerUid, playerUid, effect.value, 'EFFECT', effect.destinationZone);
         break;
 
       default:
@@ -295,7 +300,7 @@ export class AtomicEffectExecutor {
     const targets = this.findTargets(gameState, effect.targetFilter, sourceCard, querySelections);
     targets.forEach(card => {
       if (this.shouldSkipEffect(gameState, card)) return;
-      
+
       if (effect.value !== undefined) {
         if (stat === 'power') {
           if (effect.turnDuration === 0 || effect.turnDuration === -1) {
@@ -323,7 +328,7 @@ export class AtomicEffectExecutor {
     });
   }
 
-  private static dealDamage(gameState: GameState, targetPlayerUid: string, dealerPlayerUid: string, amount: number, source: 'BATTLE' | 'EFFECT') {
+  private static dealDamage(gameState: GameState, targetPlayerUid: string, dealerPlayerUid: string, amount: number, source: 'BATTLE' | 'EFFECT', destination?: TriggerLocation) {
     const player = gameState.players[targetPlayerUid];
     const dealer = gameState.players[dealerPlayerUid];
 
@@ -332,7 +337,17 @@ export class AtomicEffectExecutor {
       finalAmount += dealer.effectDamageModifier;
     }
 
-    // Loss condition: Insufficient deck for damage
+    // New Goddess Mode Rules: 
+    // 1. Damage is doubled
+    // 2. Damage goes to Graveyard instead of Erosion
+    let finalDestination = destination || 'EROSION_FRONT';
+    if (player.isGoddessMode) {
+      finalAmount *= 2;
+      finalDestination = 'GRAVE';
+      gameState.logs.push(`[女神化状态] ${player.displayName} 受到的伤害翻倍并直接进入墓地！`);
+    }
+
+    // Loss condition check
     if (player.deck.length < finalAmount) {
       if (gameState.gameStatus !== 2) {
         gameState.gameStatus = 2;
@@ -348,32 +363,59 @@ export class AtomicEffectExecutor {
     for (let i = 0; i < finalAmount; i++) {
       const card = player.deck.pop()!;
       card.displayState = 'FRONT_UPRIGHT';
-      card.cardlocation = 'EROSION_FRONT';
-      const emptyIndex = player.erosionFront.findIndex(c => c === null);
-      if (emptyIndex !== -1) player.erosionFront[emptyIndex] = card;
-      else player.erosionFront.push(card);
+      card.cardlocation = finalDestination;
+      
+      if (finalDestination === 'EROSION_FRONT') {
+        const emptyIndex = player.erosionFront.findIndex(c => c === null);
+        if (emptyIndex !== -1) player.erosionFront[emptyIndex] = card;
+        else player.erosionFront.push(card);
+      } else if (finalDestination === 'GRAVE') {
+        player.grave.push(card);
+      } else if (finalDestination === 'HAND') {
+        player.hand.push(card);
+      }
+
+      // Check for goddess transformation during resolution
+      const totalErosion = player.erosionFront.filter(c => c !== null).length + player.erosionBack.filter(c => c !== null).length;
+      if (totalErosion >= 10 && !player.isGoddessMode) {
+        (GameService as any).triggerGoddessTransformation(gameState, targetPlayerUid);
+        // Note: doubling and direct grave destination apply only to damage received thereafter.
+      }
+    }
+
+    // Post-loop cleanup: Excess erosion front cards to Grave
+    const currentTotal = player.erosionFront.filter(c => c !== null).length;
+    if (currentTotal > 10) {
+      for (let j = 10; j < player.erosionFront.length; j++) {
+        const excessCard = player.erosionFront[j];
+        if (excessCard) {
+          excessCard.cardlocation = 'GRAVE';
+          player.grave.push(excessCard);
+          player.erosionFront[j] = null;
+        }
+      }
     }
 
     EventEngine.dispatchEvent(gameState, {
       type: source === 'BATTLE' ? 'COMBAT_DAMAGE_CAUSED' : 'EFFECT_DAMAGE_CAUSED',
       playerUid: targetPlayerUid,
-      data: { amount: finalAmount }
+      data: { amount: finalAmount, destination: finalDestination }
     });
   }
 
   private static async destroyCards(gameState: GameState, playerUid: string, effect: AtomicEffect, sourceCard?: Card, querySelections?: string[]) {
     const targets = this.findTargets(gameState, effect.targetFilter, sourceCard, querySelections);
     const finalTargets = effect.targetCount ? targets.slice(0, effect.targetCount) : targets;
-     
+
     for (const card of finalTargets) {
       if (this.shouldSkipEffect(gameState, card)) continue;
-      
+
       // Find which player owns the card
       for (const pUid of Object.keys(gameState.players)) {
         const p = gameState.players[pUid];
         if (p.unitZone.some(c => c?.gamecardId === card.gamecardId) ||
           p.itemZone.some(c => c?.gamecardId === card.gamecardId)) {
-          
+
           // Use ServerGameService.destroyUnit for proper logic/substitution
           await GameService.destroyUnit(gameState, pUid, card.gamecardId, true, playerUid);
           break;
@@ -389,7 +431,7 @@ export class AtomicEffectExecutor {
 
     finalTargets.forEach(card => {
       if (this.shouldSkipEffect(gameState, card)) return;
-      
+
       // Find current zone and OWNER
       const currentZone = card.cardlocation as TriggerLocation;
 
@@ -417,7 +459,7 @@ export class AtomicEffectExecutor {
     const targets = this.findTargets(gameState, effect.targetFilter, sourceCard, querySelections);
     targets.forEach(card => {
       if (this.shouldSkipEffect(gameState, card)) return;
-      
+
       card.isExhausted = direction === 'HORIZONTAL';
       EventEngine.dispatchEvent(gameState, { type: 'CARD_ROTATED', targetCardId: card.gamecardId, data: { direction } });
     });
@@ -446,7 +488,7 @@ export class AtomicEffectExecutor {
     const targets = this.findTargets(gameState, effect.targetFilter, sourceCard, querySelections);
     targets.forEach(card => {
       if (this.shouldSkipEffect(gameState, card)) return;
-      
+
       card.canResetCount = effect.value || 0;
       const ownerUid = this.findCardOwnerKey(gameState, card.gamecardId) || '';
       const identity = getCardIdentity(gameState, ownerUid, card);
@@ -458,7 +500,7 @@ export class AtomicEffectExecutor {
     const targets = this.findTargets(gameState, effect.targetFilter, sourceCard, querySelections);
     targets.forEach(card => {
       if (this.shouldSkipEffect(gameState, card)) return;
-      
+
       // logic to negate card effects
       const ownerUid = this.findCardOwnerKey(gameState, card.gamecardId) || '';
       const identity = getCardIdentity(gameState, ownerUid, card);
@@ -503,7 +545,7 @@ export class AtomicEffectExecutor {
 
     // Robust check for 10500055 (string/number safe)
     const isOmni = String(card.id) === '10500055' || (card.effects && card.effects.some(e => e.id === '10500055_omni'));
-    
+
     if (isOmni && ['UNIT', 'EROSION_FRONT'].includes(card.cardlocation as string)) {
       return true;
     }
@@ -606,7 +648,7 @@ export class AtomicEffectExecutor {
     }
 
     if (!card) return;
-    
+
     // Movement Replacement logic (e.g. 10401041)
     if (isEffect && (toZone === 'HAND' || toZone === 'DECK' || toZone === 'EROSION_FRONT' || toZone === 'EROSION_BACK')) {
       if (card.effects) {
@@ -660,7 +702,7 @@ export class AtomicEffectExecutor {
     if (to === 'EROSION_FRONT') {
       EventEngine.dispatchEvent(gameState, { type: 'CARD_TO_EROSION_FRONT', playerUid, sourceCardId: card.gamecardId });
     }
-    
+
     if (from === 'DECK' && to === 'EROSION_FRONT') {
       EventEngine.dispatchEvent(gameState, { type: 'CARD_DECK_TO_EROSION_UP', playerUid, sourceCardId: card.gamecardId });
     } else if (from === 'EROSION_FRONT' && ['UNIT', 'ITEM'].includes(to)) {
@@ -678,23 +720,41 @@ export class AtomicEffectExecutor {
 
   private static turnErosionFaceDown(gameState: GameState, playerUid: string, count: number, sourceCard?: Card, querySelections?: string[]) {
     const player = gameState.players[playerUid];
-    
-    // If we have specific targets selected, use them. Otherwise use the general logic.
-    let targets: (Card | null)[] = [];
+
+    // 1. Identify Target Cards
+    let targets: Card[] = [];
     if (querySelections && querySelections.length > 0) {
       targets = this.findTargets(gameState, { querySelection: true }, sourceCard, querySelections);
     } else {
-      const faceUpCards = [...player.erosionFront, ...player.erosionBack]
-        .filter(c => c !== null && c.displayState === 'FRONT_UPRIGHT');
+      const faceUpCards = player.erosionFront.filter(c => c !== null && c.displayState === 'FRONT_UPRIGHT') as Card[];
       targets = faceUpCards.slice(0, count);
     }
-    targets.forEach(card => {
-      if (card) {
-        card.displayState = 'BACK_UPRIGHT';
+
+    // 2. Flip and Move Each Card
+    targets.forEach(targetCard => {
+      if (!targetCard) return;
+
+      // a. Remove from current spot in Front
+      const frontIdx = player.erosionFront.findIndex(c => c?.gamecardId === targetCard.gamecardId);
+      if (frontIdx !== -1) player.erosionFront[frontIdx] = null;
+
+      // b. Update Card State
+      targetCard.displayState = 'BACK_UPRIGHT';
+      targetCard.cardlocation = 'EROSION_BACK';
+
+      // c. Shift existing back cards (Move 0->1, 1->2... up to 9)
+      for (let i = 9; i > 0; i--) {
+        player.erosionBack[i] = player.erosionBack[i - 1];
       }
+      // d. Place at slot 0
+      player.erosionBack[0] = targetCard;
+
+      gameState.logs.push(`[系统] ${player.displayName} 的卡片 [${targetCard.fullName}] 已由于效果移动到侵蚀区背面。`);
     });
 
-    gameState.logs.push(`${player.displayName} 将 ${targets.length} 张侵蚀区的卡翻面。`);
+    if (targets.length > 0) {
+      gameState.logs.push(`${player.displayName} 将 ${targets.length} 张侵蚀区的卡翻面并转至背面区域。`);
+    }
   }
 
   private static applySilence(gameState: GameState, effect: AtomicEffect, sourceCard?: Card, querySelections?: string[]) {

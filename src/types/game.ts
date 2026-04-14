@@ -86,7 +86,8 @@ export type AtomicEffectType =
   | 'EXECUTE_CARD_EFFECTS'
   | 'PAY_CARD_COST'
   | 'CHANGE_CAN_ACTIVATE'
-  | 'IMMUNE_UNIT_EFFECTS';
+  | 'IMMUNE_UNIT_EFFECTS'
+  | 'DEAL_EFFECT_DAMAGE_SELF';
 
 export interface CardFilter {
   id?: string;
@@ -278,11 +279,13 @@ export interface StackItem {
 
 export interface EffectQuery {
   id: string; // Unique ID for this query to match response
-  type: 'SELECT_CARD' | 'SELECT_PAYMENT' | 'ASK_TRIGGER';
+  type: 'SELECT_CARD' | 'SELECT_PAYMENT' | 'ASK_TRIGGER' | 'SELECT_CHOICE';
   playerUid: string;
   options: {
-    card: Card;
-    source: TriggerLocation;
+    id?: string;
+    label?: string;
+    card?: Card;
+    source?: TriggerLocation;
     ownerName?: string;
     isMine?: boolean;
   }[];
@@ -357,6 +360,7 @@ export interface GameState {
     isAlliance: boolean;
     askConfront?: 'ASKING_OPPONENT' | 'ASKING_TURN_PLAYER';
     defensePowerRestriction?: number;
+    resolvedUnitIds?: string[];
   };
   effectUsage?: Record<string, number>;
   phaseTimerStart?: number;

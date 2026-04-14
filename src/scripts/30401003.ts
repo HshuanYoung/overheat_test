@@ -62,7 +62,7 @@ const equip_30401003: CardEffect = {
       card.equipTargetId = selectedId;
       const targetUnit = playerState.unitZone.find(u => u?.gamecardId === selectedId);
       gameState.logs.push(`[效果] ${card.fullName} 装备到了 ${targetUnit?.fullName || '未知单位'}`);
-      
+
       // Update substitution filter to protect the host
       if (subEffect) {
         subEffect.substitutionFilter = { gamecardId: selectedId, onField: true };
@@ -76,14 +76,6 @@ const applyContinuousBonus = (gameState: GameState, card: Card) => {
   if (card.equipTargetId) {
     const target = findCardInUnitZone(gameState, card.equipTargetId);
     if (target) {
-      target.power = (target.power || 0) + 1000;
-      target.damage = (target.damage || 0) + 1;
-
-      if (!target.influencingEffects) target.influencingEffects = [];
-      target.influencingEffects.push({
-        sourceCardName: card.fullName,
-        description: '使其力量值增加1000，伤害值增加1'
-      });
     } else {
       card.equipTargetId = undefined;
       const subEffect = card.effects?.find(e => e.id === '30401003_substitution');
@@ -96,7 +88,8 @@ const trigger_30401003_destroy: CardEffect = {
   id: '30401003_destroy_trigger',
   type: 'TRIGGER',
   description: '当此卡被破坏时（包含代破离场），从你侵蚀前区选择一张名称含有「剑仙」的卡牌加入手牌。',
-  triggerEvent: 'CARD_LEFT_FIELD',
+  triggerEvent: 'CARD_LEFT_ZONE',
+  triggerLocation: ['GRAVE'],
   isMandatory: true,
   condition: (gameState, playerState, instance, event) => {
     return event?.sourceCardId === instance.gamecardId && instance.cardlocation === 'GRAVE';
@@ -161,7 +154,7 @@ const card: Card = {
     {
       id: 'continuous_bonus',
       type: 'CONTINUOUS',
-      description: '装备此卡的单位：伤害+1，力量+1000。',
+      description: '装备此卡时相关逻辑处理',
       applyContinuous: applyContinuousBonus
     },
     trigger_30401003_destroy

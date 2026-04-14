@@ -86,8 +86,13 @@ export const GameService = {
   },
 
   // --- Local UI Utilities ---
-  canPlayCard(player: any, card: Card): { canPlay: boolean; reason?: string } {
+  canPlayCard(gameState: GameState | null, player: any, card: Card): { canPlay: boolean; reason?: string } {
     if (!player || !card) return { canPlay: false };
+
+    // 0. Faction Lock Check
+    if (player.factionLock && card.faction !== player.factionLock) {
+      return { canPlay: false, reason: `受到派系限制：只能打出 [${player.factionLock}] 派系的卡牌` };
+    }
 
     // 1. Zone Checks
     if (card.type === 'UNIT') {
@@ -106,7 +111,7 @@ export const GameService = {
           .flatMap((u: any) => u.effects || []);
         
         const fieldLimitEffect = fieldEffects.find((e: any) => e.type === 'CONTINUOUS' && e.limitGodmarkCount !== undefined);
-        const selfLimitEffect = card.effects.find((e: any) => e.type === 'CONTINUOUS' && e.limitGodmarkCount !== undefined);
+        const selfLimitEffect = card.effects?.find((e: any) => e.type === 'CONTINUOUS' && e.limitGodmarkCount !== undefined);
         
         const effectiveLimit = fieldLimitEffect?.limitGodmarkCount ?? selfLimitEffect?.limitGodmarkCount;
         
@@ -189,11 +194,33 @@ export const GameService = {
     }
 
     // 4. Special Effect Limits (Erosion Back)
-    const playEffect = card.effects.find(e => e.type === 'ACTIVATE' || e.type === 'TRIGGER' || e.type === 'ALWAYS');
-    if (playEffect?.erosionBackLimit) {
-      const backCount = player.erosionBack.filter((c: any) => c !== null).length;
-      if (backCount < playEffect.erosionBackLimit[0] || backCount > playEffect.erosionBackLimit[1]) {
-        return { canPlay: false, reason: 'INVALID EROSION BACK COUNT' };
+    const playEffect = card.effects?.find(e => e.type === 'ACTIVATE' || e.type === 'TRIGGER' || e.type === 'ALWAYS');
+    if (playEffect) {
+      // Determine if this effect's conditions should block playing the card from hand
+      const isStory = card.type === 'STORY';
+      const isAlways = playEffect.type === 'ALWAYS';
+      const isHandTrigger = playEffect.type === 'TRIGGER' && playEffect.triggerLocation?.includes('HAND');
+
+      const shouldValidate = isStory || isAlways || isHandTrigger;
+
+      if (shouldValidate) {
+        if (playEffect.erosionBackLimit) {
+          const backCount = player.erosionBack.filter((c: any) => c !== null).length;
+          if (backCount < playEffect.erosionBackLimit[0] || backCount > playEffect.erosionBackLimit[1]) {
+            return { canPlay: false, reason: 'INVALID EROSION BACK COUNT' };
+          }
+        }
+
+        // Check condition (Frontend check only if no complex dependencies)
+        if (gameState && playEffect.condition) {
+          try {
+            if (!playEffect.condition(gameState, player, card)) {
+              return { canPlay: false, reason: '不满足发动条件' };
+            }
+          } catch (e) {
+            // If condition fails due to server-only data, we skip frontend enforcement
+          }
+        }
       }
     }
 
