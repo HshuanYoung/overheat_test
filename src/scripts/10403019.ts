@@ -11,10 +11,19 @@ const trigger_10403019_buff: CardEffect = {
   condition: (gameState: GameState, playerState: PlayerState, instance: Card, event?: GameEvent) => {
     return event?.sourceCardId === instance.gamecardId || event?.sourceCard === instance;
   },
-  execute: (instance: Card, gameState: GameState, playerState: PlayerState) => {
-    instance.power += 1000;
-    instance.damage += 1;
-    instance.isrush = true;
+  execute: async (instance: Card, gameState: GameState, playerState: PlayerState) => {
+    await AtomicEffectExecutor.execute(gameState, playerState.uid, {
+      type: 'CHANGE_POWER',
+      targetFilter: { gamecardId: instance.gamecardId },
+      value: 1000
+    }, instance);
+    await AtomicEffectExecutor.execute(gameState, playerState.uid, {
+      type: 'CHANGE_DAMAGE',
+      targetFilter: { gamecardId: instance.gamecardId },
+      value: 1
+    }, instance);
+    
+    instance.isrush = true; // Still manual for keywords as atomic might not have them yet
     gameState.logs.push(`[${instance.fullName}] 触发：从侵蚀区登场，获得+1/+1000与【速攻】。`);
   }
 };
@@ -29,7 +38,7 @@ const activate_10403019_swap: CardEffect = {
   condition: (gameState: GameState, playerState: PlayerState) => {
     return playerState.isTurn;
   },
-  cost: (gameState: GameState, playerState: PlayerState, instance: Card) => {
+  cost: async (gameState: GameState, playerState: PlayerState, instance: Card) => {
     const available = playerState.erosionFront.filter(c => c !== null);
     if (available.length < 1) return false;
 
@@ -53,14 +62,13 @@ const activate_10403019_swap: CardEffect = {
 
     return true; // Wait for selection
   },
-  execute: (instance: Card, gameState: GameState, playerState: PlayerState) => {
-    // This is called AFTER cost is resolved via ACTIVATE_COST_RESOLVE
-    // However, the cost selection itself is handled in onQueryResolve if we want sequential queries.
+  execute: async (instance: Card, gameState: GameState, playerState: PlayerState) => {
+    // Handled in onQueryResolve
   },
-  onQueryResolve: (instance: Card, gameState: GameState, playerState: PlayerState, selections: string[], context: any) => {
+  onQueryResolve: async (instance: Card, gameState: GameState, playerState: PlayerState, selections: string[], context: any) => {
     if (context.step === 'COST') {
       // 1. Move self to erosion front
-      AtomicEffectExecutor.execute(gameState, playerState.uid, {
+      await AtomicEffectExecutor.execute(gameState, playerState.uid, {
         type: 'MOVE_FROM_FIELD',
         targetFilter: { gamecardId: instance.gamecardId },
         destinationZone: 'EROSION_FRONT'
@@ -99,7 +107,7 @@ const activate_10403019_swap: CardEffect = {
       const targetId = selections[0];
       const targetCard = playerState.erosionFront.find(c => c?.gamecardId === targetId);
       if (targetCard) {
-        AtomicEffectExecutor.execute(gameState, playerState.uid, {
+        await AtomicEffectExecutor.execute(gameState, playerState.uid, {
           type: 'MOVE_FROM_EROSION',
           targetFilter: { gamecardId: targetId },
           destinationZone: 'UNIT'
@@ -118,7 +126,7 @@ const card: Card = {
   color: 'BLUE',
   gamecardId: null as any,
   colorReq: { 'BLUE': 1 },
-  faction: '九尾商会联盟',
+  faction: '冒险家公会',
   acValue: 2,
   power: 2000,
   basePower: 2000,

@@ -37,7 +37,7 @@ const card: Card = {
         
         return isOpponent && isItem;
       },
-      execute: (card, gameState, playerState) => {
+      execute: async (card, gameState, playerState) => {
         // When execute is called, 'failed_transaction' has been popped from the stack.
         // The item we are countering is now at the top of the counterStack.
         const targetItem = gameState.counterStack[gameState.counterStack.length - 1];
@@ -49,7 +49,7 @@ const card: Card = {
           // If it was a PLAY action (playing the card from hand), send it to grave
           if (targetItem.type === 'PLAY') {
             const ownerId = targetItem.ownerUid;
-            AtomicEffectExecutor.execute(gameState, ownerId, {
+            await AtomicEffectExecutor.execute(gameState, ownerId, {
               type: 'MOVE_FROM_FIELD', // Movement from PLAY zone is handled via MOVE_FROM_FIELD with appropriate target
               destinationZone: 'GRAVE',
               targetFilter: { gamecardId: targetItem.card.gamecardId }

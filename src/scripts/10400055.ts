@@ -53,16 +53,18 @@ const effect_10400055_trigger: CardEffect = {
       gameState.logs.push(`[${instance.fullName}] 未发现符合条件的横置卡牌。`);
     }
   },
-  onQueryResolve: (instance: Card, gameState: GameState, playerState: PlayerState, selections: string[]) => {
+  onQueryResolve: async (instance: Card, gameState: GameState, playerState: PlayerState, selections: string[]) => {
     if (selections.length > 0) {
       const targetId = selections[0];
       const target = AtomicEffectExecutor.findCardById(gameState, targetId);
-      const ownerUid = AtomicEffectExecutor.findCardOwnerKey(gameState, targetId);
-
-      if (target && ownerUid) {
-        const fromZone = target.cardlocation as TriggerLocation;
-        AtomicEffectExecutor.moveCard(gameState, ownerUid, fromZone, ownerUid, 'HAND', targetId, true);
-        gameState.logs.push(`[${instance.fullName}] 的效果使 [${target.fullName}] 返回了手牌。`);
+      if (target) {
+        const ownerUid = AtomicEffectExecutor.findCardOwnerKey(gameState, targetId)!;
+        await AtomicEffectExecutor.execute(gameState, ownerUid, {
+          type: 'MOVE_FROM_FIELD',
+          targetFilter: { gamecardId: targetId },
+          destinationZone: 'HAND'
+        }, instance);
+        gameState.logs.push(`[${instance.fullName}] 诱发效果：使对手的 [${target.fullName}] 返回了手牌。`);
       }
     }
   }

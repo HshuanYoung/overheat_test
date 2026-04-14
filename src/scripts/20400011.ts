@@ -10,7 +10,7 @@ const effect_20400011_activate: CardEffect = {
       p.unitZone.some(u => u && u.godMark)
     );
   },
-  execute: (instance: Card, gameState: GameState, playerState: PlayerState) => {
+  execute: async (instance: Card, gameState: GameState, playerState: PlayerState) => {
     const targets: Card[] = [];
     Object.values(gameState.players).forEach(p => {
       p.unitZone.forEach(u => {
@@ -36,13 +36,21 @@ const effect_20400011_activate: CardEffect = {
       }
     };
   },
-  onQueryResolve: (instance: Card, gameState: GameState, playerState: PlayerState, selections: string[]) => {
+  onQueryResolve: async (instance: Card, gameState: GameState, playerState: PlayerState, selections: string[]) => {
     const targetId = selections[0];
     const target = AtomicEffectExecutor.findCardById(gameState, targetId);
     if (target) {
-      target.isExhausted = true;
-      target.displayState = 'FRONT_HORIZONTAL';
-      target.canResetCount = 1;
+      await AtomicEffectExecutor.execute(gameState, playerState.uid, {
+        type: 'ROTATE_HORIZONTAL',
+        targetFilter: { gamecardId: targetId }
+      }, instance);
+
+      await AtomicEffectExecutor.execute(gameState, playerState.uid, {
+        type: 'SET_CAN_RESET_COUNT',
+        targetFilter: { gamecardId: targetId },
+        value: 1
+      }, instance);
+
       gameState.logs.push(`[${instance.fullName}] 效果：使 [${target.fullName}] 休息并进入冻结状态。`);
     }
   }

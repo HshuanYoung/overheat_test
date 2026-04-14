@@ -30,7 +30,7 @@ const card: Card = {
         });
         return found;
       },
-      execute: (card, gameState, playerState) => {
+      execute: async (card, gameState, playerState) => {
         const targets: Card[] = [];
         Object.values(gameState.players).forEach(p => {
           p.unitZone.forEach(u => {
@@ -59,19 +59,15 @@ const card: Card = {
           }
         };
       },
-      onQueryResolve: (card, gameState, playerState, selections) => {
+      onQueryResolve: async (card, gameState, playerState, selections) => {
         const targetId = selections[0];
-        let target: Card | undefined;
         
-        Object.values(gameState.players).forEach(p => {
-          const found = p.unitZone.find(u => u?.gamecardId === targetId);
-          if (found) target = found;
-        });
+        await AtomicEffectExecutor.execute(gameState, playerState.uid, {
+          type: 'ROTATE_HORIZONTAL',
+          targetFilter: { gamecardId: targetId }
+        }, card);
 
-        if (target) {
-          target.isExhausted = true;
-          gameState.logs.push(`[拳法训练] 将 ${target.fullName} 横置。`);
-        }
+        gameState.logs.push(`[拳法训练] 将单位横置。`);
       }
     }
   ],

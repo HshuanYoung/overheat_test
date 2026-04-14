@@ -4,6 +4,7 @@ import { EventEngine } from '../src/services/EventEngine';
 import { AtomicEffectExecutor } from '../src/services/AtomicEffectExecutor';
 import { getCardIdentity } from '../src/lib/utils';
 import { SERVER_CARD_LIBRARY } from './card_loader';
+import { GameService } from '../src/services/gameService';
 
 export const ServerGameService = {
   hydrateCard(card: Card | null) {
@@ -651,7 +652,7 @@ export const ServerGameService = {
     // 3. Payment/Cost Check
     if (effect.cost) {
       const player = gameState.players[playerId];
-      const costResult = effect.cost(gameState, player, card);
+      const costResult = await effect.cost(gameState, player, card);
 
       // If cost triggered a query, wait for it
       if (gameState.pendingQuery) {
@@ -790,7 +791,7 @@ export const ServerGameService = {
             // STORY card
             const effect = card.effects?.find(e => e.type === 'ALWAYS' || e.type === 'ACTIVATE' || e.type === 'ACTIVATED');
             if (effect && effect.execute) {
-              effect.execute(card, gameState, owner);
+              await (effect.execute as any)(card, gameState, owner);
               EventEngine.dispatchEvent(gameState, {
                 type: 'EFFECT_ACTIVATED',
                 playerUid: stackItem.ownerUid,
@@ -824,7 +825,7 @@ export const ServerGameService = {
 
               // Execute legacy callback
               if (effect.execute) {
-                effect.execute(card, gameState, owner);
+                await (effect.execute as any)(card, gameState, owner);
               }
 
               const identity = getCardIdentity(gameState, stackItem.ownerUid, card);
@@ -1033,7 +1034,7 @@ export const ServerGameService = {
       if (effect && effect.onQueryResolve) {
         try {
           gameState.logs.push(`[系统] 正在执行脚本回调 ${effect.id || effectIndex}`);
-          effect.onQueryResolve(sourceCard, gameState, gameState.players[playerUid], selections, query.context);
+          await (effect.onQueryResolve as any)(sourceCard, gameState, gameState.players[playerUid], selections, query.context);
           EventEngine.recalculateContinuousEffects(gameState);
         } catch (err: any) {
           console.error(`[Error] CRASH in onQueryResolve:`, err);
@@ -1068,7 +1069,7 @@ export const ServerGameService = {
       const effect = sourceCard.effects?.[effectIndex];
 
       if (effect && effect.onQueryResolve) {
-        effect.onQueryResolve(sourceCard, gameState, gameState.players[playerUid], selections, query.context);
+        await (effect.onQueryResolve as any)(sourceCard, gameState, gameState.players[playerUid], selections, query.context);
       }
 
       // If it was a trigger cost, execute immediately, otherwise enter countering
@@ -1228,7 +1229,7 @@ export const ServerGameService = {
           });
         } else {
           // IMMEDIATE resolution
-          AtomicEffectExecutor.execute(gameState, playerUid, effect, sourceCard, undefined, currentSelections);
+          await AtomicEffectExecutor.execute(gameState, playerUid, effect, sourceCard, undefined, currentSelections);
         }
       }
     }
@@ -1895,7 +1896,7 @@ export const ServerGameService = {
     // 1. Cost check (If needed and not skipped)
     if (effect.cost && !skipCost) {
       const player = gameState.players[playerUid];
-      const costResult = effect.cost(gameState, player, card);
+      const costResult = await effect.cost(gameState, player, card);
 
       if (gameState.pendingQuery) {
         // If query triggered by cost, we must wait
@@ -1951,7 +1952,7 @@ export const ServerGameService = {
 
     // 5. Execute Legacy Callback
     if (effect.execute) {
-      effect.execute(card, gameState, gameState.players[playerUid]);
+      await (effect.execute as any)(card, gameState, gameState.players[playerUid]);
     }
 
     // 6. Dispatch Event
@@ -3023,3 +3024,6 @@ export const ServerGameService = {
     return gameState;
   },
 };
+
+// Link shared service to server-side implementation
+(GameService as any).destroyUnit = ServerGameService.destroyUnit;

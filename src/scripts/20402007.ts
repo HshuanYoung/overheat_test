@@ -5,8 +5,7 @@ const effect_20402007_activate: CardEffect = {
   id: '20402007_activate',
   type: 'ACTIVATE',
   description: '选择以下效果之一发动：a.选择战场上一个非神位单位转为休息状态。b.选择单位区或道具区中一个处于休息状态的非神位卡牌返回持有者手牌。',
-  execute: (instance: Card, gameState: GameState, playerState: PlayerState) => {
-    // Mode selection using dummy cards
+  execute: async (instance: Card, gameState: GameState, playerState: PlayerState) => {
     const choiceOptions = [
       {
         card: {
@@ -49,11 +48,10 @@ const effect_20402007_activate: CardEffect = {
       }
     };
   },
-  onQueryResolve: (instance: Card, gameState: GameState, playerState: PlayerState, selections: string[], context: any) => {
+  onQueryResolve: async (instance: Card, gameState: GameState, playerState: PlayerState, selections: string[], context: any) => {
     if (context.step === 'CHOICE') {
       const mode = selections[0];
       if (mode === 'MODE_EXHAUST') {
-        // Mode A: Exhaust non-godmark unit
         const targets: Card[] = [];
         Object.values(gameState.players).forEach(p => {
           p.unitZone.forEach(u => {
@@ -82,7 +80,6 @@ const effect_20402007_activate: CardEffect = {
           gameState.logs.push(`[${instance.fullName}] 没有可供横置的有效目标。`);
         }
       } else if (mode === 'MODE_BOUNCE') {
-        // Mode B: Bounce horizontal non-godmark unit/item
         const targets: Card[] = [];
         Object.values(gameState.players).forEach(p => {
           p.unitZone.forEach(u => {
@@ -116,24 +113,19 @@ const effect_20402007_activate: CardEffect = {
       }
     } else if (context.step === 'TARGET_EXHAUST') {
       const targetId = selections[0];
-      const target = AtomicEffectExecutor.findCardById(gameState, targetId);
-      if (target) {
-        target.isExhausted = true;
-        target.displayState = 'FRONT_HORIZONTAL';
-        gameState.logs.push(`[${instance.fullName}] 效果：使 [${target.fullName}] 进入了休息状态。`);
-      }
+      await AtomicEffectExecutor.execute(gameState, playerState.uid, {
+        type: 'ROTATE_HORIZONTAL',
+        targetFilter: { gamecardId: targetId }
+      }, instance);
+      gameState.logs.push(`[${instance.fullName}] 效果：使单位进入了休息状态。`);
     } else if (context.step === 'TARGET_BOUNCE') {
       const targetId = selections[0];
-      const target = AtomicEffectExecutor.findCardById(gameState, targetId);
-      if (target) {
-        const ownerUid = AtomicEffectExecutor.findCardOwnerKey(gameState, targetId)!;
-        AtomicEffectExecutor.execute(gameState, playerState.uid, {
-          type: 'MOVE_FROM_FIELD',
-          targetFilter: { gamecardId: targetId },
-          destinationZone: 'HAND'
-        }, instance);
-        gameState.logs.push(`[${instance.fullName}] 效果：将 [${target.fullName}] 遣回了手牌。`);
-      }
+      await AtomicEffectExecutor.execute(gameState, playerState.uid, {
+        type: 'MOVE_FROM_FIELD',
+        targetFilter: { gamecardId: targetId },
+        destinationZone: 'HAND'
+      }, instance);
+      gameState.logs.push(`[${instance.fullName}] 效果：将卡牌遣回了手牌。`);
     }
   }
 };

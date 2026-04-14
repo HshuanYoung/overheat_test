@@ -37,7 +37,7 @@ const card: Card = {
 
         return guildCount >= 3;
       },
-      execute: (card, gameState, playerState) => {
+      execute: async (card, gameState, playerState) => {
         const opponentUid = Object.keys(gameState.players).find(uid => uid !== playerState.uid);
         if (!opponentUid) return;
         const opponent = gameState.players[opponentUid];
@@ -61,11 +61,11 @@ const card: Card = {
           };
         }
       },
-      onQueryResolve: (card, gameState, playerState, selections, context) => {
+      onQueryResolve: async (card, gameState, playerState, selections, context) => {
         if (selections.length > 0) {
           const targetId = selections[0];
 
-          AtomicEffectExecutor.execute(gameState, playerState.uid, {
+          await AtomicEffectExecutor.execute(gameState, playerState.uid, {
             type: 'DESTROY_CARD',
             targetFilter: { gamecardId: targetId }
           }, card);

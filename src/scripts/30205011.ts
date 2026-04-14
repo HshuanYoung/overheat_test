@@ -24,7 +24,7 @@ const universalEquipEffect: CardEffect = {
   limitNameType: false,
   triggerLocation: ['ITEM'],
   condition: (gameState) => gameState.phase === 'MAIN',
-  execute: (card, gameState, playerState) => {
+  execute: async (card, gameState, playerState) => {
     const currentHostId = card.equipTargetId;
     const options: any[] = [];
 
@@ -56,7 +56,7 @@ const universalEquipEffect: CardEffect = {
       }
     };
   },
-  onQueryResolve: (card, gameState, playerState, selections) => {
+  onQueryResolve: async (card, gameState, playerState, selections) => {
     const selectedId = selections[0];
     if (selectedId === card.gamecardId) {
       gameState.logs.push(`[效果] ${card.fullName} 已解除装备`);
@@ -113,7 +113,7 @@ const goddessTriggerEffect: CardEffect = {
 
     return true;
   },
-  execute: (card, gameState, playerState) => {
+  execute: async (card, gameState, playerState) => {
     const opponentUid = Object.keys(gameState.players).find(uid => uid !== playerState.uid)!;
     const opponent = gameState.players[opponentUid];
 
@@ -126,9 +126,12 @@ const goddessTriggerEffect: CardEffect = {
 
     if (frontalCards.length === 1) {
       const targetCard = frontalCards[0];
-      targetCard.displayState = 'FRONT_FACEDOWN';
+      await AtomicEffectExecutor.execute(gameState, opponentUid, {
+        type: 'TURN_EROSION_FACE_DOWN',
+        value: 1
+      }, card, undefined, [targetCard.gamecardId]);
+      
       gameState.logs.push(`[效果] ${opponent.displayName} 的侵蚀卡 [${targetCard.fullName}] 已翻为背面。`);
-      EventEngine.recalculateContinuousEffects(gameState);
     } else {
       gameState.pendingQuery = {
         id: Math.random().toString(36).substring(7),
@@ -147,19 +150,15 @@ const goddessTriggerEffect: CardEffect = {
       };
     }
   },
-  onQueryResolve: (card, gameState, playerState, selections) => {
+  onQueryResolve: async (card, gameState, playerState, selections) => {
     const opponentUid = Object.keys(gameState.players).find(uid => uid !== playerState.uid)!;
-    const opponent = gameState.players[opponentUid];
+    
+    await AtomicEffectExecutor.execute(gameState, opponentUid, {
+       type: 'TURN_EROSION_FACE_DOWN',
+       value: selections.length
+    }, card, undefined, selections);
 
-    selections.forEach(id => {
-      const targetCard = opponent.erosionFront.find(c => c?.gamecardId === id);
-      if (targetCard) {
-        targetCard.displayState = 'FRONT_FACEDOWN';
-        gameState.logs.push(`[效果] ${opponent.displayName} 的侵蚀卡 [${targetCard.fullName}] 已翻为背面。`);
-      }
-    });
-
-    EventEngine.recalculateContinuousEffects(gameState);
+    gameState.logs.push(`[效果] ${gameState.players[opponentUid].displayName} 的侵蚀卡已翻为背面。`);
   }
 };
 

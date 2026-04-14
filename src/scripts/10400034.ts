@@ -12,9 +12,9 @@ const activate_10400034_1: CardEffect = {
                         playerState.erosionBack.filter(c => c !== null).length;
     return erosionCount >= 4 && erosionCount <= 6;
   },
-  execute: (card, gameState, playerState) => {
+  execute: async (card, gameState, playerState) => {
     // 1. Draw 1
-    AtomicEffectExecutor.execute(gameState, playerState.uid, {
+    await AtomicEffectExecutor.execute(gameState, playerState.uid, {
       type: 'DRAW',
       value: 1
     }, card);
@@ -39,10 +39,10 @@ const activate_10400034_1: CardEffect = {
       };
     }
   },
-  onQueryResolve: (card, gameState, playerState, selections, context) => {
+  onQueryResolve: async (card, gameState, playerState, selections, context) => {
     if (context?.step === 'DISCARD') {
       const targetId = selections[0];
-      AtomicEffectExecutor.execute(gameState, playerState.uid, {
+      await AtomicEffectExecutor.execute(gameState, playerState.uid, {
         type: 'DISCARD_CARD',
         targetFilter: { gamecardId: targetId }
       }, card);

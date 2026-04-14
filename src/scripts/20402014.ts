@@ -5,11 +5,10 @@ const effect_20402014_activate: CardEffect = {
   id: '20402014_activate',
   type: 'ACTIVATE',
   description: '对手选择以下效果之一发动。若你在神依状态下发动，则由你代替对手进行选择：a.抽三张牌，选择其两张手牌，放置在侵蚀前区。b.选择一个横置单位并破坏。',
-  execute: (instance: Card, gameState: GameState, playerState: PlayerState) => {
+  execute: async (instance: Card, gameState: GameState, playerState: PlayerState) => {
     const opponentUid = Object.keys(gameState.players).find(uid => uid !== playerState.uid)!;
     const selectorUid = playerState.isGoddessMode ? playerState.uid : opponentUid;
 
-    // Mode Selection using dummies
     const options = [
       {
         card: {
@@ -54,7 +53,7 @@ const effect_20402014_activate: CardEffect = {
       }
     };
   },
-  onQueryResolve: (instance: Card, gameState: GameState, playerState: PlayerState, selections: string[], context: any) => {
+  onQueryResolve: async (instance: Card, gameState: GameState, playerState: PlayerState, selections: string[], context: any) => {
     const opponentUid = context.opponentUid;
     const selectorUid = context.selectorUid;
     const opponent = gameState.players[opponentUid];
@@ -62,16 +61,7 @@ const effect_20402014_activate: CardEffect = {
     if (context.step === 'CHOOSE_MODE') {
       const mode = selections[0];
       if (mode === 'MODE_A') {
-        // Mode A: Draw 3, then opponent chooses 2 hand cards to erosion
-        AtomicEffectExecutor.execute(gameState, playerState.uid, {
-          type: 'DRAW',
-          value: 3
-        }, instance); // Wait, text says "Draw three cards". Usually means the one WHOSE EFFECT it is? 
-        // Request says "Your opponent selects ... Draw three cards, choose his two hands". 
-        // Interpretation: Opponent draws 3, Opponent chooses 2 of HIS hands.
-        
-        // Let's perform the draw for the opponent
-        AtomicEffectExecutor.execute(gameState, opponentUid, {
+        await AtomicEffectExecutor.execute(gameState, opponentUid, {
           type: 'DRAW',
           value: 3
         }, instance);
@@ -80,7 +70,7 @@ const effect_20402014_activate: CardEffect = {
           gameState.pendingQuery = {
             id: Math.random().toString(36).substring(7),
             type: 'SELECT_CARD',
-            playerUid: opponentUid, // Always the opponent selects their own hand for erosion
+            playerUid: opponentUid, 
             options: opponent.hand.map(c => ({ card: c, source: 'HAND' as any })),
             title: '选择手牌放置到侵蚀区',
             description: '请选择 2 张手牌放置在侵蚀前区。',
@@ -94,7 +84,6 @@ const effect_20402014_activate: CardEffect = {
           };
         }
       } else if (mode === 'MODE_B') {
-        // Mode B: Select horizontal unit and destroy
         const targets: Card[] = [];
         Object.values(gameState.players).forEach(p => {
           p.unitZone.forEach(u => {
@@ -106,7 +95,7 @@ const effect_20402014_activate: CardEffect = {
           gameState.pendingQuery = {
             id: Math.random().toString(36).substring(7),
             type: 'SELECT_CARD',
-            playerUid: selectorUid, // Selector chooses target
+            playerUid: selectorUid, 
             options: AtomicEffectExecutor.enrichQueryOptions(gameState, selectorUid, targets.map(t => ({ card: t, source: 'UNIT' as any }))),
             title: '选择破坏目标',
             description: '请选择一个横置的单位。',
@@ -123,25 +112,21 @@ const effect_20402014_activate: CardEffect = {
         }
       }
     } else if (context.step === 'MODE_A_RECHARGE') {
-      selections.forEach(cid => {
-        AtomicEffectExecutor.execute(gameState, opponentUid, {
+      for (const cid of selections) {
+        await AtomicEffectExecutor.execute(gameState, opponentUid, {
           type: 'MOVE_FROM_HAND',
           targetFilter: { gamecardId: cid },
           destinationZone: 'EROSION_FRONT'
         }, instance);
-      });
-      gameState.logs.push(`[${instance.fullName}] 效果：${opponent.displayName} 将 2 张手牌充能。`);
+      }
+      gameState.logs.push(`[${instance.fullName}] 效果：充能已完成。`);
     } else if (context.step === 'MODE_B_DESTROY') {
       const targetId = selections[0];
-      const target = AtomicEffectExecutor.findCardById(gameState, targetId);
-      if (target) {
-        const targetOwnerUid = AtomicEffectExecutor.findCardOwnerKey(gameState, targetId)!;
-        AtomicEffectExecutor.execute(gameState, playerState.uid, {
-          type: 'DESTROY_CARD',
-          targetFilter: { gamecardId: targetId }
-        }, instance);
-        gameState.logs.push(`[${instance.fullName}] 效果：破坏了 [${target.fullName}]。`);
-      }
+      await AtomicEffectExecutor.execute(gameState, playerState.uid, {
+        type: 'DESTROY_CARD',
+        targetFilter: { gamecardId: targetId }
+      }, instance);
+      gameState.logs.push(`[${instance.fullName}] 效果：破坏已执行。`);
     }
   }
 };

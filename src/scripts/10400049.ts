@@ -30,11 +30,14 @@ const effect_10400049_activate: CardEffect = {
       }
     };
   },
-  onQueryResolve: (instance: Card, gameState: GameState, playerState: PlayerState, selections: string[], context: any) => {
+  onQueryResolve: async (instance: Card, gameState: GameState, playerState: PlayerState, selections: string[], context: any) => {
     if (context.step === 'COST' && selections.length > 0) {
       const discardId = selections[0];
       const pUid = playerState.uid;
-      AtomicEffectExecutor.moveCard(gameState, pUid, 'HAND', pUid, 'GRAVE', discardId, true);
+      await AtomicEffectExecutor.execute(gameState, pUid, {
+        type: 'DISCARD_CARD',
+        targetFilter: { gamecardId: discardId }
+      }, instance);
       gameState.logs.push(`[${instance.fullName}] 支付发动代价：弃置了一张手牌。`);
 
       // 2. Select 1 from Erosion Front
@@ -60,7 +63,11 @@ const effect_10400049_activate: CardEffect = {
     } else if (context.step === 'SALVAGE' && selections.length > 0) {
       const targetId = selections[0];
       const pUid = playerState.uid;
-      AtomicEffectExecutor.moveCard(gameState, pUid, 'EROSION_FRONT' as TriggerLocation, pUid, 'HAND', targetId, true);
+      await AtomicEffectExecutor.execute(gameState, pUid, {
+        type: 'MOVE_FROM_EROSION',
+        targetFilter: { gamecardId: targetId },
+        destinationZone: 'HAND'
+      }, instance);
       gameState.logs.push(`[${instance.fullName}] 激活效果：将侵蚀区域的一张卡牌回收至手牌。`);
     }
   }
@@ -105,12 +112,16 @@ const effect_10400049_trigger: CardEffect = {
       };
     }
   },
-  onQueryResolve: (instance: Card, gameState: GameState, playerState: PlayerState, selections: string[]) => {
+  onQueryResolve: async (instance: Card, gameState: GameState, playerState: PlayerState, selections: string[]) => {
     if (selections.length > 0) {
       const pUid = playerState.uid;
-      selections.forEach(targetId => {
-        AtomicEffectExecutor.moveCard(gameState, pUid, 'EROSION_FRONT' as TriggerLocation, pUid, 'HAND', targetId, true);
-      });
+      for (const targetId of selections) {
+        await AtomicEffectExecutor.execute(gameState, pUid, {
+          type: 'MOVE_FROM_EROSION',
+          targetFilter: { gamecardId: targetId },
+          destinationZone: 'HAND'
+        }, instance);
+      }
       gameState.logs.push(`[${instance.fullName}] 诱发效果：回收了 ${selections.length} 张侵蚀区域的卡牌。`);
     }
   }

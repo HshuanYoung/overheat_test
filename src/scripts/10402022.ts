@@ -33,7 +33,7 @@ const card: Card = {
       condition: (gameState, playerState) => {
         return playerState.hand.length > 0;
       },
-      execute: (card, gameState, playerState) => {
+      execute: async (card, gameState, playerState) => {
         // Step 1: Discard selection
         gameState.pendingQuery = {
           id: Math.random().toString(36).substring(7),
@@ -48,17 +48,17 @@ const card: Card = {
           context: { sourceCardId: card.gamecardId, effectIndex: 0, step: 1 }
         };
       },
-      onQueryResolve: (card, gameState, playerState, selections, context) => {
+      onQueryResolve: async (card, gameState, playerState, selections, context) => {
         const step = context?.step || 1;
 
         if (step === 1) {
           const discardId = selections[0];
           // Execute discard
-          AtomicEffectExecutor.execute(gameState, playerState.uid, {
+          await AtomicEffectExecutor.execute(gameState, playerState.uid, {
             type: 'DISCARD_CARD',
             targetFilter: { gamecardId: discardId }
           }, card);
-          gameState.logs.push(`${playerState.displayName} 舍弃了 ${discardId} 以触发效果。`);
+          gameState.logs.push(`${playerState.displayName} 舍弃了卡牌以触发效果。`);
 
           // Step 2: Target selection
           const minotaurs: any[] = [];
@@ -86,15 +86,15 @@ const card: Card = {
           }
         } else if (step === 2) {
           const targetId = selections[0];
-          let targetUnit: Card | undefined;
-
-          Object.values(gameState.players).forEach(p => {
-            const found = p.unitZone.find(u => u?.gamecardId === targetId);
-            if (found) targetUnit = found;
-          });
+          const targetUnit = AtomicEffectExecutor.findCardById(gameState, targetId);
 
           if (targetUnit) {
-            targetUnit.temporaryPowerBuff = (targetUnit.temporaryPowerBuff || 0) + 1000;
+            await AtomicEffectExecutor.execute(gameState, playerState.uid, {
+              type: 'CHANGE_POWER',
+              targetFilter: { gamecardId: targetId },
+              value: 1000,
+              turnDuration: 1
+            }, card);
             gameState.logs.push(`[牛头人保镖领队] 效果生效：${targetUnit.fullName} 获得了本回合力量+1000。`);
           }
         }

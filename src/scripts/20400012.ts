@@ -26,7 +26,7 @@ const card: Card = {
           p.unitZone.some(u => u !== null && u.playedTurn === gameState.turnCount)
         );
       },
-      execute: (card: Card, gameState: GameState, playerState: PlayerState) => {
+      execute: async (card: Card, gameState: GameState, playerState: PlayerState) => {
         const targets: Card[] = [];
         Object.values(gameState.players).forEach(p => {
           p.unitZone.forEach(u => {
@@ -57,7 +57,7 @@ const card: Card = {
           }
         };
       },
-      onQueryResolve: (card, gameState, playerState, selections) => {
+      onQueryResolve: async (card, gameState, playerState, selections) => {
         const targetId = selections[0];
 
         // Find target for log
@@ -67,7 +67,7 @@ const card: Card = {
           if (found) targetCard = found;
         });
 
-        AtomicEffectExecutor.execute(gameState, playerState.uid, {
+        await AtomicEffectExecutor.execute(gameState, playerState.uid, {
           type: 'MOVE_FROM_FIELD',
           destinationZone: 'HAND',
           targetFilter: { gamecardId: targetId }

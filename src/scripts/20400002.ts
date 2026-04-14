@@ -24,7 +24,7 @@ const card: Card = {
         return playerState.unitZone.some(c => c !== null);
       },
       description: '选择你战场上的一个单位返回持有者手牌。若返回的是「风花」单位，可以选择对方一个单位变为横置，且该单位在下一回合开始时无法变为纵置。',
-      execute: (card: Card, gameState: GameState, playerState: PlayerState) => {
+      execute: async (card: Card, gameState: GameState, playerState: PlayerState) => {
         const friendlyUnits = playerState.unitZone.filter(c => c !== null) as Card[];
         if (friendlyUnits.length === 0) {
           gameState.logs.push(`[歌月扬帆] 没有可选单位。`);
@@ -44,19 +44,18 @@ const card: Card = {
           context: { sourceCardId: card.gamecardId, effectIndex: 0, step: 1 }
         };
       },
-      onQueryResolve: (card, gameState, playerState, selections, context) => {
+      onQueryResolve: async (card, gameState, playerState, selections, context) => {
         const step = context?.step || 1;
-        const sourcePlayer = gameState.players[playerState.uid];
 
         if (step === 1) {
           const targetId = selections[0];
-          const target = sourcePlayer.unitZone.find(u => u?.gamecardId === targetId);
+          const target = AtomicEffectExecutor.findCardById(gameState, targetId);
           if (!target) return;
 
           const isFuhua = target.specialName === '风花';
           
           // Perform bounce
-          AtomicEffectExecutor.execute(gameState, playerState.uid, {
+          await AtomicEffectExecutor.execute(gameState, playerState.uid, {
             type: 'MOVE_FROM_FIELD',
             destinationZone: 'HAND',
             targetFilter: { gamecardId: targetId }
@@ -88,19 +87,19 @@ const card: Card = {
           }
         } else if (step === 2) {
           const targetId = selections[0];
-          let enemyTarget: Card | undefined;
-          Object.values(gameState.players).forEach(p => {
-             if (p.uid !== playerState.uid) {
-               const found = p.unitZone.find(u => u?.gamecardId === targetId);
-               if (found) enemyTarget = found;
-             }
-          });
+          
+          await AtomicEffectExecutor.execute(gameState, playerState.uid, {
+            type: 'ROTATE_HORIZONTAL',
+            targetFilter: { gamecardId: targetId }
+          }, card);
 
-          if (enemyTarget) {
-            enemyTarget.isExhausted = true;
-            enemyTarget.canResetCount = 1;
-            gameState.logs.push(`[歌月扬帆] 使对方单位 ${enemyTarget.fullName} 横置且下回合无法重置。`);
-          }
+          await AtomicEffectExecutor.execute(gameState, playerState.uid, {
+            type: 'SET_CAN_RESET_COUNT',
+            targetFilter: { gamecardId: targetId },
+            value: 1
+          }, card);
+
+          gameState.logs.push(`[歌月扬帆] 使对方单位进入横置且下回合无法重置。`);
         }
       }
     }

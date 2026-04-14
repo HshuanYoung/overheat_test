@@ -19,7 +19,7 @@ const trigger_10401012_1: CardEffect = {
     const blueCrystalCards = playerState.erosionFront.filter(c => c && c.feijingMark && c.displayState === 'FRONT_UPRIGHT');
     return blueCrystalCards.length > 0;
   },
-  execute: (instance: Card, gameState: GameState, playerState: PlayerState) => {
+  execute: async (instance: Card, gameState: GameState, playerState: PlayerState) => {
     const blueCrystalCards = playerState.erosionFront.filter(c => c && c.feijingMark && c.displayState === 'FRONT_UPRIGHT') as Card[];
 
     if (blueCrystalCards.length === 0) return;
@@ -41,15 +41,15 @@ const trigger_10401012_1: CardEffect = {
       }
     };
   },
-  onQueryResolve: (instance: Card, gameState: GameState, playerState: PlayerState, selections: string[], context: any) => {
+  onQueryResolve: async (instance: Card, gameState: GameState, playerState: PlayerState, selections: string[], context: any) => {
     if (context.step === 1) {
-      selections.forEach(targetId => {
-        AtomicEffectExecutor.execute(gameState, playerState.uid, {
+      for (const targetId of selections) {
+        await AtomicEffectExecutor.execute(gameState, playerState.uid, {
           type: 'MOVE_FROM_EROSION',
           targetFilter: { gamecardId: targetId },
           destinationZone: 'HAND'
         }, instance);
-      });
+      }
       gameState.logs.push(`[草泽医人] 效果：将 ${selections.length} 张卡从侵蚀前区加入手牌。`);
     }
   }

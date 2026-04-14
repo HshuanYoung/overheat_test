@@ -23,7 +23,7 @@ const trigger_10401011_1: CardEffect = {
     const targets = playerState.unitZone.filter(u => u && u.color === 'BLUE' && !u.godMark);
     return targets.length > 0;
   },
-  execute: (instance: Card, gameState: GameState, playerState: PlayerState) => {
+  execute: async (instance: Card, gameState: GameState, playerState: PlayerState) => {
     const targets = playerState.unitZone.filter(u => u && u.color === 'BLUE' && !u.godMark) as Card[];
 
     gameState.pendingQuery = {
@@ -43,7 +43,7 @@ const trigger_10401011_1: CardEffect = {
       }
     };
   },
-  onQueryResolve: (instance: Card, gameState: GameState, playerState: PlayerState, selections: string[], context: any) => {
+  onQueryResolve: async (instance: Card, gameState: GameState, playerState: PlayerState, selections: string[], context: any) => {
     if (context.step === 1) {
       const targetId = selections[0];
       const targetUnit = playerState.unitZone.find(u => u?.gamecardId === targetId);
@@ -93,9 +93,6 @@ const trigger_10401011_1: CardEffect = {
             description: '+1 伤害 / +1000 Power (诱发效果)'
           });
           
-          // Debug log to confirm application (only if not already logged in this state tick)
-          // Since applyContinuous runs many times, we avoid spamming logs here, 
-          // but the target object is definitely modified.
           break;
         }
       }

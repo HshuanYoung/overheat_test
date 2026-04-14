@@ -31,11 +31,14 @@ const effect_10403051_trigger: CardEffect = {
       }
     };
   },
-  onQueryResolve: (instance: Card, gameState: GameState, playerState: PlayerState, selections: string[], context: any) => {
+  onQueryResolve: async (instance: Card, gameState: GameState, playerState: PlayerState, selections: string[], context: any) => {
     if (context.step === 'ACTIVATE_CHOICE') {
       if (selections[0] === 'YES') {
         // 1. Exhaust self
-        instance.isExhausted = true;
+        await AtomicEffectExecutor.execute(gameState, playerState.uid, {
+          type: 'ROTATE_HORIZONTAL',
+          targetFilter: { gamecardId: instance.gamecardId }
+        }, instance);
         gameState.logs.push(`[${instance.fullName}] 进入战场并发动效果，转为横置状态。`);
 
         // 2. Select opponent unit to bounce
@@ -70,7 +73,13 @@ const effect_10403051_trigger: CardEffect = {
       const targetId = selections[0];
       const target = AtomicEffectExecutor.findCardById(gameState, targetId)!;
       const owner = AtomicEffectExecutor.findCardOwnerKey(gameState, targetId)!;
-      AtomicEffectExecutor.moveCard(gameState, owner, 'UNIT', owner, 'HAND', targetId, true);
+      
+      await AtomicEffectExecutor.execute(gameState, owner, {
+        type: 'MOVE_FROM_FIELD',
+        targetFilter: { gamecardId: targetId },
+        destinationZone: 'HAND'
+      }, instance);
+      
       gameState.logs.push(`[${instance.fullName}] 诱发效果：使对手的 [${target.fullName}] 返回了手牌。`);
     }
   }
@@ -99,10 +108,14 @@ const effect_10403051_activate: CardEffect = {
   execute: async (instance: Card, gameState: GameState, playerState: PlayerState) => {
     const pUid = playerState.uid;
     // 1. Move to Erosion Front
-    AtomicEffectExecutor.moveCard(gameState, pUid, 'HAND', pUid, 'EROSION_FRONT' as TriggerLocation, instance.gamecardId, true);
+    await AtomicEffectExecutor.execute(gameState, pUid, {
+      type: 'MOVE_FROM_HAND',
+      targetFilter: { gamecardId: instance.gamecardId },
+      destinationZone: 'EROSION_FRONT'
+    }, instance);
     
     // 2. Draw 1
-    await AtomicEffectExecutor.execute(gameState, pUid, { type: 'DRAW_CARD', targetCount: 1 } as any);
+    await AtomicEffectExecutor.execute(gameState, pUid, { type: 'DRAW', value: 1 }, instance);
     gameState.logs.push(`[${instance.fullName}] 进入侵蚀区域，并抽了一张牌。`);
   }
 };

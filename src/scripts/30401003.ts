@@ -18,7 +18,7 @@ const equip_30401003: CardEffect = {
   limitNameType: false,
   triggerLocation: ['ITEM'],
   condition: (gameState) => gameState.phase === 'MAIN',
-  execute: (card, gameState, playerState) => {
+  execute: async (card, gameState, playerState) => {
     const currentHostId = card.equipTargetId;
     const options: any[] = [];
 
@@ -47,7 +47,7 @@ const equip_30401003: CardEffect = {
       }
     };
   },
-  onQueryResolve: (card, gameState, playerState, selections) => {
+  onQueryResolve: async (card, gameState, playerState, selections) => {
     const selectedId = selections[0];
     const subEffect = card.effects?.find(e => e.id === '30401003_substitution');
 
@@ -101,7 +101,7 @@ const trigger_30401003_destroy: CardEffect = {
   condition: (gameState, playerState, instance, event) => {
     return event?.sourceCardId === instance.gamecardId && instance.cardlocation === 'GRAVE';
   },
-  execute: (instance, gameState, playerState) => {
+  execute: async (instance, gameState, playerState) => {
     const choices = playerState.erosionFront.filter(c => c && c.fullName.includes('剑仙')) as Card[];
     if (choices.length === 0) return;
 
@@ -121,16 +121,16 @@ const trigger_30401003_destroy: CardEffect = {
       }
     };
   },
-  onQueryResolve: (instance, gameState, playerState, selections) => {
+  onQueryResolve: async (instance, gameState, playerState, selections) => {
     const targetId = selections[0];
     const target = playerState.erosionFront.find(c => c?.gamecardId === targetId);
     if (target) {
-      AtomicEffectExecutor.execute(gameState, playerState.uid, {
+      await AtomicEffectExecutor.execute(gameState, playerState.uid, {
         type: 'MOVE_FROM_EROSION',
         targetFilter: { gamecardId: targetId },
         destinationZone: 'HAND'
       }, instance);
-      gameState.logs.push(`[${instance.fullName}] 触发：将「剑仙」卡牌 [${target.fullName}] 回收至手牌。`);
+      gameState.logs.push(`[${instance.fullName}] 触发：将「剑仙」卡牌回收至手牌。`);
     }
   }
 };

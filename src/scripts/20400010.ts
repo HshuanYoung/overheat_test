@@ -33,7 +33,7 @@ const effect_20400010_activation: CardEffect = {
       gameState.logs.push(`[${instance.fullName}] 未发现可用目标，施加失败。`);
     }
   },
-  onQueryResolve: (instance: Card, gameState: GameState, playerState: PlayerState, selections: string[]) => {
+  onQueryResolve: async (instance: Card, gameState: GameState, playerState: PlayerState, selections: string[]) => {
     if (selections.length > 0) {
       const targetId = selections[0];
       const target = AtomicEffectExecutor.findCardById(gameState, targetId);

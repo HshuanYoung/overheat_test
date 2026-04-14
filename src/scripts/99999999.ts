@@ -31,17 +31,13 @@ const card: Card = {
       limitGlobal: false,
       limitNameType: true,
       description: '【启动】[一回合一次][手牌]（对抗阶段亦可） 将这张卡丢弃，抽1张卡。',
-      cost: (gameState: GameState, playerState: PlayerState, card: Card) => {
-        // Discard self - more robust implementation for engine
-        const idx = playerState.hand.findIndex(c => c.gamecardId === card.gamecardId);
-        if (idx !== -1) {
-          playerState.hand.splice(idx, 1);
-          card.cardlocation = 'GRAVE';
-          playerState.grave.push(card);
-          gameState.logs.push(`${playerState.displayName} 丢弃了 ${card.fullName}`);
-          return true;
-        }
-        return false;
+      cost: async (gameState: GameState, playerState: PlayerState, card: Card) => {
+        await AtomicEffectExecutor.execute(gameState, playerState.uid, {
+          type: 'DISCARD_CARD',
+          targetFilter: { gamecardId: card.gamecardId }
+        }, card);
+        gameState.logs.push(`${playerState.displayName} 丢弃了 ${card.fullName}`);
+        return true;
       },
       atomicEffects: [
         {
@@ -58,29 +54,28 @@ const card: Card = {
       limitGlobal: true,
       description: '【启动】[一局一次][战场]（对抗阶段亦可） 侵蚀区存在4-6张卡牌时，将此卡横置，选择场上一个[非红色][非侵蚀区]且[费用<3][力量<3000]的单位破坏。',
       condition: (gameState: GameState, playerState: PlayerState, card: Card) => {
-        // Manually check erosion count to avoid circular deps in UI
         const erosionCount = playerState.erosionFront.filter(c => c !== null).length +
           playerState.erosionBack.filter(c => c !== null).length;
         if (erosionCount < 4 || erosionCount > 6) return false;
 
-        // Manual target search to avoid AtomicEffectExecutor circular dep in frontend
         const hasTarget = Object.values(gameState.players).some(p => {
           return p.unitZone.some(u => {
             if (!u) return false;
-            // [非红色] [费用<3] [力量<3000]
             return u.color !== 'RED' && u.acValue < 3 && u.power < 3000;
           });
         });
 
         return hasTarget;
       },
-      cost: (gameState: GameState, playerState: PlayerState, card: Card) => {
+      cost: async (gameState: GameState, playerState: PlayerState, card: Card) => {
         if (card.isExhausted) return false;
-        card.isExhausted = true;
+        await AtomicEffectExecutor.execute(gameState, playerState.uid, {
+          type: 'ROTATE_HORIZONTAL',
+          targetFilter: { gamecardId: card.gamecardId }
+        }, card);
         return true;
       },
-      execute: (instance: Card, gameState: GameState, playerState: PlayerState) => {
-        // Step 1: Find valid targets on field
+      execute: async (instance: Card, gameState: GameState, playerState: PlayerState) => {
         const options: any[] = [];
         Object.keys(gameState.players).forEach(uid => {
           const p = gameState.players[uid];
@@ -115,9 +110,9 @@ const card: Card = {
           };
         }
       },
-      onQueryResolve: (instance: Card, gameState: GameState, playerState: PlayerState, selections: string[]) => {
+      onQueryResolve: async (instance: Card, gameState: GameState, playerState: PlayerState, selections: string[]) => {
         const targetId = selections[0];
-        AtomicEffectExecutor.execute(gameState, playerState.uid, {
+        await AtomicEffectExecutor.execute(gameState, playerState.uid, {
           type: 'DESTROY_CARD',
           targetFilter: { gamecardId: targetId }
         }, instance);
@@ -132,10 +127,8 @@ const card: Card = {
       description: '【诱发】这张卡进入战场时，场上除这张卡以外的所有卡牌返回持有者手牌。',
       condition: (gameState: GameState, playerState: PlayerState, instance: Card, event?: GameEvent) => {
         const isOnBattlefield = instance.cardlocation === 'UNIT' || instance.cardlocation === 'ITEM';
-        // If event is missing, it's a generic check for limits, return status
         if (!event) return isOnBattlefield;
 
-        // Simple and robust identification for trigger
         const isSelf = event.type === 'CARD_ENTERED_ZONE' &&
           (event.sourceCardId === instance.gamecardId || event.sourceCard === instance);
 

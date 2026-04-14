@@ -52,14 +52,17 @@ const effect_10401021_trigger: CardEffect = {
       }
     }
   },
-  onQueryResolve: (instance: Card, gameState: GameState, playerState: PlayerState, selections: string[]) => {
+  onQueryResolve: async (instance: Card, gameState: GameState, playerState: PlayerState, selections: string[]) => {
     if (selections.length > 0) {
       const targetId = selections[0];
       const target = AtomicEffectExecutor.findCardById(gameState, targetId);
       if (target) {
         const ownerUid = AtomicEffectExecutor.findCardOwnerKey(gameState, targetId)!;
-        const currentZone = target.cardlocation as TriggerLocation;
-        AtomicEffectExecutor.moveCard(gameState, ownerUid, currentZone, ownerUid, 'HAND', targetId, true);
+        await AtomicEffectExecutor.execute(gameState, ownerUid, {
+          type: 'MOVE_FROM_FIELD',
+          targetFilter: { gamecardId: targetId },
+          destinationZone: 'HAND'
+        }, instance);
         gameState.logs.push(`[${instance.fullName}] 诱发效果：使对手的 [${target.fullName}] 返回了手牌。`);
       }
     }
@@ -110,14 +113,16 @@ const effect_10401021_activate: CardEffect = {
       }
     };
   },
-  onQueryResolve: (instance: Card, gameState: GameState, playerState: PlayerState, selections: string[], context: any) => {
+  onQueryResolve: async (instance: Card, gameState: GameState, playerState: PlayerState, selections: string[], context: any) => {
     if (context.step === 'COST' && selections.length === 2) {
       // Execute Cost: Exile
-      selections.forEach(id => {
+      for (const id of selections) {
         const owner = AtomicEffectExecutor.findCardOwnerKey(gameState, id)!;
-        const target = AtomicEffectExecutor.findCardById(gameState, id)!;
-        AtomicEffectExecutor.moveCard(gameState, owner, target.cardlocation as TriggerLocation, owner, 'EXILE', id, true);
-      });
+        await AtomicEffectExecutor.execute(gameState, owner, {
+          type: 'BANISH_CARD',
+          targetFilter: { gamecardId: id }
+        }, instance);
+      }
       gameState.logs.push(`[${instance.fullName}] 支付发动代价：将两张“风花”卡牌移出对战。`);
 
       // Effect: select horizontal unit/item (not self)
@@ -159,14 +164,18 @@ const effect_10401021_activate: CardEffect = {
       const targetId = selections[0];
       const owner = AtomicEffectExecutor.findCardOwnerKey(gameState, targetId)!;
       const target = AtomicEffectExecutor.findCardById(gameState, targetId)!;
-      AtomicEffectExecutor.moveCard(gameState, owner, target.cardlocation as TriggerLocation, owner, 'HAND', targetId, true);
+      await AtomicEffectExecutor.execute(gameState, owner, {
+        type: 'MOVE_FROM_FIELD',
+        targetFilter: { gamecardId: targetId },
+        destinationZone: 'HAND'
+      }, instance);
       gameState.logs.push(`[${instance.fullName}] 激活效果：使 [${target.fullName}] 返回了手牌。`);
     }
 
     if (context.step === 'BOUNCE' || (context.step === 'COST' && selections.length === 2)) {
       // Shuffle if cost from deck? The search logic spans multiple zones.
       // However, searching typically requires shuffling.
-      AtomicEffectExecutor.shuffleDeck(gameState, playerState.uid);
+      await AtomicEffectExecutor.execute(gameState, playerState.uid, { type: 'SHUFFLE_DECK' }, instance);
     }
   }
 };

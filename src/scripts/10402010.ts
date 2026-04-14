@@ -18,7 +18,7 @@ const trigger_10402010: CardEffect = {
     const opponent = gameState.players[opponentId];
     return opponent.unitZone.some(u => u !== null);
   },
-  execute: (instance: Card, gameState: GameState, playerState: PlayerState) => {
+  execute: async (instance: Card, gameState: GameState, playerState: PlayerState) => {
     const opponentId = Object.keys(gameState.players).find(id => id !== playerState.uid)!;
     const opponent = gameState.players[opponentId];
     const targets = opponent.unitZone.filter(u => u !== null) as Card[];
@@ -42,20 +42,20 @@ const trigger_10402010: CardEffect = {
       };
     }
   },
-  onQueryResolve: (instance: Card, gameState: GameState, playerState: PlayerState, selections: string[], context: any) => {
+  onQueryResolve: async (instance: Card, gameState: GameState, playerState: PlayerState, selections: string[], context: any) => {
     if (context.step === 1) {
       const targetId = selections[0];
       const targetCard = AtomicEffectExecutor.findTargets(gameState, { gamecardId: targetId })[0];
       
       if (targetCard) {
         // 1. Rotate horizontal
-        AtomicEffectExecutor.execute(gameState, playerState.uid, {
+        await AtomicEffectExecutor.execute(gameState, playerState.uid, {
           type: 'ROTATE_HORIZONTAL',
           targetFilter: { gamecardId: targetId }
         }, instance);
         
         // 2. Lock reset for 1 turn (next turn start)
-        AtomicEffectExecutor.execute(gameState, playerState.uid, {
+        await AtomicEffectExecutor.execute(gameState, playerState.uid, {
           type: 'SET_CAN_RESET_COUNT',
           targetFilter: { gamecardId: targetId },
           value: 1

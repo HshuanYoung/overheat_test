@@ -30,7 +30,7 @@ const trigger_10402046: CardEffect = {
 
     return blueErosionCount >= 2;
   },
-  execute: (instance: Card, gameState: GameState, playerState: PlayerState) => {
+  execute: async (instance: Card, gameState: GameState, playerState: PlayerState) => {
     const blueErosionCards = playerState.erosionFront.filter(c => 
       c && c.displayState === 'FRONT_UPRIGHT' && AtomicEffectExecutor.matchesColor(c, 'BLUE')
     ) as Card[];
@@ -53,16 +53,16 @@ const trigger_10402046: CardEffect = {
       }
     };
   },
-  onQueryResolve: (instance: Card, gameState: GameState, playerState: PlayerState, selections: string[], context: any) => {
+  onQueryResolve: async (instance: Card, gameState: GameState, playerState: PlayerState, selections: string[], context: any) => {
     if (context.step === 1) {
       // Resolve sacrificial cost
-      selections.forEach(targetId => {
-        AtomicEffectExecutor.execute(gameState, playerState.uid, {
+      for (const targetId of selections) {
+        await AtomicEffectExecutor.execute(gameState, playerState.uid, {
           type: 'MOVE_FROM_EROSION',
           targetFilter: { gamecardId: targetId },
           destinationZone: 'GRAVE'
         }, instance);
-      });
+      }
       gameState.logs.push(`[${instance.fullName}] 消耗了两张侵蚀卡牌作为代价。`);
 
       // Step 2: Select up to 2 non-godmark units from opponent
@@ -93,13 +93,13 @@ const trigger_10402046: CardEffect = {
     } else if (context.step === 2) {
       // Resolve bounce effect
       const opponentId = Object.keys(gameState.players).find(id => id !== playerState.uid)!;
-      selections.forEach(targetId => {
-        AtomicEffectExecutor.execute(gameState, playerState.uid, {
+      for (const targetId of selections) {
+        await AtomicEffectExecutor.execute(gameState, playerState.uid, {
           type: 'MOVE_FROM_FIELD',
           targetFilter: { gamecardId: targetId },
           destinationZone: 'HAND'
         }, instance);
-      });
+      }
       
       if (selections.length > 0) {
         gameState.logs.push(`[${instance.fullName}] 将对手的 ${selections.length} 个单位遣回了手牌。`);

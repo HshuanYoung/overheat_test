@@ -6,7 +6,7 @@ const activated_10402047: CardEffect = {
   type: 'ACTIVATED',
   description: '【行动】[休息]：选择你侵蚀位前区的一张蓝色卡牌送去墓地，之后抽一张牌，并选择你手牌中的一张卡牌正面表示置入侵蚀位前区。',
   triggerLocation: ['UNIT'],
-  cost: (gameState: GameState, playerState: PlayerState, instance: Card) => {
+  cost: async (gameState: GameState, playerState: PlayerState, instance: Card) => {
     if (instance.isExhausted) return false;
     
     const blueErosionCards = playerState.erosionFront.filter(c => 
@@ -18,7 +18,7 @@ const activated_10402047: CardEffect = {
     instance.displayState = 'FRONT_HORIZONTAL';
     return true;
   },
-  execute: (instance: Card, gameState: GameState, playerState: PlayerState) => {
+  execute: async (instance: Card, gameState: GameState, playerState: PlayerState) => {
     const blueErosionCards = playerState.erosionFront.filter(c => 
       c && c.displayState === 'FRONT_UPRIGHT' && AtomicEffectExecutor.matchesColor(c, 'BLUE')
     ) as Card[];
@@ -40,21 +40,21 @@ const activated_10402047: CardEffect = {
       }
     };
   },
-  onQueryResolve: (instance: Card, gameState: GameState, playerState: PlayerState, selections: string[], context: any) => {
+  onQueryResolve: async (instance: Card, gameState: GameState, playerState: PlayerState, selections: string[], context: any) => {
     if (context.step === 1) {
       const targetId = selections[0];
       const targetCard = playerState.erosionFront.find(c => c?.gamecardId === targetId);
       
       if (targetCard) {
         // 1. Move erosion to grave
-        AtomicEffectExecutor.execute(gameState, playerState.uid, {
+        await AtomicEffectExecutor.execute(gameState, playerState.uid, {
           type: 'MOVE_FROM_EROSION',
           targetFilter: { gamecardId: targetId },
           destinationZone: 'GRAVE'
         }, instance);
         
         // 2. Draw 1 card
-        AtomicEffectExecutor.execute(gameState, playerState.uid, {
+        await AtomicEffectExecutor.execute(gameState, playerState.uid, {
           type: 'DRAW',
           value: 1
         }, instance);
@@ -87,7 +87,7 @@ const activated_10402047: CardEffect = {
       
       if (targetCard) {
         // 4. Move hand to erosion front (face-up)
-        AtomicEffectExecutor.execute(gameState, playerState.uid, {
+        await AtomicEffectExecutor.execute(gameState, playerState.uid, {
           type: 'MOVE_FROM_HAND',
           targetFilter: { gamecardId: targetId },
           destinationZone: 'EROSION_FRONT'

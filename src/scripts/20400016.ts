@@ -8,7 +8,7 @@ const effect_20400016_activate: CardEffect = {
   condition: (gameState: GameState, playerState: PlayerState) => {
     return playerState.erosionFront.some(c => c !== null);
   },
-  execute: (instance: Card, gameState: GameState, playerState: PlayerState) => {
+  execute: async (instance: Card, gameState: GameState, playerState: PlayerState) => {
     const choices = playerState.erosionFront.filter(c => c !== null) as Card[];
     if (choices.length === 0) return;
 
@@ -28,11 +28,11 @@ const effect_20400016_activate: CardEffect = {
       }
     };
   },
-  onQueryResolve: (instance: Card, gameState: GameState, playerState: PlayerState, selections: string[]) => {
+  onQueryResolve: async (instance: Card, gameState: GameState, playerState: PlayerState, selections: string[]) => {
     const targetId = selections[0];
     const target = AtomicEffectExecutor.findCardById(gameState, targetId);
     if (target) {
-      AtomicEffectExecutor.execute(gameState, playerState.uid, {
+      await AtomicEffectExecutor.execute(gameState, playerState.uid, {
         type: 'MOVE_FROM_EROSION',
         targetFilter: { gamecardId: targetId },
         destinationZone: 'HAND'

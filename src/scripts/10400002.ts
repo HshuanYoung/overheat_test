@@ -35,7 +35,7 @@ const card: Card = {
         const isNotCountering = gameState.phase !== 'COUNTERING';
         return blueUnits.length >= 2 && isNotCountering && playerState.hand.length >= 1;
       },
-      cost: (gameState, playerState, card) => {
+      cost: async (gameState, playerState, card) => {
         gameState.pendingQuery = {
           id: Math.random().toString(36).substring(7),
           type: 'SELECT_CARD',
@@ -50,7 +50,7 @@ const card: Card = {
         };
         return true;
       },
-      onQueryResolve: (card, gameState, playerState, selections) => {
+      onQueryResolve: async (card, gameState, playerState, selections) => {
         const cardId = selections[0];
         const sourcePlayer = gameState.players[playerState.uid];
         const cardInHand = sourcePlayer.hand.find(c => c.gamecardId === cardId);
@@ -61,17 +61,18 @@ const card: Card = {
           gameState.logs.push(`${playerState.displayName} 舍弃了 ${cardInHand.fullName}。`);
         }
       },
-      execute: (card, gameState, playerState) => {
+      execute: async (card, gameState, playerState) => {
         // Move from erosion to unit zone
-        const sourcePlayer = gameState.players[playerState.uid];
-        const emptyIndex = sourcePlayer.unitZone.findIndex(c => c === null);
+        const emptyIndex = playerState.unitZone.findIndex(c => c === null);
         if (emptyIndex !== -1) {
-          // Remove from erosion
-          sourcePlayer.erosionFront = sourcePlayer.erosionFront.map(c => c?.gamecardId === card.gamecardId ? null : c);
+          await AtomicEffectExecutor.execute(gameState, playerState.uid, {
+            type: 'MOVE_FROM_EROSION',
+            targetFilter: { gamecardId: card.gamecardId },
+            destinationZone: 'UNIT'
+          }, card);
           
-          card.cardlocation = 'UNIT';
           card.displayState = 'FRONT_UPRIGHT';
-          sourcePlayer.unitZone[emptyIndex] = card;
+          card.isExhausted = false;
           gameState.logs.push(`${card.fullName} 已放置到单位区（重置状态）。`);
         }
       }

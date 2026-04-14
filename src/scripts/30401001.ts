@@ -8,6 +8,14 @@ const isNonCombat = (gameState: GameState, cardId: string) => {
   return !isAttacking && !isDefending;
 };
 
+const findCardInUnitZone = (gameState: GameState, gamecardId: string): Card | undefined => {
+  for (const player of Object.values(gameState.players)) {
+    const found = player.unitZone.find(u => u?.gamecardId === gamecardId);
+    if (found) return found;
+  }
+  return undefined;
+};
+
 const universalEquipEffect: CardEffect = {
   id: 'equip_universal',
   type: 'ACTIVATED',
@@ -16,7 +24,7 @@ const universalEquipEffect: CardEffect = {
   limitNameType: false,
   triggerLocation: ['ITEM'],
   condition: (gameState) => gameState.phase === 'MAIN',
-  execute: (card, gameState, playerState) => {
+  execute: async (card, gameState, playerState) => {
     const currentHostId = card.equipTargetId;
     const options: any[] = [];
 
@@ -50,7 +58,7 @@ const universalEquipEffect: CardEffect = {
       }
     };
   },
-  onQueryResolve: (card, gameState, playerState, selections, context) => {
+  onQueryResolve: async (card, gameState, playerState, selections, context) => {
     const selectedId = selections[0];
     if (selectedId === card.gamecardId) {
       // Unequip action
@@ -78,7 +86,7 @@ const handActivationEffect: CardEffect = {
     );
     return eligibleBlueUnits.length >= 2;
   },
-  execute: (card, gameState, playerState) => {
+  execute: async (card, gameState, playerState) => {
     gameState.pendingQuery = {
       id: Math.random().toString(36).substring(7),
       type: 'SELECT_PAYMENT',
@@ -98,7 +106,7 @@ const handActivationEffect: CardEffect = {
       }
     };
   },
-  onQueryResolve: (card, gameState, playerState, selections, context) => {
+  onQueryResolve: async (card, gameState, playerState, selections, context) => {
     if (context.step === 1) {
       // Step 1: After payment, select 2 units to return to hand
       const targets = playerState.unitZone.filter(u =>
@@ -124,16 +132,16 @@ const handActivationEffect: CardEffect = {
       };
     } else if (context.step === 2) {
       // Step 2: Return units to hand, move self to field
-      selections.forEach(id => {
-        AtomicEffectExecutor.execute(gameState, playerState.uid, {
+      for (const id of selections) {
+        await AtomicEffectExecutor.execute(gameState, playerState.uid, {
           type: 'MOVE_FROM_FIELD',
           targetFilter: { gamecardId: id },
           destinationZone: 'HAND'
         }, card);
-      });
+      }
 
       // Move self to ITEM zone
-      AtomicEffectExecutor.execute(gameState, playerState.uid, {
+      await AtomicEffectExecutor.execute(gameState, playerState.uid, {
         type: 'MOVE_FROM_HAND',
         targetFilter: { gamecardId: card.gamecardId },
         destinationZone: 'ITEM'
@@ -189,14 +197,6 @@ const applyContinuousBonus = (gameState: GameState, card: Card) => {
       card.equipTargetId = undefined;
     }
   }
-};
-
-const findCardInUnitZone = (gameState: GameState, gamecardId: string): Card | undefined => {
-  for (const player of Object.values(gameState.players)) {
-    const found = player.unitZone.find(u => u?.gamecardId === gamecardId);
-    if (found) return found;
-  }
-  return undefined;
 };
 
 const card: Card = {

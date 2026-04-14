@@ -54,7 +54,7 @@ const card: Card = {
 
         return hasValidTarget;
       },
-      execute: (card, gameState, playerState) => {
+      execute: async (card, gameState, playerState) => {
         // Step 1: Request 1 fee payment
         gameState.pendingQuery = {
           id: Math.random().toString(36).substring(7),
@@ -76,7 +76,7 @@ const card: Card = {
         };
         gameState.logs.push(`[破阵游侠【芙蕾雅】] 等待 ${playerState.displayName} 支付 1 点费用...`);
       },
-      onQueryResolve: (card, gameState, playerState, selections, context) => {
+      onQueryResolve: async (card, gameState, playerState, selections, context) => {
         const step = context?.step || 1;
         const sourcePlayer = gameState.players[playerState.uid];
 
@@ -85,7 +85,7 @@ const card: Card = {
           gameState.logs.push(`[破阵游侠【芙蕾雅】] 费用支付成功。`);
 
           // Move self to erosion front
-          AtomicEffectExecutor.execute(gameState, playerState.uid, {
+          await AtomicEffectExecutor.execute(gameState, playerState.uid, {
             type: 'MOVE_FROM_FIELD',
             destinationZone: 'EROSION_FRONT',
             targetFilter: { gamecardId: card.gamecardId }
@@ -131,7 +131,7 @@ const card: Card = {
             targetCard.isExhausted = false;
             targetCard.displayState = 'FRONT_UPRIGHT';
 
-            AtomicEffectExecutor.execute(gameState, playerState.uid, {
+            await AtomicEffectExecutor.execute(gameState, playerState.uid, {
               type: 'MOVE_FROM_EROSION',
               destinationZone: 'UNIT',
               targetFilter: { gamecardId: targetId }

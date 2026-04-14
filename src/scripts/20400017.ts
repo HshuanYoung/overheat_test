@@ -27,7 +27,7 @@ const card: Card = {
         // Check if there is at least one unit on the battlefield
         return Object.values(gameState.players).some(p => p.unitZone.some(u => u !== null));
       },
-      execute: (card, gameState, playerState) => {
+      execute: async (card, gameState, playerState) => {
         const targets: Card[] = [];
         Object.values(gameState.players).forEach(p => {
           p.unitZone.forEach(u => {
@@ -57,11 +57,11 @@ const card: Card = {
           }
         };
       },
-      onQueryResolve: (card, gameState, playerState, selections) => {
+      onQueryResolve: async (card, gameState, playerState, selections) => {
         const targetId = selections[0];
 
         // 1. Silence (Negate instance effects for the turn)
-        AtomicEffectExecutor.execute(gameState, playerState.uid, {
+        await AtomicEffectExecutor.execute(gameState, playerState.uid, {
           type: 'CHANGE_CAN_ACTIVATE',
           value: 0, // 0 means false/silenced
           turnDuration: 1, // Current turn
@@ -69,7 +69,7 @@ const card: Card = {
         }, card);
 
         // 2. Unit Immunity (Immune to OTHER unit effects for the turn)
-        AtomicEffectExecutor.execute(gameState, playerState.uid, {
+        await AtomicEffectExecutor.execute(gameState, playerState.uid, {
           type: 'IMMUNE_UNIT_EFFECTS',
           value: 1, // 1 means true/immune
           turnDuration: 1, // Current turn

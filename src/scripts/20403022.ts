@@ -25,22 +25,18 @@ const card: Card = {
       condition: (gameState, playerState) => {
         if (gameState.phase !== 'MAIN') return false;
         
-        // Faction History Check: Must not have used any other faction this turn
         if (playerState.factionsUsedThisTurn && playerState.factionsUsedThisTurn.length > 0) {
           if (playerState.factionsUsedThisTurn.some(f => f !== '冒险家工会')) {
             return false;
           }
         }
 
-        // Must have at least 2 hand cards (excluding this one which is in PLAY)
         return playerState.hand.length >= 2;
       },
-      execute: (card, gameState, playerState) => {
-        // 1. Set Faction Lock
+      execute: async (card, gameState, playerState) => {
         playerState.factionLock = '冒险家工会';
         gameState.logs.push(`[张贴委托] 效果生效：本回合进入「冒险家工会」派系限制状态。`);
 
-        // 2. Selection options from Hand only
         const handOptions = playerState.hand.map(c => ({ card: c, source: 'HAND' as any }));
 
         gameState.pendingQuery = {
@@ -56,23 +52,21 @@ const card: Card = {
           context: { sourceCardId: card.gamecardId, effectIndex: 0 }
         };
       },
-      onQueryResolve: (card, gameState, playerState, selections, context) => {
+      onQueryResolve: async (card, gameState, playerState, selections) => {
         if (!selections || selections.length !== 2) return;
 
-        // 3. Move selected hand cards to Erosion Zone
-        selections.forEach(targetId => {
-          AtomicEffectExecutor.execute(gameState, playerState.uid, {
+        for (const targetId of selections) {
+          await AtomicEffectExecutor.execute(gameState, playerState.uid, {
             type: 'MOVE_FROM_HAND',
             targetFilter: { gamecardId: targetId },
             destinationZone: 'EROSION_FRONT',
             displayState: 'FRONT_UPRIGHT'
           }, card);
-        });
+        }
 
-        // 4. Draw 3 cards
-        AtomicEffectExecutor.execute(gameState, playerState.uid, {
+        await AtomicEffectExecutor.execute(gameState, playerState.uid, {
           type: 'DRAW',
-          count: 3
+          value: 3
         }, card);
 
         gameState.logs.push(`[张贴委托] 已将 2 张卡送入侵蚀区正位，并抽取了 3 张卡。`);

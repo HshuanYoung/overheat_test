@@ -115,6 +115,14 @@ export class AtomicEffectExecutor {
       case 'MOVE_FROM_FIELD':
         this.moveCards(gameState, playerUid, effect, effect.destinationZone || 'HAND', 'UNIT', sourceCard, querySelections);
         break;
+      
+      case 'MOVE_FROM_DECK':
+        this.moveCards(gameState, playerUid, effect, effect.destinationZone || 'HAND', 'DECK', sourceCard, querySelections);
+        break;
+
+      case 'MOVE_FROM_GRAVE':
+        this.moveCards(gameState, playerUid, effect, effect.destinationZone || 'HAND', 'GRAVE', sourceCard, querySelections);
+        break;
 
       case 'NEGATE_EFFECT':
         this.negateEffect(gameState, effect, sourceCard);

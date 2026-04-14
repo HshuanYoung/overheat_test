@@ -52,8 +52,8 @@ const effect_10401042_trigger: CardEffect = {
     const godmarkUnits = playerState.unitZone.filter(u => u && u.godMark);
     return godmarkUnits.length === 1;
   },
-  execute: (instance: Card, gameState: GameState, playerState: PlayerState) => {
-    AtomicEffectExecutor.execute(gameState, playerState.uid, {
+  execute: async (instance: Card, gameState: GameState, playerState: PlayerState) => {
+    await AtomicEffectExecutor.execute(gameState, playerState.uid, {
       type: 'DRAW',
       value: 1
     }, instance);

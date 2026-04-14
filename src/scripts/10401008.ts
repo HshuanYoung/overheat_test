@@ -13,7 +13,7 @@ const activation_10401008_1: CardEffect = {
     // Must have at least one item equipped to this unit
     return playerState.itemZone.some(c => c && c.equipTargetId === instance.gamecardId);
   },
-  execute: (instance: Card, gameState: GameState, playerState: PlayerState) => {
+  execute: async (instance: Card, gameState: GameState, playerState: PlayerState) => {
     const equippedItems = playerState.itemZone.filter(c => c && c.equipTargetId === instance.gamecardId) as Card[];
 
     // Select from equipped items
@@ -34,7 +34,7 @@ const activation_10401008_1: CardEffect = {
       }
     };
   },
-  onQueryResolve: (instance: Card, gameState: GameState, playerState: PlayerState, selections: string[], context: any) => {
+  onQueryResolve: async (instance: Card, gameState: GameState, playerState: PlayerState, selections: string[], context: any) => {
     if (context.step === 1) {
       const targetCardId = selections[0];
       const targetCard = playerState.itemZone.find(c => c?.gamecardId === targetCardId);
@@ -43,13 +43,13 @@ const activation_10401008_1: CardEffect = {
         gameState.logs.push(`[北冥] 效果：破坏了装备卡 ${targetCard.fullName}，造成 ${damageAmount} 点效果伤害。`);
 
         // 1. Destroy the card
-        AtomicEffectExecutor.execute(gameState, playerState.uid, {
+        await AtomicEffectExecutor.execute(gameState, playerState.uid, {
           type: 'DESTROY_CARD',
           targetFilter: { gamecardId: targetCardId }
         }, instance);
 
         // 2. Deal damage to player
-        AtomicEffectExecutor.execute(gameState, playerState.uid, {
+        await AtomicEffectExecutor.execute(gameState, playerState.uid, {
           type: 'DEAL_EFFECT_DAMAGE',
           value: damageAmount
         }, instance);
@@ -76,7 +76,7 @@ const activation_10401008_2: CardEffect = {
     const discardOptions = playerState.hand.filter(c => c.gamecardId !== instance.gamecardId && c.fullName.includes('剑仙'));
     return discardOptions.length > 0;
   },
-  cost: (gameState: GameState, playerState: PlayerState, instance: Card) => {
+  cost: async (gameState: GameState, playerState: PlayerState, instance: Card) => {
     // Search for '剑仙' card in hand (using fullName)
     const discardOptions = playerState.hand.filter(c => c.gamecardId !== instance.gamecardId && c.fullName.includes('剑仙'));
     if (discardOptions.length === 0) return false;
@@ -100,13 +100,13 @@ const activation_10401008_2: CardEffect = {
 
     return true;
   },
-  onQueryResolve: (instance: Card, gameState: GameState, playerState: PlayerState, selections: string[], context: any) => {
+  onQueryResolve: async (instance: Card, gameState: GameState, playerState: PlayerState, selections: string[], context: any) => {
     if (context.step === 1) {
       const discardId = selections[0];
       const discardCard = playerState.hand.find(c => c.gamecardId === discardId);
       if (discardCard) {
         gameState.logs.push(`[北冥] 效果发动：丢弃了 ${discardCard.fullName}`);
-        AtomicEffectExecutor.execute(gameState, playerState.uid, {
+        await AtomicEffectExecutor.execute(gameState, playerState.uid, {
           type: 'DISCARD_CARD',
           targetFilter: { gamecardId: discardId }
         }, instance);
@@ -114,7 +114,7 @@ const activation_10401008_2: CardEffect = {
 
       // Final part: Place self on field
       gameState.logs.push(`[北冥] 特殊进入战场`);
-      AtomicEffectExecutor.execute(gameState, playerState.uid, {
+      await AtomicEffectExecutor.execute(gameState, playerState.uid, {
         type: 'MOVE_FROM_HAND',
         targetFilter: { gamecardId: instance.gamecardId },
         destinationZone: 'UNIT'

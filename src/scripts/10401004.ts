@@ -33,11 +33,11 @@ const card: Card = {
         const hasFrontErosion = playerState.erosionFront.some(c => c !== null && c.displayState === 'FRONT_UPRIGHT');
         return blueUnits.length >= 3 && hasFrontErosion;
       },
-      cost: (gameState, playerState, card) => {
+      cost: async (gameState, playerState, card) => {
         const sourcePlayer = gameState.players[playerState.uid];
         const isOnField = sourcePlayer.unitZone.some(c => c?.gamecardId === card.gamecardId);
         if (isOnField) {
-          AtomicEffectExecutor.execute(gameState, playerState.uid, {
+          await AtomicEffectExecutor.execute(gameState, playerState.uid, {
             type: 'MOVE_FROM_FIELD',
             destinationZone: 'HAND',
             targetFilter: { gamecardId: card.gamecardId }
@@ -47,13 +47,13 @@ const card: Card = {
         }
         return false;
       },
-      execute: (card, gameState, playerState) => {
+      execute: async (card, gameState, playerState) => {
         const frontalCards = playerState.erosionFront.filter(c => c && c.displayState === 'FRONT_UPRIGHT') as Card[];
         gameState.pendingQuery = {
           id: Math.random().toString(36).substring(7),
           type: 'SELECT_CARD',
           playerUid: playerState.uid,
-          options: frontalCards.map(c => ({ card: { ...c }, source: 'EROSION_FRONT' as any })),
+          options: AtomicEffectExecutor.enrichQueryOptions(gameState, playerState.uid, frontalCards.map(c => ({ card: c, source: 'EROSION_FRONT' as any }))),
           title: '选择侵蚀区前排卡牌',
           description: '选择一张前排正面向上的卡牌返回卡组并洗牌。',
           minSelections: 1,
@@ -62,25 +62,23 @@ const card: Card = {
           context: { sourceCardId: card.gamecardId, effectIndex: 0 }
         };
       },
-      onQueryResolve: (card, gameState, playerState, selections) => {
+      onQueryResolve: async (card, gameState, playerState, selections) => {
         const selectedId = selections[0];
         const sourcePlayer = gameState.players[playerState.uid];
-        gameState.logs.push(`[剑仙子-DEBUG] 正在处理选择: ${selectedId}`);
-        const idx = sourcePlayer.erosionFront.findIndex(c => c?.gamecardId === selectedId);
-        if (idx !== -1) {
-          const selected = sourcePlayer.erosionFront[idx]!;
-          sourcePlayer.erosionFront[idx] = null;
-          selected.cardlocation = 'DECK';
-          sourcePlayer.deck.push(selected);
+        const target = AtomicEffectExecutor.findCardById(gameState, selectedId);
+        
+        if (target) {
+          await AtomicEffectExecutor.execute(gameState, playerState.uid, {
+            type: 'MOVE_FROM_EROSION',
+            targetFilter: { gamecardId: selectedId },
+            destinationZone: 'DECK'
+          }, card);
           
-          // Fisher-Yates shuffle
-          for (let i = sourcePlayer.deck.length - 1; i > 0; i--) {
-            const j = Math.floor(Math.random() * (i + 1));
-            [sourcePlayer.deck[i], sourcePlayer.deck[j]] = [sourcePlayer.deck[j], sourcePlayer.deck[i]];
-          }
-          gameState.logs.push(`[剑仙子] 已将 ${selected.fullName} 返回卡组并洗牌。`);
-        } else {
-          gameState.logs.push(`[剑仙子-ERR] 找不到选择的卡牌 ID: ${selectedId}`);
+          await AtomicEffectExecutor.execute(gameState, playerState.uid, {
+            type: 'SHUFFLE_DECK'
+          }, card);
+
+          gameState.logs.push(`[剑仙子] 已将 ${target.fullName} 返回卡组并洗牌。`);
         }
       }
     }

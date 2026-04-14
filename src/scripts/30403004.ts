@@ -4,14 +4,14 @@ import { AtomicEffectExecutor } from '../services/AtomicEffectExecutor';
 const trigger_30403004: CardEffect = {
   id: '30403004_trigger',
   type: 'TRIGGER',
-  description: '当你的单位卡从侵蚀前区进入战场时，可以选择以下效果之一执行。同一选项每回合最多选择一次：a. 该单位在本回合获得全攻，力量+500 且获得【速攻】。b. 选择对手的一个非神位单位转为横置。c. 从墓地中选择一张「冒险家公会」卡牌放置在侵蚀前区。',
+  description: '当你的单位卡从侵蚀前区进入战场时，可以选择以下效果之一执行。同一选项每回合最多选择一次：a. 该单位在本回合获得全攻，力量+500 且获得【速攻】。b. 选择对手的一个非神位单位转为横置。c. 从墓地中选择一张「冒险家工会」卡牌放置在侵蚀前区。',
   triggerEvent: 'CARD_EROSION_TO_FIELD',
   isGlobal: true,
   isMandatory: false,
   condition: (gameState, playerState, instance, event) => {
     return event?.playerUid === playerState.uid && !instance.isExhausted;
   },
-  execute: (instance, gameState, playerState, event) => {
+  execute: async (instance, gameState, playerState, event) => {
     const usageKeyPrefix = `30403004_${instance.gamecardId}_option_`;
     const options: any[] = [];
 
@@ -51,7 +51,7 @@ const trigger_30403004: CardEffect = {
         card: {
           gamecardId: 'OPTION_C',
           id: 'OPTION_C',
-          fullName: '选项C：回收墓地「冒险家公会」',
+          fullName: '选项C：回收墓地「冒险家工会」',
           type: 'STORY',
           color: 'BLUE',
           rarity: 'C'
@@ -80,7 +80,7 @@ const trigger_30403004: CardEffect = {
       };
     }
   },
-  onQueryResolve: (instance, gameState, playerState, selections, context) => {
+  onQueryResolve: async (instance, gameState, playerState, selections, context) => {
     const usageKeyPrefix = `30403004_${instance.gamecardId}_option_`;
     const choice = selections[0];
 
@@ -89,12 +89,20 @@ const trigger_30403004: CardEffect = {
       gameState.effectUsage[usageKeyPrefix + 'a'] = 1;
 
       const targetId = context.enteringCardId;
-      const target = AtomicEffectExecutor.findCardById(gameState, targetId);
-      if (target) {
-        target.power = (target.power || 0) + 500;
-        target.damage = (target.damage || 0) + 1;
-        target.isrush = true;
-        gameState.logs.push(`[${instance.fullName}] 选项A：使 [${target.fullName}] 获得了 +1/+500 且拥有了【速攻】。`);
+      if (targetId) {
+        await AtomicEffectExecutor.execute(gameState, playerState.uid, {
+          type: 'CHANGE_POWER',
+          targetFilter: { gamecardId: targetId },
+          value: 500,
+          turnDuration: 1
+        }, instance);
+        // damage adjustment
+        const target = AtomicEffectExecutor.findCardById(gameState, targetId);
+        if (target) {
+          target.damage = (target.damage || 0) + 1; // Assuming manual keyword/damage for now if no atomic
+          target.isrush = true;
+          gameState.logs.push(`[${instance.fullName}] 选项A：使 [${target.fullName}] 获得了 +1/+500 且拥有了【速攻】。`);
+        }
       }
     } else if (choice === 'OPTION_B') {
       if (!gameState.effectUsage) gameState.effectUsage = {};
@@ -134,7 +142,7 @@ const trigger_30403004: CardEffect = {
           playerUid: playerState.uid,
           options: AtomicEffectExecutor.enrichQueryOptions(gameState, playerState.uid, graveChoices.map(c => ({ card: c, source: 'GRAVE' as any }))),
           title: '选择回收卡牌',
-          description: '请从墓地选择一张「冒险家公会」卡牌放置在侵蚀前区。',
+          description: '请从墓地选择一张「冒险家工会」卡牌放置在侵蚀前区。',
           minSelections: 1,
           maxSelections: 1,
           callbackKey: 'EFFECT_RESOLVE',
@@ -146,30 +154,23 @@ const trigger_30403004: CardEffect = {
       }
     } else if (context.step === 'FINALIZE_EXHAUST') {
       const targetId = selections[0];
-      const target = AtomicEffectExecutor.findCardById(gameState, targetId);
-      if (target) {
-        target.isExhausted = true;
-        target.displayState = 'FRONT_HORIZONTAL';
-        gameState.logs.push(`[${instance.fullName}] 选项B：横置了对手的单位 [${target.fullName}]。`);
-      }
+      await AtomicEffectExecutor.execute(gameState, playerState.uid, {
+        type: 'ROTATE_HORIZONTAL',
+        targetFilter: { gamecardId: targetId }
+      }, instance);
+      gameState.logs.push(`[${instance.fullName}] 选项B：横置了对手的单位。`);
     } else if (context.step === 'FINALIZE_RECYCLE') {
       const targetId = selections[0];
-      const target = playerState.grave.find(c => c.gamecardId === targetId);
-      if (target) {
-        AtomicEffectExecutor.execute(gameState, playerState.uid, {
-          type: 'MOVE_FROM_GRAVE' as any, // Not standard, but moveCard handles it. 
-          // Wait, moveCard doesn't have MOVE_FROM_GRAVE in its switch but it has fromZone check.
-          // I will use targetFilter and destinationZone.
-          targetFilter: { gamecardId: targetId },
-          destinationZone: 'EROSION_FRONT'
-        } as any, instance);
-        
-        // Ensure it is face up
-        const cardInErosion = playerState.erosionFront.find(c => c?.gamecardId === targetId);
-        if (cardInErosion) cardInErosion.displayState = 'FRONT_UPRIGHT';
+      await AtomicEffectExecutor.execute(gameState, playerState.uid, {
+        type: 'MOVE_FROM_GRAVE',
+        targetFilter: { gamecardId: targetId },
+        destinationZone: 'EROSION_FRONT'
+      }, instance);
+      
+      const cardInErosion = playerState.erosionFront.find(c => c?.gamecardId === targetId);
+      if (cardInErosion) cardInErosion.displayState = 'FRONT_UPRIGHT';
 
-        gameState.logs.push(`[${instance.fullName}] 选项C：将 [${target.fullName}] 从墓地移至侵蚀前区。`);
-      }
+      gameState.logs.push(`[${instance.fullName}] 选项C：将卡牌从墓地移至侵蚀前区。`);
     }
   }
 };

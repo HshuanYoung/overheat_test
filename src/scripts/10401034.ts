@@ -11,9 +11,18 @@ const effect_10401034_front: CardEffect = {
   condition: (gameState: GameState, playerState: PlayerState) => {
     return playerState.isTurn && gameState.phase === 'MAIN' && playerState.unitZone.some(s => s === null);
   },
+  cost: async (gameState: GameState, playerState: PlayerState, instance: Card) => {
+    // 0 fee implies no cost or cost function returns true directly. 
+    // In this game, if there were a resource cost, we would handle it here.
+    return true;
+  },
   execute: async (instance: Card, gameState: GameState, playerState: PlayerState) => {
     const pUid = playerState.uid;
-    AtomicEffectExecutor.moveCard(gameState, pUid, 'EROSION_FRONT' as TriggerLocation, pUid, 'UNIT', instance.gamecardId, true);
+    await AtomicEffectExecutor.execute(gameState, pUid, {
+      type: 'MOVE_FROM_EROSION',
+      targetFilter: { gamecardId: instance.gamecardId },
+      destinationZone: 'UNIT'
+    }, instance);
     gameState.logs.push(`[${instance.fullName}] 从侵蚀区域回到了战场！`);
   }
 };
@@ -40,7 +49,11 @@ const effect_10401034_hand: CardEffect = {
   execute: async (instance: Card, gameState: GameState, playerState: PlayerState) => {
     const pUid = playerState.uid;
     // 1. Move to Erosion Front
-    AtomicEffectExecutor.moveCard(gameState, pUid, 'HAND', pUid, 'EROSION_FRONT' as TriggerLocation, instance.gamecardId, true);
+    await AtomicEffectExecutor.execute(gameState, pUid, {
+      type: 'MOVE_FROM_HAND',
+      targetFilter: { gamecardId: instance.gamecardId },
+      destinationZone: 'EROSION_FRONT'
+    }, instance);
     
     // 2. Draw a card
     await AtomicEffectExecutor.execute(gameState, pUid, { type: 'DRAW_CARD', targetCount: 1 } as any);

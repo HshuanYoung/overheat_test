@@ -30,7 +30,7 @@ const card: Card = {
         const opponent = gameState.players[opponentId];
         return opponent.unitZone.some(u => u && u.isExhausted);
       },
-      execute: (card, gameState, playerState) => {
+      execute: async (card, gameState, playerState) => {
         const opponentId = Object.keys(gameState.players).find(id => id !== playerState.uid)!;
         const opponent = gameState.players[opponentId];
         const targets = opponent.unitZone.filter(u => u && u.isExhausted) as Card[];
@@ -52,7 +52,7 @@ const card: Card = {
           }
         };
       },
-      onQueryResolve: (card, gameState, playerState, selections) => {
+      onQueryResolve: async (card, gameState, playerState, selections) => {
         const targetId = selections[0];
         // Mark the target and current turn
         (card as any).data = {
@@ -77,7 +77,7 @@ const card: Card = {
         // Must be the marked target leaving in the same turn
         return event.sourceCardId === data.markedTargetId && gameState.turnCount === data.playedTurn;
       },
-      execute: (card, gameState, playerState, event) => {
+      execute: async (card, gameState, playerState, event) => {
         const opponentId = Object.keys(gameState.players).find(id => id !== playerState.uid)!;
         const opponent = gameState.players[opponentId];
         const targets = [...opponent.unitZone, ...opponent.itemZone].filter(c => c && !c.godMark) as Card[];
@@ -96,21 +96,21 @@ const card: Card = {
           callbackKey: 'EFFECT_RESOLVE',
           context: {
             sourceCardId: card.gamecardId,
-            effectIndex: 1, // Points to this trigger's resolve if needed, but we'll use a specific key if better
+            effectIndex: 1,
             step: 2
           }
         };
       },
-      onQueryResolve: (card, gameState, playerState, selections) => {
+      onQueryResolve: async (card, gameState, playerState, selections) => {
         const targetId = selections[0];
         const opponentId = Object.keys(gameState.players).find(id => id !== playerState.uid)!;
         
-        AtomicEffectExecutor.execute(gameState, playerState.uid, {
+        await AtomicEffectExecutor.execute(gameState, playerState.uid, {
           type: 'MOVE_FROM_FIELD',
           targetFilter: { gamecardId: targetId },
           destinationZone: 'DECK'
         }, card);
-        gameState.logs.push(`[任务：击溃恶党] 效果：将对手的 ${targetId} 放置在卡组顶。`);
+        gameState.logs.push(`[任务：击溃恶党] 效果：将对方的一张卡牌放置在卡组顶。`);
       }
     },
     {
@@ -123,7 +123,7 @@ const card: Card = {
         const hasGuildUnit = playerState.unitZone.some(u => u && u.faction === '冒险家工会');
         return hasGuildUnit && playerState.hand.length > 0;
       },
-      cost: (gameState, playerState, card) => {
+      cost: async (gameState, playerState, card) => {
         gameState.pendingQuery = {
           id: Math.random().toString(36).substring(7),
           type: 'SELECT_CARD',
@@ -141,16 +141,16 @@ const card: Card = {
         };
         return true;
       },
-      onQueryResolve: (card, gameState, playerState, selections) => {
+      onQueryResolve: async (card, gameState, playerState, selections) => {
         // Discard selected card
         const discardId = selections[0];
-        AtomicEffectExecutor.execute(gameState, playerState.uid, {
+        await AtomicEffectExecutor.execute(gameState, playerState.uid, {
           type: 'DISCARD_CARD',
           targetFilter: { gamecardId: discardId }
         }, card);
 
         // Force play self
-        AtomicEffectExecutor.execute(gameState, playerState.uid, {
+        await AtomicEffectExecutor.execute(gameState, playerState.uid, {
           type: 'FORCE_PLAY',
           targetFilter: { gamecardId: card.gamecardId }
         }, card);

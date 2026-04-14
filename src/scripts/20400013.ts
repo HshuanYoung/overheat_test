@@ -39,7 +39,7 @@ const effect_20400013_activation: CardEffect = {
       gameState.logs.push(`[${instance.fullName}] 未发现拥有可封印“起”效果的单位。`);
     }
   },
-  onQueryResolve: (instance: Card, gameState: GameState, playerState: PlayerState, selections: string[], context: any) => {
+  onQueryResolve: async (instance: Card, gameState: GameState, playerState: PlayerState, selections: string[], context: any) => {
     if (context.step === 'SELECT_UNIT' && selections.length > 0) {
       const targetId = selections[0];
       const target = AtomicEffectExecutor.findCardById(gameState, targetId);

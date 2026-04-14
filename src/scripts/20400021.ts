@@ -16,10 +16,10 @@ const effect_20400021_counter: CardEffect = {
 
     // 3. Opponent has a STORY card on stack
     const opponentId = gameState.playerIds.find(id => id !== playerState.uid)!;
-    return gameState.counterStack.some(item => 
-      item.type === 'PLAY' && 
-      item.ownerUid === opponentId && 
-      item.card?.type === 'STORY' && 
+    return gameState.counterStack.some(item =>
+      item.type === 'PLAY' &&
+      item.ownerUid === opponentId &&
+      item.card?.type === 'STORY' &&
       !item.isNegated
     );
   },
@@ -44,20 +44,17 @@ const effect_20400021_counter: CardEffect = {
       }
     };
   },
-  onQueryResolve: (instance: Card, gameState: GameState, playerState: PlayerState, selections: string[], context: any) => {
+  onQueryResolve: async (instance: Card, gameState: GameState, playerState: PlayerState, selections: string[], context: any) => {
     if (context.step === 'PAYMENT') {
       // 1. Move self to grave (consuming the story card)
-      const handIdx = playerState.hand.findIndex(c => c?.gamecardId === instance.gamecardId);
-      if (handIdx !== -1) {
-        const card = playerState.hand.splice(handIdx, 1)[0]!;
-        card.cardlocation = 'GRAVE';
-        playerState.grave.push(card);
-        gameState.logs.push(`[${instance.fullName}] 发动并送入了墓地。`);
-      }
+      await AtomicEffectExecutor.execute(gameState, playerState.uid, {
+        type: 'DISCARD_CARD',
+        targetFilter: { gamecardId: instance.gamecardId }
+      }, instance);
+      gameState.logs.push(`[${instance.fullName}] 发动并送入了墓地。`);
 
       // 2. Find and negate the opponent's STORY card
       const opponentId = gameState.playerIds.find(id => id !== playerState.uid)!;
-      const opponent = gameState.players[opponentId];
 
       for (let i = gameState.counterStack.length - 1; i >= 0; i--) {
         const item = gameState.counterStack[i];
@@ -66,13 +63,12 @@ const effect_20400021_counter: CardEffect = {
           const targetCard = item.card;
           if (targetCard) {
             // Move from PLAY zone to Grave
-            const playIdx = opponent.playZone.findIndex(c => c?.gamecardId === targetCard.gamecardId);
-            if (playIdx !== -1) {
-              opponent.playZone.splice(playIdx, 1);
-              targetCard.cardlocation = 'GRAVE';
-              opponent.grave.push(targetCard);
-              gameState.logs.push(`[${instance.fullName}] 使对手的 [${targetCard.fullName}] 发动无效并送入了墓地。`);
-            }
+            await AtomicEffectExecutor.execute(gameState, opponentId, {
+              type: 'MOVE_FROM_FIELD',
+              targetFilter: { gamecardId: targetCard.gamecardId },
+              destinationZone: 'GRAVE'
+            }, instance);
+            gameState.logs.push(`[${instance.fullName}] 使对手的 [${targetCard.fullName}] 发动无效并送入了墓地。`);
           }
           break;
         }

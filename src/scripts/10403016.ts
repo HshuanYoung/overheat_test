@@ -32,7 +32,7 @@ const effect_10403016_trigger: CardEffect = {
       };
     }
   },
-  onQueryResolve: (instance: Card, gameState: GameState, playerState: PlayerState, selections: string[]) => {
+  onQueryResolve: async (instance: Card, gameState: GameState, playerState: PlayerState, selections: string[]) => {
     if (selections.length > 0) {
       playerState.markedUnitAttackTarget = selections[0];
       const targetUnit = AtomicEffectExecutor.findCardById(gameState, selections[0]);
@@ -52,7 +52,7 @@ const effect_10403016_activate: CardEffect = {
   },
   execute: async (instance: Card, gameState: GameState, playerState: PlayerState) => {
     const frontCards = playerState.erosionFront.filter(c => c && c.displayState === 'FRONT_UPRIGHT') as Card[];
-    if (frontCards.length === 0) throw new Error('没有侵蚀区正面卡牌作为代价');
+    if (frontCards.length === 0) return;
 
     gameState.pendingQuery = {
       id: Math.random().toString(36).substring(7),
@@ -71,24 +71,13 @@ const effect_10403016_activate: CardEffect = {
       }
     };
   },
-  onQueryResolve: (instance: Card, gameState: GameState, playerState: PlayerState, selections: string[], context: any) => {
+  onQueryResolve: async (instance: Card, gameState: GameState, playerState: PlayerState, selections: string[], context: any) => {
     if (context.step === 'COST' && selections.length > 0) {
-      // Execute Cost: Move to Erosion Back (Face down)
-      const costCardId = selections[0];
-      const costCard = AtomicEffectExecutor.findCardById(gameState, costCardId);
-      if (costCard) {
-        // Find index in front
-        const idx = playerState.erosionFront.findIndex(c => c?.gamecardId === costCardId);
-        if (idx !== -1) {
-          playerState.erosionFront[idx] = null;
-          costCard.cardlocation = 'EROSION_BACK';
-          costCard.displayState = 'FRONT_FACEDOWN';
-          const emptyBackIdx = playerState.erosionBack.findIndex(c => c === null);
-          if (emptyBackIdx !== -1) playerState.erosionBack[emptyBackIdx] = costCard;
-          else playerState.erosionBack.push(costCard);
-          gameState.logs.push(`[${instance.fullName}] 支付了代价：将 [${costCard.fullName}] 转为背面。`);
-        }
-      }
+      // Execute Cost: Turn face down
+      await AtomicEffectExecutor.execute(gameState, playerState.uid, {
+        type: 'TURN_EROSION_FACE_DOWN',
+        value: 1
+      }, instance, undefined, selections);
 
       // Effect: Search Cocoa
       const searchZones: { zone: (Card | null)[], name: TriggerLocation }[] = [
@@ -128,27 +117,27 @@ const effect_10403016_activate: CardEffect = {
       }
     } else if (context.step === 'SUMMON' && selections.length > 0) {
       const cocoaId = selections[0];
+      const targetCard = AtomicEffectExecutor.findCardById(gameState, cocoaId)!;
+      const sourceZone = targetCard.cardlocation as TriggerLocation;
 
-      // Manual move logic since we need to check source zone
-      const zones: string[] = ['hand', 'deck', 'grave'];
-      for (const zoneKey of zones) {
-        const zone = playerState[zoneKey as keyof PlayerState] as (Card | null)[];
-        const idx = zone.findIndex(c => c?.gamecardId === cocoaId);
-        if (idx !== -1) {
-          const card = zone.splice(idx, 1)[0]!;
-          card.cardlocation = 'UNIT';
-          card.playedTurn = gameState.turnCount;
-          const emptyUnitIdx = playerState.unitZone.findIndex(c => c === null);
-          if (emptyUnitIdx !== -1) playerState.unitZone[emptyUnitIdx] = card;
-          else playerState.unitZone.push(card);
+      let type: any = 'MOVE_FROM_HAND';
+      if (sourceZone === 'DECK') type = 'MOVE_FROM_DECK'; // Note: Ensure MOVE_FROM_DECK exists or use specific logic
+      else if (sourceZone === 'GRAVE') type = 'MOVE_FROM_GRAVE';
 
-          gameState.logs.push(`[${instance.fullName}] 的效果使 [${card.fullName}] 从 ${zoneKey.toUpperCase()} 出击到战场！`);
-          break;
-        }
-      }
+      // Fallback if specific MOVE_FROM_DECK/GRAVE doesn't exist in atomic:
+      // We can use moveCard but await it if it's made async, or use execute if it supports it.
+      // Based on AtomicEffectExecutor, MOVE_FROM_HAND is common. Let's see if MOVE_FROM_DECK exists.
+      
+      await AtomicEffectExecutor.execute(gameState, playerState.uid, {
+        type: (sourceZone === 'DECK' ? 'MOVE_FROM_DECK' : (sourceZone === 'GRAVE' ? 'MOVE_FROM_GRAVE' : 'MOVE_FROM_HAND')) as any,
+        targetFilter: { gamecardId: cocoaId },
+        destinationZone: 'UNIT'
+      }, instance);
 
-      if (context.step === 'SUMMON') {
-        AtomicEffectExecutor.shuffleDeck(gameState, playerState.uid);
+      gameState.logs.push(`[${instance.fullName}] 的效果使 [${targetCard.fullName}] 从 ${sourceZone} 出击到战场！`);
+
+      if (sourceZone === 'DECK') {
+        await AtomicEffectExecutor.execute(gameState, playerState.uid, { type: 'SHUFFLE_DECK' }, instance);
       }
     }
   }

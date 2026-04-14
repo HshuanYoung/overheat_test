@@ -21,11 +21,10 @@ const card: Card = {
       type: 'ACTIVATE',
       description: '【对付】：只能在有从战场返回的单位的回合发动。将战场上所有AC2及以下的单位返回持有者手牌。',
       condition: (gameState, playerState) => {
-        // Condition: Units have returned from field this turn
         return !!playerState.hasUnitReturnedThisTurn;
       },
-      execute: (card, gameState, playerState) => {
-        AtomicEffectExecutor.execute(gameState, playerState.uid, {
+      execute: async (card, gameState, playerState) => {
+        await AtomicEffectExecutor.execute(gameState, playerState.uid, {
           type: 'MOVE_FROM_FIELD',
           targetFilter: {
             type: 'UNIT',

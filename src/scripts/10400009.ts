@@ -37,7 +37,7 @@ const effect_10400009_counter: CardEffect = {
       }
     };
   },
-  onQueryResolve: (instance: Card, gameState: GameState, playerState: PlayerState, selections: string[], context: any) => {
+  onQueryResolve: async (instance: Card, gameState: GameState, playerState: PlayerState, selections: string[], context: any) => {
     if (context.step === 'PAYMENT') {
        // Payment successful (handled by engine check before callback)
        

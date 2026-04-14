@@ -23,7 +23,7 @@ const trigger_10402006_1: CardEffect = {
     const blueUnitsCount = playerState.unitZone.filter(u => u && u.color === 'BLUE' && u.type === 'UNIT').length;
     return blueUnitsCount >= 2;
   },
-  execute: (instance: Card, gameState: GameState, playerState: PlayerState) => {
+  execute: async (instance: Card, gameState: GameState, playerState: PlayerState) => {
     // Step 1: Choose a player (Me or Opponent)
     const options: any[] = [];
     
@@ -62,7 +62,7 @@ const trigger_10402006_1: CardEffect = {
       };
     }
   },
-  onQueryResolve: (instance: Card, gameState: GameState, playerState: PlayerState, selections: string[], context: any) => {
+  onQueryResolve: async (instance: Card, gameState: GameState, playerState: PlayerState, selections: string[], context: any) => {
     if (context.step === 1) {
       const selectedGamecardId = selections[0];
       let selectedPlayerUid = '';
@@ -88,7 +88,7 @@ const trigger_10402006_1: CardEffect = {
         gameState.logs.push(`[狐族交易术学徒] 选择了玩家 ${targetPlayer.displayName}`);
 
         // Reveal the player's hand (temporary: until start of next turn)
-        AtomicEffectExecutor.execute(gameState, selectedPlayerUid, {
+        await AtomicEffectExecutor.execute(gameState, selectedPlayerUid, {
           type: 'REVEAL_HAND',
           turnDuration: 1
         }, instance);
@@ -157,13 +157,13 @@ const trigger_10402006_1: CardEffect = {
         gameState.logs.push(`[狐族交易术学徒] 交换了 ${targetPlayer.displayName} 的手牌 ${handCard.fullName} 和侵蚀卡 ${erosionCard.fullName}`);
 
         // Perform the swap
-        AtomicEffectExecutor.execute(gameState, selectedPlayerUid, {
+        await AtomicEffectExecutor.execute(gameState, selectedPlayerUid, {
           type: 'MOVE_FROM_EROSION',
           targetFilter: { gamecardId: selectedErosionCardId },
           destinationZone: 'HAND'
         }, instance);
 
-        AtomicEffectExecutor.execute(gameState, selectedPlayerUid, {
+        await AtomicEffectExecutor.execute(gameState, selectedPlayerUid, {
           type: 'MOVE_FROM_HAND',
           targetFilter: { gamecardId: selectedHandCardId },
           destinationZone: 'EROSION_FRONT'

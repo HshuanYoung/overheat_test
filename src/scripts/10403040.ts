@@ -39,18 +39,13 @@ const effect_10403040_kill_trigger: CardEffect = {
   onQueryResolve: async (instance: Card, gameState: GameState, playerState: PlayerState, selections: string[]) => {
     if (selections.length > 0) {
       const targetId = selections[0];
-      const opponentId = gameState.playerIds.find(id => id !== playerState.uid)!;
-      const opponent = gameState.players[opponentId];
-      const idx = opponent.unitZone.findIndex(u => u && u.gamecardId === targetId);
       
-      if (idx !== -1) {
-        const unit = opponent.unitZone[idx]!;
-        opponent.unitZone[idx] = null;
-        unit.cardlocation = 'GRAVE';
-        opponent.grave.push(unit);
-        
-        gameState.logs.push(`[${instance.fullName}] 效果：破坏了 [${unit.fullName}]。`);
-      }
+      await AtomicEffectExecutor.execute(gameState, playerState.uid, {
+        type: 'DESTROY_CARD',
+        targetFilter: { gamecardId: targetId }
+      }, instance);
+
+      gameState.logs.push(`[${instance.fullName}] 效果：破坏了单位。`);
     }
   }
 };
@@ -66,7 +61,7 @@ const effect_10403040_activate: CardEffect = {
   },
   execute: async (instance: Card, gameState: GameState, playerState: PlayerState) => {
     const frontCards = playerState.erosionFront.filter(c => c && c.displayState === 'FRONT_UPRIGHT') as Card[];
-    if (frontCards.length === 0) throw new Error('没有侵蚀区正面卡牌作为代价');
+    if (frontCards.length === 0) return;
 
     gameState.pendingQuery = {
       id: Math.random().toString(36).substring(7),
@@ -85,22 +80,13 @@ const effect_10403040_activate: CardEffect = {
       }
     };
   },
-  onQueryResolve: (instance: Card, gameState: GameState, playerState: PlayerState, selections: string[], context: any) => {
+  onQueryResolve: async (instance: Card, gameState: GameState, playerState: PlayerState, selections: string[], context: any) => {
     if (context.step === 'COST' && selections.length > 0) {
-      const costCardId = selections[0];
-      const costCard = AtomicEffectExecutor.findCardById(gameState, costCardId);
-      if (costCard) {
-        const idx = playerState.erosionFront.findIndex(c => c?.gamecardId === costCardId);
-        if (idx !== -1) {
-          playerState.erosionFront[idx] = null;
-          costCard.cardlocation = 'EROSION_BACK';
-          costCard.displayState = 'FRONT_FACEDOWN';
-          const emptyBackIdx = playerState.erosionBack.findIndex(c => c === null);
-          if (emptyBackIdx !== -1) playerState.erosionBack[emptyBackIdx] = costCard;
-          else playerState.erosionBack.push(costCard);
-          gameState.logs.push(`[${instance.fullName}] 支付了代价：将 [${costCard.fullName}] 转为背面。`);
-        }
-      }
+      // Execute Cost: Turn to back
+      await AtomicEffectExecutor.execute(gameState, playerState.uid, {
+        type: 'TURN_EROSION_FACE_DOWN',
+        value: 1
+      }, instance, undefined, selections);
 
       // Search Cocola
       const searchZones: { zone: (Card | null)[], name: TriggerLocation }[] = [
@@ -140,25 +126,19 @@ const effect_10403040_activate: CardEffect = {
       }
     } else if (context.step === 'SUMMON' && selections.length > 0) {
       const cocolaId = selections[0];
-      const zones: string[] = ['hand', 'deck', 'grave'];
-      for (const zoneKey of zones) {
-        const zone = playerState[zoneKey as keyof PlayerState] as (Card | null)[];
-        const idx = zone.findIndex(c => c?.gamecardId === cocolaId);
-        if (idx !== -1) {
-          const card = zone.splice(idx, 1)[0]!;
-          card.cardlocation = 'UNIT';
-          card.playedTurn = gameState.turnCount;
-          const emptyUnitIdx = playerState.unitZone.findIndex(c => c === null);
-          if (emptyUnitIdx !== -1) playerState.unitZone[emptyUnitIdx] = card;
-          else playerState.unitZone.push(card);
-          
-          gameState.logs.push(`[${instance.fullName}] 的效果使 [${card.fullName}] 从 ${zoneKey.toUpperCase()} 出击到战场！`);
-          break;
-        }
-      }
+      const targetCard = AtomicEffectExecutor.findCardById(gameState, cocolaId)!;
+      const sourceZone = targetCard.cardlocation as TriggerLocation;
+
+      await AtomicEffectExecutor.execute(gameState, playerState.uid, {
+        type: (sourceZone === 'DECK' ? 'MOVE_FROM_DECK' : (sourceZone === 'GRAVE' ? 'MOVE_FROM_GRAVE' : 'MOVE_FROM_HAND')) as any,
+        targetFilter: { gamecardId: cocolaId },
+        destinationZone: 'UNIT'
+      }, instance);
+
+      gameState.logs.push(`[${instance.fullName}] 的效果使 [${targetCard.fullName}] 从 ${sourceZone} 出击到战场！`);
       
-      if (context.step === 'SUMMON') {
-        AtomicEffectExecutor.shuffleDeck(gameState, playerState.uid);
+      if (sourceZone === 'DECK') {
+        await AtomicEffectExecutor.execute(gameState, playerState.uid, { type: 'SHUFFLE_DECK' }, instance);
       }
     }
   }

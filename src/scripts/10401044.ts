@@ -13,7 +13,11 @@ const effect_10401044_activation: CardEffect = {
   execute: async (instance: Card, gameState: GameState, playerState: PlayerState) => {
     const pUid = playerState.uid;
     // 1. Move self to hand
-    AtomicEffectExecutor.moveCard(gameState, pUid, 'UNIT', pUid, 'HAND', instance.gamecardId, true);
+    await AtomicEffectExecutor.execute(gameState, pUid, {
+      type: 'MOVE_FROM_FIELD',
+      targetFilter: { gamecardId: instance.gamecardId },
+      destinationZone: 'HAND'
+    }, instance);
     gameState.logs.push(`[${instance.fullName}] 自行回到了手牌。`);
 
     // 2. Select target to bounce
@@ -47,13 +51,17 @@ const effect_10401044_activation: CardEffect = {
       gameState.logs.push(`[${instance.fullName}] 未发现符合条件的横置单位，仅自身返场。`);
     }
   },
-  onQueryResolve: (instance: Card, gameState: GameState, playerState: PlayerState, selections: string[], context: any) => {
+  onQueryResolve: async (instance: Card, gameState: GameState, playerState: PlayerState, selections: string[], context: any) => {
     if (context.step === 'BOUNCE' && selections.length > 0) {
       const targetId = selections[0];
       const target = AtomicEffectExecutor.findCardById(gameState, targetId)!;
       const owner = AtomicEffectExecutor.findCardOwnerKey(gameState, targetId)!;
 
-      AtomicEffectExecutor.moveCard(gameState, owner, 'UNIT', owner, 'HAND', targetId, true);
+      await AtomicEffectExecutor.execute(gameState, owner, {
+        type: 'MOVE_FROM_FIELD',
+        targetFilter: { gamecardId: targetId },
+        destinationZone: 'HAND'
+      }, instance);
       gameState.logs.push(`[${instance.fullName}] 的效果使 [${target.fullName}] 返回了手牌。`);
     }
   }

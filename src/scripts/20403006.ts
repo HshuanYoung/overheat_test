@@ -29,7 +29,7 @@ const card: Card = {
           (c.acValue ?? 0) <= 2
         );
       },
-      execute: (card, gameState, playerState) => {
+      execute: async (card, gameState, playerState) => {
         const eligibleUnits = playerState.erosionFront.filter(c =>
           c !== null &&
           c.type === 'UNIT' &&
@@ -52,22 +52,20 @@ const card: Card = {
           context: { sourceCardId: card.gamecardId, effectIndex: 0 }
         };
       },
-      onQueryResolve: (card, gameState, playerState, selections) => {
+      onQueryResolve: async (card, gameState, playerState, selections) => {
         const targetId = selections[0];
-        const sourcePlayer = gameState.players[playerState.uid];
-        const targetCard = sourcePlayer.erosionFront.find(c => c?.gamecardId === targetId);
+        
+        await AtomicEffectExecutor.execute(gameState, playerState.uid, {
+          type: 'MOVE_FROM_EROSION',
+          destinationZone: 'UNIT',
+          targetFilter: { gamecardId: targetId }
+        }, card);
 
+        // Ensure vertical state
+        const targetCard = AtomicEffectExecutor.findCardById(gameState, targetId);
         if (targetCard) {
-          // Set state to vertical (active)
           targetCard.isExhausted = false;
           targetCard.displayState = 'FRONT_UPRIGHT';
-
-          AtomicEffectExecutor.execute(gameState, playerState.uid, {
-            type: 'MOVE_FROM_EROSION',
-            destinationZone: 'UNIT',
-            targetFilter: { gamecardId: targetId }
-          }, card);
-
           gameState.logs.push(`${playerState.displayName} 接受委托，将 ${targetCard.fullName} 召集至战场。`);
         }
       }

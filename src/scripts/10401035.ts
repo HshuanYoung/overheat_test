@@ -22,12 +22,12 @@ const activation_10401035: CardEffect = {
     );
     return targetOptions.length > 0;
   },
-  cost: (gameState: GameState, playerState: PlayerState, instance: Card) => {
+  cost: async (gameState: GameState, playerState: PlayerState, instance: Card) => {
     // 0 fee implies no cost or cost function returns true directly. 
     // In this game, if there were a resource cost, we would handle it here.
     return true;
   },
-  execute: (instance: Card, gameState: GameState, playerState: PlayerState) => {
+  execute: async (instance: Card, gameState: GameState, playerState: PlayerState) => {
     const targetOptions = playerState.unitZone.filter(u =>
       u && u.godMark && u.fullName.includes('剑仙')
     ) as Card[];
@@ -50,7 +50,7 @@ const activation_10401035: CardEffect = {
       }
     };
   },
-  onQueryResolve: (instance: Card, gameState: GameState, playerState: PlayerState, selections: string[], context: any) => {
+  onQueryResolve: async (instance: Card, gameState: GameState, playerState: PlayerState, selections: string[], context: any) => {
     if (context.step === 1) {
       const targetCardId = selections[0];
       const targetCard = playerState.unitZone.find(c => c?.gamecardId === targetCardId);
@@ -59,7 +59,7 @@ const activation_10401035: CardEffect = {
         gameState.logs.push(`[染剑仙灵] 效果发动：将 ${targetCard.fullName} 返回手牌`);
 
         // 1. Move target unit to hand
-        AtomicEffectExecutor.execute(gameState, playerState.uid, {
+        await AtomicEffectExecutor.execute(gameState, playerState.uid, {
           type: 'MOVE_FROM_FIELD',
           targetFilter: { gamecardId: targetCardId },
           destinationZone: 'HAND'
@@ -67,7 +67,7 @@ const activation_10401035: CardEffect = {
 
         // 2. Move this card (self) to the unit zone
         gameState.logs.push(`[染剑仙灵] 进入战场`);
-        AtomicEffectExecutor.execute(gameState, playerState.uid, {
+        await AtomicEffectExecutor.execute(gameState, playerState.uid, {
           type: 'MOVE_FROM_HAND',
           targetFilter: { gamecardId: instance.gamecardId },
           destinationZone: 'UNIT'

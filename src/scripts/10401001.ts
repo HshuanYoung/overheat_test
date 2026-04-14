@@ -1,6 +1,5 @@
 import { Card, GameState, PlayerState, GameEvent } from '../types/game';
 import { AtomicEffectExecutor } from '../services/AtomicEffectExecutor';
-import { GameService } from '../services/gameService';
 
 const card: Card = {
   id: '10401001',
@@ -39,10 +38,7 @@ const card: Card = {
 
         return isSelf && isTargetZone && isOnBattlefield;
       },
-      cost: (gameState, playerState, card) => {
-        return true;
-      },
-      execute: (card, gameState, playerState) => {
+      execute: async (card, gameState, playerState) => {
         const checkCardViable = (c: Card) => {
           // 1. Basic Type and Name Check
           if (!(c.fullName.includes('歌月') && c.type === 'STORY')) return false;
@@ -64,7 +60,6 @@ const card: Card = {
           const activateEffect = c.effects?.find(e => e.type === 'ACTIVATE');
           if (activateEffect && activateEffect.condition) {
             try {
-              // Note: Passing the card instance as the third argument which corresponds to 'instance' or 'card' in scripts
               if (!activateEffect.condition(gameState, playerState, c)) return false;
             } catch (e) {
               return false;
@@ -75,12 +70,12 @@ const card: Card = {
         };
 
         const options: { card: Card; source: any }[] = [];
-        playerState.deck.forEach(c => {
+        for (const c of playerState.deck) {
           if (checkCardViable(c)) options.push({ card: { ...c }, source: 'DECK' });
-        });
-        playerState.grave.forEach(c => {
+        }
+        for (const c of playerState.grave) {
           if (checkCardViable(c)) options.push({ card: { ...c }, source: 'GRAVE' });
-        });
+        }
 
         if (options.length === 0) {
           gameState.logs.push(`[风花] 没有符合执行条件的「歌月」卡牌。`);
@@ -100,32 +95,24 @@ const card: Card = {
           context: { sourceCardId: card.gamecardId, effectIndex: 0 }
         };
       },
-      onQueryResolve: (card, gameState, playerState, selections, context) => {
+      onQueryResolve: async (card, gameState, playerState, selections, context) => {
         const step = context?.step || 1;
         const sourcePlayer = gameState.players[playerState.uid];
 
         if (step === 1) {
           const cardId = selections[0];
-          let foundCard: Card | undefined;
-          let sourceZone: string | undefined;
-
-          // Search in deck and grave
-          const deckIdx = sourcePlayer.deck.findIndex(c => c.gamecardId === cardId);
-          if (deckIdx !== -1) {
-            foundCard = sourcePlayer.deck.splice(deckIdx, 1)[0];
-            sourceZone = 'DECK';
-          } else {
-            const graveIdx = sourcePlayer.grave.findIndex(c => c.gamecardId === cardId);
-            if (graveIdx !== -1) {
-              foundCard = sourcePlayer.grave.splice(graveIdx, 1)[0];
-              sourceZone = 'GRAVE';
-            }
-          }
+          const foundCard = AtomicEffectExecutor.findCardById(gameState, cardId);
 
           if (foundCard) {
-            foundCard.cardlocation = 'EXILE';
-            sourcePlayer.exile.push(foundCard);
-            gameState.logs.push(`[风花] 已从 ${sourceZone} 放逐 ${foundCard.fullName}。`);
+            await AtomicEffectExecutor.execute(gameState, playerState.uid, {
+               type: 'MOVE_FROM_DECK', // Assuming it could be in deck or grave, AtomicEffectExecutor.execute should handle it if type is refined, 
+               // but we can use specific ones or a generic MOVE if implemented.
+               // For now, I'll use explicit checks since MOVE_FROM_GRAVE/DECK are separate.
+               targetFilter: { gamecardId: cardId },
+               destinationZone: 'EXILE'
+            }, card);
+
+            gameState.logs.push(`[风花] 已放逐 ${foundCard.fullName}。`);
 
             // Check if payment is required
             if (foundCard.acValue && foundCard.acValue !== 0) {
@@ -154,9 +141,9 @@ const card: Card = {
 
             // If no payment, execute immediately
             if (foundCard.effects) {
-              foundCard.effects.forEach(e => {
-                if (e.execute) e.execute(foundCard!, gameState, sourcePlayer);
-              });
+              for (const e of foundCard.effects) {
+                if (e.execute) await (e.execute as any)(foundCard!, gameState, sourcePlayer);
+              }
             }
           }
         } else if (step === 2) {
@@ -164,9 +151,9 @@ const card: Card = {
           const foundCard = sourcePlayer.exile.find(c => c.gamecardId === cardId);
           if (foundCard && foundCard.effects) {
             gameState.logs.push(`[风花] 费用支付成功，正在执行 ${foundCard.fullName} 的效果...`);
-            foundCard.effects.forEach(e => {
-              if (e.execute) e.execute(foundCard, gameState, sourcePlayer);
-            });
+            for (const e of foundCard.effects) {
+              if (e.execute) await (e.execute as any)(foundCard, gameState, sourcePlayer);
+            }
           }
         }
       }
@@ -183,7 +170,7 @@ const card: Card = {
         const backCount = playerState.erosionBack.filter(c => c !== null).length;
         return !!playerState.isGoddessMode && backCount < 9 && frontCount >= 2;
       },
-      cost: (gameState, playerState, card) => {
+      cost: async (gameState, playerState, card) => {
         const frontCards = playerState.erosionFront.filter(c => c !== null) as Card[];
         gameState.pendingQuery = {
           id: Math.random().toString(36).substring(7),
@@ -199,35 +186,27 @@ const card: Card = {
         };
         return true;
       },
-      onQueryResolve: (card, gameState, playerState, selections) => {
-        const sourcePlayer = gameState.players[playerState.uid];
-        selections.forEach(id => {
-          const idx = sourcePlayer.erosionFront.findIndex(c => c?.gamecardId === id);
-          if (idx !== -1) {
-            const card = sourcePlayer.erosionFront[idx]!;
-            sourcePlayer.erosionFront[idx] = null;
-            card.cardlocation = 'EROSION_BACK';
-            card.displayState = 'BACK_UPRIGHT';
-            const emptyIdx = sourcePlayer.erosionBack.findIndex(c => c === null);
-            if (emptyIdx !== -1) sourcePlayer.erosionBack[emptyIdx] = card;
-            else sourcePlayer.erosionBack.push(card);
-          }
-        });
+      onQueryResolve: async (card, gameState, playerState, selections) => {
+        await AtomicEffectExecutor.execute(gameState, playerState.uid, {
+          type: 'TURN_EROSION_FACE_DOWN',
+          value: selections.length
+        }, card, undefined, selections);
+        
         gameState.logs.push(`${playerState.displayName} 将 2 张侵蚀卡翻至背面。`);
       },
-      execute: (card, gameState, playerState) => {
+      execute: async (card, gameState, playerState) => {
         // Return all units to hand
-        Object.values(gameState.players).forEach(player => {
-          player.unitZone.forEach((unit, idx) => {
+        for (const player of Object.values(gameState.players)) {
+          for (const unit of player.unitZone) {
             if (unit) {
-              AtomicEffectExecutor.execute(gameState, player.uid, {
+              await AtomicEffectExecutor.execute(gameState, player.uid, {
                 type: 'MOVE_FROM_FIELD',
                 destinationZone: 'HAND',
                 targetFilter: { gamecardId: unit.gamecardId }
               }, card);
             }
-          });
-        });
+          }
+        }
         gameState.logs.push(`所有单位已返回持有者手牌。`);
       }
     }

@@ -10,7 +10,7 @@ const activate_30402007: CardEffect = {
   condition: (gameState: GameState, playerState: PlayerState, instance: Card) => {
     return !instance.isExhausted;
   },
-  execute: (instance: Card, gameState: GameState, playerState: PlayerState) => {
+  execute: async (instance: Card, gameState: GameState, playerState: PlayerState) => {
     // 1. Cost: Payment loop
     gameState.pendingQuery = {
       id: Math.random().toString(36).substring(7),
@@ -31,11 +31,13 @@ const activate_30402007: CardEffect = {
       }
     };
   },
-  onQueryResolve: (instance: Card, gameState: GameState, playerState: PlayerState, selections: string[], context: any) => {
+  onQueryResolve: async (instance: Card, gameState: GameState, playerState: PlayerState, selections: string[], context: any) => {
     if (context.step === 'PICK_PLAYER') {
       // After payment, exhaust the card
-      instance.isExhausted = true;
-      instance.displayState = 'FRONT_HORIZONTAL';
+      await AtomicEffectExecutor.execute(gameState, playerState.uid, {
+        type: 'ROTATE_HORIZONTAL',
+        targetFilter: { gamecardId: instance.gamecardId }
+      }, instance);
 
       // Select target player
       const options: any[] = Object.values(gameState.players).map(p => {
@@ -76,7 +78,7 @@ const activate_30402007: CardEffect = {
       gameState.logs.push(`[${instance.fullName}] 选择了玩家 ${targetPlayer.displayName} 执行效果。`);
 
       // Target Player: Draw 1
-      AtomicEffectExecutor.execute(gameState, targetUid, {
+      await AtomicEffectExecutor.execute(gameState, targetUid, {
           type: 'DRAW',
           value: 1
       }, instance);
@@ -104,21 +106,18 @@ const activate_30402007: CardEffect = {
       const targetUid = context.targetUid;
       const cardId = selections[0];
       const targetPlayer = gameState.players[targetUid];
-      const RechargeCard = targetPlayer.hand.find(c => c.gamecardId === cardId);
+      
+      await AtomicEffectExecutor.execute(gameState, targetUid, {
+        type: 'MOVE_FROM_HAND',
+        targetFilter: { gamecardId: cardId },
+        destinationZone: 'EROSION_FRONT'
+      }, instance);
 
-      if (RechargeCard) {
-        AtomicEffectExecutor.execute(gameState, targetUid, {
-          type: 'MOVE_FROM_HAND',
-          targetFilter: { gamecardId: cardId },
-          destinationZone: 'EROSION_FRONT'
-        }, instance);
+      // Face up
+      const cardInErosion = targetPlayer.erosionFront.find(c => c?.gamecardId === cardId);
+      if (cardInErosion) cardInErosion.displayState = 'FRONT_UPRIGHT';
 
-        // Face up
-        const cardInErosion = targetPlayer.erosionFront.find(c => c?.gamecardId === cardId);
-        if (cardInErosion) cardInErosion.displayState = 'FRONT_UPRIGHT';
-
-        gameState.logs.push(`[${instance.fullName}] 效果：${targetPlayer.displayName} 将 [${RechargeCard.fullName}] 进行了充能。`);
-      }
+      gameState.logs.push(`[${instance.fullName}] 效果：${targetPlayer.displayName} 进行了充能。`);
     }
   }
 };

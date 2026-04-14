@@ -9,13 +9,13 @@ const activate_10402007_1: CardEffect = {
   condition: (gameState: GameState, playerState: PlayerState, instance: Card) => {
     return !instance.isExhausted;
   },
-  cost: (gameState: GameState, playerState: PlayerState, instance: Card) => {
+  cost: async (gameState: GameState, playerState: PlayerState, instance: Card) => {
     if (instance.isExhausted) return false;
     instance.isExhausted = true;
     instance.displayState = 'BACK_UPRIGHT';
     return true;
   },
-  execute: (instance: Card, gameState: GameState, playerState: PlayerState) => {
+  execute: async (instance: Card, gameState: GameState, playerState: PlayerState) => {
     const options: any[] = [];
     Object.values(gameState.players).forEach(p => {
       const isMe = p.uid === playerState.uid;
@@ -51,7 +51,7 @@ const activate_10402007_1: CardEffect = {
       };
     }
   },
-  onQueryResolve: (instance: Card, gameState: GameState, playerState: PlayerState, selections: string[], context: any) => {
+  onQueryResolve: async (instance: Card, gameState: GameState, playerState: PlayerState, selections: string[], context: any) => {
     if (context.step === 1) {
       const selectedGamecardId = selections[0];
       let selectedPlayerUid = '';
@@ -118,7 +118,7 @@ const activate_10402007_1: CardEffect = {
         gameState.logs.push(`[老练的狐族商人] 将 ${targetPlayer.displayName} 的侵蚀卡 ${erosionCard.fullName} 送往墓地`);
 
         // Move to Grave
-        AtomicEffectExecutor.execute(gameState, selectedPlayerUid, {
+        await AtomicEffectExecutor.execute(gameState, selectedPlayerUid, {
           type: 'MOVE_FROM_EROSION',
           targetFilter: { gamecardId: selectedErosionCardId },
           destinationZone: 'GRAVE'
@@ -151,13 +151,13 @@ const activate_10402007_2: CardEffect = {
     const totalErosion = playerState.erosionFront.filter(c => c !== null).length + playerState.erosionBack.filter(c => c !== null).length;
     return totalErosion >= 4 && totalErosion <= 6;
   },
-  cost: (gameState: GameState, playerState: PlayerState, instance: Card) => {
+  cost: async (gameState: GameState, playerState: PlayerState, instance: Card) => {
     if (instance.isExhausted) return false;
     instance.isExhausted = true;
     instance.displayState = 'BACK_UPRIGHT';
     return true;
   },
-  execute: (instance: Card, gameState: GameState, playerState: PlayerState) => {
+  execute: async (instance: Card, gameState: GameState, playerState: PlayerState) => {
     const options: any[] = [];
     Object.values(gameState.players).forEach(p => {
       const isMe = p.uid === playerState.uid;
@@ -193,7 +193,7 @@ const activate_10402007_2: CardEffect = {
       };
     }
   },
-  onQueryResolve: (instance: Card, gameState: GameState, playerState: PlayerState, selections: string[], context: any) => {
+  onQueryResolve: async (instance: Card, gameState: GameState, playerState: PlayerState, selections: string[], context: any) => {
     if (context.step === 1) {
       const selectedGamecardId = selections[0];
       let selectedPlayerUid = '';
@@ -219,7 +219,7 @@ const activate_10402007_2: CardEffect = {
         gameState.logs.push(`[老练的狐族商人] 选择了玩家 ${targetPlayer.displayName}，该玩家抽2张卡`);
 
         // Draw 2 cards
-        AtomicEffectExecutor.execute(gameState, selectedPlayerUid, {
+        await AtomicEffectExecutor.execute(gameState, selectedPlayerUid, {
           type: 'DRAW',
           value: 2
         }, instance);
@@ -253,7 +253,7 @@ const activate_10402007_2: CardEffect = {
       if (handCard) {
         gameState.logs.push(`[老练的狐族商人] ${targetPlayer.displayName} 将手牌 ${handCard.fullName} 放置在了侵蚀前区`);
 
-        AtomicEffectExecutor.execute(gameState, selectedPlayerUid, {
+        await AtomicEffectExecutor.execute(gameState, selectedPlayerUid, {
           type: 'MOVE_FROM_HAND',
           targetFilter: { gamecardId: selectedHandCardId },
           destinationZone: 'EROSION_FRONT'

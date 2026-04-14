@@ -76,6 +76,15 @@ export const GameService = {
     return true;
   },
 
+  async destroyUnit(gameState: GameState, playerId: string, gamecardId: string, isEffect: boolean = false, sourcePlayerId?: string, skipSubstitution: boolean = false) {
+    // This is a stub for shared code (AtomicEffectExecutor).
+    // On the server, this will be replaced by the real implementation from ServerGameService.
+    // On the client, we emit a socket event.
+    if (typeof window !== 'undefined') {
+       socket.emit('gameAction', { gameId: (gameState as any).gameId, action: 'DESTROY_UNIT', payload: { gamecardId, isEffect, sourcePlayerId, skipSubstitution } });
+    }
+  },
+
   // --- Local UI Utilities ---
   canPlayCard(player: any, card: Card): { canPlay: boolean; reason?: string } {
     if (!player || !card) return { canPlay: false };

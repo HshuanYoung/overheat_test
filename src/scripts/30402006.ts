@@ -35,7 +35,7 @@ const card: Card = {
           )
         );
       },
-      execute: (card, gameState, playerState) => {
+      execute: async (card, gameState, playerState) => {
         // 1. Cost: Discard selection
         gameState.pendingQuery = {
           id: Math.random().toString(36).substring(7),
@@ -50,20 +50,24 @@ const card: Card = {
           context: { sourceCardId: card.gamecardId, effectIndex: 0, step: 1 }
         };
       },
-      onQueryResolve: (card, gameState, playerState, selections, context) => {
+      onQueryResolve: async (card, gameState, playerState, selections, context) => {
         const step = context?.step || 1;
 
         if (step === 1) {
           // Process Discard
           const discardId = selections[0];
-          AtomicEffectExecutor.execute(gameState, playerState.uid, {
+          await AtomicEffectExecutor.execute(gameState, playerState.uid, {
             type: 'MOVE_FROM_HAND',
             targetFilter: { gamecardId: discardId },
             destinationZone: 'GRAVE'
           }, card);
           
           // Exhaust the camera
-          card.isExhausted = true;
+          await AtomicEffectExecutor.execute(gameState, playerState.uid, {
+            type: 'ROTATE_HORIZONTAL',
+            targetFilter: { gamecardId: card.gamecardId }
+          }, card);
+          
           gameState.logs.push(`${playerState.displayName} 弃置了卡牌并横置了 ${card.fullName}。`);
 
           // 2. Step 2: Select Target for Freeze
@@ -86,7 +90,7 @@ const card: Card = {
         } else if (step === 2) {
           const targetId = selections[0];
           
-          AtomicEffectExecutor.execute(gameState, playerState.uid, {
+          await AtomicEffectExecutor.execute(gameState, playerState.uid, {
             type: 'SET_CAN_RESET_COUNT',
             targetFilter: { gamecardId: targetId },
             value: 1

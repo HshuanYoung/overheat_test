@@ -33,7 +33,7 @@ const card: Card = {
         );
       },
       description: '选择战场上一个非神格的单位卡返回持有者手牌。若你的战场上存在「风花」单位，可以选择战场上一个神格单位返回持有者手牌。',
-      execute: (card: Card, gameState: GameState, playerState: PlayerState) => {
+      execute: async (card: Card, gameState: GameState, playerState: PlayerState) => {
         // 1. Check for Fuhua on your side
         const isFuhuaPresent = playerState.unitZone.some(c => c && c.specialName === '风花');
 
@@ -77,9 +77,9 @@ const card: Card = {
           }
         };
       },
-      onQueryResolve: (card, gameState, playerState, selections) => {
+      onQueryResolve: async (card, gameState, playerState, selections) => {
         const targetId = selections[0];
-        AtomicEffectExecutor.execute(gameState, playerState.uid, {
+        await AtomicEffectExecutor.execute(gameState, playerState.uid, {
           type: 'MOVE_FROM_FIELD',
           destinationZone: 'HAND',
           targetFilter: { gamecardId: targetId }

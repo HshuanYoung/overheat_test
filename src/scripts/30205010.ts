@@ -23,7 +23,7 @@ const universalEquipEffect: CardEffect = {
   limitNameType: false,
   triggerLocation: ['ITEM'],
   condition: (gameState) => gameState.phase === 'MAIN',
-  execute: (card, gameState, playerState) => {
+  execute: async (card, gameState, playerState) => {
     const currentHostId = card.equipTargetId;
     const options: any[] = [];
 
@@ -55,7 +55,7 @@ const universalEquipEffect: CardEffect = {
       }
     };
   },
-  onQueryResolve: (card, gameState, playerState, selections, context) => {
+  onQueryResolve: async (card, gameState, playerState, selections, context) => {
     const selectedId = selections[0];
     if (selectedId === card.gamecardId) {
       gameState.logs.push(`[效果] ${card.fullName} 已解除装备`);
@@ -98,8 +98,6 @@ const applyContinuousBonus = (gameState: GameState, card: Card) => {
         // Alliance Exception: if in coalition, and other units can be defended, this effect is ineffective.
         if (gameState.battleState.isAlliance) {
           // If in an alliance, assume the other unit makes the attack "defendable" by normal units.
-          // We could explicitly check if all other units also have a restriction, but based on requirement,
-          // the "other units" being defendable makes this effect ineffective.
         } else {
           // Set restriction: Opponent cannot defend with units power < 2500
           const currentRestriction = gameState.battleState.defensePowerRestriction || 0;

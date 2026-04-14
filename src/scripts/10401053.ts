@@ -23,7 +23,7 @@ const trigger_10401053: CardEffect = {
     );
     return erosionTargets.length > 0;
   },
-  execute: (instance: Card, gameState: GameState, playerState: PlayerState) => {
+  execute: async (instance: Card, gameState: GameState, playerState: PlayerState) => {
     const erosionTargets = playerState.erosionFront.filter(c =>
       c && c.displayState === 'FRONT_UPRIGHT' && c.fullName.includes('剑仙')
     ) as Card[];
@@ -47,13 +47,13 @@ const trigger_10401053: CardEffect = {
       };
     }
   },
-  onQueryResolve: (instance: Card, gameState: GameState, playerState: PlayerState, selections: string[], context: any) => {
+  onQueryResolve: async (instance: Card, gameState: GameState, playerState: PlayerState, selections: string[], context: any) => {
     if (context.step === 1) {
       const targetId = selections[0];
       const targetCard = playerState.erosionFront.find(c => c?.gamecardId === targetId);
 
       if (targetCard) {
-        AtomicEffectExecutor.execute(gameState, playerState.uid, {
+        await AtomicEffectExecutor.execute(gameState, playerState.uid, {
           type: 'MOVE_FROM_EROSION',
           targetFilter: { gamecardId: targetId },
           destinationZone: 'HAND'

@@ -38,7 +38,7 @@ const card: Card = {
       condition: (gameState, playerState, instance, event) => {
         return event?.sourceCardId === instance.gamecardId;
       },
-      execute: (instance, gameState, playerState) => {
+      execute: async (instance, gameState, playerState) => {
         const itemOptions = playerState.deck.filter(c =>
           c.type === 'ITEM' && c.faction === '冒险家工会'
         );
@@ -60,28 +60,27 @@ const card: Card = {
           callbackKey: 'EFFECT_RESOLVE',
           context: {
             sourceCardId: instance.gamecardId,
-            effectIndex: 0, // Now the first effect
+            effectIndex: 0, 
             step: 1
           }
         };
       },
-      onQueryResolve: (instance, gameState, playerState, selections) => {
+      onQueryResolve: async (instance, gameState, playerState, selections) => {
         const targetId = selections[0];
-        const player = gameState.players[playerState.uid];
-        const cardIdx = player.deck.findIndex(c => c.gamecardId === targetId);
+        
+        // Exhaust the unit as part of the effect
+        instance.isExhausted = true;
 
-        if (cardIdx !== -1) {
-          // Exhaust the unit as part of the effect
-          instance.isExhausted = true;
+        await AtomicEffectExecutor.execute(gameState, playerState.uid, {
+          type: 'MOVE_FROM_DECK',
+          targetFilter: { gamecardId: targetId },
+          destinationZone: 'HAND'
+        }, instance);
 
-          const foundCard = player.deck.splice(cardIdx, 1)[0];
-          foundCard.cardlocation = 'HAND';
-          player.hand.push(foundCard);
-          gameState.logs.push(`[援护药师【文】] 横置了自身并将 ${foundCard.fullName} 加入了手牌。`);
+        gameState.logs.push(`[援护药师【文】] 横置了自身并将卡牌从卡组加入了手牌。`);
 
-          // Shuffle deck
-          AtomicEffectExecutor.execute(gameState, playerState.uid, { type: 'SHUFFLE_DECK' }, instance);
-        }
+        // Shuffle deck
+        await AtomicEffectExecutor.execute(gameState, playerState.uid, { type: 'SHUFFLE_DECK' }, instance);
       }
     },
     {
@@ -106,7 +105,7 @@ const card: Card = {
 
         return hasValidTarget;
       },
-      execute: (card, gameState, playerState) => {
+      execute: async (card, gameState, playerState) => {
         gameState.pendingQuery = {
           id: Math.random().toString(36).substring(7),
           type: 'SELECT_PAYMENT',
@@ -121,13 +120,13 @@ const card: Card = {
           paymentColor: card.color,
           context: { 
             sourceCardId: card.gamecardId, 
-            effectIndex: 1, // This is now the second effect (index 1)
+            effectIndex: 1, 
             step: 1 
           }
         };
         gameState.logs.push(`[援护药师【文】] 等待 ${playerState.displayName} 支付 1 点费用...`);
       },
-      onQueryResolve: (card, gameState, playerState, selections, context) => {
+      onQueryResolve: async (card, gameState, playerState, selections, context) => {
         const step = context?.step || 1;
         const sourcePlayer = gameState.players[playerState.uid];
 
@@ -135,7 +134,7 @@ const card: Card = {
           gameState.logs.push(`[援护药师【文】] 费用支付成功。`);
 
           // Move self to erosion front
-          AtomicEffectExecutor.execute(gameState, playerState.uid, {
+          await AtomicEffectExecutor.execute(gameState, playerState.uid, {
             type: 'MOVE_FROM_FIELD',
             destinationZone: 'EROSION_FRONT',
             targetFilter: { gamecardId: card.gamecardId }
@@ -179,7 +178,7 @@ const card: Card = {
             targetCard.isExhausted = false;
             targetCard.displayState = 'FRONT_UPRIGHT';
 
-            AtomicEffectExecutor.execute(gameState, playerState.uid, {
+            await AtomicEffectExecutor.execute(gameState, playerState.uid, {
               type: 'MOVE_FROM_EROSION',
               destinationZone: 'UNIT',
               targetFilter: { gamecardId: targetId }

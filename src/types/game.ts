@@ -155,13 +155,13 @@ export interface CardEffect {
   isMandatory?: boolean;
   isGlobal?: boolean; // If true, the effect triggers for any card meeting the criteria (e.g. any card entering), not just self.
   condition?: (gameState: GameState, playerState: PlayerState, card: Card, event?: GameEvent) => boolean;
-  cost?: (gameState: GameState, playerState: PlayerState, card: Card) => boolean;
+  cost?: (gameState: GameState, playerState: PlayerState, card: Card) => boolean | Promise<boolean>;
   applyContinuous?: (gameState: GameState, card: Card) => void;
   removeContinuous?: (gameState: GameState, card: Card) => void;
 
-  execute?: (card: Card, gameState: GameState, playerState: PlayerState, event?: GameEvent) => void; // The function to execute when the effect is triggered
-  onQueryResolve?: (card: Card, gameState: GameState, playerState: PlayerState, selections: string[], context?: any) => void; // Resolve sequential steps after a query
-  resolve?: (card: Card, gameState: GameState, playerState: PlayerState, event?: GameEvent) => void; // Post-processing logic (e.g. end of turn)
+  execute?: (card: Card, gameState: GameState, playerState: PlayerState, event?: GameEvent) => void | Promise<void>; // The function to execute when the effect is triggered
+  onQueryResolve?: (card: Card, gameState: GameState, playerState: PlayerState, selections: string[], context?: any) => void | Promise<void>; // Resolve sequential steps after a query
+  resolve?: (card: Card, gameState: GameState, playerState: PlayerState, event?: GameEvent) => void | Promise<void>; // Post-processing logic (e.g. end of turn)
   atomicEffects?: AtomicEffect[]; // Structured atomic effects
   content?: string; // Description of the effect: Move, Draw, Add Power, etc.
   description: string; // Human readable text

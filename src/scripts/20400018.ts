@@ -7,8 +7,8 @@ const effect_20400018_activate: CardEffect = {
   description: '每回合此卡名限一次，抽两张牌。',
   limitCount: 1,
   limitNameType: true,
-  execute: (instance: Card, gameState: GameState, playerState: PlayerState) => {
-    AtomicEffectExecutor.execute(gameState, playerState.uid, {
+  execute: async (instance: Card, gameState: GameState, playerState: PlayerState) => {
+    await AtomicEffectExecutor.execute(gameState, playerState.uid, {
       type: 'DRAW',
       value: 2
     }, instance);

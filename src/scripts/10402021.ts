@@ -49,7 +49,7 @@ const card: Card = {
 
         return hasOtherFieldUnit && hasErosionUnit;
       },
-      execute: (card, gameState, playerState) => {
+      execute: async (card, gameState, playerState) => {
         // 1. Cost: Exhaust
         card.isExhausted = true;
         gameState.logs.push(`${playerState.displayName} 横置了 ${card.fullName} 以触发效果。`);
@@ -75,7 +75,7 @@ const card: Card = {
           context: { sourceCardId: card.gamecardId, effectIndex: 0, step: 1 }
         };
       },
-      onQueryResolve: (card, gameState, playerState, selections, context) => {
+      onQueryResolve: async (card, gameState, playerState, selections, context) => {
         const step = context?.step || 1;
 
         if (step === 1) {
@@ -118,7 +118,7 @@ const card: Card = {
             // Move erosion to field
             erosionUnit.isExhausted = false;
             erosionUnit.displayState = 'FRONT_UPRIGHT';
-            AtomicEffectExecutor.execute(gameState, playerState.uid, {
+            await AtomicEffectExecutor.execute(gameState, playerState.uid, {
               type: 'MOVE_FROM_EROSION',
               destinationZone: 'UNIT',
               targetFilter: { gamecardId: erosionUnitId }
@@ -126,7 +126,7 @@ const card: Card = {
 
             // Move field to erosion
             fieldUnit.displayState = 'FRONT_UPRIGHT';
-            AtomicEffectExecutor.execute(gameState, playerState.uid, {
+            await AtomicEffectExecutor.execute(gameState, playerState.uid, {
               type: 'MOVE_FROM_FIELD',
               destinationZone: 'EROSION_FRONT',
               targetFilter: { gamecardId: fieldUnitId }

@@ -10,8 +10,8 @@ const trigger_30401005: CardEffect = {
   condition: (gameState, playerState, instance, event) => {
     return playerState.isTurn && event?.playerUid === playerState.uid && !instance.isExhausted;
   },
-  execute: (instance, gameState, playerState) => {
-    // 1. Confirm activation by asking to choose from hand (dummy check or SELECT_CARD)
+  execute: async (instance, gameState, playerState) => {
+    // 1. Confirm activation by asking to choose from hand
     const validTargets = playerState.hand.filter(c => c && c.faction === '百濑之水城' && !c.godMark && c.type === 'UNIT');
     
     if (validTargets.length > 0) {
@@ -33,17 +33,19 @@ const trigger_30401005: CardEffect = {
       };
     }
   },
-  onQueryResolve: (instance, gameState, playerState, selections, context) => {
+  onQueryResolve: async (instance, gameState, playerState, selections, context) => {
     if (context.step === 1) {
       const targetId = selections[0];
       const target = playerState.hand.find(c => c.gamecardId === targetId);
       if (target) {
         // Cost: Exhaust
-        instance.isExhausted = true;
-        instance.displayState = 'FRONT_HORIZONTAL';
+        await AtomicEffectExecutor.execute(gameState, playerState.uid, {
+          type: 'ROTATE_HORIZONTAL',
+          targetFilter: { gamecardId: instance.gamecardId }
+        }, instance);
 
         // Effect: Place on Unit Zone
-        AtomicEffectExecutor.execute(gameState, playerState.uid, {
+        await AtomicEffectExecutor.execute(gameState, playerState.uid, {
           type: 'MOVE_FROM_HAND',
           targetFilter: { gamecardId: targetId },
           destinationZone: 'UNIT'
