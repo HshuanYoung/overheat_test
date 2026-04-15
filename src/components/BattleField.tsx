@@ -6,6 +6,7 @@ import { socket, getAuthUser, onceAuthenticated, isSocketAuthenticated } from '.
 
 import { GameService } from '../services/gameService';
 import { hydrateGameState } from '../services/cardLoader';
+import { CARD_BACKS } from '../data/customization';
 
 import { CardComponent } from './Card';
 import { PlayField } from './PlayField';
@@ -39,6 +40,7 @@ export const BattleField: React.FC = () => {
   const [selectedErosionCardId, setSelectedErosionCardId] = useState<string | null>(null);
   const [erosionChoice, setErosionChoice] = useState<'A' | 'B' | 'C' | null>(null);
   const [selectedQueryIds, setSelectedQueryIds] = useState<string[]>([]);
+  const [favoriteBackId, setFavoriteBackId] = useState<string>('default');
 
   const [timer, setTimer] = useState<number>(30);
   const [cardMenu, setCardMenu] = useState<{
@@ -71,6 +73,29 @@ export const BattleField: React.FC = () => {
   const [interruptionNotice, setInterruptionNotice] = useState<string | null>(null);
   useEffect(() => { gameRef.current = game; }, [game]);
   useEffect(() => { pendingPlayCardRef.current = pendingPlayCard; }, [pendingPlayCard]);
+
+  // Fetch User Customization
+  useEffect(() => {
+    const fetchProfile = async () => {
+      try {
+        const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || '';
+        const res = await fetch(`${BACKEND_URL}/api/user/profile`, {
+          headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+        });
+        const data = await res.json();
+        if (data.favoriteBackId) {
+          setFavoriteBackId(data.favoriteBackId);
+        }
+      } catch (e) {
+        console.error('Failed to fetch profile in BattleField:', e);
+      }
+    };
+    fetchProfile();
+  }, []);
+
+  const cardBackUrl = useMemo(() => {
+    return CARD_BACKS.find(b => b.id === favoriteBackId)?.url || '/assets/card_bg/default_card_bg.jpg';
+  }, [favoriteBackId]);
 
   // Universal Visual Timer Logic - Stabilized with gameRef
   useEffect(() => {
@@ -641,7 +666,7 @@ export const BattleField: React.FC = () => {
                     isSelected ? "border-[#f27d26] scale-105 shadow-[0_0_30px_rgba(242,125,38,0.3)]" : "border-transparent opacity-60"
                   )}
                 >
-                  <CardComponent card={card} disableZoom={true} />
+                  <CardComponent card={card} disableZoom={true} cardBackUrl={cardBackUrl} />
                 </motion.div>
                 <button
                   onClick={() => {
@@ -775,7 +800,7 @@ export const BattleField: React.FC = () => {
                           selectedErosionCardId === card!.gamecardId ? "border-[#f27d26] scale-105 shadow-[0_0_20px_rgba(242,125,38,0.4)]" : "border-transparent opacity-60"
                         )}
                       >
-                        <CardComponent card={card!} disableZoom={true} />
+                        <CardComponent card={card!} disableZoom={true} cardBackUrl={cardBackUrl} />
                       </motion.div>
                     ))}
                   </div>
@@ -832,7 +857,7 @@ export const BattleField: React.FC = () => {
                 {/* Left: Card being played */}
                 <div className="flex flex-col items-center gap-4">
                   <div className="w-full aspect-[3/4] rounded-2xl border-2 border-[#f27d26] shadow-[0_0_50px_rgba(242,125,38,0.3)] overflow-hidden">
-                    <CardComponent card={pendingPlayCard} disableZoom />
+                    <CardComponent card={pendingPlayCard} disableZoom cardBackUrl={cardBackUrl} />
                   </div>
                   <div className="text-center">
                     <div className="text-lg font-black text-white uppercase italic tracking-tight">{pendingPlayCard.fullName}</div>
@@ -865,7 +890,7 @@ export const BattleField: React.FC = () => {
                                     isSelected ? "border-blue-500 scale-105 shadow-[0_0_20px_rgba(59,130,246,0.5)]" : "border-white/5 opacity-60 grayscale hover:grayscale-0 hover:opacity-100"
                                   )}
                                 >
-                                  <CardComponent card={card} disableZoom />
+                                  <CardComponent card={card} disableZoom cardBackUrl={cardBackUrl} />
                                 </motion.div>
                               );
                             })}
@@ -894,7 +919,7 @@ export const BattleField: React.FC = () => {
                                     isSelected ? "border-green-500 scale-105 shadow-[0_0_20px_rgba(34,197,94,0.5)]" : "border-white/5 opacity-60 grayscale hover:grayscale-0 hover:opacity-100"
                                   )}
                                 >
-                                  <CardComponent card={card!} disableZoom />
+                                  <CardComponent card={card!} disableZoom cardBackUrl={cardBackUrl} />
                                 </motion.div>
                               );
                             })}
@@ -923,7 +948,7 @@ export const BattleField: React.FC = () => {
                                 isSelected ? "border-red-500 scale-105 shadow-[0_0_20px_rgba(239,68,68,0.5)]" : "border-white/5 opacity-60 grayscale hover:grayscale-0 hover:opacity-100"
                               )}
                             >
-                              <CardComponent card={card!} disableZoom />
+                              <CardComponent card={card!} disableZoom cardBackUrl={cardBackUrl} />
                             </motion.div>
                           );
                         })}
@@ -1111,6 +1136,7 @@ export const BattleField: React.FC = () => {
                   selectedDefender={selectedDefender || undefined}
                   allianceInitiator={allianceTargetSelection || undefined}
                   timer={timer}
+                  cardBackUrl={cardBackUrl}
                 />
               )}
             </div>
@@ -1152,7 +1178,7 @@ export const BattleField: React.FC = () => {
                   <div className="w-72 relative z-10">
                     {game.currentProcessingItem.card ? (
                       <div className="relative group">
-                        <CardComponent card={game.currentProcessingItem.card} disableZoom />
+                        <CardComponent card={game.currentProcessingItem.card} disableZoom cardBackUrl={cardBackUrl} />
                         <div className="absolute -inset-0.5 bg-gradient-to-t from-red-600/50 to-transparent opacity-50 rounded-2xl" />
 
                         {/* UL/UR Labels for Resolving Card */}
@@ -1259,7 +1285,7 @@ export const BattleField: React.FC = () => {
                     )}
                   >
                     {item.card ? (
-                      <CardComponent card={item.card} disableZoom />
+                      <CardComponent card={item.card} disableZoom cardBackUrl={cardBackUrl} />
                     ) : (
                       <div className="w-full h-full bg-zinc-900 flex flex-col items-center justify-center p-4 text-center border-t-4 border-red-500/50">
                         <Sword className="w-10 h-10 text-red-500/40 mb-3" />
@@ -1351,7 +1377,7 @@ export const BattleField: React.FC = () => {
                       onClick={() => handleDiscardCard(card.gamecardId)}
                       className="w-32 cursor-pointer transition-all hover:shadow-[0_0_30px_rgba(242,125,38,0.4)]"
                     >
-                      <CardComponent card={card} disableZoom />
+                      <CardComponent card={card} disableZoom cardBackUrl={cardBackUrl} />
                     </motion.div>
                   ))}
                 </div>
@@ -1385,7 +1411,7 @@ export const BattleField: React.FC = () => {
                     if (!card) return null;
                     return (
                       <div key={cid} className="w-40 h-56 rounded-xl overflow-hidden border-2 border-[#4a0d4a]/50 shadow-2xl relative group">
-                        <CardComponent card={card} disableZoom />
+                        <CardComponent card={card} disableZoom cardBackUrl={cardBackUrl} />
                         <div className="absolute inset-0 bg-purple-500/20 animate-pulse pointer-events-none" />
                       </div>
                     );
@@ -1641,7 +1667,7 @@ export const BattleField: React.FC = () => {
               <div className="flex gap-8 items-center">
                 <div className="flex flex-col items-center gap-3">
                   <div className="w-40 aspect-[3/4] rounded-xl overflow-hidden border-2 border-white/10 shadow-2xl">
-                    <CardComponent card={allianceConfirmation.attacker1} disableZoom />
+                    <CardComponent card={allianceConfirmation.attacker1} disableZoom cardBackUrl={cardBackUrl} />
                   </div>
                   <span className="text-[10px] font-black text-white/40 uppercase tracking-widest">Attacker 1</span>
                 </div>
@@ -1654,7 +1680,7 @@ export const BattleField: React.FC = () => {
 
                 <div className="flex flex-col items-center gap-3">
                   <div className="w-40 aspect-[3/4] rounded-xl overflow-hidden border-2 border-white/10 shadow-2xl">
-                    <CardComponent card={allianceConfirmation.attacker2} disableZoom />
+                    <CardComponent card={allianceConfirmation.attacker2} disableZoom cardBackUrl={cardBackUrl} />
                   </div>
                   <span className="text-[10px] font-black text-white/40 uppercase tracking-widest">Attacker 2</span>
                 </div>
@@ -1981,7 +2007,9 @@ export const BattleField: React.FC = () => {
                                 <span className="text-[#f27d26] font-display font-black text-xl uppercase italic tracking-widest">{option.card.fullName}</span>
                               </div>
                             ) : (
-                              <CardComponent card={option.card} disableZoom={true} />
+                              <div className="aspect-[3/4] drop-shadow-2xl">
+                                <CardComponent card={option.card} disableZoom={true} cardBackUrl={cardBackUrl} />
+                              </div>
                             )}
 
                             {/* Selected Badge */}
@@ -2054,7 +2082,7 @@ export const BattleField: React.FC = () => {
                                 isSelected ? "border-blue-500 scale-105 shadow-[0_0_20px_rgba(59,130,246,0.5)]" : "border-white/5 opacity-60 hover:opacity-100"
                               )}
                             >
-                              <CardComponent card={card} disableZoom displayMode="hand" />
+                              <CardComponent card={card} disableZoom displayMode="hand" cardBackUrl={cardBackUrl} />
                             </motion.div>
                           );
                         })}
@@ -2083,7 +2111,7 @@ export const BattleField: React.FC = () => {
                                 isSelected ? "border-green-500 scale-105 shadow-[0_0_20px_rgba(34,197,94,0.5)]" : "border-white/5 opacity-60 hover:opacity-100"
                               )}
                             >
-                              <CardComponent card={card!} disableZoom />
+                              <CardComponent card={card!} disableZoom cardBackUrl={cardBackUrl} />
                             </motion.div>
                           );
                         })}
@@ -2112,7 +2140,7 @@ export const BattleField: React.FC = () => {
                                 isSelected ? "border-red-500 scale-105 shadow-[0_0_20px_rgba(239,68,68,0.5)]" : "border-white/5 opacity-60 hover:opacity-100"
                               )}
                             >
-                              <CardComponent card={card!} disableZoom />
+                              <CardComponent card={card!} disableZoom cardBackUrl={cardBackUrl} />
                             </motion.div>
                           );
                         })}

@@ -46,16 +46,7 @@ const card: Card = {
           targetItem.isNegated = true;
           gameState.logs.push(`[交易失败] 已无效 ${targetItem.card.fullName} 的发动。`);
 
-          // If it was a PLAY action (playing the card from hand), send it to grave
-          if (targetItem.type === 'PLAY') {
-            const ownerId = targetItem.ownerUid;
-            await AtomicEffectExecutor.execute(gameState, ownerId, {
-              type: 'MOVE_FROM_FIELD', // Movement from PLAY zone is handled via MOVE_FROM_FIELD with appropriate target
-              destinationZone: 'GRAVE',
-              targetFilter: { gamecardId: targetItem.card.gamecardId }
-            }, card);
-            gameState.logs.push(`[交易失败] ${targetItem.card.fullName} 已被送入墓地。`);
-          }
+          // The engine will handle moving the negated card from PLAY to GRAVE in resolveCounterStack.
         } else {
           gameState.logs.push(`[交易失败] 未找到合法的对抗目标，效果失效。`);
         }

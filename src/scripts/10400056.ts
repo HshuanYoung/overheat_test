@@ -71,7 +71,7 @@ const effect_10400055_trigger: CardEffect = {
 };
 
 const card: Card = {
-  id: '10400055',
+  id: '10400056',
   gamecardId: null as any,
   fullName: '月夜飞龙',
   specialName: '',

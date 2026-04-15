@@ -5,23 +5,18 @@ import { useNavigate } from 'react-router-dom';
 import { User, Settings, Image, Layout, Heart, Save, Loader2, X, Search, LogOut, ArrowLeft } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '../lib/utils';
-
-const RAY_CARDS = [
-  { id: 'fav_card', name: '默认雷亚卡', url: 'assets/fav_card/fav_card.jpg' },
-  { id: 'fav_card_1', name: '雷亚卡 01', url: 'assets/fav_card/fav_card1.jpg' },
-  { id: 'fav_card_2', name: '雷亚卡 02', url: 'assets/fav_card/fav_card2.jpg' },
-  { id: 'fav_card_3', name: '雷亚卡 03', url: 'assets/fav_card/fav_card3.jpg' },
-  { id: 'fav_card_4', name: '雷亚卡 04', url: 'assets/fav_card/fav_card.jpg' },
-];
+import { RAY_CARDS, CARD_BACKS } from '../data/customization';
 
 export const Profile: React.FC = () => {
   const user = getAuthUser();
   const navigate = useNavigate();
   const [nickname, setNickname] = useState(user?.displayName || 'User');
   const [favoriteCardId, setFavoriteCardId] = useState<string | null>(null);
+  const [favoriteBackId, setFavoriteBackId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [isSelectingCard, setIsSelectingCard] = useState(false);
+  const [isSelectingBack, setIsSelectingBack] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
 
   useEffect(() => {
@@ -32,7 +27,8 @@ export const Profile: React.FC = () => {
         const token = localStorage.getItem('token');
         const res = await fetch(`${BACKEND_URL}/api/user/profile`, { headers: { 'Authorization': `Bearer ${token}` }});
         const data = await res.json();
-        setFavoriteCardId(data.favoriteCardId || null);
+        setFavoriteCardId(data.favoriteCardId || 'fav_card');
+        setFavoriteBackId(data.favoriteBackId || 'default');
       } catch (e) {
         console.error(e);
       }
@@ -50,7 +46,7 @@ export const Profile: React.FC = () => {
       await fetch(`${BACKEND_URL}/api/user/profile`, { 
           method: 'PUT', 
           headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }, 
-          body: JSON.stringify({ favoriteCardId }) 
+          body: JSON.stringify({ favoriteCardId, favoriteBackId }) 
       });
       alert('个人信息已保存');
     } catch (e) {
@@ -68,6 +64,7 @@ export const Profile: React.FC = () => {
   };
 
   const favoriteCard = RAY_CARDS.find(c => c.id === favoriteCardId);
+  const favoriteBack = CARD_BACKS.find(b => b.id === favoriteBackId);
 
   if (loading) {
     return (
@@ -83,7 +80,7 @@ export const Profile: React.FC = () => {
       <div 
         className="fixed inset-0 z-0 opacity-20 transition-all duration-1000"
         style={{
-          backgroundImage: `url("${favoriteCard?.url || 'assets/fav_card/fav_card.jpg'}")`,
+          backgroundImage: `url("${favoriteCard?.url || '/assets/fav_card/fav_card.jpg'}")`,
           backgroundSize: 'cover',
           backgroundPosition: 'center',
           filter: 'blur(3px)',
@@ -141,11 +138,13 @@ export const Profile: React.FC = () => {
                 description={favoriteCard ? `当前: ${favoriteCard.name}` : "选择主界面背景图片"} 
               />
             </div>
-            <SettingCard 
-              title="设置卡背图案" 
-              icon={<Layout className="w-6 h-6" />} 
-              description="在对战中展示你的个性化卡背" 
-            />
+            <div onClick={() => setIsSelectingBack(true)}>
+              <SettingCard 
+                title="设置卡背图案" 
+                icon={<Layout className="w-6 h-6" />} 
+                description={favoriteBack ? `当前: ${favoriteBack.name}` : "在对战中展示你的个性化卡背"} 
+              />
+            </div>
             <SettingCard 
               title="偏好设置" 
               icon={<Settings className="w-6 h-6" />} 
@@ -202,6 +201,62 @@ export const Profile: React.FC = () => {
                     </div>
                     <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent flex items-end p-4">
                       <p className="font-black italic tracking-tighter text-lg">{card.name}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Card Back Selection Modal */}
+      <AnimatePresence>
+        {isSelectingBack && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[100] bg-black/90 backdrop-blur-md flex items-center justify-center p-8"
+          >
+            <motion.div 
+              initial={{ scale: 0.9, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.9, y: 20 }}
+              className="bg-zinc-900 border border-zinc-800 rounded-3xl w-full max-w-4xl h-[80vh] flex flex-col overflow-hidden shadow-2xl"
+            >
+              <div className="p-6 border-b border-zinc-800 flex items-center justify-between">
+                <div className="flex items-center gap-4 flex-1">
+                  <h2 className="text-2xl font-black italic tracking-tighter">选择卡背</h2>
+                  <div className="relative flex-1 max-w-md">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
+                    <input 
+                      className="w-full bg-black border border-zinc-800 rounded-xl pl-10 pr-4 py-2 text-sm focus:outline-none focus:border-red-600 transition-all"
+                      placeholder="搜索..."
+                      value={searchTerm}
+                      onChange={e => setSearchTerm(e.target.value)}
+                    />
+                  </div>
+                </div>
+                <button onClick={() => setIsSelectingBack(false)} className="p-2 hover:bg-zinc-800 rounded-full transition-colors">
+                  <X className="w-6 h-6" />
+                </button>
+              </div>
+              <div className="flex-1 overflow-y-auto p-8 grid grid-cols-1 sm:grid-cols-2 gap-6">
+                {CARD_BACKS.filter(b => b.name.includes(searchTerm)).map(back => (
+                  <div 
+                    key={back.id} 
+                    onClick={() => { setFavoriteBackId(back.id); setIsSelectingBack(false); }}
+                    className={cn(
+                      "cursor-pointer transition-all hover:scale-[1.02] group relative rounded-2xl overflow-hidden border-2",
+                      favoriteBackId === back.id ? "border-red-600 shadow-[0_0_20px_rgba(220,38,38,0.3)]" : "border-zinc-800 hover:border-zinc-600"
+                    )}
+                  >
+                    <div className="aspect-video relative">
+                      <img src={back.url} className="w-full h-full object-contain bg-zinc-800 group-hover:scale-105 transition-transform duration-500" />
+                    </div>
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent flex items-end p-4">
+                      <p className="font-black italic tracking-tighter text-lg">{back.name}</p>
                     </div>
                   </div>
                 ))}

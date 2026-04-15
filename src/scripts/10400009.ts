@@ -72,23 +72,18 @@ const effect_10400009_counter: CardEffect = {
         const item = gameState.counterStack[i];
         if (item.type === 'PLAY' && item.ownerUid === opponentId && !item.isNegated) {
           item.isNegated = true;
-          const targetCard = item.card;
-          if (targetCard) {
-            // Move from PLAY to HAND
-            const playIdx = opponent.playZone.findIndex(c => c?.gamecardId === targetCard.gamecardId);
-            if (playIdx !== -1) {
-              opponent.playZone.splice(playIdx, 1);
-              targetCard.cardlocation = 'HAND';
-              opponent.hand.push(targetCard);
-
-              // 4. Lockdown
-              if (!opponent.negatedNames) opponent.negatedNames = [];
-              if (!opponent.negatedNames.includes(targetCard.fullName)) {
-                opponent.negatedNames.push(targetCard.fullName);
-              }
-
-              gameState.logs.push(`[${instance.fullName}] 使 [${targetCard.fullName}] 发动无效并将其返回对手手牌。本回合对手无法再次使用同名卡！`);
+          if (item.card) {
+            // Negated card should be returned to hand from PLAY zone
+            await AtomicEffectExecutor.moveCard(gameState, item.ownerUid, 'PLAY', item.ownerUid, 'HAND', item.card.gamecardId, true);
+            gameState.logs.push(`[幻想吞噬龙] 将 ${item.card.fullName} 返回手牌。`);
+            
+            // 4. Lockdown
+            if (!opponent.negatedNames) opponent.negatedNames = [];
+            if (!opponent.negatedNames.includes(item.card.fullName)) {
+              opponent.negatedNames.push(item.card.fullName);
             }
+
+            gameState.logs.push(`[${instance.fullName}] 使 [${item.card.fullName}] 发动无效并将其返回对手手牌。本回合对手无法再次使用同名卡！`);
           }
           break;
         }

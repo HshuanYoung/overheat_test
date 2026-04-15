@@ -21,6 +21,7 @@ interface PlayFieldProps {
   selectedDefender?: string;
   allianceInitiator?: string;
   timer: number;
+  cardBackUrl?: string;
 }
 
 const CardSlot: React.FC<{
@@ -40,7 +41,8 @@ const CardSlot: React.FC<{
   isOpponent?: boolean;
   isAllianceInitiator?: boolean;
   displayMode?: 'deck' | 'unit' | 'erosion_item' | 'none';
-}> = ({ card, label, onClick, onPreview, className, isFaceUp = true, isExhausted, isSelectedForPayment, isDeck, count = 0, showCount = true, isAttacking, isDefending, isOpponent, isAllianceInitiator, displayMode }) => {
+  cardBackUrl?: string;
+}> = ({ card, label, onClick, onPreview, className, isFaceUp = true, isExhausted, isSelectedForPayment, isDeck, count = 0, showCount = true, isAttacking, isDefending, isOpponent, isAllianceInitiator, displayMode, cardBackUrl }) => {
   // Dynamic height scaling for stack areas (Deck, Grave, Exile)
   const isStackArea = isDeck || label === 'GRAVE' || label === 'EXILE';
   const heightScale = isStackArea ? 1 + Math.min(count / 100, 0.2) : 1;
@@ -73,7 +75,7 @@ const CardSlot: React.FC<{
         }}
       >
         {isDeck ? (
-          <CardComponent isBack />
+          <CardComponent isBack cardBackUrl={cardBackUrl} />
         ) : card ? (
           <div className={cn(
             "h-full w-full relative transition-[transform,opacity] duration-500",
@@ -81,13 +83,13 @@ const CardSlot: React.FC<{
             isExhausted && "opacity-80"
           )}>
             {isFaceUp ? (
-              <CardComponent card={card} className="border-0" isExhausted={isExhausted} statusBorder={isAttacking ? 'red' : isDefending ? 'blue' : undefined} displayMode={displayMode} />
+              <CardComponent card={card} className="border-0" isExhausted={isExhausted} statusBorder={isAttacking ? 'red' : isDefending ? 'blue' : undefined} displayMode={displayMode} cardBackUrl={cardBackUrl} />
             ) : (
-              <CardComponent isBack className="border-0" isExhausted={isExhausted} />
+              <CardComponent isBack className="border-0" isExhausted={isExhausted} cardBackUrl={cardBackUrl} />
             )}
           </div>
         ) : count > 0 ? (
-          <CardComponent isBack />
+          <CardComponent isBack cardBackUrl={cardBackUrl} />
         ) : (
           <span className="text-[8px] uppercase font-bold opacity-20 tracking-widest text-center px-1">
             {label}
@@ -113,7 +115,8 @@ const CardListModal: React.FC<{
   isOpen: boolean;
   onClose: () => void;
   onPreviewCard?: (card: Card) => void;
-}> = ({ title, cards = [], isOpen, onClose, onPreviewCard }) => {
+  cardBackUrl?: string;
+}> = ({ title, cards = [], isOpen, onClose, onPreviewCard, cardBackUrl }) => {
   if (!isOpen) return null;
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-8 bg-black/80 backdrop-blur-sm" onClick={onClose}>
@@ -127,7 +130,7 @@ const CardListModal: React.FC<{
         <div className="flex-1 overflow-y-auto p-6 grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 gap-4 custom-scrollbar">
           {cards?.map((card, i) => (
             <div key={i} className="aspect-[3/4] cursor-pointer" onClick={() => onPreviewCard?.(card)}>
-              <CardComponent card={card} disableZoom />
+              <CardComponent card={card} disableZoom cardBackUrl={cardBackUrl} />
             </div>
           ))}
           {(cards?.length || 0) === 0 && <div className="col-span-full py-20 text-center opacity-20 italic">No cards here</div>}
@@ -149,7 +152,8 @@ const PlayerHalf: React.FC<{
   selectedDefender?: string;
   game?: GameState;
   allianceInitiator?: string;
-}> = ({ player, isOpponent, onCardClick, onPreviewCard, onPlayCard, paymentSelection, pendingPlayCard, selectedAttackers, selectedDefender, game, allianceInitiator }) => {
+  cardBackUrl?: string;
+}> = ({ player, isOpponent, onCardClick, onPreviewCard, onPlayCard, paymentSelection, pendingPlayCard, selectedAttackers, selectedDefender, game, allianceInitiator, cardBackUrl }) => {
   const romanNumerals = ['Ⅰ', 'Ⅱ', 'Ⅲ', 'Ⅳ', 'Ⅴ', 'Ⅵ', 'Ⅶ', 'Ⅷ', 'Ⅸ', 'Ⅹ'];
   const [viewingZone, setViewingZone] = useState<{ title: string, cards: Card[] } | null>(null);
   if (!player) return null;
@@ -166,6 +170,7 @@ const PlayerHalf: React.FC<{
         title={viewingZone?.title || ''}
         cards={viewingZone?.cards || []}
         onPreviewCard={onPreviewCard}
+        cardBackUrl={cardBackUrl}
       />
 
       {/* LEFT COLUMN */}
@@ -175,12 +180,12 @@ const PlayerHalf: React.FC<{
           <div className="flex flex-col gap-2">
             <CardSlot
               card={null} isDeck label="DECK" count={player.deck?.length || 0}
-              className="border-white/20"
+              className="border-white/20" cardBackUrl={cardBackUrl}
             />
             <CardSlot
               card={player.grave?.length > 0 ? player.grave[player.grave.length - 1] : null}
               label="GRAVE" count={player.grave?.length || 0}
-              className="border-red-900/30"
+              className="border-red-900/30" cardBackUrl={cardBackUrl}
               onClick={() => setViewingZone({ title: 'Grave', cards: player.grave || [] })}
               isFaceUp={true}
               isOpponent={isOpponent}
@@ -189,7 +194,7 @@ const PlayerHalf: React.FC<{
             <CardSlot
               card={player.exile?.length > 0 ? player.exile[player.exile.length - 1] : null}
               label="EXILE" count={player.exile?.length || 0}
-              className="border-purple-900/30"
+              className="border-purple-900/30" cardBackUrl={cardBackUrl}
               onClick={() => setViewingZone({ title: 'Exile', cards: player.exile || [] })}
               isFaceUp={true}
               isOpponent={isOpponent}
@@ -207,6 +212,7 @@ const PlayerHalf: React.FC<{
                   card={item || null}
                   label={`ITEM ${i + 1}`}
                   onClick={(e) => item && onCardClick?.(item, 'item', i, e)}
+                  cardBackUrl={cardBackUrl}
                   isExhausted={item ? item.isExhausted : false}
                   isSelectedForPayment={false}
                   showCount={false}
@@ -234,6 +240,7 @@ const PlayerHalf: React.FC<{
                   className="border-yellow-500/30"
                   onPreview={onPreviewCard}
                   isOpponent={isOpponent}
+                  cardBackUrl={cardBackUrl}
                 />
               </div>
               <div className="flex-1 h-24 flex items-center justify-center gap-1 overflow-x-auto px-4 bg-black/20 rounded-xl border border-white/5 custom-scrollbar">
@@ -248,9 +255,9 @@ const PlayerHalf: React.FC<{
                     onClick={() => !!player.isHandPublic && onPreviewCard?.(card)}
                   >
                     {!!player.isHandPublic ? (
-                      <CardComponent card={card} disableZoom displayMode="hand" />
+                      <CardComponent card={card} disableZoom displayMode="hand" cardBackUrl={cardBackUrl} />
                     ) : (
-                      <CardComponent isBack />
+                      <CardComponent isBack cardBackUrl={cardBackUrl} />
                     )}
                   </div>
                 ))}
@@ -293,6 +300,7 @@ const PlayerHalf: React.FC<{
                             showCount={false}
                             isOpponent={isOpponent}
                             displayMode="erosion_item"
+                            cardBackUrl={cardBackUrl}
                           />
                         ) : (
                           <div className="h-full w-full rounded-md border border-dashed border-white/5 bg-white/5 flex items-center justify-center">
@@ -324,6 +332,7 @@ const PlayerHalf: React.FC<{
                     showCount={false}
                     isOpponent={isOpponent}
                     displayMode="unit"
+                    cardBackUrl={cardBackUrl}
                   />
                 );
               })}
@@ -349,6 +358,7 @@ const PlayerHalf: React.FC<{
                     isAllianceInitiator={unit && allianceInitiator === unit.gamecardId}
                     showCount={false}
                     displayMode="unit"
+                    cardBackUrl={cardBackUrl}
                   />
                 );
               })}
@@ -383,6 +393,7 @@ const PlayerHalf: React.FC<{
                             className={displayCard.isFaceUp ? "border-red-600" : "border-red-900/50"}
                             showCount={false}
                             displayMode="erosion_item"
+                            cardBackUrl={cardBackUrl}
                           />
                         ) : (
                           <div className="h-full w-full rounded-md border border-dashed border-white/5 bg-white/5 flex items-center justify-center">
@@ -423,6 +434,7 @@ const PlayerHalf: React.FC<{
                         card={card}
                         disableZoom
                         displayMode="hand"
+                        cardBackUrl={cardBackUrl}
                         className={cn(
                           "shadow-2xl transition-all duration-300 shadow-black/50",
                           isFeijingSelected && "shadow-[#f27d26]/60 ring-2 ring-[#f27d26]"
@@ -439,6 +451,7 @@ const PlayerHalf: React.FC<{
                   card={(player.playZone?.length || 0) > 0 ? player.playZone[player.playZone.length - 1] : null}
                   label="PLAY" count={player.playZone?.length || 0}
                   className="border-yellow-500/30"
+                  cardBackUrl={cardBackUrl}
                 />
               </div>
             </div>
@@ -459,6 +472,7 @@ const PlayerHalf: React.FC<{
                   card={item || null}
                   label={`ITEM ${idx + 1}`}
                   onClick={(e) => item && onCardClick?.(item, 'item', idx, e)}
+                  cardBackUrl={cardBackUrl}
                   isExhausted={item ? item.isExhausted : false}
                   isSelectedForPayment={false}
                   showCount={false}
@@ -478,6 +492,7 @@ const PlayerHalf: React.FC<{
               onClick={() => setViewingZone({ title: 'Exile', cards: player.exile || [] })}
               isFaceUp={true}
               displayMode="erosion_item"
+              cardBackUrl={cardBackUrl}
             />
             <CardSlot
               card={player.grave?.length > 0 ? player.grave[player.grave.length - 1] : null}
@@ -486,10 +501,12 @@ const PlayerHalf: React.FC<{
               onClick={() => setViewingZone({ title: 'Grave', cards: player.grave || [] })}
               isFaceUp={true}
               displayMode="erosion_item"
+              cardBackUrl={cardBackUrl}
             />
             <CardSlot
               card={null} isDeck label="DECK" count={player.deck?.length || 0}
               className="border-white/20"
+              cardBackUrl={cardBackUrl}
             />
           </div>
         )}
@@ -498,7 +515,7 @@ const PlayerHalf: React.FC<{
   );
 };
 
-export const PlayField: React.FC<PlayFieldProps> = ({ player, opponent, game, onCardClick, onPreviewCard, onPlayCard, paymentSelection, pendingPlayCard, stack, myUid, selectedAttackers, selectedDefender, allianceInitiator, timer }) => {
+export const PlayField: React.FC<PlayFieldProps> = ({ player, opponent, game, onCardClick, onPreviewCard, onPlayCard, paymentSelection, pendingPlayCard, stack, myUid, selectedAttackers, selectedDefender, allianceInitiator, timer, cardBackUrl }) => {
   return (
     <div className="relative w-full h-full max-w-7xl mx-auto bg-[#0a0a0a] border-2 border-[#1a1a1a] rounded-xl shadow-2xl font-mono text-white select-none flex flex-col">
       {/* Background Overlay */}
@@ -535,6 +552,7 @@ export const PlayField: React.FC<PlayFieldProps> = ({ player, opponent, game, on
           paymentSelection={paymentSelection}
           pendingPlayCard={pendingPlayCard}
           allianceInitiator={allianceInitiator}
+          cardBackUrl={cardBackUrl}
         />
       </div>
 
@@ -551,6 +569,7 @@ export const PlayField: React.FC<PlayFieldProps> = ({ player, opponent, game, on
           selectedDefender={selectedDefender}
           game={game}
           allianceInitiator={allianceInitiator}
+          cardBackUrl={cardBackUrl}
         />
       </div>
 

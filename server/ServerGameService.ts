@@ -723,8 +723,9 @@ export const ServerGameService = {
     }
 
     // RULE: STORY cards in HAND must be PLAYED, not ACTIVATED
-    if (card.type === 'STORY' && location === 'HAND') {
-      throw new Error('手牌中的故事卡只能通过打出来发动');
+    // EXCEPT during countering phase if the effect is specifically a hand-trigger
+    if (card.type === 'STORY' && location === 'HAND' && gameState.phase !== 'COUNTERING') {
+      throw new Error('当前阶段手牌中的故事卡只能通过打出来发动');
     }
 
     // RULE 2: During countering phase, only ACTIVATE/ACTIVATED effects can be used
@@ -852,7 +853,17 @@ export const ServerGameService = {
       }
 
       if (stackItem.isNegated) {
-        gameState.logs.push(`[连锁结算] Link ${gameState.counterStack.length + 1} 已被无效，跳过执行。`);
+        gameState.logs.push(`[连锁结算] Link ${gameState.counterStack.length + 1} 已被无效，跳过效果执行。`);
+        // We still need to cleanup the card if it was played to the field/play zone
+        if (stackItem.type === 'PLAY' && card) {
+          if (card.type === 'UNIT' || card.type === 'ITEM' || card.isEquip) {
+            // Units/Items that were negated stay in Play zone until moved to Grave
+            ServerGameService.moveCard(gameState, stackItem.ownerUid, 'PLAY', stackItem.ownerUid, 'GRAVE', card.gamecardId);
+          } else {
+            // Story cards move to Grave
+            ServerGameService.moveCard(gameState, stackItem.ownerUid, 'PLAY', stackItem.ownerUid, 'GRAVE', card.gamecardId);
+          }
+        }
         continue;
       }
 

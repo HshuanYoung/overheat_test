@@ -53,22 +53,14 @@ const effect_20400021_counter: CardEffect = {
       }, instance);
       gameState.logs.push(`[${instance.fullName}] 发动并送入了墓地。`);
 
-      // 2. Find and negate the opponent's STORY card
       const opponentId = gameState.playerIds.find(id => id !== playerState.uid)!;
-
       for (let i = gameState.counterStack.length - 1; i >= 0; i--) {
         const item = gameState.counterStack[i];
         if (item.type === 'PLAY' && item.ownerUid === opponentId && item.card?.type === 'STORY' && !item.isNegated) {
           item.isNegated = true;
-          const targetCard = item.card;
-          if (targetCard) {
-            // Move from PLAY zone to Grave
-            await AtomicEffectExecutor.execute(gameState, opponentId, {
-              type: 'MOVE_FROM_FIELD',
-              targetFilter: { gamecardId: targetCard.gamecardId },
-              destinationZone: 'GRAVE'
-            }, instance);
-            gameState.logs.push(`[${instance.fullName}] 使对手的 [${targetCard.fullName}] 发动无效并送入了墓地。`);
+          if (item.card) {
+            // Negated STORY card will be moved to Grave by the engine during resolution.
+            gameState.logs.push(`[${instance.fullName}] 使对手的 [${item.card.fullName}] 发动无效。`);
           }
           break;
         }
