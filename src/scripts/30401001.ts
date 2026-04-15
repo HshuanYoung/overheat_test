@@ -18,7 +18,7 @@ const findCardInUnitZone = (gameState: GameState, gamecardId: string): Card | un
 
 const universalEquipEffect: CardEffect = {
   id: 'equip_universal',
-  type: 'ACTIVATED',
+  type: 'ACTIVATE',
   description: '【起】〔回合1次〕：在你的主要阶段，你可以选择你场上的一个单位，装备这张卡；或者解除这张卡的装备状态。',
   limitCount: 1,
   limitNameType: false,
@@ -77,8 +77,8 @@ const universalEquipEffect: CardEffect = {
 
 const handActivationEffect: CardEffect = {
   id: 'hand_activation',
-  type: 'ACTIVATED',
-  description: '【起】：我方场上存在2个或以上蓝色单位。支付2费用，在手牌中发动：选择我方2个非神蚀单位（不能是战斗中的单位）返回持有者手牌。之后，将这张卡放置在战场上，并选择我方场上一个单位装备。',
+  type: 'ACTIVATE',
+  description: '【启】：我方场上存在2个或以上蓝色单位。支付2费用，在手牌中发动：选择我方2个非神蚀单位（不能是战斗中的单位）返回持有者手牌。之后，将这张卡放置在战场上，并选择我方场上一个单位装备。',
   triggerLocation: ['HAND'],
   condition: (gameState, playerState) => {
     const eligibleBlueUnits = playerState.unitZone.filter(u =>
@@ -149,7 +149,7 @@ const handActivationEffect: CardEffect = {
 
       // Select equip target among remaining units
       const units = playerState.unitZone.filter(u => u !== null) as Card[];
-      
+
       if (units.length === 0) {
         gameState.logs.push(`[系统] ${card.fullName} 已登场，但场上没有剩余可装备的目标。`);
         card.equipTargetId = undefined;

@@ -3,14 +3,14 @@ import { AtomicEffectExecutor } from '../services/AtomicEffectExecutor';
 
 const activate_10402007_1: CardEffect = {
   id: '10402007_activate_1',
-  type: 'ACTIVATED',
+  type: 'ACTIVATE',
   description: '【启动】在单位区放置为横置：我方选择一名玩家（我方或对手），选择该玩家侵蚀前区的一张正面表示卡并将其送去墓地。之后，将该玩家卡组顶的一张卡放置在侵蚀前区。',
   triggerLocation: ['UNIT'],
   condition: (gameState: GameState, playerState: PlayerState, instance: Card) => {
     if (instance.isExhausted) return false;
     // Check if any player has frontal cards
-    return Object.values(gameState.players).some(p => 
-        p.erosionFront.some(c => c !== null && c.displayState === 'FRONT_UPRIGHT')
+    return Object.values(gameState.players).some(p =>
+      p.erosionFront.some(c => c !== null && c.displayState === 'FRONT_UPRIGHT')
     );
   },
   cost: async (gameState: GameState, playerState: PlayerState, instance: Card) => {
@@ -62,7 +62,7 @@ const activate_10402007_1: CardEffect = {
     if (context.step === 1) {
       const selectedGamecardId = selections[0];
       let selectedPlayerUid = '';
-      
+
       if (selectedGamecardId === 'PLAYER_SELF') {
         selectedPlayerUid = playerState.uid;
       } else if (selectedGamecardId === 'PLAYER_OPPONENT') {
@@ -140,7 +140,7 @@ const activate_10402007_1: CardEffect = {
 
 const activate_10402007_2: CardEffect = {
   id: '10402007_activate_2',
-  type: 'ACTIVATED',
+  type: 'ACTIVATE',
   description: '【启动】卡名每回合限一次。当侵蚀区的卡片数量为4-6张时，将单位横置：选择一名玩家（我方或对手），该玩家抽2张卡。之后，由该玩家选择一张其手牌，并将其放置在侵蚀前区。',
   triggerLocation: ['UNIT'],
   limitCount: 1,

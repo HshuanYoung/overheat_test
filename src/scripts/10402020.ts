@@ -136,20 +136,20 @@ const effect_10402020_activate: CardEffect = {
       }
       gameState.logs.push(`[${instance.fullName}] 使 ${selections.length} 张卡牌回到了手牌。`);
 
-       // Self damage
-       await AtomicEffectExecutor.execute(gameState, playerState.uid, {
-         type: 'DEAL_EFFECT_DAMAGE_SELF',
-         value: 2
-       }, instance);
-     }
-   }
- };
+      // Self damage
+      await AtomicEffectExecutor.execute(gameState, playerState.uid, {
+        type: 'DEAL_EFFECT_DAMAGE_SELF',
+        value: 2
+      }, instance);
+    }
+  }
+};
 
 const effect_10402020_activate_play: CardEffect = {
   id: 'aketi_play_from_erosion',
-  type: 'ACTIVATE',
+  type: 'ACTIVATED',              //这里作区分，防止被歌月花开选中
   triggerLocation: ['EROSION_FRONT'],
-  description: '【起】此卡在侵蚀区域正面时：可以支付AC值使用这张卡。',
+  description: '【启】此卡在侵蚀区域正面时：可以支付AC值使用这张卡。',
   condition: (gameState, playerState, instance) => {
     // 1. Basic Turn/Phase/Space check
     if (!playerState.isTurn || gameState.phase !== 'MAIN' || !playerState.unitZone.some(u => u === null)) return false;

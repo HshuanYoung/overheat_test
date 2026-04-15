@@ -3,19 +3,19 @@ import { AtomicEffectExecutor } from '../services/AtomicEffectExecutor';
 
 const activated_10402047: CardEffect = {
   id: '10402047_activated',
-  type: 'ACTIVATED',
+  type: 'ACTIVATE',
   description: '【行动】[休息]：选择你侵蚀位前区的一张蓝色卡牌送去墓地，之后抽一张牌，并选择你手牌中的一张卡牌正面表示置入侵蚀位前区。',
   triggerLocation: ['UNIT'],
   condition: (gameState: GameState, playerState: PlayerState, instance: Card) => {
     if (instance.isExhausted) return false;
-    return playerState.erosionFront.some(c => 
+    return playerState.erosionFront.some(c =>
       c && c.displayState === 'FRONT_UPRIGHT' && AtomicEffectExecutor.matchesColor(c, 'BLUE')
     );
   },
   cost: async (gameState: GameState, playerState: PlayerState, instance: Card) => {
     if (instance.isExhausted) return false;
-    
-    const blueErosionCards = playerState.erosionFront.filter(c => 
+
+    const blueErosionCards = playerState.erosionFront.filter(c =>
       c && c.displayState === 'FRONT_UPRIGHT' && AtomicEffectExecutor.matchesColor(c, 'BLUE')
     );
     if (blueErosionCards.length === 0) return false;
@@ -25,7 +25,7 @@ const activated_10402047: CardEffect = {
     return true;
   },
   execute: async (instance: Card, gameState: GameState, playerState: PlayerState) => {
-    const blueErosionCards = playerState.erosionFront.filter(c => 
+    const blueErosionCards = playerState.erosionFront.filter(c =>
       c && c.displayState === 'FRONT_UPRIGHT' && AtomicEffectExecutor.matchesColor(c, 'BLUE')
     ) as Card[];
 
@@ -50,7 +50,7 @@ const activated_10402047: CardEffect = {
     if (context.step === 1) {
       const targetId = selections[0];
       const targetCard = playerState.erosionFront.find(c => c?.gamecardId === targetId);
-      
+
       if (targetCard) {
         // 1. Move erosion to grave
         await AtomicEffectExecutor.execute(gameState, playerState.uid, {
@@ -58,13 +58,13 @@ const activated_10402047: CardEffect = {
           targetFilter: { gamecardId: targetId },
           destinationZone: 'GRAVE'
         }, instance);
-        
+
         // 2. Draw 1 card
         await AtomicEffectExecutor.execute(gameState, playerState.uid, {
           type: 'DRAW',
           value: 1
         }, instance);
-        
+
         gameState.logs.push(`[${instance.fullName}] 发动：牺牲了 ${targetCard.fullName} 并抽了一张卡。`);
 
         // 3. Step 2: Select a card from hand to place in erosion
@@ -90,7 +90,7 @@ const activated_10402047: CardEffect = {
     } else if (context.step === 2) {
       const targetId = selections[0];
       const targetCard = playerState.hand.find(c => c.gamecardId === targetId);
-      
+
       if (targetCard) {
         // 4. Move hand to erosion front (face-up)
         await AtomicEffectExecutor.execute(gameState, playerState.uid, {
@@ -98,7 +98,7 @@ const activated_10402047: CardEffect = {
           targetFilter: { gamecardId: targetId },
           destinationZone: 'EROSION_FRONT'
         }, instance);
-        
+
         // Ensure it's face-up
         if (targetCard) {
           targetCard.displayState = 'FRONT_UPRIGHT';

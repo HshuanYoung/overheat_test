@@ -4,7 +4,7 @@ import { AtomicEffectExecutor } from '../services/AtomicEffectExecutor';
 const effect_20400013_activation: CardEffect = {
   id: 'kaguya_flowering_silence',
   type: 'ACTIVATE',
-  description: '【起】选择场上一个单位的一个“起”效果，在本回合中不被处理。',
+  description: '【起】选择场上一个单位的一个“启”效果，在本回合中不被处理。',
   condition: (gameState: GameState, playerState: PlayerState) => {
     return playerState.isTurn && gameState.phase === 'MAIN';
   },
@@ -44,8 +44,8 @@ const effect_20400013_activation: CardEffect = {
       const targetId = selections[0];
       const target = AtomicEffectExecutor.findCardById(gameState, targetId);
       if (target && target.effects) {
-        const activateEffects = target.effects.filter(e => e.type === 'ACTIVATE');
-        
+        const activateEffects = target.effects.filter(e => e.type === 'ACTIVATED');
+
         if (activateEffects.length === 1) {
           // Auto-select if only one
           if (!target.silencedEffectIds) target.silencedEffectIds = [];
