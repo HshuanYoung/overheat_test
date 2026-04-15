@@ -14,10 +14,10 @@ const effect_10403040_kill_trigger: CardEffect = {
   execute: async (instance: Card, gameState: GameState, playerState: PlayerState) => {
     const opponentId = gameState.playerIds.find(id => id !== playerState.uid)!;
     const opponent = gameState.players[opponentId];
-    
+
     // Filter: opponent's unit, exhausted (horizontal), non-divine (non-godmark)
     const targets = opponent.unitZone.filter(u => u && u.isExhausted && !u.godMark) as Card[];
-    
+
     if (targets.length > 0) {
       gameState.pendingQuery = {
         id: Math.random().toString(36).substring(7),
@@ -39,7 +39,7 @@ const effect_10403040_kill_trigger: CardEffect = {
   onQueryResolve: async (instance: Card, gameState: GameState, playerState: PlayerState, selections: string[]) => {
     if (selections.length > 0) {
       const targetId = selections[0];
-      
+
       await AtomicEffectExecutor.execute(gameState, playerState.uid, {
         type: 'DESTROY_CARD',
         targetFilter: { gamecardId: targetId }
@@ -53,7 +53,7 @@ const effect_10403040_kill_trigger: CardEffect = {
 const effect_10403040_activate: CardEffect = {
   id: 'cocoa_summon_cocola',
   type: 'ACTIVATE',
-  description: '【起】在女神化状态下，每回合此卡名限一次，选择侵蚀区正面的一张卡转为背面：从手牌、卡组或墓地中选择一张“可可拉”单位卡放置在战场上。',
+  description: '【启】在女神化状态下，每回合此卡名限一次，选择侵蚀区正面的一张卡转为背面：从手牌、卡组或墓地中选择一张“可可拉”单位卡放置在战场上。',
   limitCount: 1,
   limitNameType: true,
   condition: (gameState: GameState, playerState: PlayerState) => {
@@ -95,7 +95,7 @@ const effect_10403040_activate: CardEffect = {
         { zone: playerState.grave, name: 'GRAVE' }
       ];
       const cocolaOptions: { card: Card; source: TriggerLocation }[] = [];
-      
+
       searchZones.forEach(z => {
         z.zone.forEach(c => {
           if (c && c.type === 'UNIT' && c.fullName.includes('可可拉')) {
@@ -136,7 +136,7 @@ const effect_10403040_activate: CardEffect = {
       }, instance);
 
       gameState.logs.push(`[${instance.fullName}] 的效果使 [${targetCard.fullName}] 从 ${sourceZone} 出击到战场！`);
-      
+
       if (sourceZone === 'DECK') {
         await AtomicEffectExecutor.execute(gameState, playerState.uid, { type: 'SHUFFLE_DECK' }, instance);
       }

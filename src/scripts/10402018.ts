@@ -9,7 +9,7 @@ const card: Card = {
   color: 'BLUE',
   gamecardId: null as any,
   colorReq: {},
-  faction: '幻国',
+  faction: '九尾商会联盟',
   acValue: 2,
   power: 1000,
   basePower: 1000,
@@ -27,7 +27,7 @@ const card: Card = {
       id: 'code_new_trigger',
       type: 'TRIGGER',
       triggerEvent: 'CARD_ENTERED_ZONE',
-      description: '【诱发】：当这个单位进入单位区时，选择单位区中AC为2或更低的一张非神蚀单位。在下一个对手回合开始时，该单位不能被置于竖置状态。',
+      description: '【诱】：当这个单位进入单位区时，选择单位区中AC为2或更低的一张非神蚀单位。在下一个对手回合开始时，该单位不能被置于竖置状态。',
       condition: (gameState, playerState, instance, event) => {
         return event?.sourceCardId === instance.gamecardId && event?.data?.zone === 'UNIT';
       },

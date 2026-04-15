@@ -27,7 +27,7 @@ const card: Card = {
     {
       id: '10400002_activate',
       type: 'ACTIVATE',
-      description: '【启】[侵蚀区区才能发动] 若你的战场上已有2张或以上的蓝色单位，且当前非对抗阶段：支付0费并舍弃一张手牌，将这张卡以重置状态放置到战场上。',
+      description: '【启】[侵蚀区正面才能发动] 若你的战场上已有2张或以上的蓝色单位，且当前非对抗阶段：支付0费并舍弃一张手牌，将这张卡放置到战场上。',
       playCost: 0,
       triggerLocation: ['EROSION_FRONT'],
       condition: (gameState, playerState) => {

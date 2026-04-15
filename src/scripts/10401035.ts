@@ -4,7 +4,7 @@ import { AtomicEffectExecutor } from '../services/AtomicEffectExecutor';
 const activation_10401035: CardEffect = {
   id: 'ranjian_activate',
   type: 'ACTIVATE',
-  description: '【启动】[卡名一回合一次][手牌] 此卡在我方手牌中的我方回合。若我方单位区有2个或更多蓝色单位，选择我方单位区一个名称中包含「剑仙」的【神性】单位，支付0费用：将所选单位返回持有者手牌。之后，将此卡放置在战场上。',
+  description: '【启】[卡名一回合一次][手牌] 此卡在我方手牌中的我方回合。若我方单位区有2个或更多蓝色单位，选择我方单位区一个名称中包含「剑仙」的【神性】单位，支付0费用：将所选单位返回持有者手牌。之后，将此卡放置在战场上。',
   triggerLocation: ['HAND'],
   limitCount: 1,
   limitNameType: true,

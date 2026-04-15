@@ -12,7 +12,7 @@ const effect_10401021_trigger: CardEffect = {
   id: 'fuka_end_turn_bounce',
   type: 'TRIGGER',
   triggerEvent: 'TURN_END',
-  description: '【诱发】在你的回合结束时，如果你的战场上只有蓝色单位，你可以选择发动：选择对手战场上一个AC<=2且非神迹的卡牌返回持有者手牌。',
+  description: '【诱】在你的回合结束时，如果你的战场上只有蓝色单位，你可以选择发动：选择对手战场上一个AC<=2且非神迹的卡牌返回持有者手牌。',
   condition: (gameState: GameState, playerState: PlayerState, instance: Card) => {
     if (!playerState.isTurn) return false;
     const units = playerState.unitZone.filter(u => u !== null) as Card[];
@@ -78,7 +78,7 @@ const effect_10401021_activate: CardEffect = {
   id: 'fuka_exile_bounce',
   type: 'ACTIVATE',
   triggerLocation: ['UNIT'],
-  description: '【起】每回合此卡名限一次，从你的手牌、卡组或墓地中将两张“风花”神迹卡牌移出对战，且仅在你的主要阶段可以发动：选择一张横置状态的单位或道具卡牌（不包括该单位本身）返回其持有者手牌。',
+  description: '【启】每回合此卡名限一次，从你的手牌、卡组或墓地中将两张“风花”神迹卡牌移出对战，且仅在你的主要阶段可以发动：选择一张横置状态的单位或道具卡牌（不包括该单位本身）返回其持有者手牌。',
   limitCount: 1,
   limitNameType: true,
   condition: (gameState: GameState, playerState: PlayerState, instance: Card) => {

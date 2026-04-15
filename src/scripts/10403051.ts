@@ -5,7 +5,7 @@ const effect_10403051_trigger: CardEffect = {
   id: 'sodo_entry_bounce',
   type: 'TRIGGER',
   triggerEvent: 'CARD_EROSION_TO_FIELD',
-  description: '【诱发】每回合一次。当此单位从侵蚀区域进入战场时：将此单位转为横置，并选择对手的一张单位卡牌返回持有者手牌。',
+  description: '【诱】每回合一次。当此单位从侵蚀区域进入战场时：将此单位转为横置，并选择对手的一张单位卡牌返回持有者手牌。',
   limitCount: 1,
   limitNameType: true,
   condition: (gameState: GameState, playerState: PlayerState, instance: Card, event?: GameEvent) => {
@@ -18,8 +18,8 @@ const effect_10403051_trigger: CardEffect = {
       type: 'SELECT_CHOICE',
       playerUid: playerState.uid,
       options: [
-        { id: 'YES', label: '发起 (横置此单位并回场)' },
-        { id: 'NO', label: '不发起' }
+        { id: 'YES', label: '发动 (横置此单位并回场)' },
+        { id: 'NO', label: '不发动' }
       ],
       title: '效果发动确认',
       description: `是否发动 [${instance.fullName}] 的效果？发动后此单位将转为横置，并使对手单位返回手牌。`,
@@ -73,13 +73,13 @@ const effect_10403051_trigger: CardEffect = {
       const targetId = selections[0];
       const target = AtomicEffectExecutor.findCardById(gameState, targetId)!;
       const owner = AtomicEffectExecutor.findCardOwnerKey(gameState, targetId)!;
-      
+
       await AtomicEffectExecutor.execute(gameState, owner, {
         type: 'MOVE_FROM_FIELD',
         targetFilter: { gamecardId: targetId },
         destinationZone: 'HAND'
       }, instance);
-      
+
       gameState.logs.push(`[${instance.fullName}] 诱发效果：使对手的 [${target.fullName}] 返回了手牌。`);
     }
   }
@@ -89,7 +89,7 @@ const effect_10403051_activate: CardEffect = {
   id: 'sodo_to_erosion',
   type: 'ACTIVATE',
   triggerLocation: ['HAND'],
-  description: '【起】若场上存在蓝色单位且侵蚀区域正面没有“索德”卡牌，支付0费用：将此卡从手牌放置在侵蚀区域正面，并抽一张牌。',
+  description: '【启】若场上存在蓝色单位且侵蚀区域正面没有“索德”卡牌，支付0费用：将此卡从手牌放置在侵蚀区域正面，并抽一张牌。',
   condition: (gameState: GameState, playerState: PlayerState) => {
     if (!playerState.isTurn || gameState.phase !== 'MAIN') return false;
 
@@ -113,7 +113,7 @@ const effect_10403051_activate: CardEffect = {
       targetFilter: { gamecardId: instance.gamecardId },
       destinationZone: 'EROSION_FRONT'
     }, instance);
-    
+
     // 2. Draw 1
     await AtomicEffectExecutor.execute(gameState, pUid, { type: 'DRAW', value: 1 }, instance);
     gameState.logs.push(`[${instance.fullName}] 进入侵蚀区域，并抽了一张牌。`);

@@ -15,7 +15,7 @@ const card: Card = {
   color: 'BLUE',
   gamecardId: null as any,
   colorReq: { BLUE: 1 },
-  faction: '冒险家工会',
+  faction: '冒险家公会',
   acValue: 2,
   power: 2000,
   basePower: 2000,
@@ -35,7 +35,7 @@ const card: Card = {
       limitCount: 1,
       limitNameType: true,
       triggerLocation: ['UNIT'],
-      description: '【起】〔同名回合1次〕：侵蚀区处于3-7且在你的回合，支付1点费用，将这个单位以正面表示置入侵蚀区：选择你侵蚀区正面一张「芙蕾雅」以外的「冒险家工会」单位卡，将其纵置摆放进入单位区。',
+      description: '【启】〔同名回合1次〕：侵蚀区处于3-7且在你的回合，支付1点费用，将这个单位以正面表示置入侵蚀区：选择你侵蚀区正面一张「芙蕾雅」以外的「冒险家公会」单位卡，将其纵置摆放进入单位区。',
       condition: (gameState, playerState, instance) => {
         // 1. During player's turn
         if (gameState.activePlayerUid !== playerState.uid) return false;
@@ -45,10 +45,10 @@ const card: Card = {
         if (erosionCount < 3 || erosionCount > 7) return false;
 
         // 3. Valid target exists in erosionFront
-        const hasValidTarget = playerState.erosionFront.some(c => 
-          c !== null && 
-          c.type === 'UNIT' && 
-          c.faction === '冒险家工会' && 
+        const hasValidTarget = playerState.erosionFront.some(c =>
+          c !== null &&
+          c.type === 'UNIT' &&
+          c.faction === '冒险家公会' &&
           !c.fullName.includes('芙蕾雅')
         );
 
@@ -68,10 +68,10 @@ const card: Card = {
           callbackKey: 'EFFECT_RESOLVE',
           paymentCost: 1,
           paymentColor: card.color,
-          context: { 
-            sourceCardId: card.gamecardId, 
-            effectIndex: 0, 
-            step: 1 
+          context: {
+            sourceCardId: card.gamecardId,
+            effectIndex: 0,
+            step: 1
           }
         };
         gameState.logs.push(`[破阵游侠【芙蕾雅】] 等待 ${playerState.displayName} 支付 1 点费用...`);
@@ -90,14 +90,14 @@ const card: Card = {
             destinationZone: 'EROSION_FRONT',
             targetFilter: { gamecardId: card.gamecardId }
           }, card);
-          
+
           card.displayState = 'FRONT_UPRIGHT';
 
           // Request target selection from erosion front
-          const validTargets = sourcePlayer.erosionFront.filter(c => 
-            c !== null && 
-            c.type === 'UNIT' && 
-            c.faction === '冒险家工会' && 
+          const validTargets = sourcePlayer.erosionFront.filter(c =>
+            c !== null &&
+            c.type === 'UNIT' &&
+            c.faction === '冒险家公会' &&
             !c.fullName.includes('芙蕾雅')
           ) as Card[];
 
@@ -112,14 +112,14 @@ const card: Card = {
             playerUid: playerState.uid,
             options: AtomicEffectExecutor.enrichQueryOptions(gameState, playerState.uid, validTargets.map(u => ({ card: u, source: 'EROSION_FRONT' as any }))),
             title: '选择侵蚀卡进入战场',
-            description: '请选择一张侵蚀区正面的「冒险家工会」单位（非芙蕾雅）。其将进入战场。',
+            description: '请选择一张侵蚀区正面的「冒险家公会」单位（非芙蕾雅）。其将进入战场。',
             minSelections: 1,
             maxSelections: 1,
             callbackKey: 'EFFECT_RESOLVE',
-            context: { 
-              sourceCardId: card.gamecardId, 
-              effectIndex: 0, 
-              step: 2 
+            context: {
+              sourceCardId: card.gamecardId,
+              effectIndex: 0,
+              step: 2
             }
           };
         } else if (step === 2) {

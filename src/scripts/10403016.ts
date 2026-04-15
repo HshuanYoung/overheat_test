@@ -44,7 +44,7 @@ const effect_10403016_trigger: CardEffect = {
 const effect_10403016_activate: CardEffect = {
   id: 'cocola_summon_cocoa',
   type: 'ACTIVATE',
-  description: '【起】在女神化状态下，每回合此卡名限一次，选择侵蚀区正面的一张卡转为背面：从手牌、卡组或墓地中选择一张“可可亚”单位卡放置在战场上。',
+  description: '【启】在女神化状态下，每回合此卡名限一次，选择侵蚀区正面的一张卡转为背面：从手牌、卡组或墓地中选择一张“可可亚”单位卡放置在战场上。',
   limitCount: 1,
   limitNameType: true,
   condition: (gameState: GameState, playerState: PlayerState) => {
@@ -127,7 +127,7 @@ const effect_10403016_activate: CardEffect = {
       // Fallback if specific MOVE_FROM_DECK/GRAVE doesn't exist in atomic:
       // We can use moveCard but await it if it's made async, or use execute if it supports it.
       // Based on AtomicEffectExecutor, MOVE_FROM_HAND is common. Let's see if MOVE_FROM_DECK exists.
-      
+
       await AtomicEffectExecutor.execute(gameState, playerState.uid, {
         type: (sourceZone === 'DECK' ? 'MOVE_FROM_DECK' : (sourceZone === 'GRAVE' ? 'MOVE_FROM_GRAVE' : 'MOVE_FROM_HAND')) as any,
         targetFilter: { gamecardId: cocoaId },

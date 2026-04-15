@@ -5,7 +5,7 @@ const effect_20400021_counter: CardEffect = {
   id: 'gensou_swallow_counter',
   type: 'ACTIVATE',
   triggerLocation: ['HAND'],
-  description: '【起】手牌中：若我侵蚀区域背面卡牌在2张或以上，对手使用故事卡时：使该故事卡发动无效并送入墓地。',
+  description: '【启】手牌中：若我侵蚀区域背面卡牌在2张或以上，对手使用故事卡时：使该故事卡发动无效并送入墓地。',
   condition: (gameState: GameState, playerState: PlayerState, instance: Card) => {
     // 1. Check phase
     if (gameState.phase !== 'COUNTERING') return false;

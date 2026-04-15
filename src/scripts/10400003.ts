@@ -2,9 +2,6 @@ import { Card, GameState, PlayerState, GameEvent } from '../types/game';
 import { AtomicEffectExecutor } from '../services/AtomicEffectExecutor';
 
 
-const trigger_10400003_1 = (card: Card, gameState: GameState, playerState: PlayerState) => {
-
-}
 const card: Card = {
   id: '10400003',
   fullName: '暮城的慈善家',
@@ -49,7 +46,6 @@ const card: Card = {
         return true;
       },
       execute: (card, gameState, playerState) => {
-        gameState.logs.push(`[慈善家-DEBUG] 开始执行抽牌效果`);
         // Both players draw 1 card
         AtomicEffectExecutor.execute(gameState, playerState.uid, {
           type: 'BOTH_PLAYERS_DRAW',

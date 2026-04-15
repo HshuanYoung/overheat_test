@@ -27,7 +27,7 @@ const card: Card = {
       id: 'alley_broker_trigger',
       type: 'TRIGGER',
       triggerEvent: 'CARD_ENTERED_ZONE',
-      description: '【诱发】：当这个单位进入单位区时，如果你单位区中包含2个或2个以上蓝色单位，支付0费：展示你卡组顶部的2张卡，由对手选择其中1张加入你的手牌，剩下的那张卡以正面表示置入你的侵蚀区。',
+      description: '【诱】：当这个单位进入单位区时，如果你单位区中包含2个或2个以上蓝色单位，支付0费：展示你卡组顶部的2张卡，由对手选择其中1张加入你的手牌，剩下的那张卡以正面表示置入你的侵蚀区。',
       condition: (gameState, playerState, instance, event) => {
         // 1. Check if this card entered the UNIT zone
         const isSelfEntering = event?.type === 'CARD_ENTERED_ZONE' &&

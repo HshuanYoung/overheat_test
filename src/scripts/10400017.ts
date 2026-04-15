@@ -4,7 +4,7 @@ import { AtomicEffectExecutor } from '../services/AtomicEffectExecutor';
 const trigger_10400017_1: CardEffect = {
   id: '10400017_trigger_1',
   type: 'TRIGGER',
-  description: '【诱发】这个单位进入战场时，若你的战场上有具有 [神依] 的单位，选择对手的战场上的1张非 [EX] 卡，将其放置到对手的卡组顶。',
+  description: '【诱】这个单位进入战场时，若你的战场上有具有 [神依] 的单位，选择对手的战场上的1张非神蚀卡，将其放置到对手的卡组顶。',
   triggerLocation: ['UNIT'],
   triggerEvent: 'CARD_ENTERED_ZONE',
   isMandatory: true,

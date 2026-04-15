@@ -27,7 +27,7 @@ const card: Card = {
       type: 'TRIGGER',
       triggerEvent: 'CARD_ENTERED_ZONE',
       isMandatory: true,
-      description: '这张卡进入战场时，从你的卡组或墓地中选择一张名称含有「歌月」的故事卡放逐。该能力的效果作为此能力的后续效果执行，不触发对抗响应。',
+      description: '【诱】这张卡进入战场时，从你的卡组或墓地中选择一张名称含有「歌月」的故事卡放逐。该能力的效果作为此能力的后续效果执行，不触发对抗响应。',
       condition: (gameState: GameState, playerState: PlayerState, instance: Card, event?: GameEvent) => {
         const isOnBattlefield = instance.cardlocation === 'UNIT' || instance.cardlocation === 'ITEM';
         if (!event) return isOnBattlefield;
@@ -164,7 +164,7 @@ const card: Card = {
       triggerLocation: ['UNIT'],
       limitCount: 1,
       limitGlobal: true,
-      description: '【女神化】[一局一次] 侵蚀区背面<9且正面>=2。选择侵蚀区中两张正面向上的卡牌，将其翻至背面。将战场上所有单位返回持有者手牌。',
+      description: '【启】【女神化】[一局一次] 侵蚀区背面<9且正面>=2。选择侵蚀区中两张正面向上的卡牌，将其翻至背面。将战场上所有单位返回持有者手牌。',
       condition: (gameState, playerState) => {
         const frontCount = playerState.erosionFront.filter(c => c !== null).length;
         const backCount = playerState.erosionBack.filter(c => c !== null).length;

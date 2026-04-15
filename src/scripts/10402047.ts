@@ -4,7 +4,7 @@ import { AtomicEffectExecutor } from '../services/AtomicEffectExecutor';
 const activated_10402047: CardEffect = {
   id: '10402047_activated',
   type: 'ACTIVATE',
-  description: '【行动】[休息]：选择你侵蚀位前区的一张蓝色卡牌送去墓地，之后抽一张牌，并选择你手牌中的一张卡牌正面表示置入侵蚀位前区。',
+  description: '【启】横置该单位：选择你侵蚀位前区的一张蓝色卡牌送去墓地，之后抽一张牌，并选择你手牌中的一张卡牌正面表示置入侵蚀区。',
   triggerLocation: ['UNIT'],
   condition: (gameState: GameState, playerState: PlayerState, instance: Card) => {
     if (instance.isExhausted) return false;
@@ -75,7 +75,7 @@ const activated_10402047: CardEffect = {
             playerUid: playerState.uid,
             options: AtomicEffectExecutor.enrichQueryOptions(gameState, playerState.uid, playerState.hand.map(c => ({ card: c, source: 'HAND' }))),
             title: '选择置入侵蚀区的卡牌',
-            description: '请选择一张手牌置入侵蚀位前区',
+            description: '请选择一张手牌置入侵蚀区',
             minSelections: 1,
             maxSelections: 1,
             callbackKey: 'EFFECT_RESOLVE',
@@ -104,7 +104,7 @@ const activated_10402047: CardEffect = {
           targetCard.displayState = 'FRONT_UPRIGHT';
         }
 
-        gameState.logs.push(`[${instance.fullName}] 将 ${targetCard.fullName} 置入了侵蚀位前区。`);
+        gameState.logs.push(`[${instance.fullName}] 将 ${targetCard.fullName} 置入了侵蚀区。`);
       }
     }
   }

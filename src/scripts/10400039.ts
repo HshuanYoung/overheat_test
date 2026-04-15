@@ -4,7 +4,7 @@ const card: Card = {
   id: '10400039',
   gamecardId: null as any,
   fullName: '兽神之助攻【苍蓝】',
-  specialName: '',
+  specialName: '苍蓝',
   type: 'UNIT',
   color: 'BLUE',
   colorReq: { 'BLUE': 1 },

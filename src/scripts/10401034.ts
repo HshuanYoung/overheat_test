@@ -5,7 +5,7 @@ const effect_10401034_front: CardEffect = {
   id: 'seii_from_erosion',
   type: 'ACTIVATE',
   triggerLocation: ['EROSION_FRONT'],
-  description: '【起】每回合一次。在你的主要阶段，此卡在侵蚀区域正面时：将此卡放置在战场。',
+  description: '【启】每回合一次。在你的主要阶段，此卡在侵蚀区域正面时：将此卡放置在战场。',
   limitCount: 1,
   limitNameType: true,
   condition: (gameState: GameState, playerState: PlayerState, instance: Card) => {
@@ -14,13 +14,13 @@ const effect_10401034_front: CardEffect = {
 
     // 2. Godmark Limit Check (e.g. from 10401021 fuka_restriction)
     const currentGodmarkCount = playerState.unitZone.filter(u => u && u.godMark).length;
-    
+
     // Find effective limit
     const fieldEffects = playerState.unitZone
       .filter((u: any) => u !== null)
       .flatMap((u: any) => u.effects || []);
     const limitEffect = fieldEffects.find((e: any) => e.limitGodmarkCount !== undefined);
-    
+
     if (limitEffect !== undefined && currentGodmarkCount >= limitEffect.limitGodmarkCount) {
       return false;
     }
@@ -47,15 +47,15 @@ const effect_10401034_hand: CardEffect = {
   id: 'seii_to_erosion',
   type: 'ACTIVATE',
   triggerLocation: ['HAND'],
-  description: '【起】侵蚀区域在1-4张时，每回合一次。在你的主要阶段，此卡在手牌中：将此卡放置在侵蚀区域正面，并从卡组抽一张牌。',
+  description: '【启】侵蚀区域在1-4张时，每回合一次。在你的主要阶段，此卡在手牌中：将此卡放置在侵蚀区域正面，并从卡组抽一张牌。',
   limitCount: 1,
   limitNameType: true,
   condition: (gameState: GameState, playerState: PlayerState) => {
     if (!playerState.isTurn || gameState.phase !== 'MAIN') return false;
-    
+
     // Check total erosion count 1-4
-    const totalErosion = playerState.erosionFront.filter(c => c !== null).length + 
-                       playerState.erosionBack.filter(c => c !== null).length;
+    const totalErosion = playerState.erosionFront.filter(c => c !== null).length +
+      playerState.erosionBack.filter(c => c !== null).length;
     if (totalErosion < 1 || totalErosion > 4) return false;
 
     // Check erosion front space (usually 10 total limit rule applies to checkEffectLimitsAndReqs, here we check array space)
@@ -70,7 +70,7 @@ const effect_10401034_hand: CardEffect = {
       targetFilter: { gamecardId: instance.gamecardId },
       destinationZone: 'EROSION_FRONT'
     }, instance);
-    
+
     // 2. Draw a card
     await AtomicEffectExecutor.execute(gameState, pUid, { type: 'DRAW', value: 1 }, instance);
     gameState.logs.push(`[${instance.fullName}] 进入了侵蚀区域，并从卡组抽了一张牌。`);

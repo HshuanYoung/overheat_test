@@ -4,7 +4,7 @@ import { AtomicEffectExecutor } from '../services/AtomicEffectExecutor';
 const trigger_30403004: CardEffect = {
   id: '30403004_trigger',
   type: 'TRIGGER',
-  description: '当你的单位卡从侵蚀前区进入战场时，可以选择以下效果之一执行。同一选项每回合最多选择一次：a. 该单位在本回合获得全攻，力量+500 且获得【速攻】。b. 选择对手的一个非神位单位转为横置。c. 从墓地中选择一张「冒险家工会」卡牌放置在侵蚀前区。',
+  description: '当你的单位卡从侵蚀前区进入战场时，可以选择以下效果之一执行。同一选项每回合最多选择一次：a. 该单位在本回合获得全攻，力量+500 且获得【速攻】。b. 选择对手的一个非神位单位转为横置。c. 从墓地中选择一张「冒险家公会」卡牌放置在侵蚀前区。',
   triggerEvent: 'CARD_EROSION_TO_FIELD',
   isGlobal: true,
   isMandatory: false,
@@ -51,7 +51,7 @@ const trigger_30403004: CardEffect = {
         card: {
           gamecardId: 'OPTION_C',
           id: 'OPTION_C',
-          fullName: '选项C：回收墓地「冒险家工会」',
+          fullName: '选项C：回收墓地「冒险家公会」',
           type: 'STORY',
           color: 'BLUE',
           rarity: 'C'
@@ -133,7 +133,7 @@ const trigger_30403004: CardEffect = {
       if (!gameState.effectUsage) gameState.effectUsage = {};
       gameState.effectUsage[usageKeyPrefix + 'c'] = 1;
 
-      const graveChoices = playerState.grave.filter(c => c && c.faction === '冒险家工会');
+      const graveChoices = playerState.grave.filter(c => c && c.faction === '冒险家公会');
 
       if (graveChoices.length > 0) {
         gameState.pendingQuery = {
@@ -142,7 +142,7 @@ const trigger_30403004: CardEffect = {
           playerUid: playerState.uid,
           options: AtomicEffectExecutor.enrichQueryOptions(gameState, playerState.uid, graveChoices.map(c => ({ card: c, source: 'GRAVE' as any }))),
           title: '选择回收卡牌',
-          description: '请从墓地选择一张「冒险家工会」卡牌放置在侵蚀前区。',
+          description: '请从墓地选择一张「冒险家公会」卡牌放置在侵蚀前区。',
           minSelections: 1,
           maxSelections: 1,
           callbackKey: 'EFFECT_RESOLVE',
@@ -166,7 +166,7 @@ const trigger_30403004: CardEffect = {
         targetFilter: { gamecardId: targetId },
         destinationZone: 'EROSION_FRONT'
       }, instance);
-      
+
       const cardInErosion = playerState.erosionFront.find(c => c?.gamecardId === targetId);
       if (cardInErosion) cardInErosion.displayState = 'FRONT_UPRIGHT';
 
@@ -183,7 +183,7 @@ const card: Card = {
   color: 'BLUE',
   gamecardId: null as any,
   colorReq: { BLUE: 1 },
-  faction: '冒险家工会',
+  faction: '冒险家公会',
   acValue: 2,
   godMark: false,
   displayState: 'FRONT_UPRIGHT',

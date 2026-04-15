@@ -384,8 +384,8 @@ export class AtomicEffectExecutor {
     }
 
     // Post-loop cleanup: Excess erosion front cards to Grave
-    const currentTotal = player.erosionFront.filter(c => c !== null).length;
-    if (currentTotal > 10) {
+    const totalAfterPlacement = player.erosionFront.filter(c => c !== null).length + player.erosionBack.filter(c => c !== null).length;
+    if (totalAfterPlacement > 10) {
       for (let j = 10; j < player.erosionFront.length; j++) {
         const excessCard = player.erosionFront[j];
         if (excessCard) {

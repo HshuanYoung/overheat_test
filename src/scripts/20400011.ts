@@ -4,9 +4,9 @@ import { AtomicEffectExecutor } from '../services/AtomicEffectExecutor';
 const effect_20400011_activate: CardEffect = {
   id: '20400011_activate',
   type: 'ACTIVATE',
-  description: '选择战场上一个神位单位转为休息状态。在下个对手的起始阶段，该单位不能重置。',
+  description: '选择战场上一个神蚀单位转为竖置状态。在下个对手的回合开始阶段，该单位不能重置。',
   condition: (gameState: GameState) => {
-    return Object.values(gameState.players).some(p => 
+    return Object.values(gameState.players).some(p =>
       p.unitZone.some(u => u && u.godMark && u.displayState === 'FRONT_UPRIGHT')
     );
   },
@@ -26,7 +26,7 @@ const effect_20400011_activate: CardEffect = {
       playerUid: playerState.uid,
       options: AtomicEffectExecutor.enrichQueryOptions(gameState, playerState.uid, targets.map(t => ({ card: t, source: 'UNIT' }))),
       title: '选择神位单位',
-      description: '选择一个神位单位转为休息状态并冻结一个回合。',
+      description: '选择一个神位单位转为横置状态，回合开始时不能竖置。',
       minSelections: 1,
       maxSelections: 1,
       callbackKey: 'EFFECT_RESOLVE',

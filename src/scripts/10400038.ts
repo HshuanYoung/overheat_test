@@ -6,12 +6,12 @@ const effect_10400038_trigger: CardEffect = {
   type: 'TRIGGER',
   triggerEvent: 'CARD_ENTERED_ZONE',
   triggerLocation: ['UNIT'],
-  description: '【诱发】当此单位从手牌进入对战区时：选择一名玩家，该玩家抽两张卡。之后，若我方侵蚀区域背面卡牌在2张或以上，选择一名玩家将其下一次抽卡阶段跳过。',
+  description: '【诱】当此单位从手牌进入战场时：选择一名玩家，该玩家抽两张卡。之后，若我方侵蚀区域背面卡牌在2张或以上，选择一名玩家将其下一次抽卡阶段跳过。',
   condition: (gameState: GameState, playerState: PlayerState, instance: Card, event?: GameEvent) => {
-    return event?.type === 'CARD_ENTERED_ZONE' && 
-           event.sourceCardId === instance.gamecardId && 
-           event.data?.zone === 'UNIT' && 
-           instance.cardlocation === 'UNIT';
+    return event?.type === 'CARD_ENTERED_ZONE' &&
+      event.sourceCardId === instance.gamecardId &&
+      event.data?.zone === 'UNIT' &&
+      instance.cardlocation === 'UNIT';
   },
   execute: async (instance: Card, gameState: GameState, playerState: PlayerState) => {
     // 1. Select player to draw 2
@@ -40,7 +40,7 @@ const effect_10400038_trigger: CardEffect = {
     if (context.step === 'DRAW' && selections.length > 0) {
       const selectedId = selections[0];
       const targetUid = selectedId === 'PLAYER_SELF' ? playerState.uid : gameState.playerIds.find(id => id !== playerState.uid)!;
-      
+
       // Execute Draw 2
       AtomicEffectExecutor.execute(gameState, targetUid, { type: 'DRAW', value: 2 }, instance);
       gameState.logs.push(`[${instance.fullName}] 的效果使玩家抽了两张卡。`);
@@ -73,7 +73,7 @@ const effect_10400038_trigger: CardEffect = {
       const selectedId = selections[0];
       const targetUid = selectedId === 'PLAYER_SELF' ? playerState.uid : gameState.playerIds.find(id => id !== playerState.uid)!;
       const targetPlayer = gameState.players[targetUid];
-      
+
       targetPlayer.skipDrawPhase = true;
       gameState.logs.push(`[${instance.fullName}] 的效果使 [${targetPlayer.displayName}] 的下一个抽卡阶段将被跳过。`);
     }

@@ -4,7 +4,7 @@ import { AtomicEffectExecutor } from '../services/AtomicEffectExecutor';
 const trigger_10401045: CardEffect = {
   id: '10401045_trigger',
   type: 'TRIGGER',
-  description: '【诱发】[名称一回合一次] 侵蚀区数量为1-4张时，当此单位因你卡牌的效果返回手牌时：可以发动：从手牌中选择一张除「水仙--灵法师」以外、「百濑之水城」派系的单位卡放置在战场上。',
+  description: '【诱】[名称一回合一次] 侵蚀区数量为1-4张时，当此单位因你卡牌的效果返回手牌时：可以发动：从手牌中选择一张除「水仙--灵法师」以外、「百濑之水城」派系的单位卡放置在战场上。',
   triggerLocation: ['HAND'],
   triggerEvent: 'CARD_LEFT_ZONE',
   isMandatory: false,
@@ -20,32 +20,32 @@ const trigger_10401045: CardEffect = {
 
     // 3. Movement event check
     if (!event || event.type !== 'CARD_LEFT_ZONE') return false;
-    
+
     const isSelf = event.sourceCardId === instance.gamecardId || event.sourceCard === instance;
     const isFromUnitZone = event.data?.zone === 'UNIT';
     const isToHand = event.data?.targetZone === 'HAND';
     const isByEffect = !!event.data?.isEffect;
-    
+
     // 4. "Your card effect" check (approximated by checking if player triggered the event)
     const isMyEffect = event.playerUid === playerState.uid;
 
     if (!isSelf || !isFromUnitZone || !isToHand || !isByEffect || !isMyEffect) return false;
 
     // 5. Valid targets in hand check
-    const targets = playerState.hand.filter(c => 
+    const targets = playerState.hand.filter(c =>
       c.gamecardId !== instance.gamecardId &&
-      c.type === 'UNIT' && 
-      c.faction === '百濑之水城' && 
+      c.type === 'UNIT' &&
+      c.faction === '百濑之水城' &&
       c.fullName !== '水仙--灵法师'
     );
-    
+
     return targets.length > 0;
   },
   execute: async (instance: Card, gameState: GameState, playerState: PlayerState) => {
-    const targets = playerState.hand.filter(c => 
+    const targets = playerState.hand.filter(c =>
       c.gamecardId !== instance.gamecardId &&
-      c.type === 'UNIT' && 
-      c.faction === '百濑之水城' && 
+      c.type === 'UNIT' &&
+      c.faction === '百濑之水城' &&
       c.fullName !== '水仙--灵法师'
     ) as Card[];
 
@@ -72,14 +72,14 @@ const trigger_10401045: CardEffect = {
     if (context.step === 1) {
       const targetId = selections[0];
       const targetCard = playerState.hand.find(c => c.gamecardId === targetId);
-      
+
       if (targetCard) {
         await AtomicEffectExecutor.execute(gameState, playerState.uid, {
           type: 'MOVE_FROM_HAND',
           targetFilter: { gamecardId: targetId },
           destinationZone: 'UNIT'
         }, instance);
-        
+
         gameState.logs.push(`[${instance.fullName}] 效果：将手牌中的 ${targetCard.fullName} 特殊召唤到战场上。`);
       }
     }

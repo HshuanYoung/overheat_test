@@ -22,7 +22,7 @@ const trigger_10403019_buff: CardEffect = {
       targetFilter: { gamecardId: instance.gamecardId },
       value: 1
     }, instance);
-    
+
     instance.isrush = true; // Still manual for keywords as atomic might not have them yet
     gameState.logs.push(`[${instance.fullName}] 触发：从侵蚀区登场，获得+1/+1000与【速攻】。`);
   }
@@ -31,7 +31,7 @@ const trigger_10403019_buff: CardEffect = {
 const activate_10403019_swap: CardEffect = {
   id: '10403019_swap',
   type: 'ACTIVATE',
-  description: '【起】[名称一回合一次] 侵蚀区数量为3-7张、且在你的回合时，支付1费：将此单位正面表示置入侵蚀位前区，之后选择你侵蚀位前区除「巴特拉」以外的一张正面表示的「冒险家公会」单位卡，放置在单位区。',
+  description: '【启】[名称一回合一次] 侵蚀区数量为3-7张、且在你的回合时，支付1费：将此单位正面表示置入侵蚀位前区，之后选择你侵蚀位前区除「巴特拉」以外的一张正面表示的「冒险家公会」单位卡，放置在单位区。',
   limitCount: 1,
   limitNameType: true,
   erosionTotalLimit: [3, 7],
@@ -76,11 +76,11 @@ const activate_10403019_swap: CardEffect = {
       instance.displayState = 'FRONT_UPRIGHT';
 
       // 2. Select replacement from erosion
-      const erosionChoices = playerState.erosionFront.filter(c => 
-        c && 
-        c.displayState === 'FRONT_UPRIGHT' && 
-        c.type === 'UNIT' && 
-        c.faction === '冒险家公会' && 
+      const erosionChoices = playerState.erosionFront.filter(c =>
+        c &&
+        c.displayState === 'FRONT_UPRIGHT' &&
+        c.type === 'UNIT' &&
+        c.faction === '冒险家公会' &&
         !c.fullName.includes('巴特拉')
       ) as Card[];
 

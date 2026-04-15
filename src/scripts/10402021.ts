@@ -9,7 +9,7 @@ const card: Card = {
   color: 'BLUE',
   gamecardId: null as any,
   colorReq: {},
-  faction: '冒险家工会',
+  faction: '冒险家公会',
   acValue: 2,
   power: 1500,
   basePower: 1500,
@@ -29,7 +29,7 @@ const card: Card = {
       limitCount: 1,
       limitNameType: true,
       triggerLocation: ['UNIT'],
-      description: '【同名回合1次】横置这张卡：选择你单位区中这张卡以外的1个非「神蚀」的「冒险家工会」单位，以及你侵蚀区正面由你持有的1张非「神蚀」的「冒险家工会」单位卡。将选择的侵蚀区单位卡正面向上的纵置摆放进入单位区，随后将选择的单位区对应的单位正面向上的纵置摆放进入侵蚀区。',
+      description: '【同名回合1次】横置这张卡：选择你单位区中这张卡以外的1个非「神蚀」的「冒险家公会」单位，以及你侵蚀区正面由你持有的1张非「神蚀」的「冒险家公会」单位卡。将选择的侵蚀区单位卡正面向上的纵置摆放进入单位区，随后将选择的单位区对应的单位正面向上的纵置摆放进入侵蚀区。',
       condition: (gameState, playerState, instance) => {
         if (instance.isExhausted) return false;
 
@@ -37,14 +37,14 @@ const card: Card = {
           u !== null &&
           u.gamecardId !== instance.gamecardId &&
           !u.godMark &&
-          u.faction === '冒险家工会'
+          u.faction === '冒险家公会'
         );
 
         const hasErosionUnit = playerState.erosionFront.some(c =>
           c !== null &&
           c.type === 'UNIT' &&
           !c.godMark &&
-          c.faction === '冒险家工会'
+          c.faction === '冒险家公会'
         );
 
         return hasOtherFieldUnit && hasErosionUnit;
@@ -59,7 +59,7 @@ const card: Card = {
           u !== null &&
           u.gamecardId !== card.gamecardId &&
           !u.godMark &&
-          u.faction === '冒险家工会'
+          u.faction === '冒险家公会'
         ) as Card[];
 
         gameState.pendingQuery = {
@@ -68,7 +68,7 @@ const card: Card = {
           playerUid: playerState.uid,
           options: AtomicEffectExecutor.enrichQueryOptions(gameState, playerState.uid, fieldUnits.map(u => ({ card: u, source: 'UNIT' as any }))),
           title: '选择战场单位',
-          description: '效果结算：请选择你战场上另一个非「神蚀」的「冒险家工会」单位。该单位将被置入侵蚀区。',
+          description: '效果结算：请选择你战场上另一个非「神蚀」的「冒险家公会」单位。该单位将被置入侵蚀区。',
           minSelections: 1,
           maxSelections: 1,
           callbackKey: 'EFFECT_RESOLVE',
@@ -86,7 +86,7 @@ const card: Card = {
             c !== null &&
             c.type === 'UNIT' &&
             !c.godMark &&
-            c.faction === '冒险家工会'
+            c.faction === '冒险家公会'
           ) as Card[];
 
           gameState.pendingQuery = {
@@ -95,7 +95,7 @@ const card: Card = {
             playerUid: playerState.uid,
             options: AtomicEffectExecutor.enrichQueryOptions(gameState, playerState.uid, erosionUnits.map(u => ({ card: u, source: 'EROSION_FRONT' as any }))),
             title: '选择侵蚀区单位卡',
-            description: '效果结算：请选择你侵蚀区正面一张非「神蚀」的「冒险家工会」单位卡。该卡牌将进入战场。',
+            description: '效果结算：请选择你侵蚀区正面一张非「神蚀」的「冒险家公会」单位卡。该卡牌将进入战场。',
             minSelections: 1,
             maxSelections: 1,
             callbackKey: 'EFFECT_RESOLVE',

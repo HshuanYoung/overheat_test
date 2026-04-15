@@ -4,7 +4,7 @@ import { AtomicEffectExecutor } from '../services/AtomicEffectExecutor';
 const continuous_10401041: CardEffect = {
   id: 'daowuzhe_continuous',
   type: 'CONTINUOUS',
-  description: '【持续】当侵蚀区存在1-4张卡牌且战场上有1个或更多蓝色单位时，我方卡牌的效果使此卡移动到手牌、卡组或侵蚀区时，改为将其放置在战场上。',
+  description: '【永】当侵蚀区存在1-4张卡牌且战场上有1个或更多蓝色单位时，我方卡牌的效果使此卡移动到手牌、卡组或侵蚀区时，改为将其放置在战场上。',
   condition: (gameState: GameState, playerState: PlayerState, instance: Card) => {
     // 1-4 erosion zones
     const erosionCount = playerState.erosionFront.filter(c => c !== null).length +

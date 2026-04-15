@@ -1813,8 +1813,8 @@ export const ServerGameService = {
       }
 
       // If more than 10 (non-goddess or legacy check), excess to grave
-      const currentTotal = player.erosionFront.filter(c => c !== null).length;
-      if (currentTotal > 10) {
+      const totalAfterPlacement = player.erosionFront.filter(c => c !== null).length + player.erosionBack.filter(c => c !== null).length;
+      if (totalAfterPlacement > 10) {
         const lastIdx = player.erosionFront.length - 1;
         const excessCard = player.erosionFront[lastIdx];
         if (excessCard) {

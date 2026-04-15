@@ -4,7 +4,7 @@ const card: Card = {
   id: '10404014',
   gamecardId: null as any,
   fullName: '【Guardian Promise】',
-  specialName: '',
+  specialName: 'Guardian Promise',
   type: 'UNIT',
   color: 'BLUE',
   colorReq: { 'BLUE': 2 },

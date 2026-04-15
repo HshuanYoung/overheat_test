@@ -4,7 +4,7 @@ import { AtomicEffectExecutor } from '../services/AtomicEffectExecutor';
 const effect_20400010_activation: CardEffect = {
   id: 'hensou_protection',
   type: 'ACTIVATE',
-  description: '【起】选择我方单位区或道具区的一张卡牌。在本回合中，该卡牌下一次成为效果的对象时，该效果不被处理。',
+  description: '【启】选择我方单位区或道具区的一张卡牌。在本回合中，该卡牌下一次成为效果的对象时，该效果不被处理。',
   condition: (gameState: GameState, playerState: PlayerState) => {
     return playerState.isTurn && gameState.phase === 'MAIN';
   },

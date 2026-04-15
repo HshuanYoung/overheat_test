@@ -5,7 +5,7 @@ const effect_10401044_activation: CardEffect = {
   id: 'suisen_bounce',
   type: 'ACTIVATE',
   triggerLocation: ['UNIT'],
-  description: '【起】侵蚀区域在1-4张时：将此单位返回持有者手牌，选择场上一张横置的非神蚀单位返回其持有者手牌。',
+  description: '【启】侵蚀区域在1-4张时：将此单位返回持有者手牌，选择场上一张横置的非神蚀单位返回其持有者手牌。',
   erosionTotalLimit: [1, 4],
   condition: (gameState: GameState, playerState: PlayerState) => {
     return playerState.isTurn && gameState.phase === 'MAIN';
@@ -71,7 +71,7 @@ const card: Card = {
   id: '10401044',
   gamecardId: null as any,
   fullName: '水仙--剑姬',
-  specialName: '水仙',
+  specialName: '',
   type: 'UNIT',
   color: 'BLUE',
   colorReq: { 'BLUE': 1 },

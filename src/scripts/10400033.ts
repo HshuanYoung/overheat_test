@@ -3,7 +3,7 @@ import { Card, GameState, PlayerState, CardEffect } from '../types/game';
 const continuous_10400033_1: CardEffect = {
   id: '10400033_continuous_1',
   type: 'CONTINUOUS',
-  description: '【永续】若你的手牌有3张或以上，这个单位的力量+500。',
+  description: '【永】若你的手牌有3张或以上，这个单位的力量+500。',
   applyContinuous: (gameState: GameState, card: Card) => {
     // Determine the owner by checking unit zones
     const playerUid = Object.keys(gameState.players).find(uid =>

@@ -15,7 +15,7 @@ const card: Card = {
   color: 'BLUE',
   gamecardId: null as any,
   colorReq: { BLUE: 1 },
-  faction: '冒险家工会',
+  faction: '冒险家公会',
   acValue: 2,
   power: 500,
   basePower: 500,
@@ -33,18 +33,18 @@ const card: Card = {
       id: 'wen_search_from_erosion',
       type: 'TRIGGER',
       triggerEvent: 'CARD_EROSION_TO_FIELD',
-      description: '【诱发】：这个单位从侵蚀区进入单位区时，你可以选择发动：将这个单位横置，并从你的卡组中选择一张「冒险家工会」道具卡加入手牌，随后洗牌。',
+      description: '【诱】：这个单位从侵蚀区进入单位区时，你可以选择发动：将这个单位横置，并从你的卡组中选择一张「冒险家公会」道具卡加入手牌，随后洗牌。',
       isMandatory: false,
       condition: (gameState, playerState, instance, event) => {
         return event?.sourceCardId === instance.gamecardId;
       },
       execute: async (instance, gameState, playerState) => {
         const itemOptions = playerState.deck.filter(c =>
-          c.type === 'ITEM' && c.faction === '冒险家工会'
+          c.type === 'ITEM' && c.faction === '冒险家公会'
         );
 
         if (itemOptions.length === 0) {
-          gameState.logs.push(`[援护药师【文】] 卡组中没有「冒险家工会」道具卡。`);
+          gameState.logs.push(`[援护药师【文】] 卡组中没有「冒险家公会」道具卡。`);
           return;
         }
 
@@ -53,21 +53,21 @@ const card: Card = {
           type: 'SELECT_CARD',
           playerUid: playerState.uid,
           options: AtomicEffectExecutor.enrichQueryOptions(gameState, playerState.uid, itemOptions.map(c => ({ card: c, source: 'DECK' as any }))),
-          title: '检索「冒险家工会」道具',
-          description: '发动效果：将此单位横置，并从卡组中选择一张「冒险家工会」道具卡加入手牌。',
+          title: '检索「冒险家公会」道具',
+          description: '发动效果：将此单位横置，并从卡组中选择一张「冒险家公会」道具卡加入手牌。',
           minSelections: 1,
           maxSelections: 1,
           callbackKey: 'EFFECT_RESOLVE',
           context: {
             sourceCardId: instance.gamecardId,
-            effectIndex: 0, 
+            effectIndex: 0,
             step: 1
           }
         };
       },
       onQueryResolve: async (instance, gameState, playerState, selections) => {
         const targetId = selections[0];
-        
+
         // Exhaust the unit as part of the effect
         instance.isExhausted = true;
 
@@ -89,17 +89,17 @@ const card: Card = {
       limitCount: 1,
       limitNameType: true,
       triggerLocation: ['UNIT'],
-      description: '【起】〔同名回合1次〕：侵蚀区处于3-7且在你的回合，支付1点费用，将这个单位以正面表示置入侵蚀区：选择你侵蚀区正面一张「文」以外的「冒险家工会」单位卡，将其纵置摆放进入单位区。',
+      description: '【启】〔同名回合1次〕：侵蚀区处于3-7且在你的回合，支付1点费用，将这个单位以正面表示置入侵蚀区：选择你侵蚀区正面一张「文」以外的「冒险家公会」单位卡，将其纵置摆放进入单位区。',
       condition: (gameState, playerState, instance) => {
         if (gameState.activePlayerUid !== playerState.uid) return false;
 
         const erosionCount = getErosionCount(playerState);
         if (erosionCount < 3 || erosionCount > 7) return false;
 
-        const hasValidTarget = playerState.erosionFront.some(c => 
-          c !== null && 
-          c.type === 'UNIT' && 
-          c.faction === '冒险家工会' && 
+        const hasValidTarget = playerState.erosionFront.some(c =>
+          c !== null &&
+          c.type === 'UNIT' &&
+          c.faction === '冒险家公会' &&
           !c.fullName.includes('文')
         );
 
@@ -118,10 +118,10 @@ const card: Card = {
           callbackKey: 'EFFECT_RESOLVE',
           paymentCost: 1,
           paymentColor: card.color,
-          context: { 
-            sourceCardId: card.gamecardId, 
-            effectIndex: 1, 
-            step: 1 
+          context: {
+            sourceCardId: card.gamecardId,
+            effectIndex: 1,
+            step: 1
           }
         };
         gameState.logs.push(`[援护药师【文】] 等待 ${playerState.displayName} 支付 1 点费用...`);
@@ -139,13 +139,13 @@ const card: Card = {
             destinationZone: 'EROSION_FRONT',
             targetFilter: { gamecardId: card.gamecardId }
           }, card);
-          
+
           card.displayState = 'FRONT_UPRIGHT';
 
-          const validTargets = sourcePlayer.erosionFront.filter(c => 
-            c !== null && 
-            c.type === 'UNIT' && 
-            c.faction === '冒险家工会' && 
+          const validTargets = sourcePlayer.erosionFront.filter(c =>
+            c !== null &&
+            c.type === 'UNIT' &&
+            c.faction === '冒险家公会' &&
             !c.fullName.includes('文')
           ) as Card[];
 
@@ -160,14 +160,14 @@ const card: Card = {
             playerUid: playerState.uid,
             options: AtomicEffectExecutor.enrichQueryOptions(gameState, playerState.uid, validTargets.map(u => ({ card: u, source: 'EROSION_FRONT' as any }))),
             title: '选择侵蚀卡进入战场',
-            description: '请选择一张侵蚀区正面的「冒险家工会」单位（非文）。其将进入战场。',
+            description: '请选择一张侵蚀区正面的「冒险家公会」单位（非文）。其将进入战场。',
             minSelections: 1,
             maxSelections: 1,
             callbackKey: 'EFFECT_RESOLVE',
-            context: { 
-              sourceCardId: card.gamecardId, 
-              effectIndex: 1, 
-              step: 2 
+            context: {
+              sourceCardId: card.gamecardId,
+              effectIndex: 1,
+              step: 2
             }
           };
         } else if (step === 2) {

@@ -4,7 +4,7 @@ import { AtomicEffectExecutor } from '../services/AtomicEffectExecutor';
 const trigger_10401053: CardEffect = {
   id: '10401053_trigger',
   type: 'TRIGGER',
-  description: '【诱发】[名称一回合一次] 当此单位进入战场时，可以发动：选择你的侵蚀前区中一张名称包含「剑仙」的卡牌加入手牌。',
+  description: '【诱】[名称一回合一次] 当此单位进入战场时，可以发动：选择你的侵蚀前区中一张名称包含「剑仙」的卡牌加入手牌。',
   triggerLocation: ['UNIT'],
   triggerEvent: 'CARD_ENTERED_ZONE',
   isMandatory: false,

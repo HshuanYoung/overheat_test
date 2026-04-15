@@ -9,7 +9,7 @@ const card: Card = {
   color: 'BLUE',
   gamecardId: null as any,
   colorReq: { 'BLUE': 1 },
-  faction: '冒险家工会',
+  faction: '冒险家公会',
   acValue: 2,
   godMark: false,
   displayState: 'FRONT_UPRIGHT',
@@ -54,7 +54,7 @@ const card: Card = {
       },
       onQueryResolve: async (card, gameState, playerState, selections) => {
         const targetId = selections[0];
-        
+
         await AtomicEffectExecutor.execute(gameState, playerState.uid, {
           type: 'MOVE_FROM_EROSION',
           destinationZone: 'UNIT',

@@ -4,7 +4,7 @@ import { AtomicEffectExecutor } from '../services/AtomicEffectExecutor';
 const effect_10400049_activate: CardEffect = {
   id: 'mina_salvage_activate',
   type: 'ACTIVATE',
-  description: '【起】每回合一次。在你的回合中，舍弃一张手牌：选择一张你侵蚀区域的卡牌加入手牌。',
+  description: '【启】每回合一次。在你的回合中，舍弃一张手牌：选择一张你侵蚀区域的卡牌加入手牌。',
   limitCount: 1,
   limitNameType: true,
   condition: (gameState: GameState, playerState: PlayerState) => {
@@ -49,7 +49,7 @@ const effect_10400049_activate: CardEffect = {
           playerUid: playerState.uid,
           options: AtomicEffectExecutor.enrichQueryOptions(gameState, playerState.uid, frontCards.map(c => ({ card: c, source: 'EROSION_FRONT' }))),
           title: '选择加入手牌的卡牌',
-          description: '选择一张侵蚀区域最前方的卡牌加入手牌。',
+          description: '选择一张侵蚀区域正面的卡牌加入手牌。',
           minSelections: 1,
           maxSelections: 1,
           callbackKey: 'EFFECT_RESOLVE',

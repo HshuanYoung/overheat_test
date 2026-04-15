@@ -19,7 +19,7 @@ const findCardInUnitZone = (gameState: GameState, gamecardId: string): Card | un
 const universalEquipEffect: CardEffect = {
   id: 'equip_universal',
   type: 'ACTIVATE',
-  description: '【起】〔回合1次〕：在你的主要阶段，你可以选择你场上的一个单位，装备这张卡；或者解除这张卡的装备状态。',
+  description: '【启】〔回合1次〕：在你的主要阶段，你可以选择你场上的一个单位，装备这张卡；或者解除这张卡的装备状态。',
   limitCount: 1,
   limitNameType: false,
   triggerLocation: ['ITEM'],

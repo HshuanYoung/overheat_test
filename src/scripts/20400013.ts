@@ -4,7 +4,7 @@ import { AtomicEffectExecutor } from '../services/AtomicEffectExecutor';
 const effect_20400013_activation: CardEffect = {
   id: 'kaguya_flowering_silence',
   type: 'ACTIVATE',
-  description: '【起】选择场上一个单位的一个“启”效果，在本回合中不被处理。',
+  description: '【启】选择场上一个单位的一个“启”效果，在本回合中不被处理。',
   condition: (gameState: GameState, playerState: PlayerState) => {
     return playerState.isTurn && gameState.phase === 'MAIN';
   },
@@ -25,7 +25,7 @@ const effect_20400013_activation: CardEffect = {
         playerUid: playerState.uid,
         options: AtomicEffectExecutor.enrichQueryOptions(gameState, playerState.uid, targets.map(c => ({ card: c, source: 'UNIT' }))),
         title: '选择目标单位',
-        description: '请选择一个拥有“起”效果的单位。',
+        description: '请选择一个拥有“启”效果的单位。',
         minSelections: 1,
         maxSelections: 1,
         callbackKey: 'EFFECT_RESOLVE',
@@ -36,7 +36,7 @@ const effect_20400013_activation: CardEffect = {
         }
       };
     } else {
-      gameState.logs.push(`[${instance.fullName}] 未发现拥有可封印“起”效果的单位。`);
+      gameState.logs.push(`[${instance.fullName}] 未发现拥有可封印“启”效果的单位。`);
     }
   },
   onQueryResolve: async (instance: Card, gameState: GameState, playerState: PlayerState, selections: string[], context: any) => {
@@ -44,7 +44,7 @@ const effect_20400013_activation: CardEffect = {
       const targetId = selections[0];
       const target = AtomicEffectExecutor.findCardById(gameState, targetId);
       if (target && target.effects) {
-        const activateEffects = target.effects.filter(e => e.type === 'ACTIVATED');
+        const activateEffects = target.effects.filter(e => e.type === 'ACTIVATE');
 
         if (activateEffects.length === 1) {
           // Auto-select if only one
@@ -59,7 +59,7 @@ const effect_20400013_activation: CardEffect = {
             playerUid: playerState.uid,
             options: activateEffects.map(e => ({ id: e.id, label: e.description })),
             title: '选择效果',
-            description: '请选择要封印的“起”效果。',
+            description: '请选择要封印的“启”效果。',
             callbackKey: 'EFFECT_RESOLVE',
             context: {
               effectId: 'kaguya_flowering_silence',
@@ -76,7 +76,7 @@ const effect_20400013_activation: CardEffect = {
       if (target) {
         if (!target.silencedEffectIds) target.silencedEffectIds = [];
         target.silencedEffectIds.push(selections[0]);
-        gameState.logs.push(`[${instance.fullName}] 封印了 [${target.fullName}] 的指定“起”效果。`);
+        gameState.logs.push(`[${instance.fullName}] 封印了 [${target.fullName}] 的指定“启”效果。`);
       }
     }
   }

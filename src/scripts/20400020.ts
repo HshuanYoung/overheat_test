@@ -24,7 +24,7 @@ const card: Card = {
       limitNameType: true,
       condition: (gameState, playerState) => {
         if (gameState.phase !== 'MAIN' || gameState.players[gameState.playerIds[gameState.currentTurnPlayer]].uid !== playerState.uid) return false;
-        
+
         // Check for opponent horizontal units
         const opponentId = Object.keys(gameState.players).find(id => id !== playerState.uid)!;
         const opponent = gameState.players[opponentId];
@@ -56,9 +56,9 @@ const card: Card = {
         const targetId = selections[0];
         // Mark the target and current turn
         (card as any).data = {
-           ...( (card as any).data || {} ),
-           markedTargetId: targetId,
-           playedTurn: gameState.turnCount
+          ...((card as any).data || {}),
+          markedTargetId: targetId,
+          playedTurn: gameState.turnCount
         };
         gameState.logs.push(`[任务：击溃恶党] 已标记目标单位。当其离开战场时将触发后续效果。`);
       }
@@ -73,7 +73,7 @@ const card: Card = {
       condition: (gameState, playerState, card, event) => {
         const data = (card as any).data;
         if (!data || !event) return false;
-        
+
         // Must be the marked target leaving in the same turn
         return event.sourceCardId === data.markedTargetId && gameState.turnCount === data.playedTurn;
       },
@@ -104,7 +104,7 @@ const card: Card = {
       onQueryResolve: async (card, gameState, playerState, selections) => {
         const targetId = selections[0];
         const opponentId = Object.keys(gameState.players).find(id => id !== playerState.uid)!;
-        
+
         await AtomicEffectExecutor.execute(gameState, playerState.uid, {
           type: 'MOVE_FROM_FIELD',
           targetFilter: { gamecardId: targetId },
@@ -116,11 +116,11 @@ const card: Card = {
     {
       id: 'defeat_villains_activate_erosion',
       type: 'ACTIVATE',
-      description: '【对付】：若你的战场上有「冒险家工会」单位且此卡在侵蚀区，舍弃1张手牌：打出此卡。',
+      description: '【启】：若你的战场上有「冒险家公会」单位且此卡在侵蚀区，舍弃1张手牌：打出此卡。',
       triggerLocation: ['EROSION_FRONT', 'EROSION_BACK'],
       condition: (gameState, playerState) => {
         // Must have Adventure Guild unit
-        const hasGuildUnit = playerState.unitZone.some(u => u && u.faction === '冒险家工会');
+        const hasGuildUnit = playerState.unitZone.some(u => u && u.faction === '冒险家公会');
         return hasGuildUnit && playerState.hand.length > 0;
       },
       cost: async (gameState, playerState, card) => {
@@ -135,8 +135,8 @@ const card: Card = {
           maxSelections: 1,
           callbackKey: 'ACTIVATE_COST_RESOLVE',
           context: {
-             sourceCardId: card.gamecardId,
-             effectIndex: 2
+            sourceCardId: card.gamecardId,
+            effectIndex: 2
           }
         };
         return true;

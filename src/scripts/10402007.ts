@@ -14,9 +14,7 @@ const activate_10402007_1: CardEffect = {
     );
   },
   cost: async (gameState: GameState, playerState: PlayerState, instance: Card) => {
-    if (instance.isExhausted) return false;
     instance.isExhausted = true;
-    instance.displayState = 'BACK_UPRIGHT';
     return true;
   },
   execute: async (instance: Card, gameState: GameState, playerState: PlayerState) => {
@@ -151,9 +149,7 @@ const activate_10402007_2: CardEffect = {
     return totalErosion >= 4 && totalErosion <= 6;
   },
   cost: async (gameState: GameState, playerState: PlayerState, instance: Card) => {
-    if (instance.isExhausted) return false;
     instance.isExhausted = true;
-    instance.displayState = 'BACK_UPRIGHT';
     return true;
   },
   execute: async (instance: Card, gameState: GameState, playerState: PlayerState) => {
