@@ -118,7 +118,8 @@ const CardListModal: React.FC<{
   onCardClick?: (card: Card, zone: string, index?: number, e?: React.MouseEvent) => void;
   cardBackUrl?: string;
   zoneType: string;
-}> = ({ title, cards = [], isOpen, onClose, onPreviewCard, onCardClick, cardBackUrl, zoneType }) => {
+  erosionBackIds?: string[];
+}> = ({ title, cards = [], isOpen, onClose, onPreviewCard, onCardClick, cardBackUrl, zoneType, erosionBackIds = [] }) => {
   if (!isOpen) return null;
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-8 bg-black/80 backdrop-blur-sm" onClick={onClose}>
@@ -137,13 +138,17 @@ const CardListModal: React.FC<{
               onClick={(e) => {
                 if (onCardClick) {
                   onCardClick(card, zoneType, i, e);
-                  onClose();
                 } else {
                   onPreviewCard?.(card);
                 }
               }}
             >
-              <CardComponent card={card} disableZoom cardBackUrl={cardBackUrl} />
+              <CardComponent 
+                card={card} 
+                disableZoom 
+                cardBackUrl={cardBackUrl} 
+                isBack={zoneType === 'erosion' && erosionBackIds.includes(card.gamecardId)}
+              />
             </div>
           ))}
           {(cards?.length || 0) === 0 && <div className="col-span-full py-20 text-center opacity-20 italic">No cards here</div>}
@@ -168,7 +173,7 @@ const PlayerHalf: React.FC<{
   cardBackUrl?: string;
 }> = ({ player, isOpponent, onCardClick, onPreviewCard, onPlayCard, paymentSelection, pendingPlayCard, selectedAttackers, selectedDefender, game, allianceInitiator, cardBackUrl }) => {
   const romanNumerals = ['Ⅰ', 'Ⅱ', 'Ⅲ', 'Ⅳ', 'Ⅴ', 'Ⅵ', 'Ⅶ', 'Ⅷ', 'Ⅸ', 'Ⅹ'];
-  const [viewingZone, setViewingZone] = useState<{ title: string, cards: Card[], type: string } | null>(null);
+  const [viewingZone, setViewingZone] = useState<{ title: string, cards: Card[], type: string, erosionBackIds?: string[] } | null>(null);
   if (!player) return null;
 
 
@@ -186,6 +191,7 @@ const PlayerHalf: React.FC<{
         onPreviewCard={onPreviewCard}
         onCardClick={onCardClick}
         cardBackUrl={cardBackUrl}
+        erosionBackIds={viewingZone?.erosionBackIds}
       />
 
       {/* SIDEBAR 1: Left Columns */}
@@ -226,7 +232,12 @@ const PlayerHalf: React.FC<{
               card={[...(player.erosionBack || []), ...(player.erosionFront || [])].filter(Boolean).slice(-1)[0] || null}
               label="ERISON" count={`${(player.erosionBack?.filter(Boolean).length || 0) + (player.erosionFront?.filter(Boolean).length || 0)} (${player.erosionBack?.filter(Boolean).length || 0})` as any}
               className="border-red-600/30 scale-[0.8] md:scale-100" cardBackUrl={cardBackUrl}
-              onClick={() => setViewingZone({ title: '侵蚀区 (Erosion Zone)', cards: [...(player.erosionBack || []), ...(player.erosionFront || [])].filter(Boolean) as Card[], type: 'erosion' })}
+              onClick={() => setViewingZone({ 
+                title: '侵蚀区 (Erosion Zone)', 
+                cards: [...(player.erosionBack || []), ...(player.erosionFront || [])].filter(Boolean) as Card[], 
+                type: 'erosion',
+                erosionBackIds: player.erosionBack?.filter(Boolean).map(c => c.gamecardId)
+              })}
               isFaceUp={!(player.erosionFront?.filter(Boolean).length === 0 && player.erosionBack?.filter(Boolean).length > 0)}
               displayMode="erosion_item"
               isDeck={((player.erosionBack?.length || 0) + (player.erosionFront?.length || 0)) > 0}

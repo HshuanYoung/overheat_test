@@ -1153,19 +1153,22 @@ export const BattleField: React.FC = () => {
               )}
 
               {/* Floating Center Logs */}
-              <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-[500] flex flex-col items-center gap-2 pointer-events-auto">
+              <div className={cn(
+                "absolute bottom-[22%] left-1/2 -translate-x-1/2 z-[500] flex flex-col items-center gap-2 pointer-events-auto transition-all duration-300",
+                (previewCard || pendingPlayCard || game.pendingQuery || game.currentProcessingItem) && "opacity-0 pointer-events-none translate-y-4"
+              )}>
                 <motion.button
                   whileHover={{ scale: 1.05 }}
                   whileTap={{ scale: 0.95 }}
                   onClick={() => setShowFullLogs(true)}
-                  className="bg-black/60 backdrop-blur-md border border-white/10 px-4 py-2 rounded-full shadow-2xl flex items-center gap-3 group overflow-hidden max-w-[80vw] md:max-w-md"
+                  className="bg-black/80 backdrop-blur-xl border border-white/20 px-6 py-2.5 rounded-full shadow-[0_20px_50px_rgba(0,0,0,0.5)] flex items-center gap-3 group overflow-hidden max-w-[85vw] md:max-w-md border-t-white/30"
                 >
-                  <Send className="w-3 h-3 text-[#f27d26] group-hover:translate-x-1 transition-transform" />
-                  <span className="text-[10px] font-bold text-white/80 uppercase tracking-widest truncate italic">
+                  <Send className="w-3.5 h-3.5 text-[#f27d26] group-hover:translate-x-1 transition-transform" />
+                  <span className="text-[10px] md:text-[11px] font-bold text-white uppercase tracking-[0.1em] truncate italic">
                     {game.logs.length > 0 ? game.logs[game.logs.length - 1] : "Waiting for duel start..."}
                   </span>
-                  <div className="h-4 w-px bg-white/10" />
-                  <span className="text-[8px] font-black text-[#f27d26]">HISTORY</span>
+                  <div className="h-4 w-px bg-white/20" />
+                  <span className="text-[9px] font-black text-[#f27d26] tracking-tighter">HISTORY</span>
                 </motion.button>
               </div>
             </div>
