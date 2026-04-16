@@ -113,15 +113,32 @@ export class EventEngine {
       allCards.forEach(card => {
         if (card) {
           if (card.basePower !== undefined) card.power = card.basePower + (card.temporaryPowerBuff || 0);
-          if (card.baseDamage !== undefined) card.damage = card.baseDamage;
-          if (card.baseIsrush !== undefined) card.isrush = card.baseIsrush;
+          if (card.baseDamage !== undefined) card.damage = card.baseDamage + (card.temporaryDamageBuff || 0);
+          if (card.baseIsrush !== undefined) card.isrush = card.baseIsrush || !!card.temporaryRush;
           if (card.baseCanAttack !== undefined) card.canAttack = card.baseCanAttack;
+          if (card.temporaryCanAttackAny !== undefined && card.temporaryCanAttackAny) {
+            // "Full Attack" logic: potentially update some property that battle system checks
+            // For now we just keep the property on the object
+          }
           if (card.baseGodMark !== undefined) card.godMark = card.baseGodMark;
           if (card.baseAcValue !== undefined) card.acValue = card.baseAcValue;
           if (card.baseCanActivateEffect !== undefined) card.canActivateEffect = card.baseCanActivateEffect;
           if (card.baseIsImmuneToUnitEffects !== undefined) card.isImmuneToUnitEffects = card.baseIsImmuneToUnitEffects;
           if (card.baseShenyi !== undefined) card.isShenyi = card.baseShenyi;
           card.influencingEffects = [];
+
+          if (card.temporaryPowerBuff) {
+            card.influencingEffects.push({ sourceCardName: '系统', description: `临时力量强化: +${card.temporaryPowerBuff}` });
+          }
+          if (card.temporaryDamageBuff) {
+            card.influencingEffects.push({ sourceCardName: '系统', description: `临时伤害强化: +${card.temporaryDamageBuff}` });
+          }
+          if (card.temporaryRush) {
+            card.influencingEffects.push({ sourceCardName: '系统', description: '获得【速攻】' });
+          }
+          if (card.temporaryCanAttackAny) {
+            card.influencingEffects.push({ sourceCardName: '系统', description: '获得【全攻】' });
+          }
         }
       });
       player.effectDamageModifier = 0;

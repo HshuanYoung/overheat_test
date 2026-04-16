@@ -14,7 +14,7 @@ const card: Card = {
   type: 'UNIT',
   color: 'BLUE',
   gamecardId: null as any,
-  colorReq: { BLUE: 1 },
+  colorReq: {},
   faction: '冒险家公会',
   acValue: 2,
   power: 2000,
@@ -38,18 +38,22 @@ const card: Card = {
       description: '【启】〔同名回合1次〕：侵蚀区处于3-7且在你的回合，支付1点费用，将这个单位以正面表示置入侵蚀区：选择你侵蚀区正面一张「芙蕾雅」以外的「冒险家公会」单位卡，将其纵置摆放进入单位区。',
       condition: (gameState, playerState, instance) => {
         // 1. During player's turn
-        if (gameState.activePlayerUid !== playerState.uid) return false;
+        if (!playerState.isTurn) return false;
 
         // 2. Erosion count 3-7
         const erosionCount = getErosionCount(playerState);
         if (erosionCount < 3 || erosionCount > 7) return false;
 
         // 3. Valid target exists in erosionFront
+        const fieldSpecialNames = new Set(playerState.unitZone.filter(u => u && u.specialName).map(u => u!.specialName));
+        const itemSpecialNames = new Set(playerState.itemZone.filter(i => i && i.specialName).map(i => i!.specialName));
+
         const hasValidTarget = playerState.erosionFront.some(c =>
           c !== null &&
           c.type === 'UNIT' &&
           c.faction === '冒险家公会' &&
-          !c.fullName.includes('芙蕾雅')
+          c.specialName !== instance.specialName &&
+          (!c.specialName || (!fieldSpecialNames.has(c.specialName) && !itemSpecialNames.has(c.specialName)))
         );
 
         return hasValidTarget;
@@ -94,11 +98,15 @@ const card: Card = {
           card.displayState = 'FRONT_UPRIGHT';
 
           // Request target selection from erosion front
+          const fieldSpecialNames = new Set(playerState.unitZone.filter(u => u && u.specialName).map(u => u!.specialName));
+          const itemSpecialNames = new Set(playerState.itemZone.filter(i => i && i.specialName).map(i => i!.specialName));
+
           const validTargets = sourcePlayer.erosionFront.filter(c =>
             c !== null &&
             c.type === 'UNIT' &&
             c.faction === '冒险家公会' &&
-            !c.fullName.includes('芙蕾雅')
+            !c.fullName.includes('芙蕾雅') &&
+            (!c.specialName || (!fieldSpecialNames.has(c.specialName) && !itemSpecialNames.has(c.specialName)))
           ) as Card[];
 
           if (validTargets.length === 0) {

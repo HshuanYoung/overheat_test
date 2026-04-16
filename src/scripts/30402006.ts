@@ -19,6 +19,7 @@ const card: Card = {
     {
       id: 'feijing_camera_activate',
       type: 'ACTIVATE',
+      triggerLocation: ['ITEM'],
       limitCount: 1,
       limitNameType: true,
       description: '【同名回合1次】弃置1张手牌，并将这张卡转为横置状态：选择战场上1个AC2及以下的非「神蚀」单位，该单位在下一个对手回合的开始阶段不能转为纵置状态。',
@@ -27,10 +28,10 @@ const card: Card = {
         if (playerState.hand.length === 0) return false;
 
         // Check for valid targets on field
-        return Object.values(gameState.players).some(p => 
-          p.unitZone.some(u => 
-            u !== null && 
-            (u.acValue || 0) <= 2 && 
+        return Object.values(gameState.players).some(p =>
+          p.unitZone.some(u =>
+            u !== null &&
+            (u.acValue || 0) <= 2 &&
             !u.godMark
           )
         );
@@ -61,17 +62,17 @@ const card: Card = {
             targetFilter: { gamecardId: discardId },
             destinationZone: 'GRAVE'
           }, card);
-          
+
           // Exhaust the camera
           await AtomicEffectExecutor.execute(gameState, playerState.uid, {
             type: 'ROTATE_HORIZONTAL',
             targetFilter: { gamecardId: card.gamecardId }
           }, card);
-          
+
           gameState.logs.push(`${playerState.displayName} 弃置了卡牌并横置了 ${card.fullName}。`);
 
           // 2. Step 2: Select Target for Freeze
-          const allUnits = Object.values(gameState.players).flatMap(p => 
+          const allUnits = Object.values(gameState.players).flatMap(p =>
             p.unitZone.filter(u => u !== null && (u.acValue || 0) <= 2 && !u.godMark)
           ) as Card[];
 
@@ -89,7 +90,7 @@ const card: Card = {
           };
         } else if (step === 2) {
           const targetId = selections[0];
-          
+
           await AtomicEffectExecutor.execute(gameState, playerState.uid, {
             type: 'SET_CAN_RESET_COUNT',
             targetFilter: { gamecardId: targetId },

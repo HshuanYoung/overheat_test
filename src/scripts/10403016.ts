@@ -7,7 +7,7 @@ const effect_10403016_trigger: CardEffect = {
   triggerEvent: 'PHASE_CHANGED',
   description: '【诱发】在你的主要阶段开始时，选择对手的一个非神蚀单位，在本回合中，你的单位可以攻击该单位。',
   condition: (gameState: GameState, playerState: PlayerState) => {
-    return gameState.phase === 'MAIN' && playerState.isTurn;
+    return gameState.phase === 'MAIN' && playerState.isTurn && !playerState.markedUnitAttackTarget;
   },
   execute: async (instance: Card, gameState: GameState, playerState: PlayerState) => {
     const opponentId = gameState.playerIds.find(id => id !== playerState.uid)!;
@@ -89,7 +89,7 @@ const effect_10403016_activate: CardEffect = {
 
       searchZones.forEach(z => {
         z.zone.forEach(c => {
-          if (c && c.type === 'UNIT' && c.fullName.includes('可可亚')) {
+          if (c && c.type === 'UNIT' && (c.specialName === '可可亚' || c.fullName.includes('可可亚'))) {
             cocoaOptions.push({ card: c, source: z.name });
           }
         });
@@ -120,19 +120,11 @@ const effect_10403016_activate: CardEffect = {
       const targetCard = AtomicEffectExecutor.findCardById(gameState, cocoaId)!;
       const sourceZone = targetCard.cardlocation as TriggerLocation;
 
-      let type: any = 'MOVE_FROM_HAND';
-      if (sourceZone === 'DECK') type = 'MOVE_FROM_DECK'; // Note: Ensure MOVE_FROM_DECK exists or use specific logic
-      else if (sourceZone === 'GRAVE') type = 'MOVE_FROM_GRAVE';
-
-      // Fallback if specific MOVE_FROM_DECK/GRAVE doesn't exist in atomic:
-      // We can use moveCard but await it if it's made async, or use execute if it supports it.
-      // Based on AtomicEffectExecutor, MOVE_FROM_HAND is common. Let's see if MOVE_FROM_DECK exists.
-
       await AtomicEffectExecutor.execute(gameState, playerState.uid, {
         type: (sourceZone === 'DECK' ? 'MOVE_FROM_DECK' : (sourceZone === 'GRAVE' ? 'MOVE_FROM_GRAVE' : 'MOVE_FROM_HAND')) as any,
         targetFilter: { gamecardId: cocoaId },
         destinationZone: 'UNIT'
-      }, instance);
+      }, instance, undefined, selections);
 
       gameState.logs.push(`[${instance.fullName}] 的效果使 [${targetCard.fullName}] 从 ${sourceZone} 出击到战场！`);
 

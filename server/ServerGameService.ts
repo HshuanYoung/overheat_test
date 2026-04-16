@@ -463,27 +463,33 @@ export const ServerGameService = {
       }
     }
 
-    // 5. Specific Effect Limits (e.g. erosionBackLimit)
+    // 5. Specific Effect Limits & Requirements (using comprehensive check)
     const playEffect = card.effects?.find(e => e.type === 'ACTIVATE' || e.type === 'TRIGGER' || e.type === 'ALWAYS');
     if (playEffect) {
-      // Determine if this effect's conditions should block playing the card from hand
       const isStory = card.type === 'STORY';
       const isAlways = playEffect.type === 'ALWAYS';
       const isHandTrigger = playEffect.type === 'TRIGGER' && playEffect.triggerLocation?.includes('HAND');
-      
       const shouldValidate = isStory || isAlways || isHandTrigger;
 
       if (shouldValidate) {
-        if (playEffect.erosionBackLimit) {
-          const backCount = player.erosionBack.filter(c => c !== null).length;
-          if (backCount < playEffect.erosionBackLimit[0] || backCount > playEffect.erosionBackLimit[1]) {
-            return { canPlay: false, reason: '侵蚀区背面卡数量不符合要求' };
-          }
-        }
+        // Use the comprehensive engine check to validate limits, conditions, and erosion counts
+        const isValid = ServerGameService.checkEffectLimitsAndReqs(gameState, player.uid, card, playEffect, card.cardlocation as TriggerLocation);
+        if (!isValid) {
+          // Determine a more specific reason if possible (e.g. Turn Limit)
+          let reason = '不满足发动条件';
 
-        // Check condition
-        if (playEffect.condition && !playEffect.condition(gameState, player, card)) {
-          return { canPlay: false, reason: '不满足发动条件' };
+          // Re-check just the limit to provide a better reason
+          if (playEffect.limitCount) {
+            const usageMap = gameState.effectUsage || {};
+            const key = playEffect.limitGlobal
+              ? (playEffect.limitNameType ? `game_${player.uid}_name_${card.id}_${playEffect.id}` : `game_${player.uid}_instance_${card.gamecardId}_${playEffect.id}`)
+              : (playEffect.limitNameType ? `turn_${gameState.turnCount}_${player.uid}_name_${card.id}_${playEffect.id}` : `turn_${gameState.turnCount}_${player.uid}_instance_${card.gamecardId}_${playEffect.id}`);
+            if ((usageMap[key] || 0) >= playEffect.limitCount) {
+              reason = '已达本回合使用次数上限';
+            }
+          }
+
+          return { canPlay: false, reason };
         }
       }
     }
@@ -884,13 +890,21 @@ export const ServerGameService = {
           } else {
             // STORY card
             const effect = card.effects?.find(e => e.type === 'ALWAYS' || e.type === 'ACTIVATE' || e.type === 'ACTIVATED');
-            if (effect && effect.execute) {
-              await (effect.execute as any)(card, gameState, owner);
-              EventEngine.dispatchEvent(gameState, {
-                type: 'EFFECT_ACTIVATED',
-                playerUid: stackItem.ownerUid,
-                sourceCardId: card.gamecardId
-              });
+            if (effect) {
+              // Enforce limits and requirements (effectively from HAND since it's a STORY card play)
+              if (!ServerGameService.checkEffectLimitsAndReqs(gameState, stackItem.ownerUid, card, effect, 'PLAY')) {
+                gameState.logs.push(`[连锁结算] ${card.fullName} 的效果已达到本日限制或不满足条件，结算失败。`);
+              } else {
+                ServerGameService.recordEffectUsage(gameState, stackItem.ownerUid, card, effect);
+                if (effect.execute) {
+                  await (effect.execute as any)(card, gameState, owner);
+                  EventEngine.dispatchEvent(gameState, {
+                    type: 'EFFECT_ACTIVATED',
+                    playerUid: stackItem.ownerUid,
+                    sourceCardId: card.gamecardId
+                  });
+                }
+              }
             }
             ServerGameService.moveCard(gameState, stackItem.ownerUid, 'PLAY', stackItem.ownerUid, 'GRAVE', card.gamecardId);
           }
@@ -948,8 +962,8 @@ export const ServerGameService = {
             attackers: stackItem.attackerIds || [],
             isAlliance: !!stackItem.isAlliance
           };
-          gameState.phase = 'DEFENSE_DECLARATION';
-          gameState.logs.push(`[攻击宣告] 连锁结算完成，进入防御宣言阶段`);
+          gameState.phase = stackItem.skipDefense ? 'BATTLE_FREE' : 'DEFENSE_DECLARATION';
+          gameState.logs.push(`[攻击宣告] 连锁结算完成，进入${stackItem.skipDefense ? '战斗自由' : '防御宣言'}阶段`);
           // Clear previous phase so we don't return to MAIN
           gameState.previousPhase = undefined;
 
@@ -1138,7 +1152,6 @@ export const ServerGameService = {
       } else if (effectId) {
         effect = sourceCard.effects?.find(e => e.id === effectId);
       }
-
       if (effect && effect.onQueryResolve) {
         try {
           gameState.logs.push(`[系统] 正在执行脚本回调 ${effect.id || effectIndex}`);
@@ -1311,6 +1324,19 @@ export const ServerGameService = {
       return gameState;
     }
 
+    if (query.callbackKey === 'COCOLA_ATTACK_CHOICE') {
+      const { attackerIds, isAlliance, markedTargetId } = query.context;
+      if (currentSelections[0] === 'YES') {
+        // Execute attack declaration with forced target and skip defense
+        await ServerGameService.declareAttack(gameState, playerUid, attackerIds, isAlliance, markedTargetId, true);
+        gameState.logs.push(`[公会看板娘] 强制攻击生效，连锁结算后将跳过防御直接进入战斗自由阶段。`);
+      } else {
+        // Resume normal attack declaration (pass a special targetId to bypass prompt)
+        await ServerGameService.declareAttack(gameState, playerUid, attackerIds, isAlliance, 'NO_PROMPT');
+      }
+      return gameState;
+    }
+
 
     if (afterEffects.length > 0) {
       for (let i = 0; i < afterEffects.length; i++) {
@@ -1385,7 +1411,7 @@ export const ServerGameService = {
     return undefined;
   },
 
-  async declareAttack(gameState: GameState, playerId: string, attackerIds: string[], isAlliance: boolean, targetId?: string) {
+  async declareAttack(gameState: GameState, playerId: string, attackerIds: string[], isAlliance: boolean, targetId?: string, skipDefense?: boolean) {
     if (gameState.pendingQuery || gameState.isResolvingStack || gameState.currentProcessingItem) {
       throw new Error('当前有未结算步骤，请等待处理完毕。');
     }
@@ -1399,6 +1425,30 @@ export const ServerGameService = {
     }
     if (!isAlliance && attackerIds.length !== 1) {
       throw new Error('单体攻击必须选择一个单位');
+    }
+
+    // Cocola's marked target prompt
+    if (player.markedUnitAttackTarget && !targetId) {
+      const opponentId = gameState.playerIds.find(id => id !== playerId)!;
+      const opponent = gameState.players[opponentId];
+      const targetUnit = opponent.unitZone.find(u => u && u.gamecardId === player.markedUnitAttackTarget);
+
+      if (targetUnit) {
+        gameState.pendingQuery = {
+          id: Math.random().toString(36).substring(7),
+          type: 'SELECT_CHOICE',
+          playerUid: playerId,
+          options: [
+            { id: 'YES', label: '发动(YES)' },
+            { id: 'NO', label: '不发动(NO)' }
+          ],
+          title: '全攻确认',
+          description: `是否选择发动【全攻】，攻击指定单位 [${targetUnit.fullName}]？选择“是”将直接进入战斗自由阶段。`,
+          callbackKey: 'COCOLA_ATTACK_CHOICE',
+          context: { attackerIds, isAlliance, markedTargetId: player.markedUnitAttackTarget }
+        };
+        return gameState;
+      }
     }
 
     if (!isAlliance) {
@@ -1442,7 +1492,7 @@ export const ServerGameService = {
     gameState.battleState = {
       attackers: attackerIds,
       isAlliance,
-      unitTargetId: targetId,
+      unitTargetId: targetId === 'NO_PROMPT' ? undefined : targetId,
       defensePowerRestriction: 0
     };
 
@@ -1451,7 +1501,8 @@ export const ServerGameService = {
 
     EventEngine.dispatchEvent(gameState, {
       type: 'CARD_ATTACK_DECLARED',
-      sourceCard: attackers[0], // Use first attacker as source for simplicity, or omit if not card-specific
+      sourceCard: attackers[0],
+      sourceCardId: attackers[0].gamecardId,
       playerUid: playerId,
       data: { attackerIds, isAlliance }
     });
@@ -1461,7 +1512,8 @@ export const ServerGameService = {
       type: 'ATTACK',
       attackerIds,
       isAlliance,
-      timestamp: Date.now()
+      timestamp: Date.now(),
+      skipDefense
     });
 
     return gameState;
@@ -2029,6 +2081,15 @@ export const ServerGameService = {
             u.hasAttackedThisTurn = false;
             u.usedShenyiThisTurn = false;
             u.inAllianceGroup = false;
+
+            // Reset Temporary Buffs
+            u.temporaryPowerBuff = 0;
+            u.temporaryDamageBuff = 0;
+            u.temporaryRush = false;
+            u.isrush = u.baseIsrush;
+            u.isAnnihilation = u.baseAnnihilation || false;
+            u.power = u.basePower;
+            u.damage = u.baseDamage;
           }
         });
       });
@@ -2559,6 +2620,7 @@ export const ServerGameService = {
       gameState.logs.push(`${player.displayName} 侵蚀区没有正面卡，跳过侵蚀阶段。`);
       gameState.phase = 'MAIN';
       gameState.logs.push(`${player.displayName} 进入主要阶段`);
+      EventEngine.dispatchEvent(gameState, { type: 'PHASE_CHANGED', data: { phase: 'MAIN' } });
       // console.log(`[ServerGameService] No face-up cards, auto-moving to MAIN phase`);
     } else {
       gameState.logs.push(`${player.displayName} 进入侵蚀阶段，请选择处理方式。`);
@@ -2613,6 +2675,7 @@ export const ServerGameService = {
       gameState.phase = 'MAIN';
       gameState.phaseTimerStart = Date.now();
       gameState.logs.push(`${player.displayName} 进入主要阶段`);
+      EventEngine.dispatchEvent(gameState, { type: 'PHASE_CHANGED', data: { phase: 'MAIN' } });
     } else {
       gameState.previousPhase = 'MAIN';
     }
@@ -2697,6 +2760,7 @@ export const ServerGameService = {
       gameState.phase = 'DISCARD';
       gameState.logs.push(`${player.displayName} 手牌超过 6 张，请弃置卡牌。`);
     } else {
+      player.markedUnitAttackTarget = undefined;
       await ServerGameService.finishTurnTransition(gameState);
     }
   },

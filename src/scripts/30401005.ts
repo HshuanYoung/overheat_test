@@ -4,6 +4,7 @@ import { AtomicEffectExecutor } from '../services/AtomicEffectExecutor';
 const trigger_30401005: CardEffect = {
   id: '30401005_trigger',
   type: 'TRIGGER',
+  triggerLocation: ['ITEM'],
   description: '在你的回合，当你战场上的单位返回手牌时，可以发动：将这张卡转为横置状态，选择手牌中一张非神位且属于「百濑之水城」势力单位卡放置在战场上。',
   triggerEvent: 'CARD_FIELD_TO_HAND',
   isMandatory: false,
@@ -13,7 +14,7 @@ const trigger_30401005: CardEffect = {
   execute: async (instance, gameState, playerState) => {
     // 1. Confirm activation by asking to choose from hand
     const validTargets = playerState.hand.filter(c => c && c.faction === '百濑之水城' && !c.godMark && c.type === 'UNIT');
-    
+
     if (validTargets.length > 0) {
       gameState.pendingQuery = {
         id: Math.random().toString(36).substring(7),
@@ -50,7 +51,7 @@ const trigger_30401005: CardEffect = {
           targetFilter: { gamecardId: targetId },
           destinationZone: 'UNIT'
         }, instance);
-        
+
         gameState.logs.push(`[${instance.fullName}] 横置并使 [${target.fullName}] 登场了！`);
       }
     }

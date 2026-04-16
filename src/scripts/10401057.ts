@@ -94,7 +94,7 @@ const trigger_10401057: CardEffect = {
       if (selections[0] === 'yes') {
         // Ask for card selection from hand
         const handOptions = playerState.hand.map(c => ({ card: c, source: 'HAND' as TriggerLocation }));
-        
+
         gameState.pendingQuery = {
           id: Math.random().toString(36).substring(7),
           type: 'SELECT_CARD',
@@ -136,7 +136,7 @@ const card: Card = {
   type: 'UNIT',
   color: 'BLUE',
   gamecardId: null as any,
-  colorReq: { 'BLUE': 1 },
+  colorReq: {},
   faction: '百濑之水城',
   acValue: 1,
   power: 1000,

@@ -114,13 +114,7 @@ export class AtomicEffectExecutor {
         break;
 
       case 'MOVE_FROM_DECK':
-        {
-          const targetPlayer = gameState.players[playerUid];
-          if (targetPlayer.deck.length > 0) {
-            const topCard = targetPlayer.deck[targetPlayer.deck.length - 1]; // Just peak for the ID, moveCard will handle the pop
-            await this.moveCard(gameState, playerUid, 'DECK', playerUid, effect.destinationZone || 'HAND', topCard.gamecardId, true);
-          }
-        }
+        this.moveCards(gameState, playerUid, effect, effect.destinationZone || 'HAND', 'DECK', sourceCard, querySelections);
         break;
       case 'MOVE_FROM_FIELD':
         this.moveCards(gameState, playerUid, effect, effect.destinationZone || 'HAND', 'UNIT', sourceCard, querySelections);
@@ -226,6 +220,10 @@ export class AtomicEffectExecutor {
         if (effect.value) this.dealDamage(gameState, playerUid, playerUid, effect.value, 'EFFECT', effect.destinationZone);
         break;
 
+      case 'GAIN_KEYWORD':
+        this.applyKeyword(gameState, effect, sourceCard, querySelections);
+        break;
+
       default:
         // console.warn(`AtomicEffectExecutor: Effect type ${effect.type} not fully implemented yet.`);
         break;
@@ -305,12 +303,16 @@ export class AtomicEffectExecutor {
         if (stat === 'power') {
           if (effect.turnDuration === 0 || effect.turnDuration === -1) {
             card.basePower = (card.basePower || 0) + effect.value;
+          } else if (effect.turnDuration === 1) {
+            card.temporaryPowerBuff = (card.temporaryPowerBuff || 0) + effect.value;
           }
           card.power = (card.power || 0) + effect.value;
           EventEngine.dispatchEvent(gameState, { type: 'CARD_POWER_CHANGED', targetCardId: card.gamecardId, data: { delta: effect.value } });
         } else if (stat === 'damage') {
           if (effect.turnDuration === 0 || effect.turnDuration === -1) {
             card.baseDamage = (card.baseDamage || 0) + effect.value;
+          } else if (effect.turnDuration === 1) {
+            card.temporaryDamageBuff = (card.temporaryDamageBuff || 0) + effect.value;
           }
           card.damage = (card.damage || 0) + effect.value;
           EventEngine.dispatchEvent(gameState, { type: 'CARD_DAMAGE_CHANGED', targetCardId: card.gamecardId, data: { delta: effect.value } });
@@ -792,5 +794,25 @@ export class AtomicEffectExecutor {
       return true;
     }
     return false;
+  }
+
+  private static applyKeyword(gameState: GameState, effect: AtomicEffect, sourceCard?: Card, querySelections?: string[]) {
+    const targets = this.findTargets(gameState, effect.targetFilter, sourceCard, querySelections);
+    const keyword = effect.params?.keyword;
+    const duration = effect.turnDuration ?? 0;
+
+    targets.forEach(card => {
+      if (this.shouldSkipEffect(gameState, card)) return;
+
+      if (keyword === 'RUSH') {
+        if (duration === 1) card.temporaryRush = true;
+        else card.baseIsrush = true;
+        card.isrush = true;
+      } else if (keyword === 'FULL_ATTACK') {
+        if (duration === 1) card.temporaryCanAttackAny = true;
+      }
+    });
+
+    gameState.logs.push(`应用了关键字: ${keyword} (持续: ${duration === 1 ? '本回合' : '永久'})`);
   }
 }

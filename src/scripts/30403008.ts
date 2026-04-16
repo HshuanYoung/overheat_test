@@ -18,6 +18,7 @@ const card: Card = {
     {
       id: 'wen_decoction_substitute',
       type: 'CONTINUOUS',
+      triggerLocation: ['ITEM'],
       limitCount: 1,
       limitNameType: true,
       description: '【同名回合1次】自己战场上的「冒险家公会」单位即将被破坏时，你可以选择发动，将这张卡送入墓地作为代替。',

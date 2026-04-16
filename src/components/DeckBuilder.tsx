@@ -746,8 +746,7 @@ export const DeckBuilder: React.FC = () => {
                     alt={zoomedCard.fullName}
                     className="relative w-full object-contain rounded-[1.5rem] shadow-2xl border-4 border-white/10 max-h-[45vh] md:max-h-none"
                   />
-                  <div className="absolute top-4 -right-2 bg-red-600 px-3 py-1.5 rounded-xl border border-red-400 font-black italic shadow-2xl rotate-12 z-20 flex flex-col items-center">
-                    <span className="text-[9px] opacity-60">OWNED</span>
+                  <div className="absolute bottom-4 -right-2 bg-red-600 px-3 py-1.5 rounded-xl border border-red-400 font-black italic shadow-2xl rotate-12 z-20">
                     <span className="text-sm">x{collection[zoomedCard.uniqueId] || 0}</span>
                   </div>
                   <div className="absolute -bottom-4 -left-4 bg-zinc-800 px-4 py-2 rounded-xl border border-white/10 font-black italic shadow-2xl -rotate-6 z-20 flex flex-col items-center">

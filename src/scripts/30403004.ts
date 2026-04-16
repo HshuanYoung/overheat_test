@@ -4,6 +4,7 @@ import { AtomicEffectExecutor } from '../services/AtomicEffectExecutor';
 const trigger_30403004: CardEffect = {
   id: '30403004_trigger',
   type: 'TRIGGER',
+  triggerLocation: ['ITEM'],
   description: '当你的单位卡从侵蚀前区进入战场时，可以选择以下效果之一执行。同一选项每回合最多选择一次：a. 该单位在本回合获得全攻，力量+500 且获得【速攻】。b. 选择对手的一个非神位单位转为横置。c. 从墓地中选择一张「冒险家公会」卡牌放置在侵蚀前区。',
   triggerEvent: 'CARD_EROSION_TO_FIELD',
   isGlobal: true,
@@ -96,12 +97,21 @@ const trigger_30403004: CardEffect = {
           value: 500,
           turnDuration: 1
         }, instance);
-        // damage adjustment
+        await AtomicEffectExecutor.execute(gameState, playerState.uid, {
+          type: 'CHANGE_DAMAGE',
+          targetFilter: { gamecardId: targetId },
+          value: 1,
+          turnDuration: 1
+        }, instance);
+        await AtomicEffectExecutor.execute(gameState, playerState.uid, {
+          type: 'GAIN_KEYWORD',
+          targetFilter: { gamecardId: targetId },
+          params: { keyword: 'RUSH' },
+          turnDuration: 1
+        }, instance);
         const target = AtomicEffectExecutor.findCardById(gameState, targetId);
         if (target) {
-          target.damage = (target.damage || 0) + 1; // Assuming manual keyword/damage for now if no atomic
-          target.isrush = true;
-          gameState.logs.push(`[${instance.fullName}] 选项A：使 [${target.fullName}] 获得了 +1/+500 且拥有了【速攻】。`);
+          gameState.logs.push(`[${instance.fullName}] 选项A：使 [${target.fullName}] 获得了 +1/+500和速攻。`);
         }
       }
     } else if (choice === 'OPTION_B') {
@@ -110,7 +120,7 @@ const trigger_30403004: CardEffect = {
 
       const opponentUid = Object.keys(gameState.players).find(uid => uid !== playerState.uid)!;
       const opponent = gameState.players[opponentUid];
-      const targets = opponent.unitZone.filter(u => u && !u.godMark) as Card[];
+      const targets = opponent.unitZone.filter(u => u && !u.godMark && !u.isExhausted) as Card[];
 
       if (targets.length > 0) {
         gameState.pendingQuery = {
@@ -178,7 +188,7 @@ const trigger_30403004: CardEffect = {
 const card: Card = {
   id: '30403004',
   fullName: '【龙翼冒险者协会】',
-  specialName: '',
+  specialName: '龙翼冒险者协会',
   type: 'ITEM',
   color: 'BLUE',
   gamecardId: null as any,

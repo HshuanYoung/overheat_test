@@ -4,6 +4,7 @@ import { AtomicEffectExecutor } from '../services/AtomicEffectExecutor';
 const activate_30402007: CardEffect = {
   id: '30402007_activate',
   type: 'ACTIVATE',
+  triggerLocation: ['ITEM'],
   description: '【名1】卡名每回合限一次。将此卡转为横置状态，支付1费用：选择一名玩家，该玩家抽一张牌。之后，该玩家选择一张手牌，并将其放置在侵蚀前区。',
   limitCount: 1,
   limitNameType: true,
@@ -79,8 +80,8 @@ const activate_30402007: CardEffect = {
 
       // Target Player: Draw 1
       await AtomicEffectExecutor.execute(gameState, targetUid, {
-          type: 'DRAW',
-          value: 1
+        type: 'DRAW',
+        value: 1
       }, instance);
 
       // Target Player: Select Hand to Erosion
@@ -106,7 +107,7 @@ const activate_30402007: CardEffect = {
       const targetUid = context.targetUid;
       const cardId = selections[0];
       const targetPlayer = gameState.players[targetUid];
-      
+
       await AtomicEffectExecutor.execute(gameState, targetUid, {
         type: 'MOVE_FROM_HAND',
         targetFilter: { gamecardId: cardId },

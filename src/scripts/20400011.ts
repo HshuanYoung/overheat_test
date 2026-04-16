@@ -7,14 +7,14 @@ const effect_20400011_activate: CardEffect = {
   description: '选择战场上一个神蚀单位转为竖置状态。在下个对手的回合开始阶段，该单位不能重置。',
   condition: (gameState: GameState) => {
     return Object.values(gameState.players).some(p =>
-      p.unitZone.some(u => u && u.godMark && u.displayState === 'FRONT_UPRIGHT')
+      p.unitZone.some(u => u && u.godMark && !u.isExhausted)
     );
   },
   execute: async (instance: Card, gameState: GameState, playerState: PlayerState) => {
     const targets: Card[] = [];
     Object.values(gameState.players).forEach(p => {
       p.unitZone.forEach(u => {
-        if (u && u.godMark && u.displayState === 'FRONT_UPRIGHT') targets.push(u);
+        if (u && u.godMark && !u.isExhausted) targets.push(u);
       });
     });
 

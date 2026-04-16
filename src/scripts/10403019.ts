@@ -15,15 +15,22 @@ const trigger_10403019_buff: CardEffect = {
     await AtomicEffectExecutor.execute(gameState, playerState.uid, {
       type: 'CHANGE_POWER',
       targetFilter: { gamecardId: instance.gamecardId },
-      value: 1000
+      value: 1000,
+      turnDuration: -1
     }, instance);
     await AtomicEffectExecutor.execute(gameState, playerState.uid, {
       type: 'CHANGE_DAMAGE',
       targetFilter: { gamecardId: instance.gamecardId },
-      value: 1
+      value: 1,
+      turnDuration: -1
+    }, instance);
+    await AtomicEffectExecutor.execute(gameState, playerState.uid, {
+      type: 'GAIN_KEYWORD',
+      targetFilter: { gamecardId: instance.gamecardId },
+      params: { keyword: 'RUSH' },
+      turnDuration: -1
     }, instance);
 
-    instance.isrush = true; // Still manual for keywords as atomic might not have them yet
     gameState.logs.push(`[${instance.fullName}] 触发：从侵蚀区登场，获得+1/+1000与【速攻】。`);
   }
 };
@@ -34,11 +41,14 @@ const activate_10403019_swap: CardEffect = {
   description: '【启】[名称一回合一次] 侵蚀区数量为3-7张、且在你的回合时，支付1费：将此单位正面表示置入侵蚀位前区，之后选择你侵蚀位前区除「巴特拉」以外的一张正面表示的「冒险家公会」单位卡，放置在单位区。',
   limitCount: 1,
   limitNameType: true,
+  triggerLocation: ['HAND'],
   erosionTotalLimit: [3, 7],
   condition: (gameState: GameState, playerState: PlayerState) => {
     return playerState.isTurn;
   },
   cost: async (gameState: GameState, playerState: PlayerState, instance: Card) => {
+    if (instance.cardlocation !== 'HAND') return false;
+
     const available = playerState.erosionFront.filter(c => c !== null);
     if (available.length < 1) return false;
 
@@ -63,47 +73,51 @@ const activate_10403019_swap: CardEffect = {
     return true; // Wait for selection
   },
   execute: async (instance: Card, gameState: GameState, playerState: PlayerState) => {
-    // Handled in onQueryResolve
+    // This runs when the effect resolves from the stack
+    // 1. Move self from HAND to erosion front
+    await AtomicEffectExecutor.execute(gameState, playerState.uid, {
+      type: 'MOVE_FROM_HAND',
+      targetFilter: { gamecardId: instance.gamecardId },
+      destinationZone: 'EROSION_FRONT'
+    }, instance);
+    instance.displayState = 'FRONT_UPRIGHT';
+
+    // 2. Select replacement from erosion
+    const fieldSpecialNames = new Set(playerState.unitZone.filter(u => u && u.specialName).map(u => u!.specialName));
+    const itemSpecialNames = new Set(playerState.itemZone.filter(i => i && i.specialName).map(i => i!.specialName));
+
+    const erosionChoices = playerState.erosionFront.filter(c =>
+      c &&
+      c.displayState === 'FRONT_UPRIGHT' &&
+      c.type === 'UNIT' &&
+      c.faction === '冒险家公会' &&
+      !c.fullName.includes('巴特拉') &&
+      (!c.specialName || (!fieldSpecialNames.has(c.specialName) && !itemSpecialNames.has(c.specialName)))
+    ) as Card[];
+
+    if (erosionChoices.length > 0) {
+      gameState.pendingQuery = {
+        id: Math.random().toString(36).substring(7),
+        type: 'SELECT_CARD',
+        playerUid: playerState.uid,
+        options: AtomicEffectExecutor.enrichQueryOptions(gameState, playerState.uid, erosionChoices.map(c => ({ card: c, source: 'EROSION_FRONT' }))),
+        title: '选择入场的单位',
+        description: '请选择一张侵蚀位前区的「冒险家公会」单位放置在战场上。',
+        minSelections: 1,
+        maxSelections: 1,
+        callbackKey: 'EFFECT_RESOLVE',
+        context: {
+          sourceCardId: instance.gamecardId,
+          effectId: '10403019_swap',
+          step: 'SWAP_IN'
+        }
+      };
+    } else {
+      gameState.logs.push(`[${instance.fullName}] 侵蚀区没有符合条件的「冒险家公会」单位。`);
+    }
   },
   onQueryResolve: async (instance: Card, gameState: GameState, playerState: PlayerState, selections: string[], context: any) => {
-    if (context.step === 'COST') {
-      // 1. Move self to erosion front
-      await AtomicEffectExecutor.execute(gameState, playerState.uid, {
-        type: 'MOVE_FROM_FIELD',
-        targetFilter: { gamecardId: instance.gamecardId },
-        destinationZone: 'EROSION_FRONT'
-      }, instance);
-      instance.displayState = 'FRONT_UPRIGHT';
-
-      // 2. Select replacement from erosion
-      const erosionChoices = playerState.erosionFront.filter(c =>
-        c &&
-        c.displayState === 'FRONT_UPRIGHT' &&
-        c.type === 'UNIT' &&
-        c.faction === '冒险家公会' &&
-        !c.fullName.includes('巴特拉')
-      ) as Card[];
-
-      if (erosionChoices.length > 0) {
-        gameState.pendingQuery = {
-          id: Math.random().toString(36).substring(7),
-          type: 'SELECT_CARD',
-          playerUid: playerState.uid,
-          options: AtomicEffectExecutor.enrichQueryOptions(gameState, playerState.uid, erosionChoices.map(c => ({ card: c, source: 'EROSION_FRONT' }))),
-          title: '选择入场的单位',
-          description: '请选择一张侵蚀位前区的「冒险家公会」单位放置在战场上。',
-          minSelections: 1,
-          maxSelections: 1,
-          callbackKey: 'EFFECT_RESOLVE',
-          context: {
-            sourceCardId: instance.gamecardId,
-            step: 'SWAP_IN'
-          }
-        };
-      } else {
-        gameState.logs.push(`[${instance.fullName}] 侵蚀区没有符合条件的「冒险家公会」单位。`);
-      }
-    } else if (context.step === 'SWAP_IN') {
+    if (context.step === 'SWAP_IN') {
       const targetId = selections[0];
       const targetCard = playerState.erosionFront.find(c => c?.gamecardId === targetId);
       if (targetCard) {

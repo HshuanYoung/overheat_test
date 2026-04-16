@@ -87,7 +87,8 @@ export type AtomicEffectType =
   | 'PAY_CARD_COST'
   | 'CHANGE_CAN_ACTIVATE'
   | 'IMMUNE_UNIT_EFFECTS'
-  | 'DEAL_EFFECT_DAMAGE_SELF';
+  | 'DEAL_EFFECT_DAMAGE_SELF'
+  | 'GAIN_KEYWORD';
 
 export interface CardFilter {
   id?: string;
@@ -215,6 +216,9 @@ export interface Card {
   isImmuneToUnitEffects?: boolean;
   baseIsImmuneToUnitEffects?: boolean;
   temporaryPowerBuff?: number; // cleared at turn start
+  temporaryDamageBuff?: number; // cleared at turn start
+  temporaryRush?: boolean; // cleared at turn start
+  temporaryCanAttackAny?: boolean; // cleared at turn start
   effects?: CardEffect[];
   influencingEffects?: { sourceCardName: string; description: string }[];
   inAllianceGroup?: boolean;
@@ -274,6 +278,7 @@ export interface StackItem {
   timestamp: number;
   isNegated?: boolean;
   isInterrupted?: boolean;
+  skipDefense?: boolean;
 }
 
 

@@ -40,11 +40,15 @@ const card: Card = {
           u.faction === '冒险家公会'
         );
 
+        const fieldSpecialNames = new Set(playerState.unitZone.filter(u => u && u.specialName).map(u => u!.specialName));
+        const itemSpecialNames = new Set(playerState.itemZone.filter(i => i && i.specialName).map(i => i!.specialName));
+
         const hasErosionUnit = playerState.erosionFront.some(c =>
           c !== null &&
           c.type === 'UNIT' &&
           !c.godMark &&
-          c.faction === '冒险家公会'
+          c.faction === '冒险家公会' &&
+          (!c.specialName || (!fieldSpecialNames.has(c.specialName) && !itemSpecialNames.has(c.specialName)))
         );
 
         return hasOtherFieldUnit && hasErosionUnit;
@@ -82,11 +86,15 @@ const card: Card = {
           const fieldUnitId = selections[0];
 
           // 3. Step 2: Select Erosion Unit
+          const fieldSpecialNames = new Set(playerState.unitZone.filter(u => u && u.specialName).map(u => u!.specialName));
+          const itemSpecialNames = new Set(playerState.itemZone.filter(i => i && i.specialName).map(i => i!.specialName));
+
           const erosionUnits = playerState.erosionFront.filter(c =>
             c !== null &&
             c.type === 'UNIT' &&
             !c.godMark &&
-            c.faction === '冒险家公会'
+            c.faction === '冒险家公会' &&
+            (!c.specialName || (!fieldSpecialNames.has(c.specialName) && !itemSpecialNames.has(c.specialName)))
           ) as Card[];
 
           gameState.pendingQuery = {
