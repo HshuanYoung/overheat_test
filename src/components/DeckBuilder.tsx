@@ -757,68 +757,20 @@ export const DeckBuilder: React.FC = () => {
                 </div>
               </div>
 
-                {/* Console & Details */}
-                <div className="flex-1 flex flex-col p-6 md:p-6 overflow-hidden md:overflow-visible">
-                  <div className="mb-6">
-                    <div className="flex items-center gap-3 mb-2">
-                      <span className="text-[10px] font-black text-red-500 uppercase tracking-[0.2em]">{zoomedCard.id}</span>
-                      <div className="h-px w-12 bg-red-500/30" />
-                    </div>
-                    <h2 className="text-3xl md:text-5xl font-black italic text-white uppercase tracking-tighter leading-none mb-1">
-                      {zoomedCard.fullName}
-                    </h2>
-                    <p className="text-zinc-500 font-black uppercase tracking-widest text-xs">{zoomedCard.specialName || '---'}</p>
+              {/* Console & Details */}
+              <div className="flex-1 flex flex-col p-6 md:p-6 overflow-hidden md:overflow-visible">
+                <div className="mb-6">
+                  <div className="flex items-center gap-3 mb-2">
+                    <span className="text-[10px] font-black text-red-500 uppercase tracking-[0.2em]">{zoomedCard.id}</span>
+                    <div className="h-px w-12 bg-red-500/30" />
                   </div>
+                  <h2 className="text-3xl md:text-5xl font-black italic text-white uppercase tracking-tighter leading-none mb-1">
+                    {zoomedCard.fullName}
+                  </h2>
+                  <p className="text-zinc-500 font-black uppercase tracking-widest text-xs">{zoomedCard.specialName || '---'}</p>
+                </div>
 
-                  <div className="flex-1 md:overflow-y-auto pr-0 md:pr-2 custom-scrollbar space-y-6">
-                  {/* Registry Data Section */}
-                  <div className="space-y-4">
-                    <h3 className="text-[11px] font-black text-white/60 uppercase tracking-[0.4em] flex items-center gap-2">
-                      <div className="w-1.5 h-1.5 rounded-full bg-red-600 shadow-[0_0_8px_rgba(220,38,38,0.8)]" />
-                      Registry Data
-                    </h3>
-
-                    <div className="grid grid-cols-2 gap-2">
-                      {/* Type Box */}
-                      <div className="bg-zinc-900/80 border border-white/5 rounded-2xl p-4 flex flex-col justify-center">
-                        <span className="text-[9px] font-black text-zinc-500 uppercase tracking-widest mb-1">Type</span>
-                        <span className="text-lg font-black italic text-red-500 uppercase">{zoomedCard.type}</span>
-                      </div>
-
-                      <div className="bg-zinc-900/80 border border-white/5 rounded-2xl p-4 flex flex-col justify-center">
-                        <div className="flex items-center gap-2 mb-1">
-                          <Shield className="w-3 h-3 text-blue-500" />
-                          <span className="text-[9px] font-black text-zinc-500 uppercase tracking-widest">AC Value</span>
-                        </div>
-                        <span className="text-xl font-black text-white">{zoomedCard.acValue}</span>
-                      </div>
-
-                      {/* God Mark Box */}
-                      <div className="bg-zinc-900/80 border border-white/5 rounded-2xl p-4 flex flex-col justify-center gap-1">
-                        <div className="flex items-center gap-2">
-                          <Zap className={cn("w-3 h-3", zoomedCard.godMark ? "text-red-500" : "text-zinc-600")} />
-                          <span className="text-[9px] font-black text-zinc-500 uppercase tracking-widest">God Mark</span>
-                        </div>
-                        <span className={cn("text-sm font-black italic uppercase", zoomedCard.godMark ? "text-red-500" : "text-zinc-600")}>
-                          {zoomedCard.godMark ? 'Active' : 'Inactive'}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Stats Grid (Only for Units) */}
-                  {zoomedCard.type === 'UNIT' && (
-                    <div className="grid grid-cols-2 gap-2">
-                      <div className="bg-zinc-800/40 border border-white/5 rounded-2xl p-4 flex flex-col items-center">
-                        <span className="text-[9px] font-black text-zinc-500 uppercase mb-1">Power</span>
-                        <span className="text-2xl font-black text-blue-400">{zoomedCard.power}</span>
-                      </div>
-                      <div className="bg-zinc-800/40 border border-white/5 rounded-2xl p-4 flex flex-col items-center">
-                        <span className="text-[9px] font-black text-zinc-500 uppercase mb-1">Damage</span>
-                        <span className="text-2xl font-black text-red-500">{zoomedCard.damage}</span>
-                      </div>
-                    </div>
-                  )}
+                <div className="flex-1 md:overflow-y-auto pr-0 md:pr-2 custom-scrollbar space-y-6">
 
                   {/* Synthesis Console Area */}
                   <div className="space-y-4 pt-4">

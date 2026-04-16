@@ -248,10 +248,10 @@ export const Collection: React.FC = () => {
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
                 {decks.map(deck => (
-                  <DeckCard 
-                    key={deck.id} 
-                    deck={deck} 
-                    onClick={() => navigate(`/deck-builder?id=${deck.id}`)} 
+                  <DeckCard
+                    key={deck.id}
+                    deck={deck}
+                    onClick={() => navigate(`/deck-builder?id=${deck.id}`)}
                     onDelete={() => setConfirmDeleteId(deck.id)}
                   />
                 ))}
@@ -268,89 +268,89 @@ export const Collection: React.FC = () => {
           {activeTab === 'CARDS' && (
             <motion.div key="cards" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}>
               {/* Filters */}
-                <div className="flex flex-col md:flex-row gap-4 mb-8">
-                  <div className="flex gap-4 flex-wrap w-full md:w-auto md:flex-1">
-                    <div className="relative flex-1 min-w-[200px] md:min-w-[300px]">
-                      <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 md:w-5 md:h-5 text-zinc-500" />
-                      <input
-                        className="w-full bg-zinc-900 border border-white/5 rounded-2xl pl-10 md:pl-12 pr-4 py-2 md:py-3.5 focus:outline-none focus:ring-2 focus:ring-red-600/50 transition-all font-medium text-sm"
-                        placeholder="搜索卡牌名称..."
-                        value={searchTerm}
-                        onChange={e => setSearchTerm(e.target.value)}
-                      />
-                    </div>
-                    <div className="flex gap-1.5 p-1.5 bg-zinc-900/50 rounded-2xl border border-white/5 overflow-x-auto">
-                      {['RED', 'BLUE', 'GREEN', 'YELLOW', 'WHITE'].map(c => (
-                        <button
-                          key={c}
-                          onClick={() => setFilterColor(filterColor === c ? null : c)}
-                          className={cn(
-                            "w-8 h-8 md:w-10 md:h-10 rounded-xl border-2 transition-all flex items-center justify-center shrink-0",
-                            filterColor === c ? 'border-white scale-105' : 'border-transparent hover:scale-105',
-                            c === 'RED' && 'bg-red-700', c === 'BLUE' && 'bg-blue-700',
-                            c === 'GREEN' && 'bg-green-700', c === 'YELLOW' && 'bg-yellow-600',
-                            c === 'WHITE' && 'bg-zinc-300',
-                          )}
-                        >
-                          {filterColor === c && <Check className={cn("w-4 h-4 md:w-5 md:h-5", c === 'WHITE' ? 'text-black' : 'text-white')} />}
-                        </button>
-                      ))}
-                    </div>
+              <div className="flex flex-col md:flex-row gap-4 mb-8">
+                <div className="flex gap-4 flex-wrap w-full md:w-auto md:flex-1">
+                  <div className="relative flex-1 min-w-[200px] md:min-w-[300px]">
+                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 md:w-5 md:h-5 text-zinc-500" />
+                    <input
+                      className="w-full bg-zinc-900 border border-white/5 rounded-2xl pl-10 md:pl-12 pr-4 py-2 md:py-3.5 focus:outline-none focus:ring-2 focus:ring-red-600/50 transition-all font-medium text-sm"
+                      placeholder="搜索卡牌名称..."
+                      value={searchTerm}
+                      onChange={e => setSearchTerm(e.target.value)}
+                    />
                   </div>
-
-                  <div className="grid grid-cols-2 md:grid-cols-6 gap-2 md:gap-3">
-                    {['C', 'U', 'R', 'SR', 'UR', 'SER', 'PR'].map(r => (
+                  <div className="flex gap-1.5 p-1.5 bg-zinc-900/50 rounded-2xl border border-white/5 overflow-x-auto">
+                    {['RED', 'BLUE', 'GREEN', 'YELLOW', 'WHITE'].map(c => (
                       <button
-                        key={r}
-                        onClick={() => setFilterRarity(filterRarity === r ? null : r)}
+                        key={c}
+                        onClick={() => setFilterColor(filterColor === c ? null : c)}
                         className={cn(
-                          "py-2 md:py-2.5 rounded-xl text-[10px] md:text-xs font-black transition-all border",
-                          filterRarity === r ? `${RARITY_BADGE[r]} border-white` : "bg-zinc-900/50 border-white/5 text-zinc-500 hover:bg-zinc-800"
+                          "w-8 h-8 md:w-10 md:h-10 rounded-xl border-2 transition-all flex items-center justify-center shrink-0",
+                          filterColor === c ? 'border-white scale-105' : 'border-transparent hover:scale-105',
+                          c === 'RED' && 'bg-red-700', c === 'BLUE' && 'bg-blue-700',
+                          c === 'GREEN' && 'bg-green-700', c === 'YELLOW' && 'bg-yellow-600',
+                          c === 'WHITE' && 'bg-zinc-300',
                         )}
                       >
-                        {r}
+                        {filterColor === c && <Check className={cn("w-4 h-4 md:w-5 md:h-5", c === 'WHITE' ? 'text-black' : 'text-white')} />}
                       </button>
                     ))}
-                    <select
-                      className="bg-zinc-900/50 border border-white/5 rounded-xl px-2 md:px-3 py-2 md:py-2.5 text-[10px] md:text-xs font-bold text-white focus:outline-none"
-                      value={filters.ownership}
-                      onChange={e => setFilters({ ...filters, ownership: e.target.value })}
-                    >
-                      <option value="ALL">全部状态</option>
-                      <option value="OWNED">已拥有</option>
-                      <option value="NOT_OWNED">未拥有</option>
-                    </select>
-
-                    <select
-                      className="bg-zinc-900/50 border border-white/5 rounded-xl px-2 md:px-3 py-2 md:py-2.5 text-[10px] md:text-xs font-bold text-white focus:outline-none"
-                      value={filters.faction}
-                      onChange={e => setFilters({ ...filters, faction: e.target.value })}
-                    >
-                      <option value="ALL">全部势力</option>
-                      {FACTIONS.map(f => (
-                        <option key={f} value={f}>{f}</option>
-                      ))}
-                    </select>
-
-                    <input
-                      className="bg-zinc-900/50 border border-white/5 rounded-xl px-2 md:px-3 py-2 md:py-2.5 text-[10px] md:text-xs font-bold text-white focus:outline-none"
-                      placeholder="AC (费用)"
-                      value={filters.ac}
-                      onChange={e => setFilters({ ...filters, ac: e.target.value })}
-                    />
-                    <input
-                      className="bg-zinc-900/50 border border-white/5 rounded-xl px-2 md:px-3 py-2 md:py-2.5 text-[10px] md:text-xs font-bold text-white focus:outline-none"
-                      placeholder="Damage (伤害)"
-                      value={filters.damage}
-                      onChange={e => setFilters({ ...filters, damage: e.target.value })}
-                    />
-                    <input
-                      className="bg-zinc-900/50 border border-white/5 rounded-xl px-2 md:px-3 py-2 md:py-2.5 text-[10px] md:text-xs font-bold text-white focus:outline-none"
-                      placeholder="Power (力量)"
-                      value={filters.power}
-                      onChange={e => setFilters({ ...filters, power: e.target.value })}
-                    />
                   </div>
+                </div>
+
+                <div className="grid grid-cols-2 md:grid-cols-6 gap-2 md:gap-3">
+                  {['C', 'U', 'R', 'SR', 'UR', 'SER', 'PR'].map(r => (
+                    <button
+                      key={r}
+                      onClick={() => setFilterRarity(filterRarity === r ? null : r)}
+                      className={cn(
+                        "py-2 md:py-2.5 rounded-xl text-[10px] md:text-xs font-black transition-all border",
+                        filterRarity === r ? `${RARITY_BADGE[r]} border-white` : "bg-zinc-900/50 border-white/5 text-zinc-500 hover:bg-zinc-800"
+                      )}
+                    >
+                      {r}
+                    </button>
+                  ))}
+                  <select
+                    className="bg-zinc-900/50 border border-white/5 rounded-xl px-2 md:px-3 py-2 md:py-2.5 text-[10px] md:text-xs font-bold text-white focus:outline-none"
+                    value={filters.ownership}
+                    onChange={e => setFilters({ ...filters, ownership: e.target.value })}
+                  >
+                    <option value="ALL">全部状态</option>
+                    <option value="OWNED">已拥有</option>
+                    <option value="NOT_OWNED">未拥有</option>
+                  </select>
+
+                  <select
+                    className="bg-zinc-900/50 border border-white/5 rounded-xl px-2 md:px-3 py-2 md:py-2.5 text-[10px] md:text-xs font-bold text-white focus:outline-none"
+                    value={filters.faction}
+                    onChange={e => setFilters({ ...filters, faction: e.target.value })}
+                  >
+                    <option value="ALL">全部势力</option>
+                    {FACTIONS.map(f => (
+                      <option key={f} value={f}>{f}</option>
+                    ))}
+                  </select>
+
+                  <input
+                    className="bg-zinc-900/50 border border-white/5 rounded-xl px-2 md:px-3 py-2 md:py-2.5 text-[10px] md:text-xs font-bold text-white focus:outline-none"
+                    placeholder="AC (费用)"
+                    value={filters.ac}
+                    onChange={e => setFilters({ ...filters, ac: e.target.value })}
+                  />
+                  <input
+                    className="bg-zinc-900/50 border border-white/5 rounded-xl px-2 md:px-3 py-2 md:py-2.5 text-[10px] md:text-xs font-bold text-white focus:outline-none"
+                    placeholder="Damage (伤害)"
+                    value={filters.damage}
+                    onChange={e => setFilters({ ...filters, damage: e.target.value })}
+                  />
+                  <input
+                    className="bg-zinc-900/50 border border-white/5 rounded-xl px-2 md:px-3 py-2 md:py-2.5 text-[10px] md:text-xs font-bold text-white focus:outline-none"
+                    placeholder="Power (力量)"
+                    value={filters.power}
+                    onChange={e => setFilters({ ...filters, power: e.target.value })}
+                  />
+                </div>
               </div>
 
               {/* Grid */}
@@ -367,9 +367,9 @@ export const Collection: React.FC = () => {
                       onClick={() => setSelectedCard(card)}
                       className={cn("relative group transition-all duration-300 cursor-pointer", !isOwned && "opacity-40 grayscale-[0.8] hover:grayscale-0 hover:opacity-80")}
                     >
-                      <CardComponent 
-                        card={card} 
-                        displayMode="deck" 
+                      <CardComponent
+                        card={card}
+                        displayMode="deck"
                         cardBackUrl={CARD_BACKS.find(b => b.id === profile?.favoriteBackId)?.url}
                       />
                       <div className="absolute -top-2 -right-2 z-10">
@@ -521,55 +521,6 @@ export const Collection: React.FC = () => {
                   </div>
 
                   <div className="flex-1 md:overflow-y-auto pr-0 md:pr-2 custom-scrollbar space-y-6">
-                    {/* Registry Data Section */}
-                    <div className="space-y-4">
-                      <h3 className="text-[11px] font-black text-white/60 uppercase tracking-[0.4em] flex items-center gap-2">
-                        <div className="w-1.5 h-1.5 rounded-full bg-red-600 shadow-[0_0_8px_rgba(220,38,38,0.8)]" />
-                        Registry Data
-                      </h3>
-
-                      <div className="grid grid-cols-2 gap-2">
-                        {/* Type Box */}
-                        <div className="bg-zinc-900/80 border border-white/5 rounded-2xl p-4 flex flex-col justify-center">
-                          <span className="text-[9px] font-black text-zinc-500 uppercase tracking-widest mb-1">Type</span>
-                          <span className="text-lg font-black italic text-red-500 uppercase">{selectedCard.type}</span>
-                        </div>
-
-                        {/* AC Value Box */}
-                        <div className="bg-zinc-900/80 border border-white/5 rounded-2xl p-4 flex flex-col justify-center">
-                          <div className="flex items-center gap-2 mb-1">
-                            <Shield className="w-3 h-3 text-blue-500" />
-                            <span className="text-[9px] font-black text-zinc-500 uppercase tracking-widest">AC Value</span>
-                          </div>
-                          <span className="text-xl font-black text-white">{selectedCard.acValue}</span>
-                        </div>
-
-                        {/* God Mark Box */}
-                        <div className="bg-zinc-900/80 border border-white/5 rounded-2xl p-4 flex flex-col justify-center gap-1">
-                          <div className="flex items-center gap-2">
-                            <Zap className={cn("w-3 h-3", selectedCard.godMark ? "text-red-500" : "text-zinc-600")} />
-                            <span className="text-[9px] font-black text-zinc-500 uppercase tracking-widest">God Mark</span>
-                          </div>
-                          <span className={cn("text-sm font-black italic uppercase", selectedCard.godMark ? "text-red-500" : "text-zinc-600")}>
-                            {selectedCard.godMark ? 'Active' : 'Inactive'}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Stats Grid (Only for Units) */}
-                    {selectedCard.type === 'UNIT' && (
-                      <div className="grid grid-cols-2 gap-2">
-                        <div className="bg-zinc-800/40 border border-white/5 rounded-2xl p-4 flex flex-col items-center">
-                          <span className="text-[9px] font-black text-zinc-500 uppercase mb-1">Power</span>
-                          <span className="text-2xl font-black text-blue-400">{selectedCard.power}</span>
-                        </div>
-                        <div className="bg-zinc-800/40 border border-white/5 rounded-2xl p-4 flex flex-col items-center">
-                          <span className="text-[9px] font-black text-zinc-500 uppercase mb-1">Damage</span>
-                          <span className="text-2xl font-black text-red-500">{selectedCard.damage}</span>
-                        </div>
-                      </div>
-                    )}
 
                     {/* Synthesis Console Area */}
                     <div className="space-y-4 pt-4">
@@ -649,14 +600,14 @@ export const Collection: React.FC = () => {
         {/* Delete Confirmation Modal */}
         <AnimatePresence>
           {confirmDeleteId && (
-            <motion.div 
+            <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               className="fixed inset-0 z-[110] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4"
               onClick={() => setConfirmDeleteId(null)}
             >
-              <motion.div 
+              <motion.div
                 initial={{ scale: 0.9, y: 20 }}
                 animate={{ scale: 1, y: 0 }}
                 exit={{ scale: 0.9, y: 20 }}
@@ -664,23 +615,23 @@ export const Collection: React.FC = () => {
                 onClick={e => e.stopPropagation()}
               >
                 <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-red-600 to-transparent opacity-50" />
-                
+
                 <div className="flex flex-col items-center text-center mb-8">
                   <div className="w-16 h-16 bg-red-600/10 rounded-2xl flex items-center justify-center mb-6 text-red-600 border border-red-600/20">
                     <Trash2 className="w-8 h-8" />
                   </div>
                   <h3 className="text-2xl font-black italic tracking-tighter uppercase mb-2">删除卡组?</h3>
-                  <p className="text-zinc-500 font-medium">确定要永久删除这个卡组吗？<br/>此操作无法被撤销。</p>
+                  <p className="text-zinc-500 font-medium">确定要永久删除这个卡组吗？<br />此操作无法被撤销。</p>
                 </div>
 
                 <div className="flex gap-4">
-                  <button 
+                  <button
                     onClick={() => setConfirmDeleteId(null)}
                     className="flex-1 py-4 bg-zinc-800 hover:bg-zinc-700 text-white font-black italic rounded-2xl transition-all uppercase tracking-widest text-xs"
                   >
                     取消 CANCEL
                   </button>
-                  <button 
+                  <button
                     onClick={() => deleteDeck(confirmDeleteId)}
                     className="flex-1 py-4 bg-red-600 hover:bg-red-700 text-white font-black italic rounded-2xl transition-all shadow-lg shadow-red-600/20 uppercase tracking-widest text-xs"
                   >
@@ -713,9 +664,9 @@ const DeckCard = ({ deck, onClick, onDelete }: { deck: Deck; onClick: () => void
   <div
     className="group relative bg-zinc-900/40 border border-white/5 rounded-3xl p-6 hover:bg-zinc-900/60 hover:border-red-600/50 transition-all overflow-hidden"
   >
-    <div 
+    <div
       onClick={onClick}
-      className="absolute inset-0 z-0 cursor-pointer" 
+      className="absolute inset-0 z-0 cursor-pointer"
     />
     <div className="absolute -right-8 -bottom-8 opacity-[0.03] group-hover:opacity-[0.08] transition-opacity pointer-events-none">
       <Layout className="w-48 h-48" />
@@ -734,13 +685,13 @@ const DeckCard = ({ deck, onClick, onDelete }: { deck: Deck; onClick: () => void
         {deck.cards.length} CARDS • {new Date(deck.createdAt).toLocaleDateString()}
       </p>
       <div className="flex gap-2 pointer-events-auto">
-        <button 
+        <button
           onClick={onClick}
           className="flex-1 py-3.5 bg-zinc-800 hover:bg-red-600 text-white font-black rounded-2xl transition-all text-xs uppercase italic"
         >
           EDIT DECK
         </button>
-        <button 
+        <button
           onClick={(e) => { e.stopPropagation(); onDelete(); }}
           className="w-14 flex items-center justify-center bg-zinc-800 hover:bg-red-900/50 text-red-500 rounded-2xl transition-all"
           title="Delete Deck"
