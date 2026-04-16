@@ -695,22 +695,132 @@ export const BattleField: React.FC = () => {
         </button>
 
         {/* Full Image Overlay for Mulligan */}
+        {/* Card Details Overlay */}
         <AnimatePresence>
           {previewCard && (
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="fixed inset-0 z-[100] bg-black/90 backdrop-blur-sm flex items-center justify-center p-8 cursor-pointer"
+              className="fixed inset-0 z-[1000] bg-black/95 backdrop-blur-md flex flex-col md:flex-row items-center justify-center p-4 md:p-12 cursor-pointer"
               onClick={() => setPreviewCard(null)}
             >
-              <div className="relative max-h-[90vh] aspect-[3/4]">
-                <img
-                  src={previewCard.fullImageUrl || getCardImageUrl(previewCard.id, previewCard.rarity, false)}
-                  alt={previewCard.fullName}
-                  className="w-full h-full object-contain rounded-2xl shadow-2xl"
-                  referrerPolicy="no-referrer"
-                />
+              <div 
+                className="w-full max-w-5xl bg-zinc-900/50 border border-white/10 rounded-3xl overflow-hidden flex flex-col md:flex-row shadow-2xl animate-in fade-in zoom-in duration-300 pointer-events-auto"
+                onClick={e => e.stopPropagation()}
+              >
+                {/* Left: Card Image */}
+                <div className="w-full md:w-2/5 aspect-[3/4] p-4 md:p-8 bg-black/20">
+                  <div className="relative h-full w-full rounded-2xl overflow-hidden shadow-2xl ring-1 ring-white/10">
+                    <img
+                      src={previewCard.fullImageUrl || getCardImageUrl(previewCard.id, previewCard.rarity, false)}
+                      alt={previewCard.fullName}
+                      className="w-full h-full object-contain"
+                      referrerPolicy="no-referrer"
+                    />
+                    {/* Floating Rarity Badge */}
+                    <div className="absolute top-4 right-4 px-3 py-1 bg-black/60 backdrop-blur-md rounded-full border border-white/20 text-xs font-black italic">
+                      {previewCard.rarity}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Right: Card Information */}
+                <div className="flex-1 flex flex-col p-6 md:p-10 overflow-hidden">
+                  <div className="flex justify-between items-start mb-6">
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-3">
+                        <span className="text-[10px] font-black text-[#f27d26] uppercase tracking-[0.2em]">{previewCard.id}</span>
+                        <div className="h-px w-12 bg-[#f27d26]/30" />
+                        <span className="text-[10px] font-black text-white/40 uppercase tracking-[0.2em]">{previewCard.type}</span>
+                      </div>
+                      <h2 className="text-3xl md:text-5xl font-black italic text-white uppercase tracking-tighter leading-none">
+                        {previewCard.fullName}
+                      </h2>
+                    </div>
+                    <button onClick={() => setPreviewCard(null)} className="p-2 hover:bg-white/5 rounded-full transition-colors">
+                      <X className="w-8 h-8 text-white/20 hover:text-white" />
+                    </button>
+                  </div>
+
+                  <div className="flex-1 overflow-y-auto pr-4 custom-scrollbar space-y-8">
+                    {/* Stats Row */}
+                    <div className="grid grid-cols-4 gap-4">
+                      <div className="bg-white/5 rounded-2xl p-4 border border-white/5">
+                        <span className="text-[8px] text-zinc-500 uppercase font-black block mb-1">Access Cost</span>
+                        <span className="text-xl font-black text-red-500">{previewCard.acValue >= 0 ? `+${previewCard.acValue}` : previewCard.acValue}</span>
+                      </div>
+                      <div className="bg-white/5 rounded-2xl p-4 border border-white/5">
+                        <span className="text-[8px] text-zinc-500 uppercase font-black block mb-1">Color</span>
+                        <span className="text-xl font-black text-blue-400">{previewCard.color}</span>
+                      </div>
+                      {previewCard.type === 'UNIT' && (
+                        <>
+                          <div className="bg-white/5 rounded-2xl p-4 border border-white/5">
+                            <span className="text-[8px] text-zinc-500 uppercase font-black block mb-1">Power</span>
+                            <span className="text-xl font-black text-blue-400">{previewCard.power}</span>
+                          </div>
+                          <div className="bg-white/5 rounded-2xl p-4 border border-white/5">
+                            <span className="text-[8px] text-zinc-500 uppercase font-black block mb-1">Damage</span>
+                            <span className="text-xl font-black text-red-500">{previewCard.damage}</span>
+                          </div>
+                        </>
+                      )}
+                    </div>
+
+                    {/* Effects Section */}
+                    <div className="space-y-4">
+                      <h3 className="text-[10px] font-black text-[#f27d26] uppercase tracking-[0.3em] flex items-center gap-3">
+                        Special Abilities
+                        <div className="h-px flex-1 bg-gradient-to-r from-[#f27d26]/20 to-transparent" />
+                      </h3>
+                      <div className="grid gap-3">
+                        {previewCard.effects && previewCard.effects.length > 0 ? (
+                          previewCard.effects.map((effect, i) => (
+                            <div key={i} className="bg-white/5 rounded-2xl p-5 border border-white/10 space-y-2 group hover:bg-white/[0.07] transition-colors">
+                              <div className="flex items-center justify-between">
+                                <span className={cn(
+                                  "text-[10px] font-black px-3 py-1 rounded-full border shadow-lg",
+                                  effect.type === 'ACTIVATE' ? "bg-green-500/20 border-green-500/50 text-green-400" :
+                                  effect.type === 'AUTO' ? "bg-blue-500/20 border-blue-500/50 text-blue-400" :
+                                  "bg-zinc-800 border-white/10 text-zinc-400"
+                                )}>
+                                  {effect.type}
+                                </span>
+                                {effect.limitPerTurn && (
+                                  <span className="text-[8px] font-black text-orange-500/60 flex items-center gap-1 uppercase">
+                                    <Star className="w-2.5 h-2.5 fill-current" />
+                                    Limit Once Per Turn
+                                  </span>
+                                )}
+                              </div>
+                              <p className="text-white/80 text-sm leading-relaxed font-medium">
+                                {effect.description}
+                              </p>
+                              {effect.cost && (
+                                <div className="pt-2 flex items-center gap-2">
+                                  <span className="text-[8px] font-black text-zinc-500 uppercase">Cost</span>
+                                  <span className="text-[10px] font-bold text-zinc-300 bg-white/5 px-2 py-0.5 rounded-md border border-white/5">{effect.cost}</span>
+                                </div>
+                              )}
+                            </div>
+                          ))
+                        ) : (
+                          <div className="py-12 text-center opacity-20 italic text-sm tracking-widest">No active effects</div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Footer: Description */}
+                    {previewCard.description && (
+                      <div className="pt-8 border-t border-white/5 opacity-40">
+                        <p className="text-[11px] font-medium leading-relaxed italic text-zinc-400">
+                          {previewCard.description}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </div>
               </div>
             </motion.div>
           )}
@@ -999,14 +1109,14 @@ export const BattleField: React.FC = () => {
             {/* Turn Indicator Icon */}
             <div className="flex items-center gap-2 md:hidden">
               <div className={cn(
-                "w-10 h-10 rounded-full overflow-hidden border-2 transition-all",
+                "w-10 h-10 rounded-xl flex items-center justify-center border-2 transition-all",
                 game.playerIds[game.currentTurnPlayer] === myUid
-                  ? "border-[#f27d26] shadow-[0_0_15px_rgba(242,125,38,0.5)] scale-110"
-                  : "border-zinc-800 opacity-60"
+                  ? "bg-red-500/20 border-red-500 shadow-[0_0_15px_rgba(239,68,68,0.5)] scale-110"
+                  : "bg-blue-500/20 border-blue-500 shadow-[0_0_15px_rgba(59,130,246,0.3)] opacity-60"
               )}>
                 {game.playerIds[game.currentTurnPlayer] === myUid
-                  ? <img src={authUser?.photoURL || 'assets/icons/myself.JPG'} className="w-full h-full object-cover" />
-                  : <img src="assets/icons/opponent.JPG" className="w-full h-full object-cover" />
+                  ? <Sword className="w-6 h-6 text-red-500" />
+                  : <Shield className="w-6 h-6 text-blue-500" />
                 }
               </div>
             </div>
@@ -1146,8 +1256,8 @@ export const BattleField: React.FC = () => {
           </div>
 
           {/* Center: Play Field */}
-          <div className="flex-1 flex items-center justify-center p-2 md:p-4 bg-[radial-gradient(circle_at_center,_rgba(242,125,38,0.03)_0%,_transparent_70%)] overflow-auto">
-            <div className="w-full lg:w-[1920px] aspect-video lg:shrink-0 shadow-[0_0_80px_rgba(0,0,0,0.9)] rounded-2xl overflow-hidden border-2 border-white/10 relative bg-black">
+          <div className="flex-1 flex items-center justify-center p-0 md:p-4 bg-[radial-gradient(circle_at_center,_rgba(242,125,38,0.03)_0%,_transparent_70%)] overflow-auto">
+            <div className="w-full lg:w-[1920px] h-full md:h-auto md:aspect-video lg:shrink-0 md:shadow-[0_0_80px_rgba(0,0,0,0.9)] md:rounded-2xl overflow-hidden md:border-2 border-white/10 relative bg-black">
               {opponent && (
                 <PlayField
                   player={me}
@@ -1478,10 +1588,13 @@ export const BattleField: React.FC = () => {
           <>
             <div className="fixed inset-0 z-[190]" onClick={() => setCardMenu(null)}></div>
             <motion.div
-              initial={{ opacity: 0, scale: 0.9, x: 20 }}
-              animate={{ opacity: 1, scale: 1, x: 0 }}
-              exit={{ opacity: 0, scale: 0.9, x: 20 }}
-              className="fixed z-[200] flex flex-col gap-2 w-32 md:w-40"
+              initial={{ opacity: 0, scale: 0.9, x: 0, y: 20 }}
+              animate={{ opacity: 1, scale: 1, x: 0, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, x: 0, y: 20 }}
+              className={cn(
+                "fixed z-[200] flex flex-col gap-3 w-48 md:w-40 bg-zinc-900/95 backdrop-blur-xl p-4 rounded-3xl border border-white/10 shadow-[0_20px_50px_rgba(0,0,0,0.5)] max-h-[70vh] overflow-y-auto custom-scrollbar",
+                window.innerWidth < 768 ? "items-center" : ""
+              )}
               style={{
                 left: window.innerWidth < 768 ? '50%' : (cardMenu.x + 85),
                 top: window.innerWidth < 768 ? '50%' : cardMenu.y,
@@ -1489,6 +1602,8 @@ export const BattleField: React.FC = () => {
               }}
               onClick={(e) => e.stopPropagation()}
             >
+              <div className="md:hidden w-12 h-1 bg-white/20 rounded-full mb-2 shrink-0" />
+              <div className="md:hidden text-[10px] font-black text-white/40 uppercase tracking-[0.2em] mb-2 shrink-0">Actions</div>
               {/* Action: Play (Yellow) */}
               {(() => {
                 const isCounteringTurn = game.phase === 'COUNTERING' && game.priorityPlayerId === myUid;

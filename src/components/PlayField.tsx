@@ -217,13 +217,13 @@ const PlayerHalf: React.FC<{
 
       {/* MOBILE FOLDED AREA (EROSION + ITEMS) - Tablet/Mobile Only */}
       {!isOpponent && (
-        <div className="flex md:hidden items-center justify-between px-4 py-2 bg-black/40 border-b border-white/5 gap-4">
+        <div className="flex md:hidden items-center justify-between px-4 py-2 bg-black/60 border-b border-white/10 gap-4 mb-2 shrink-0">
           <button 
             onClick={() => setViewingZone({ 
               title: '侵蚀区 (Erosion Zone)', 
               cards: [...(player.erosionBack || []), ...(player.erosionFront || [])].filter(Boolean) as Card[]
             })}
-            className="flex-1 flex items-center justify-between p-3 bg-red-950/20 rounded-xl border border-red-500/20"
+            className="flex-1 flex items-center justify-between p-3 bg-red-950/40 rounded-xl border border-red-500/40 shadow-lg"
           >
             <div className="flex items-center gap-2">
               <Layers className="w-4 h-4 text-red-500" />
@@ -237,7 +237,7 @@ const PlayerHalf: React.FC<{
               title: '道具区 (Item Zone)', 
               cards: player.itemZone?.filter(Boolean) as Card[]
             })}
-            className="flex-1 flex items-center justify-between p-3 bg-blue-950/20 rounded-xl border border-blue-500/20"
+            className="flex-1 flex items-center justify-between p-3 bg-blue-950/40 rounded-xl border border-blue-500/40 shadow-lg"
           >
             <div className="flex items-center gap-2">
               <Zap className="w-4 h-4 text-blue-500" />
@@ -273,7 +273,7 @@ const PlayerHalf: React.FC<{
 
       {/* CENTER COLUMN: HAND, UNIT, EROSION */}
       <div className={cn(
-        "flex flex-col h-full min-h-0 justify-center",
+        "flex-1 flex flex-col min-h-0 justify-center",
         isOpponent ? "gap-2 md:gap-12" : "gap-2 md:gap-6"
       )}>
         {isOpponent ? (
@@ -595,8 +595,8 @@ export const PlayField: React.FC<PlayFieldProps> = ({ player, opponent, game, on
       {/* Background Overlay */}
       <div className="absolute inset-0 bg-gradient-to-b from-red-500/5 via-transparent to-blue-500/5 pointer-events-none" />
 
-      {/* Personalized Timer Display */}
-      <div className="absolute top-4 right-4 z-50 flex items-center gap-3">
+      {/* Personalized Timer Display (Desktop Only) */}
+      <div className="hidden md:flex absolute top-4 right-4 z-50 items-center gap-3">
         <div className={cn(
           "bg-black/60 backdrop-blur-md border px-4 py-2 rounded-xl flex items-center gap-3 shadow-2xl transition-all",
           timer < 30 ? "border-red-500/50 animate-pulse" : "border-[#f27d26]/30"
