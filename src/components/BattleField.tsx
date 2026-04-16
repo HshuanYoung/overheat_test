@@ -2016,8 +2016,8 @@ export const BattleField: React.FC = () => {
                     const isSelected = selectedQueryIds.includes(option.card.gamecardId);
                     const isDiscardQuery = game.pendingQuery!.title.includes('舍弃') || game.pendingQuery!.title.includes('Discard');
                     return (
-                      <div key={`${option.card.gamecardId}-${i}`} className="flex flex-col items-center gap-4 group">
-                        <div className="relative">
+                      <div key={`${option.card.gamecardId}-${i}`} className="flex flex-col items-center gap-4 group w-full">
+                        <div className="relative w-full">
                           <motion.div
                             whileHover={{ scale: 1.08, y: -12 }}
                             whileTap={{ scale: 0.95 }}
