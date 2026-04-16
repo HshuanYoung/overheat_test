@@ -663,11 +663,11 @@ export const BattleField: React.FC = () => {
         <h2 className="text-2xl md:text-4xl font-black italic text-[#f27d26] mb-2 md:mb-4 uppercase tracking-tighter">MULLIGAN PHASE</h2>
         <p className="text-zinc-400 mb-8 md:mb-12 uppercase tracking-[0.2em] md:tracking-[0.3em] text-[10px] md:text-sm text-center">Click cards to preview. Select cards to redraw.</p>
 
-        <div className="flex flex-wrap justify-center gap-4 md:gap-6 mb-12 max-w-full overflow-x-auto px-4">
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:flex lg:flex-nowrap justify-center gap-4 md:gap-6 mb-12 max-w-full overflow-x-auto px-4">
           {me.hand.map((card, i) => {
             const isSelected = selectedMulligan.includes(card.gamecardId);
             return (
-              <div key={`${card.gamecardId}-${i}`} className="flex flex-col items-center gap-2 md:gap-4 shrink-0">
+              <div key={`${card.gamecardId}-${i}`} className="flex flex-col items-center gap-2 md:gap-4 w-full lg:w-40 shrink-0">
                 <motion.div
                   whileHover={{ y: -10 }}
                   onClick={(e) => {
@@ -675,7 +675,7 @@ export const BattleField: React.FC = () => {
                     setCardMenu({ card, zone: 'hand', index: i, x: e.clientX, y: e.clientY });
                   }}
                   className={cn(
-                    "w-28 md:w-40 cursor-pointer transition-all rounded-xl overflow-hidden border-2",
+                    "w-full cursor-pointer transition-all rounded-xl overflow-hidden border-2",
                     isSelected ? "border-[#f27d26] scale-105 shadow-[0_0_30px_rgba(242,125,38,0.3)]" : "border-transparent opacity-60"
                   )}
                 >
@@ -783,14 +783,14 @@ export const BattleField: React.FC = () => {
               {(erosionChoice === 'B' || erosionChoice === 'C') && (
                 <div className="flex flex-col items-center gap-4 animate-in fade-in slide-in-from-bottom-4">
                   <p className="text-[#f27d26] font-bold uppercase tracking-widest text-sm">Please click a card below to select</p>
-                  <div className="flex gap-4 overflow-x-auto p-4 max-w-full">
+                  <div className="grid grid-cols-2 gap-3 p-4 w-full justify-items-center">
                     {me.erosionFront.filter(c => c !== null && c.displayState === 'FRONT_UPRIGHT').map((card, i) => (
                       <motion.div
                         key={card!.gamecardId}
                         whileHover={{ y: -10 }}
                         onClick={() => setSelectedErosionCardId(card!.gamecardId)}
                         className={cn(
-                          "w-32 shrink-0 cursor-pointer transition-all rounded-lg overflow-hidden border-2",
+                          "w-full cursor-pointer transition-all rounded-lg overflow-hidden border-2",
                           selectedErosionCardId === card!.gamecardId ? "border-[#f27d26] scale-105 shadow-[0_0_20px_rgba(242,125,38,0.4)]" : "border-transparent opacity-60"
                         )}
                       >
@@ -1408,13 +1408,13 @@ export const BattleField: React.FC = () => {
               <div className="flex flex-col items-center gap-4 md:gap-8 max-w-full px-4 text-center">
                 <h2 className="text-2xl md:text-4xl font-black italic text-[#f27d26] uppercase tracking-widest">DISCARD CARDS</h2>
                 <p className="text-white/60 text-sm md:text-lg">Your hand exceeds 6 cards. Please choose cards to discard (Current: {me.hand.length})</p>
-                <div className="flex gap-4 overflow-x-auto w-full max-w-5xl p-4 md:p-8 custom-scrollbar">
+                <div className="grid grid-cols-2 md:grid-cols-4 lg:flex lg:flex-nowrap gap-4 w-full max-w-5xl p-4 md:p-8 custom-scrollbar">
                   {me.hand.map(card => (
                     <motion.div
                       key={card.gamecardId}
                       whileHover={{ y: -20, scale: 1.1 }}
                       onClick={() => handleDiscardCard(card.gamecardId)}
-                      className="w-24 md:w-32 shrink-0 cursor-pointer transition-all hover:shadow-[0_0_30px_rgba(242,125,38,0.4)]"
+                      className="w-full lg:w-32 shrink-0 cursor-pointer transition-all hover:shadow-[0_0_30px_rgba(242,125,38,0.4)]"
                     >
                       <CardComponent card={card} disableZoom cardBackUrl={cardBackUrl} />
                     </motion.div>
@@ -1444,12 +1444,12 @@ export const BattleField: React.FC = () => {
                   </p>
                 </div>
 
-                <div className="flex gap-4 overflow-x-auto max-w-full pb-2">
+                <div className="grid grid-cols-2 gap-4 w-full justify-items-center pb-2">
                   {game.pendingShenyi.cardIds.map(cid => {
                     const card = me.unitZone.find(u => u?.gamecardId === cid);
                     if (!card) return null;
                     return (
-                      <div key={cid} className="w-28 h-40 md:w-40 md:h-56 shrink-0 rounded-xl overflow-hidden border-2 border-[#4a0d4a]/50 shadow-2xl relative group">
+                      <div key={cid} className="w-full aspect-[3/4] shrink-0 rounded-xl overflow-hidden border-2 border-[#4a0d4a]/50 shadow-2xl relative group max-w-[160px]">
                         <CardComponent card={card} disableZoom cardBackUrl={cardBackUrl} />
                         <div className="absolute inset-0 bg-purple-500/20 animate-pulse pointer-events-none" />
                       </div>
