@@ -870,17 +870,17 @@ export const BattleField: React.FC = () => {
                             <Zap className="w-4 h-4" />
                             菲晶支付 (Feijing Payment - Cost -3)
                           </div>
-                          <div className="flex gap-4 overflow-x-auto pb-2 custom-scrollbar">
+                          <div className="grid grid-cols-2 gap-3 pb-2">
                             {me.hand.filter(c => c.feijingMark && c.color === pendingPlayCard.color && c.gamecardId !== pendingPlayCard.gamecardId).map(card => {
                               const isSelected = paymentSelection.useFeijing.includes(card.gamecardId);
                               return (
                                 <motion.div
                                   key={card.gamecardId}
-                                  whileHover={{ y: -5 }}
+                                  whileHover={{ y: -3 }}
                                   whileTap={{ scale: 0.95 }}
                                   onClick={() => togglePaymentFeijing(card.gamecardId)}
                                   className={cn(
-                                    "w-28 shrink-0 cursor-pointer transition-all rounded-lg overflow-hidden border-2",
+                                    "aspect-[3/4] cursor-pointer transition-all rounded-lg overflow-hidden border-2",
                                     isSelected ? "border-blue-500 scale-105 shadow-[0_0_20px_rgba(59,130,246,0.5)]" : "border-white/5 opacity-60 grayscale hover:grayscale-0 hover:opacity-100"
                                   )}
                                 >
@@ -2133,7 +2133,13 @@ export const BattleField: React.FC = () => {
                   )}
 
                   {/* Exhaust Section */}
-                  {(game.pendingQuery.paymentCost || 0) > 0 && me.unitZone.some(c => c && !c.isExhaust                       <div className="grid grid-cols-2 gap-3 pb-2 pt-2">
+                  {(game.pendingQuery.paymentCost || 0) > 0 && me.unitZone.some(c => c && !c.isExhausted) && (
+                    <div className="flex flex-col gap-3">
+                      <div className="flex items-center gap-2 text-green-400 font-black uppercase italic tracking-widest text-sm">
+                        <Sword className="w-4 h-4" />
+                        横置支付 (Exhaust Payment - Cost -1)
+                      </div>
+                      <div className="grid grid-cols-2 gap-3 pb-2 pt-2">
                         {me.unitZone.filter(c => c && !c.isExhausted).map(card => {
                           const isSelected = paymentSelection.exhaustIds.includes(card!.gamecardId);
                           return (
@@ -2152,19 +2158,17 @@ export const BattleField: React.FC = () => {
                           );
                         })}
                       </div>
-.5)]" : "border-white/5 opacity-60 hover:opacity-100"
-                              )}
-                            >
-                              <CardComponent card={card!} disableZoom cardBackUrl={cardBackUrl} />
-                            </motion.div>
-                          );
-                        })}
-                      </div>
                     </div>
                   )}
 
                   {/* Erosion Front Section (Horizontal Units) - Only for negative costs */}
-                  {(game.pendingQuery.paymentCost || 0) < 0 && me.erosionFront.some(c => c && c.displayState === 'F                       <div className="grid grid-cols-2 gap-3 pb-2 pt-2">
+                  {(game.pendingQuery.paymentCost || 0) < 0 && me.erosionFront.some(c => c && c.displayState === 'FRONT_UPRIGHT') && (
+                    <div className="flex flex-col gap-3">
+                      <div className="flex items-center gap-2 text-red-400 font-black uppercase italic tracking-widest text-sm">
+                        <Layers className="w-4 h-4" />
+                        水平支付 (Level Payment - Cost -1)
+                      </div>
+                      <div className="grid grid-cols-2 gap-3 pb-2 pt-2">
                         {me.erosionFront.filter(c => c && c.displayState === 'FRONT_UPRIGHT').map(card => {
                           const isSelected = paymentSelection.erosionFrontIds.includes(card!.gamecardId);
                           return (
