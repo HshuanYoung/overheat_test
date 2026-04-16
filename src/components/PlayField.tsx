@@ -229,7 +229,11 @@ const PlayerHalf: React.FC<{
               isFaceUp={true} displayMode="erosion_item"
             />
             <CardSlot
-              card={[...(player.erosionBack || []), ...(player.erosionFront || [])].filter(Boolean).slice(-1)[0] || null}
+              card={(player.erosionFront?.filter(Boolean).length || 0) > 0 
+                ? player.erosionFront?.filter(Boolean).slice(-1)[0] 
+                : (player.erosionBack?.filter(Boolean).length || 0) > 0 
+                  ? player.erosionBack?.filter(Boolean).slice(-1)[0] 
+                  : null}
               label="ERISON" count={`${(player.erosionBack?.filter(Boolean).length || 0) + (player.erosionFront?.filter(Boolean).length || 0)} (${player.erosionBack?.filter(Boolean).length || 0})` as any}
               className="border-red-600/30 scale-[0.8] md:scale-100" cardBackUrl={cardBackUrl}
               onClick={() => setViewingZone({ 
@@ -238,7 +242,7 @@ const PlayerHalf: React.FC<{
                 type: 'erosion',
                 erosionBackIds: player.erosionBack?.filter(Boolean).map(c => c.gamecardId)
               })}
-              isFaceUp={!(player.erosionFront?.filter(Boolean).length === 0 && player.erosionBack?.filter(Boolean).length > 0)}
+              isFaceUp={(player.erosionFront?.filter(Boolean).length || 0) > 0}
               displayMode="erosion_item"
               isDeck={((player.erosionBack?.length || 0) + (player.erosionFront?.length || 0)) > 0}
             />

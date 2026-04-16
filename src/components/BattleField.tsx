@@ -198,6 +198,17 @@ export const BattleField: React.FC = () => {
     }
   }, [game?.logs?.length]);
 
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && gameId && myUid) {
+        console.log('[BattleField] App visible, re-joining game...');
+        socket.emit('joinGame', { gameId, uid: myUid });
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, [gameId, myUid]);
+
   // Join game effect
   useEffect(() => {
     if (!gameId || !deckId || gameId === 'undefined') return;
@@ -1152,24 +1163,36 @@ export const BattleField: React.FC = () => {
                 />
               )}
 
-              {/* Floating Center Logs */}
+              {/* Floating Center Logs (Centered and Two-Line) */}
               <div className={cn(
-                "absolute bottom-[22%] left-1/2 -translate-x-1/2 z-[500] flex flex-col items-center gap-2 pointer-events-auto transition-all duration-300",
-                (previewCard || pendingPlayCard || game.pendingQuery || game.currentProcessingItem) && "opacity-0 pointer-events-none translate-y-4"
+                "absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-[500] flex flex-col items-center gap-4 pointer-events-auto transition-all duration-500",
+                (previewCard || pendingPlayCard || game.pendingQuery || game.currentProcessingItem || game.phase === 'EROSION' || game.phase === 'RESULT') && "opacity-0 pointer-events-none scale-95"
               )}>
-                <motion.button
-                  whileHover={{ scale: 1.05 }}
-                  whileTap={{ scale: 0.95 }}
-                  onClick={() => setShowFullLogs(true)}
-                  className="bg-black/80 backdrop-blur-xl border border-white/20 px-6 py-2.5 rounded-full shadow-[0_20px_50px_rgba(0,0,0,0.5)] flex items-center gap-3 group overflow-hidden max-w-[85vw] md:max-w-md border-t-white/30"
+                <motion.div
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="flex flex-col items-center gap-3"
                 >
-                  <Send className="w-3.5 h-3.5 text-[#f27d26] group-hover:translate-x-1 transition-transform" />
-                  <span className="text-[10px] md:text-[11px] font-bold text-white uppercase tracking-[0.1em] truncate italic">
-                    {game.logs.length > 0 ? game.logs[game.logs.length - 1] : "Waiting for duel start..."}
-                  </span>
-                  <div className="h-4 w-px bg-white/20" />
-                  <span className="text-[9px] font-black text-[#f27d26] tracking-tighter">HISTORY</span>
-                </motion.button>
+                  {/* Line 1: Information Line */}
+                  <div className="bg-black/80 backdrop-blur-2xl border border-white/20 px-8 py-4 rounded-[2rem] shadow-[0_30px_60px_rgba(0,0,0,0.8)] border-t-white/30 max-w-[90vw] md:max-w-xl text-center">
+                    <span className="text-xs md:text-sm font-black text-white uppercase tracking-tight leading-relaxed italic">
+                      {game.logs.length > 0 ? game.logs[game.logs.length - 1] : "Duel initializing..."}
+                    </span>
+                  </div>
+
+                  {/* Line 2: History Button */}
+                  <motion.button
+                    whileHover={{ scale: 1.05 }}
+                    whileTap={{ scale: 0.95 }}
+                    onClick={() => setShowFullLogs(true)}
+                    className="bg-zinc-900/90 backdrop-blur-xl border border-[#f27d26]/40 px-6 py-2 rounded-full shadow-2xl flex items-center gap-3 group"
+                  >
+                    <Send className="w-3 h-3 text-[#f27d26] group-hover:rotate-12 transition-transform" />
+                    <span className="text-[10px] font-black text-[#f27d26] uppercase tracking-[0.3em]">
+                      VIEW FULL HISTORY
+                    </span>
+                  </motion.button>
+                </motion.div>
               </div>
             </div>
           </div>
@@ -2203,15 +2226,15 @@ export const BattleField: React.FC = () => {
                   </button>
                 </div>
               ) : game.pendingQuery.type.replace(/-/g, '_').toUpperCase() === 'SELECT_CHOICE' ? (
-                <div className="flex gap-4 mt-4 w-full justify-center flex-wrap max-w-2xl px-12">
+                <div className="grid grid-cols-2 gap-4 mt-4 w-full justify-center max-w-2xl px-6 md:px-12">
                   {game.pendingQuery.options.map((option, i) => (
                     <button
                       key={i}
                       onClick={() => GameService.submitQueryChoice(gameId!, game.pendingQuery!.id, [option.id || option.card?.gamecardId || ''])}
-                      className="px-10 py-5 bg-zinc-900/80 backdrop-blur-md text-white border-2 border-white/10 font-black italic uppercase tracking-[0.15em] rounded-2xl hover:bg-[#f27d26] hover:text-black hover:border-transparent transition-all hover:scale-105 active:scale-95 shadow-[0_10px_30px_rgba(0,0,0,0.5)] group relative overflow-hidden"
+                      className="px-4 py-6 md:px-10 md:py-8 bg-zinc-900/80 backdrop-blur-md text-white border-2 border-white/10 font-black italic uppercase tracking-[0.1em] rounded-3xl hover:bg-[#f27d26] hover:text-black hover:border-transparent transition-all hover:scale-105 active:scale-95 shadow-[0_10px_30px_rgba(0,0,0,0.5)] group relative overflow-hidden text-center flex items-center justify-center min-h-[100px]"
                     >
                       <div className="absolute inset-0 bg-gradient-to-tr from-white/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-                      <span className="relative z-10">{option.label || option.card?.fullName || option.id}</span>
+                      <span className="relative z-10 text-xs md:text-sm">{option.label || option.card?.fullName || option.id}</span>
                     </button>
                   ))}
                 </div>
