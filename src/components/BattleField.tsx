@@ -809,9 +809,9 @@ export const BattleField: React.FC = () => {
             exit={{ opacity: 0 }}
             className="fixed inset-0 z-[60] bg-black/90 backdrop-blur-md flex items-center justify-center"
           >
-            <div className="max-w-6xl w-full flex flex-col items-center gap-4 md:gap-6 p-4 md:p-8 overflow-y-auto max-h-screen">
+            <div className="max-w-2xl w-[95vw] md:w-full bg-zinc-900/90 border border-white/10 rounded-[2rem] flex flex-col items-center gap-3 md:gap-4 p-4 md:p-6 overflow-y-auto max-h-[90vh] shadow-2xl">
               <div className="text-center">
-                <h3 className="text-xl md:text-4xl font-black italic text-[#f27d26] uppercase tracking-tighter mb-2">支付费用 (PAY COST)</h3>
+                <h3 className="text-lg md:text-2xl font-black italic text-[#f27d26] uppercase tracking-tighter mb-1">支付费用 (PAY COST)</h3>
                 <div className="flex items-center justify-center gap-4">
                   <div className="flex items-center gap-2">
                     <span className="text-zinc-500 uppercase text-[10px] font-bold tracking-widest">Required:</span>
@@ -824,8 +824,8 @@ export const BattleField: React.FC = () => {
                   </div>
                   <div className="h-8 w-px bg-white/10" />
                   <div className="flex items-center gap-2">
-                    <span className="text-zinc-500 uppercase text-[10px] font-bold tracking-widest">Selected:</span>
-                    <span className="text-3xl font-black text-white">
+                    <span className="text-zinc-500 uppercase text-[8px] font-bold tracking-widest">Selected:</span>
+                    <span className="text-xl md:text-2xl font-black text-white">
                       {pendingPlayCard.acValue > 0
                         ? (paymentSelection.useFeijing.length * 3) + paymentSelection.exhaustIds.length
                         : paymentSelection.erosionFrontIds.length}
@@ -1064,7 +1064,10 @@ export const BattleField: React.FC = () => {
 
 
           {/* Left Sidebar: Logs & Stats (Toggleable/Responsive) */}
-          <div className="hidden lg:flex w-96 flex-col border-r border-white/5 bg-black/20 p-4">
+          <div className={cn(
+            "hidden lg:flex w-96 flex-col border-r border-white/5 bg-black/20 p-4 transition-all duration-300",
+            previewCard && "opacity-0 pointer-events-none w-0 p-0 overflow-hidden border-0"
+          )}>
             {/* Game Status Summary */}
             <div className="mb-6 space-y-4">
               <span className="text-[10px] font-black uppercase italic tracking-widest text-white/40 flex items-center gap-2">
@@ -1167,11 +1170,11 @@ export const BattleField: React.FC = () => {
                   className="flex flex-col items-center gap-4"
                 >
                   <div className="flex items-center gap-4 text-red-500">
-                    <Zap className="w-8 h-8 animate-pulse" />
-                    <h2 className="text-2xl md:text-5xl font-black italic uppercase tracking-tighter">
+                    <Zap className="w-5 h-5 md:w-8 md:h-8 animate-pulse text-red-500/50" />
+                    <h2 className="text-lg md:text-3xl font-black italic uppercase tracking-tighter text-white/90">
                       RESOLVING EFFECT
                     </h2>
-                    <Zap className="w-8 h-8 animate-pulse" />
+                    <Zap className="w-5 h-5 md:w-8 md:h-8 animate-pulse text-red-500/50" />
                   </div>
                   <div className="h-1 w-48 bg-gradient-to-r from-transparent via-red-500 to-transparent" />
                 </motion.div>
@@ -1183,8 +1186,8 @@ export const BattleField: React.FC = () => {
                   transition={{ type: "spring", damping: 15 }}
                   className="relative"
                 >
-                  <div className="absolute -inset-8 bg-red-600/20 blur-[60px] rounded-full animate-pulse" />
-                  <div className="w-72 relative z-10">
+                  <div className="absolute -inset-8 bg-red-600/10 blur-[40px] rounded-full animate-pulse" />
+                  <div className="w-48 md:w-56 relative z-10 transition-all">
                     {game.currentProcessingItem.card ? (
                       <div className="relative group">
                         <CardComponent card={game.currentProcessingItem.card} disableZoom cardBackUrl={cardBackUrl} />
@@ -1940,7 +1943,7 @@ export const BattleField: React.FC = () => {
               </div>
             )}
 
-            <div className="max-w-6xl w-full flex flex-col items-center gap-10 relative z-10">
+            <div className="max-w-2xl w-[95vw] md:w-full bg-zinc-900/90 border border-white/10 rounded-[2rem] flex flex-col items-center gap-4 md:gap-6 p-4 md:p-8 relative z-10 shadow-2xl overflow-y-auto max-h-[90vh]">
               <div className="text-center flex flex-col items-center">
                 <div className={cn(
                   "flex items-center justify-center gap-4 mb-3",
@@ -1949,7 +1952,7 @@ export const BattleField: React.FC = () => {
                   {(game.pendingQuery.title.includes('舍弃') || game.pendingQuery.title.includes('Discard')) && (
                     <Trash2 className="w-10 h-10 animate-bounce" />
                   )}
-                  <h2 className="text-xl md:text-5xl font-black italic uppercase tracking-tighter">
+                  <h2 className="text-lg md:text-3xl font-black italic uppercase tracking-tighter">
                     {game.pendingQuery.title}
                   </h2>
                 </div>
@@ -2633,6 +2636,29 @@ export const BattleField: React.FC = () => {
                       )}
                     </div>
                   </div>
+
+                  {/* Influencing Effects Section */}
+                  {previewCard.influencingEffects && previewCard.influencingEffects.length > 0 && (
+                    <div className="space-y-4 pt-4 border-t border-white/5">
+                      <h3 className="text-[10px] font-black text-blue-400 uppercase tracking-[0.3em] flex items-center gap-3">
+                        Influenced By / 受到影响
+                        <div className="h-px flex-1 bg-gradient-to-r from-blue-400/20 to-transparent" />
+                      </h3>
+                      <div className="grid gap-2">
+                        {previewCard.influencingEffects.map((item, i) => (
+                          <div key={i} className="bg-blue-500/5 rounded-xl p-3 border border-blue-500/10">
+                            <div className="flex items-center gap-2 mb-1">
+                              <span className="text-[8px] font-black text-blue-400/60 uppercase">Source</span>
+                              <span className="text-[10px] font-black text-blue-300 italic">{item.sourceCardName}</span>
+                            </div>
+                            <p className="text-white/70 text-[11px] leading-relaxed">
+                              {item.description}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
 
                   {/* Footer: Description */}
                   {previewCard.description && (
