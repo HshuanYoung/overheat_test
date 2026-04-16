@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Card, PlayerState, StackItem, GameState, GAME_TIMEOUTS } from '../types/game';
 import { CardComponent } from './Card';
 import { GameService } from '../services/gameService';
-import { Shield, Sword, Zap, Trash2, LogOut, Layers, AlertTriangle, Search, Play } from 'lucide-react';
+import { Shield, Sword, Zap, Trash2, LogOut, Layers, AlertTriangle, Search, Play, X } from 'lucide-react';
 import { cn } from '../lib/utils';
 
 interface PlayFieldProps {
@@ -230,23 +230,8 @@ const PlayerHalf: React.FC<{
               onClick={() => setViewingZone?.({ title: '道具区 (Item Zone)', cards: player.itemZone?.filter(Boolean) as Card[], type: 'item' })}
               isFaceUp={true} displayMode="erosion_item"
             />
-            <CardSlot
-              card={(player.erosionFront?.filter(Boolean).length || 0) > 0
-                ? player.erosionFront?.filter(Boolean).slice(-1)[0]
-                : (player.erosionBack?.filter(Boolean).length || 0) > 0
-                  ? player.erosionBack?.filter(Boolean).slice(-1)[0]
-                  : null}
-              label="ERISON" count={`${(player.erosionBack?.filter(Boolean).length || 0) + (player.erosionFront?.filter(Boolean).length || 0)} (${player.erosionBack?.filter(Boolean).length || 0})` as any}
-              className="border-red-600/30 scale-[0.8] md:scale-100" cardBackUrl={cardBackUrl}
-              onClick={() => setViewingZone?.({
-                title: '侵蚀区 (Erosion Zone)',
-                cards: [...(player.erosionBack || []), ...(player.erosionFront || [])].filter(Boolean) as Card[],
-                type: 'erosion',
-                erosionBackIds: player.erosionBack?.filter(Boolean).map(c => c.gamecardId)
-              })}
-              isFaceUp={(player.erosionFront?.filter(Boolean).length || 0) > 0}
-              displayMode="erosion_item"
-            />
+            {/* EROSION Slot Hidden per user request */}
+            <div className="h-0 md:h-0" />
             <CardSlot
               card={(player.playZone?.length || 0) > 0 ? player.playZone[player.playZone.length - 1] : null}
               label="PLAY" count={player.playZone?.length || 0}
@@ -258,19 +243,19 @@ const PlayerHalf: React.FC<{
 
       {/* CENTER COLUMN (3 COLUMNS ON MOBILE): HAND, UNIT, EROSION */}
       <div className={cn(
-        "col-span-3 flex flex-col min-h-0 justify-center",
-        isOpponent ? "gap-1 md:gap-12" : "gap-1 md:gap-6"
+        "col-span-3 md:col-span-1 flex flex-col min-h-0",
+        isOpponent ? "justify-end gap-1 md:gap-12" : "justify-end gap-1 md:gap-4"
       )}>
         {isOpponent ? (
           <>
             {/* Opponent Hand Area */}
-            <div className="flex items-center justify-center px-1 md:px-0 mb-1">
-              <div className="flex-1 h-12 md:h-24 flex items-center justify-center gap-0.5 overflow-x-auto bg-black/20 rounded-lg border border-white/5 custom-scrollbar">
+            <div className="flex items-center justify-center px-1 md:px-0 mb-1 md:mb-2">
+              <div className="flex-1 h-14 md:h-20 flex items-center justify-center gap-1 overflow-x-auto bg-black/20 rounded-lg border border-white/5 custom-scrollbar">
                 {player.hand?.map((card, i) => (
                   <div
                     key={i}
                     className={cn(
-                      "w-6 md:w-12 aspect-[3/4] -ml-2 md:-ml-8 first:ml-0 shadow-lg drop-shadow-md transition-all",
+                      "w-10 md:w-[76.8px] aspect-[3/4] -ml-4 md:-ml-[38.4px] first:ml-0 shadow-lg drop-shadow-md transition-all shrink-0",
                       !!player.isHandPublic ? "cursor-pointer hover:scale-110 z-10" : "",
                       isOpponent && "rotate-180"
                     )}
@@ -287,7 +272,7 @@ const PlayerHalf: React.FC<{
             </div>
 
             {/* Opponent Erosion Zone (Desktop) */}
-            <div className="hidden md:grid grid-cols-10 gap-1 h-16 scale-90 origin-bottom mb-8">
+            <div className="hidden md:grid grid-cols-10 gap-1 h-16 scale-90 origin-bottom mb-4">
               {(() => {
                 const backCards = player.erosionBack?.filter(c => c !== null) || [];
                 const frontCards = player.erosionFront?.filter(c => c !== null) || [];
@@ -323,7 +308,7 @@ const PlayerHalf: React.FC<{
             </div>
 
             {/* Opponent Unit Zone */}
-            <div className="grid grid-cols-3 md:grid-cols-6 gap-1 md:gap-2 items-center relative z-10 px-1 md:px-0">
+            <div className="grid grid-cols-3 md:grid-cols-6 gap-1 md:gap-2 items-center relative z-10 px-1 md:px-0 md:translate-y-[80px]">
               {Array.from({ length: 6 }).map((_, i) => {
                 const unit = player.unitZone?.[i];
                 return (
@@ -407,23 +392,23 @@ const PlayerHalf: React.FC<{
               })()}
             </div>
 
-            {/* Player Hand Area - Below Units */}
-            <div className="flex items-center justify-center px-1 md:px-0 mt-1">
-              <div className="flex-1 h-12 md:h-24 flex items-center justify-center gap-0.5 overflow-x-auto bg-black/20 rounded-lg border border-white/5 custom-scrollbar">
+            <div className="flex items-center justify-center px-1 md:px-0 mt-1 md:mt-2">
+              <div className="flex-1 h-14 md:h-48 flex items-center justify-center gap-0.5 overflow-visible bg-black/20 rounded-lg border border-white/5 relative">
                 {player.hand?.map((card, i) => {
                   const total = player.hand.length;
                   const middle = (total - 1) / 2;
                   const offset = i - middle;
-                  const xPos = offset * 60;
+                  const xPos = offset * (window.innerWidth < 768 ? 36 : 96);
                   const isFeijingSelected = paymentSelection?.useFeijing?.includes(card.gamecardId);
 
                   return (
                     <div
                       key={card.gamecardId || i}
-                      className="absolute w-8 md:w-16 transition-all duration-300 cursor-pointer"
+                      className="absolute w-[38.4px] md:w-[115.2px] transition-all duration-300 cursor-pointer"
                       style={{
-                        transform: `translateX(${xPos * (window.innerWidth < 768 ? 0.6 : 1)}px) ${isFeijingSelected ? 'translateY(-10px) md:translateY(-40px) scale(1.2)' : ''}`,
-                        zIndex: isFeijingSelected ? 100 : i
+                        transform: `translateX(${xPos}px) ${isFeijingSelected ? 'translateY(-10px) md:translateY(-50px) scale(1.1)' : ''}`,
+                        zIndex: isFeijingSelected ? 100 : i,
+                        bottom: window.innerWidth < 768 ? '5px' : '0px'
                       }}
                       onClick={(e) => onCardClick?.(card, 'hand', i, e)}
                     >
@@ -441,7 +426,10 @@ const PlayerHalf: React.FC<{
       </div>
 
       {/* SIDEBAR 2: Right Columns */}
-      <div className="flex flex-col gap-1 md:gap-4 h-full justify-center">
+      <div className={cn(
+        "flex flex-col gap-1 md:gap-4 h-full",
+        isOpponent ? "justify-center" : "justify-end pb-4"
+      )}>
         {isOpponent ? (
           // Opponent Right: Play, Erosion, Item
           <>
@@ -451,13 +439,8 @@ const PlayerHalf: React.FC<{
               className="border-yellow-500/30 scale-[0.8] md:scale-100" cardBackUrl={cardBackUrl}
               onPreview={onPreviewCard} isOpponent={isOpponent}
             />
-            <CardSlot
-              card={[...(player.erosionFront || []), ...(player.erosionBack || [])].filter(Boolean).slice(-1)[0] || null}
-              label="ERISON" count={`${(player.erosionBack?.filter(Boolean).length || 0) + (player.erosionFront?.filter(Boolean).length || 0)} (${player.erosionBack?.filter(Boolean).length || 0})` as any}
-              className="border-red-600/30 scale-[0.8] md:scale-100" cardBackUrl={cardBackUrl}
-              onClick={() => setViewingZone?.({ title: '敌方侵蚀区', cards: [...(player.erosionBack || []), ...(player.erosionFront || [])].filter(Boolean) as Card[], type: 'erosion' })}
-              isFaceUp={true} isOpponent={isOpponent} displayMode="erosion_item"
-            />
+            {/* EROSION Slot Hidden per user request */}
+            <div className="h-0 md:h-0" />
             <CardSlot
               card={player.itemZone?.filter(Boolean).slice(-1)[0] || null}
               label="ITEM" count={player.itemZone?.filter(Boolean).length || 0}

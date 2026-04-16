@@ -783,14 +783,14 @@ export const BattleField: React.FC = () => {
               {(erosionChoice === 'B' || erosionChoice === 'C') && (
                 <div className="flex flex-col items-center gap-4 animate-in fade-in slide-in-from-bottom-4">
                   <p className="text-[#f27d26] font-bold uppercase tracking-widest text-sm">Please click a card below to select</p>
-                  <div className="grid grid-cols-2 gap-3 p-4 w-full justify-items-center">
+                  <div className="grid grid-cols-2 lg:flex lg:flex-row lg:flex-nowrap lg:justify-center lg:overflow-x-auto gap-3 p-4 w-full justify-items-center custom-scrollbar">
                     {me.erosionFront.filter(c => c !== null && c.displayState === 'FRONT_UPRIGHT').map((card, i) => (
                       <motion.div
                         key={card!.gamecardId}
                         whileHover={{ y: -10 }}
                         onClick={() => setSelectedErosionCardId(card!.gamecardId)}
                         className={cn(
-                          "w-full cursor-pointer transition-all rounded-lg overflow-hidden border-2",
+                          "w-full lg:w-48 lg:shrink-0 cursor-pointer transition-all rounded-lg overflow-hidden border-2",
                           selectedErosionCardId === card!.gamecardId ? "border-[#f27d26] scale-105 shadow-[0_0_20px_rgba(242,125,38,0.4)]" : "border-transparent opacity-60"
                         )}
                       >
@@ -980,7 +980,8 @@ export const BattleField: React.FC = () => {
         {/* Top Bar: Phase & Turn */}
         <div className={cn(
           "h-auto md:h-16 flex flex-col md:flex-row items-center justify-between px-2 md:px-6 py-1 md:py-0 bg-black/40 border-b border-white/5 backdrop-blur-md relative z-[1100] gap-1 md:gap-2 transition-all duration-300",
-          (previewCard || viewingZone) && "opacity-0 pointer-events-none"
+          (previewCard || viewingZone || isRulebookOpen) && "opacity-0 pointer-events-none",
+          isRulebookOpen && "hidden"
         )}>
           <div className="flex items-center gap-2 md:gap-8 w-full md:w-auto justify-between md:justify-start">
             {/* Round Display */}
@@ -1068,6 +1069,47 @@ export const BattleField: React.FC = () => {
                 GAMELOG
               </span>
             </motion.button>
+
+            {/* Compact Stats Indicator (Desktop) */}
+            <div className="hidden md:flex items-center gap-4">
+              {/* My Stats */}
+              <div className="flex items-center gap-2 bg-blue-600/10 border border-blue-500/20 px-3 py-1 rounded-xl">
+                <div className="flex flex-col items-center">
+                  <span className="text-[7px] text-zinc-500 uppercase font-black">DECK</span>
+                  <span className="text-sm font-black text-blue-400">{me.deck.length}</span>
+                </div>
+                <div className="w-px h-6 bg-white/5" />
+                <div className="flex flex-col items-center">
+                  <span className="text-[7px] text-zinc-500 uppercase font-black">GRAVE</span>
+                  <span className="text-sm font-black text-zinc-300">{me.grave.length}</span>
+                </div>
+                <div className="w-px h-6 bg-white/5" />
+                <div className="flex flex-col items-center">
+                  <span className="text-[7px] text-zinc-500 uppercase font-black">EXILE</span>
+                  <span className="text-sm font-black text-purple-400">{me.exile.length}</span>
+                </div>
+              </div>
+
+              <div className="w-px h-8 bg-white/10" />
+
+              {/* Opponent Stats */}
+              <div className="flex items-center gap-2 bg-red-600/10 border border-red-500/20 px-3 py-1 rounded-xl">
+                <div className="flex flex-col items-center">
+                  <span className="text-[7px] text-zinc-500 uppercase font-black">DECK</span>
+                  <span className="text-sm font-black text-red-500">{opponent?.deck.length || 0}</span>
+                </div>
+                <div className="w-px h-6 bg-white/5" />
+                <div className="flex flex-col items-center">
+                  <span className="text-[7px] text-zinc-500 uppercase font-black">GRAVE</span>
+                  <span className="text-sm font-black text-zinc-300">{opponent?.grave.length || 0}</span>
+                </div>
+                <div className="w-px h-6 bg-white/5" />
+                <div className="flex flex-col items-center">
+                  <span className="text-[7px] text-zinc-500 uppercase font-black">EXILE</span>
+                  <span className="text-sm font-black text-purple-400">{opponent?.exile.length || 0}</span>
+                </div>
+              </div>
+            </div>
           </div>
 
           {/* Desktop Turn Indicator */}
@@ -1088,73 +1130,8 @@ export const BattleField: React.FC = () => {
         </div>
 
 
-        <div className="flex-1 flex flex-col lg:flex-row min-h-0">
+        <div className="flex-1 flex flex-col min-h-0 relative">
           {/* Playground Area */}
-
-
-          {/* Left Sidebar: Logs & Stats (Toggleable/Responsive) */}
-          <div className={cn(
-            "hidden lg:flex w-96 flex-col border-r border-white/5 bg-black/20 p-4 transition-all duration-300",
-            previewCard && "opacity-0 pointer-events-none w-0 p-0 overflow-hidden border-0"
-          )}>
-            {/* Game Status Summary */}
-            <div className="mb-6 space-y-4">
-              <span className="text-[10px] font-black uppercase italic tracking-widest text-white/40 flex items-center gap-2">
-                <div className="w-1 h-1 bg-[#f27d26] rounded-full" />
-                Battle Areas
-              </span>
-
-              <div className="grid grid-cols-2 gap-4">
-                {/* Me Stats */}
-                <div className="bg-blue-500/5 border border-blue-500/20 rounded-xl p-3">
-                  <div className="text-[9px] font-black text-blue-400 uppercase mb-2">My Forces / 我方</div>
-                  <div className="grid grid-cols-3 gap-1">
-                    <div className="flex flex-col items-center">
-                      <span className="text-[8px] text-zinc-500 uppercase">Deck</span>
-                      <span className="text-sm font-bold">{me.deck.length}</span>
-                    </div>
-                    <div className="flex flex-col items-center">
-                      <span className="text-[8px] text-zinc-500 uppercase">Grave</span>
-                      <span className="text-sm font-bold">{me.grave.length}</span>
-                    </div>
-                    <div className="flex flex-col items-center">
-                      <span className="text-[8px] text-zinc-500 uppercase">Exile</span>
-                      <span className="text-sm font-bold">{me.exile.length}</span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Opponent Stats */}
-                <div className="bg-red-500/5 border border-red-500/20 rounded-xl p-3">
-                  <div className="text-[9px] font-black text-red-400 uppercase mb-2">Hostile / 对方</div>
-                  <div className="grid grid-cols-3 gap-1">
-                    <div className="flex flex-col items-center">
-                      <span className="text-[8px] text-zinc-500 uppercase">Deck</span>
-                      <span className="text-sm font-bold">{opponent?.deck.length || 0}</span>
-                    </div>
-                    <div className="flex flex-col items-center">
-                      <span className="text-[8px] text-zinc-500 uppercase">Grave</span>
-                      <span className="text-sm font-bold">{opponent?.grave.length || 0}</span>
-                    </div>
-                    <div className="flex flex-col items-center">
-                      <span className="text-[8px] text-zinc-500 uppercase">Exile</span>
-                      <span className="text-sm font-bold">{opponent?.exile.length || 0}</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <span className="text-[10px] font-black uppercase italic tracking-widest text-white/40 mb-4 flex items-center gap-2">
-              <div className="w-1 h-1 bg-[#f27d26] rounded-full" />
-              Battle Statistics
-            </span>
-            <div className="flex-1 overflow-y-auto space-y-3 pr-2 custom-scrollbar text-xs text-white/30 italic">
-              Use the center log panel to view game history.
-            </div>
-          </div>
-
-          {/* Center: Play Field */}
           <div className="flex-1 flex items-center justify-center p-0 md:p-4 bg-[radial-gradient(circle_at_center,_rgba(242,125,38,0.03)_0%,_transparent_70%)] overflow-auto">
             <div className="w-full lg:w-[1920px] h-full md:h-auto md:aspect-video lg:shrink-0 md:shadow-[0_0_80px_rgba(0,0,0,0.9)] md:rounded-2xl overflow-hidden md:border-2 border-white/10 relative bg-black">
               {opponent && (
@@ -2011,12 +1988,12 @@ export const BattleField: React.FC = () => {
               </div>
 
               {game.pendingQuery.type.replace(/-/g, '_').toUpperCase() === 'SELECT_CARD' ? (
-                <div className="grid grid-cols-2 gap-3 md:gap-6 max-h-[45vh] md:max-h-[55vh] overflow-y-auto p-2 md:p-6 custom-scrollbar w-full">
+                <div className="grid grid-cols-2 lg:flex lg:flex-row lg:flex-nowrap lg:justify-center gap-3 md:gap-6 max-h-[45vh] md:max-h-[65vh] overflow-y-auto lg:overflow-x-auto p-2 md:p-6 custom-scrollbar w-full">
                   {game.pendingQuery.options.map((option, i) => {
                     const isSelected = selectedQueryIds.includes(option.card.gamecardId);
                     const isDiscardQuery = game.pendingQuery!.title.includes('舍弃') || game.pendingQuery!.title.includes('Discard');
                     return (
-                      <div key={`${option.card.gamecardId}-${i}`} className="flex flex-col items-center gap-4 group w-full">
+                      <div key={`${option.card.gamecardId}-${i}`} className="flex flex-col items-center gap-4 group w-full lg:w-48 lg:shrink-0">
                         <div className="relative w-full">
                           <motion.div
                             whileHover={{ scale: 1.08, y: -12 }}

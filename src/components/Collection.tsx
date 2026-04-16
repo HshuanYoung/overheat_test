@@ -517,7 +517,6 @@ export const Collection: React.FC = () => {
                     <h2 className="text-3xl md:text-5xl font-black italic text-white uppercase tracking-tighter leading-none mb-1">
                       {selectedCard.fullName}
                     </h2>
-                    <p className="text-zinc-500 font-black uppercase tracking-widest text-xs">{selectedCard.specialName || '---'}</p>
                   </div>
 
                   <div className="flex-1 md:overflow-y-auto pr-0 md:pr-2 custom-scrollbar space-y-6">
