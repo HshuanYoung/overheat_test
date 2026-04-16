@@ -2187,14 +2187,6 @@ export const BattleField: React.FC = () => {
                           );
                         })}
                       </div>
-,68,68,0.5)]" : "border-white/5 opacity-60 hover:opacity-100"
-                              )}
-                            >
-                              <CardComponent card={card!} disableZoom cardBackUrl={cardBackUrl} />
-                            </motion.div>
-                          );
-                        })}
-                      </div>
                     </div>
                   )}
 
