@@ -73,8 +73,17 @@ export const BattleField: React.FC = () => {
   const gameRef = useRef<GameState | null>(null);
   const pendingPlayCardRef = useRef<Card | null>(null);
   const [interruptionNotice, setInterruptionNotice] = useState<string | null>(null);
+  const [lastError, setLastError] = useState<string | null>(null);
   useEffect(() => { gameRef.current = game; }, [game]);
   useEffect(() => { pendingPlayCardRef.current = pendingPlayCard; }, [pendingPlayCard]);
+
+  // Error Toast timeout
+  useEffect(() => {
+    if (lastError) {
+      const timer = setTimeout(() => setLastError(null), 1500);
+      return () => clearTimeout(timer);
+    }
+  }, [lastError]);
 
   // Fetch User Customization
   useEffect(() => {
@@ -183,7 +192,8 @@ export const BattleField: React.FC = () => {
 
     const onSocketError = (err: string | any) => {
       console.error('[BattleField] Socket Error:', err);
-      // We could use a toast or alert here, but console is safest for basic diagnostics
+      const msg = typeof err === 'string' ? err : (err.message || '网络通讯错误');
+      setLastError(msg);
     };
 
     socket.on('gameStateUpdate', onGameStateUpdate);
@@ -322,7 +332,7 @@ export const BattleField: React.FC = () => {
       socket.emit('gameAction', { gameId, action: 'SURRENDER', payload: {} });
       setShowPhaseMenu(false);
     } catch (error: any) {
-      alert(error.message);
+      setLastError(error.message);
     }
   };
 
@@ -374,7 +384,7 @@ export const BattleField: React.FC = () => {
       setIsAlliance(false);
       setShowAttackModal(false);
     } catch (error: any) {
-      alert(error.message);
+      setLastError(error.message);
     }
   };
 
@@ -386,7 +396,7 @@ export const BattleField: React.FC = () => {
       setSelectedDefender(null);
       setShowDefenseModal(false);
     } catch (error: any) {
-      alert(error.message);
+      setLastError(error.message);
     }
   };
 
@@ -397,7 +407,7 @@ export const BattleField: React.FC = () => {
       // Transition to damage calculation
       await GameService.advancePhase(gameId, 'PROPOSE_DAMAGE_CALCULATION');
     } catch (error: any) {
-      alert(error.message);
+      setLastError(error.message);
     }
   };
 
@@ -407,7 +417,7 @@ export const BattleField: React.FC = () => {
     try {
       await GameService.resolveDamage(gameId);
     } catch (error: any) {
-      alert(error.message);
+      setLastError(error.message);
     }
   };
 
@@ -418,7 +428,7 @@ export const BattleField: React.FC = () => {
     try {
       await GameService.discardCard(gameId, myUid, cardId);
     } catch (error: any) {
-      alert(error.message);
+      setLastError(error.message);
     }
   };
 
@@ -490,7 +500,7 @@ export const BattleField: React.FC = () => {
       setEffectConfirmation(null);
       setEffectSelection(null);
     } catch (error: any) {
-      alert(error.message);
+      setLastError(error.message);
     }
   };
 
@@ -509,7 +519,7 @@ export const BattleField: React.FC = () => {
       try {
         await socket.emit('gameAction', { gameId, action: 'PLAY_CARD', payload: { cardId: card.gamecardId, paymentSelection: {} } });
       } catch (error: any) {
-        alert(error.message);
+        setLastError(error.message);
       }
     } else {
       setPendingPlayCard(card);
@@ -540,7 +550,7 @@ export const BattleField: React.FC = () => {
         await GameService.resolvePlay(gameId);
       }
     } catch (error: any) {
-      alert(error.message);
+      setLastError(error.message);
     }
   };
 
@@ -556,7 +566,7 @@ export const BattleField: React.FC = () => {
       setPendingPlayCard(null);
       setPaymentSelection({ useFeijing: [], exhaustIds: [], erosionFrontIds: [] });
     } catch (error: any) {
-      alert(error.message);
+      setLastError(error.message);
     }
   };
 
@@ -564,7 +574,7 @@ export const BattleField: React.FC = () => {
   const handleConfirmErosion = async () => {
     if (!gameId || !erosionChoice) return;
     if ((erosionChoice === 'B' || erosionChoice === 'C') && !selectedErosionCardId) {
-      alert('请选择一张侵蚀区正面卡');
+      setLastError('请选择一张侵蚀区正面卡');
       return;
     }
     try {
@@ -572,7 +582,7 @@ export const BattleField: React.FC = () => {
       setErosionChoice(null);
       setSelectedErosionCardId(null);
     } catch (error: any) {
-      alert(error.message);
+      setLastError(error.message);
     }
   };
 
@@ -604,7 +614,7 @@ export const BattleField: React.FC = () => {
       setPaymentSelection({ useFeijing: [], exhaustIds: [], erosionFrontIds: [] });
     } catch (error: any) {
       console.error('[Query] Submission error:', error);
-      alert(error.message);
+      setLastError(error.message);
     }
   };
 
@@ -660,7 +670,7 @@ export const BattleField: React.FC = () => {
     try {
       await GameService.handleShenyiChoice(gameId, action);
     } catch (error: any) {
-      alert(error.message);
+      setLastError(error.message);
     }
   };
 
@@ -1545,7 +1555,7 @@ export const BattleField: React.FC = () => {
                 };
                 const validEffects = activateEffects.filter(e => {
                   const triggerLocation = zoneMap[cardMenu.zone] as TriggerLocation;
-                  return GameService.checkEffectLimitsAndReqs(game, myUid, latestCard, e.effect, triggerLocation);
+                  return GameService.checkEffectLimitsAndReqs(game, myUid, latestCard, e.effect, triggerLocation).valid;
                 });
 
                 if (validEffects.length > 0) {
@@ -2712,6 +2722,28 @@ export const BattleField: React.FC = () => {
             </motion.div>
           )}
         </AnimatePresence>
+      </AnimatePresence>
+
+      {/* Error Toast Notification */}
+      <AnimatePresence>
+        {lastError && (
+          <motion.div
+            initial={{ opacity: 0, y: 50, scale: 0.9 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.8, transition: { duration: 0.2 } }}
+            className="fixed bottom-12 left-1/2 -translate-x-1/2 z-[3000] pointer-events-none"
+          >
+            <div className="bg-zinc-950/90 backdrop-blur-xl border border-red-500/50 px-8 py-4 rounded-2xl shadow-[0_20px_50px_rgba(239,68,68,0.3)] flex items-center gap-4">
+              <div className="w-8 h-8 rounded-full bg-red-500 flex items-center justify-center shadow-[0_0_15px_rgba(239,68,68,0.6)]">
+                <X className="w-5 h-5 text-white" strokeWidth={3} />
+              </div>
+              <p className="text-white font-black italic uppercase tracking-widest text-sm">
+                {lastError}
+              </p>
+              <div className="absolute inset-0 rounded-2xl bg-red-500/5 animate-pulse pointer-events-none" />
+            </div>
+          </motion.div>
+        )}
       </AnimatePresence>
     </div>
   );

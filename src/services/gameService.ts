@@ -87,25 +87,24 @@ export const GameService = {
 
   // --- Local UI Utilities ---
   canPlayCard(gameState: GameState | null, player: any, card: Card): { canPlay: boolean; reason?: string } {
-    if (!player || !card) return { canPlay: false };
+    if (!player || !card) return { canPlay: false, reason: '未找到玩家或卡牌' };
 
     // 0. Faction Lock Check
     if (player.factionLock && card.faction !== player.factionLock) {
-      return { canPlay: false, reason: `受到派系限制：只能打出 [${player.factionLock}] 派系的卡牌` };
+      return { canPlay: false, reason: `受到阵营锁定限制：只能打出 [${player.factionLock}] 阵营的卡牌` };
     }
 
     // 1. Zone Checks
     if (card.type === 'UNIT') {
       if (!player.unitZone.some((c: any) => c === null)) {
-        return { canPlay: false, reason: 'UNIT ZONE IS FULL' };
+        return { canPlay: false, reason: '单位区已满' };
       }
       if (card.specialName && player.unitZone.some((c: any) => c?.specialName === card.specialName)) {
-        return { canPlay: false, reason: 'ALREADY HAS UNIQUE UNIT' };
+        return { canPlay: false, reason: '场上已存在同名的唯一单位' };
       }
       
-      // Godmark Limit Check (e.g. 浪漫歌月【风花】)
+      // Godmark Limit Check
       if (card.godMark) {
-        // Find if any card on field has a limitGodmarkCount restriction, or if this card has one
         const fieldEffects = player.unitZone
           .filter((u: any) => u !== null)
           .flatMap((u: any) => u.effects || []);
@@ -118,13 +117,13 @@ export const GameService = {
         if (effectiveLimit !== undefined) {
           const currentGodmarkCount = player.unitZone.filter((u: any) => u && u.godMark).length;
           if (currentGodmarkCount >= effectiveLimit) {
-            return { canPlay: false, reason: `GODMARK LIMIT REACHED (${effectiveLimit})` };
+            return { canPlay: false, reason: `已达到女神个体限制 (上限: ${effectiveLimit})` };
           }
         }
       }
     } else if (card.type === 'ITEM') {
       if (card.specialName && player.itemZone.some((c: any) => c?.specialName === card.specialName)) {
-        return { canPlay: false, reason: 'ALREADY HAS UNIQUE ITEM' };
+        return { canPlay: false, reason: '场上已存在同名的唯一物品' };
       }
     }
 
@@ -155,7 +154,7 @@ export const GameService = {
     }
 
     if (totalDeficit > omniColorCount) {
-      return { canPlay: false, reason: `缺少颜色需求 (缺口: ${totalDeficit}, 可用变色单位: ${omniColorCount})` };
+      return { canPlay: false, reason: `不满足颜色需求 (缺少: ${totalDeficit})` };
     }
 
     // 3. Cost Check (AC Value)
@@ -164,12 +163,10 @@ export const GameService = {
       const absCost = Math.abs(cost);
       const faceUpFrontCount = player.erosionFront.filter((c: any) => c !== null && c.displayState === 'FRONT_UPRIGHT').length;
       if (faceUpFrontCount < absCost) {
-        return { canPlay: false, reason: `EROSION FRONT HAS LESS THAN ${absCost} CARDS` };
+        return { canPlay: false, reason: `侵蚀区正面卡牌不足 (需要: ${absCost})` };
       }
     } else if (cost > 0) {
       let remainingCost = cost;
-
-      // I. Check for Feijing card in hand (of the same color)
       const hasFeijing = player.hand.some((c: any) =>
         c.gamecardId !== card.gamecardId &&
         c.feijingMark &&
@@ -178,48 +175,30 @@ export const GameService = {
       if (hasFeijing) {
         remainingCost = Math.max(0, remainingCost - 3);
       }
-
-      // II. Check for ready units on field
       const readyUnitsCount = player.unitZone.filter((c: any) => c !== null && !c.isExhausted).length;
       remainingCost = Math.max(0, remainingCost - readyUnitsCount);
 
-      // III. Check Erosion space limit (cannot reach 10 total)
       if (remainingCost > 0) {
         const totalErosionCount = player.erosionFront.filter((c: any) => c !== null).length +
           player.erosionBack.filter((c: any) => c !== null).length;
         if (totalErosionCount + remainingCost >= 10) {
-          return { canPlay: false, reason: 'EROSION ZONE IS FULL (LIMIT 9)' };
+          return { canPlay: false, reason: '卡组剩余卡牌不足以承担侵蚀代价' };
         }
       }
     }
 
-    // 4. Special Effect Limits (Erosion Back)
+    // 4. Special Effect Limits & Reqs
     const playEffect = card.effects?.find(e => e.type === 'ACTIVATE' || e.type === 'TRIGGER' || e.type === 'ALWAYS');
     if (playEffect) {
-      // Determine if this effect's conditions should block playing the card from hand
       const isStory = card.type === 'STORY';
       const isAlways = playEffect.type === 'ALWAYS';
       const isHandTrigger = playEffect.type === 'TRIGGER' && playEffect.triggerLocation?.includes('HAND');
-
       const shouldValidate = isStory || isAlways || isHandTrigger;
 
       if (shouldValidate) {
-        if (playEffect.erosionBackLimit) {
-          const backCount = player.erosionBack.filter((c: any) => c !== null).length;
-          if (backCount < playEffect.erosionBackLimit[0] || backCount > playEffect.erosionBackLimit[1]) {
-            return { canPlay: false, reason: 'INVALID EROSION BACK COUNT' };
-          }
-        }
-
-        // Check condition (Frontend check only if no complex dependencies)
-        if (gameState && playEffect.condition) {
-          try {
-            if (!playEffect.condition(gameState, player, card)) {
-              return { canPlay: false, reason: '不满足发动条件' };
-            }
-          } catch (e) {
-            // If condition fails due to server-only data, we skip frontend enforcement
-          }
+        const result = GameService.checkEffectLimitsAndReqs(gameState, player.uid, card, playEffect, card.cardlocation as TriggerLocation);
+        if (!result.valid) {
+          return { canPlay: false, reason: result.reason };
         }
       }
     }
@@ -228,15 +207,15 @@ export const GameService = {
   },
 
 
-  checkEffectLimitsAndReqs(gameState: GameState | null, playerUid: string, card: Card, effect: CardEffect, triggerLocation: TriggerLocation, event?: GameEvent): boolean {
-    if (!gameState || !gameState.players) return true;
+  checkEffectLimitsAndReqs(gameState: GameState | null, playerUid: string, card: Card, effect: CardEffect, triggerLocation: TriggerLocation, event?: GameEvent): { valid: boolean; reason?: string } {
+    if (!gameState || !gameState.players) return { valid: true };
     const player = gameState.players[playerUid];
-    if (!player) return false;
+    if (!player) return { valid: false, reason: '未找到玩家数据' };
 
     // 1. Trigger Location
     if (effect.triggerLocation && triggerLocation) {
       if (!effect.triggerLocation.includes(triggerLocation)) {
-        return false;
+        return { valid: false, reason: '发动位置不符合效果要求' };
       }
     }
 
@@ -260,37 +239,42 @@ export const GameService = {
 
       const currentUsage = usageMap[key] || 0;
       if (currentUsage >= effect.limitCount) {
-        return false;
+        return { valid: false, reason: '已达到该效果的发动次数限制' };
       }
     }
 
     // 3. Erosion Limits
     if (effect.erosionFrontLimit) {
       const frontCount = player.erosionFront.filter(c => c !== null).length;
-      if (frontCount < effect.erosionFrontLimit[0] || frontCount > effect.erosionFrontLimit[1]) return false;
+      if (frontCount < effect.erosionFrontLimit[0] || frontCount > effect.erosionFrontLimit[1]) {
+        return { valid: false, reason: '侵蚀区正面卡牌数量不满足条件' };
+      }
     }
     if (effect.erosionBackLimit) {
       const backCount = player.erosionBack.filter(c => c !== null).length;
-      if (backCount < effect.erosionBackLimit[0] || backCount > effect.erosionBackLimit[1]) return false;
+      if (backCount < effect.erosionBackLimit[0] || backCount > effect.erosionBackLimit[1]) {
+        return { valid: false, reason: '侵蚀区背面卡牌数量不满足条件' };
+      }
     }
     if (effect.erosionTotalLimit) {
       const totalCount = player.erosionFront.filter(c => c !== null).length + player.erosionBack.filter(c => c !== null).length;
-      if (totalCount < effect.erosionTotalLimit[0] || totalCount > effect.erosionTotalLimit[1]) return false;
-    }
-
-    // 4. Condition Check (Simplified for UI, only if no async needed)
-    if (effect.condition) {
-      try {
-        if (!effect.condition(gameState, player, card, event)) {
-          return false;
-        }
-      } catch (e) {
-        // Condition might fail if it relies on server-only properties
-        return false;
+      if (totalCount < effect.erosionTotalLimit[0] || totalCount > effect.erosionTotalLimit[1]) {
+        return { valid: false, reason: '侵蚀区卡牌总数不满足条件' };
       }
     }
 
-    return true;
+    // 4. Condition Check
+    if (effect.condition) {
+      try {
+        if (!effect.condition(gameState, player, card, event)) {
+          return { valid: false, reason: '不满足发动条件' };
+        }
+      } catch (e) {
+        return { valid: false, reason: '不满足发动条件' };
+      }
+    }
+
+    return { valid: true };
   },
 
   recordEffectUsage(game: GameState | null, playerUid: string, card: Card, effect: CardEffect) {

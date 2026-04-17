@@ -151,14 +151,14 @@ export const ServerGameService = {
     }
   },
 
-  checkEffectLimitsAndReqs(gameState: GameState, playerUid: string, card: Card, effect: CardEffect, triggerLocation?: TriggerLocation, event?: GameEvent): boolean {
+  checkEffectLimitsAndReqs(gameState: GameState, playerUid: string, card: Card, effect: CardEffect, triggerLocation?: TriggerLocation, event?: GameEvent): { valid: boolean; reason?: string } {
     const player = gameState.players[playerUid];
-    if (!player) return false;
+    if (!player) return { valid: false, reason: '未找到玩家信息' };
 
     // 1. Trigger Location
     if (effect.triggerLocation && triggerLocation) {
       if (!effect.triggerLocation.includes(triggerLocation)) {
-        return false;
+        return { valid: false, reason: '发动位置不符合效果要求' };
       }
     }
 
@@ -167,79 +167,73 @@ export const ServerGameService = {
       const usageMap = gameState.effectUsage || {};
       let key = '';
       if (effect.limitGlobal) {
-        // Global limit (per game)
         if (effect.limitNameType) {
-          // By card name
           key = `game_${playerUid}_name_${card.id}_${effect.id}`;
         } else {
-          // By instance
           key = `game_${playerUid}_instance_${card.gamecardId}_${effect.id}`;
         }
       } else {
-        // Turn limit
         if (effect.limitNameType) {
-          // By card name
           key = `turn_${gameState.turnCount}_${playerUid}_name_${card.id}_${effect.id}`;
         } else {
-          // By instance
           key = `turn_${gameState.turnCount}_${playerUid}_instance_${card.gamecardId}_${effect.id}`;
         }
       }
 
       const currentUsage = usageMap[key] || 0;
       if (currentUsage >= effect.limitCount) {
-        return false;
+        return { valid: false, reason: '已达到该效果的发动次数限制' };
       }
     }
 
     // 3. Erosion Limits
     if (effect.erosionFrontLimit) {
       const frontCount = player.erosionFront.filter(c => c !== null).length;
-      if (frontCount < effect.erosionFrontLimit[0] || frontCount > effect.erosionFrontLimit[1]) return false;
+      if (frontCount < effect.erosionFrontLimit[0] || frontCount > effect.erosionFrontLimit[1]) {
+        return { valid: false, reason: '侵蚀区正面卡牌数量不满足条件' };
+      }
     }
     if (effect.erosionBackLimit) {
       const backCount = player.erosionBack.filter(c => c !== null).length;
-      if (backCount < effect.erosionBackLimit[0] || backCount > effect.erosionBackLimit[1]) return false;
+      if (backCount < effect.erosionBackLimit[0] || backCount > effect.erosionBackLimit[1]) {
+        return { valid: false, reason: '侵蚀区背面卡牌数量不满足条件' };
+      }
     }
     if (effect.erosionTotalLimit) {
       const totalCount = player.erosionFront.filter(c => c !== null).length + player.erosionBack.filter(c => c !== null).length;
-      if (totalCount < effect.erosionTotalLimit[0] || totalCount > effect.erosionTotalLimit[1]) return false;
+      if (totalCount < effect.erosionTotalLimit[0] || totalCount > effect.erosionTotalLimit[1]) {
+        return { valid: false, reason: '侵蚀区卡牌总数不满足条件' };
+      }
     }
     // 4. Condition Check
     if (effect.condition) {
-      // RELAXATION: Story cards (triggerLocation === 'PLAY') being resolved during COUNTERING phase
-      // often check for MAIN phase in their conditions. We bypass this specific failure mode.
       const isStoryResolution = gameState.phase === 'COUNTERING' && triggerLocation === 'PLAY' && card.type === 'STORY';
       
       if (!effect.condition(gameState, player, card, event)) {
         if (!isStoryResolution) {
-          return false;
+          return { valid: false, reason: '不满足发动条件' };
         }
-        // If it's a story resolution, we only allow it to pass if the failure was purely phase-based.
-        // But since we can't easily peek inside the condition function, we trust that if it was
-        // playable in MAIN, the phase change to COUNTERING is the primary reason for failure now.
-        // We log a small warning in debug if needed, but for now we just return true to allow resolution.
       }
     }
 
     if (player.negatedNames && player.negatedNames.includes(card.fullName)) {
-      return false;
+      return { valid: false, reason: '该卡牌本回合已被禁止发动' };
     }
 
     // 6. Effect Negation Check
     if (card.canActivateEffect === false) {
-      return false;
+      return { valid: false, reason: '该卡牌已被无效，无法发动效果' };
     }
     if (card.silencedEffectIds && card.silencedEffectIds.includes(effect.id)) {
-      return false;
+      return { valid: false, reason: '该效果已被封印' };
     }
 
     // 7. Faction-lock Check
     if (player.factionLock && card.faction !== player.factionLock) {
-      return false;
+      return { valid: false, reason: '已锁定阵营，无法发动该卡牌效果' };
     }
 
-    return true;
+    return { valid: true };
   },
 
   recordEffectUsage(gameState: GameState, playerUid: string, card: Card, effect: CardEffect) {
@@ -495,23 +489,9 @@ export const ServerGameService = {
 
       if (shouldValidate) {
         // Use the comprehensive engine check to validate limits, conditions, and erosion counts
-        const isValid = ServerGameService.checkEffectLimitsAndReqs(gameState, player.uid, card, playEffect, card.cardlocation as TriggerLocation);
-        if (!isValid) {
-          // Determine a more specific reason if possible (e.g. Turn Limit)
-          let reason = '不满足发动条件';
-
-          // Re-check just the limit to provide a better reason
-          if (playEffect.limitCount) {
-            const usageMap = gameState.effectUsage || {};
-            const key = playEffect.limitGlobal
-              ? (playEffect.limitNameType ? `game_${player.uid}_name_${card.id}_${playEffect.id}` : `game_${player.uid}_instance_${card.gamecardId}_${playEffect.id}`)
-              : (playEffect.limitNameType ? `turn_${gameState.turnCount}_${player.uid}_name_${card.id}_${playEffect.id}` : `turn_${gameState.turnCount}_${player.uid}_instance_${card.gamecardId}_${playEffect.id}`);
-            if ((usageMap[key] || 0) >= playEffect.limitCount) {
-              reason = '已达本回合使用次数上限';
-            }
-          }
-
-          return { canPlay: false, reason };
+        const result = ServerGameService.checkEffectLimitsAndReqs(gameState, player.uid, card, playEffect, card.cardlocation as TriggerLocation);
+        if (!result.valid) {
+          return { canPlay: false, reason: result.reason || '不满足发动条件' };
         }
       }
     }
@@ -746,8 +726,9 @@ export const ServerGameService = {
     const effect = card.effects?.[effectIndex];
     if (!effect) throw new Error('Effect not found');
     const loc = card.cardlocation as TriggerLocation;
-    if (!ServerGameService.checkEffectLimitsAndReqs(gameState, playerId, card, effect, loc)) {
-      throw new Error('不满足发动条件或已达到使用次数限制');
+    const result = ServerGameService.checkEffectLimitsAndReqs(gameState, playerId, card, effect, loc);
+    if (!result.valid) {
+      throw new Error(result.reason || '不满足发动条件或已达到使用次数限制');
     }
 
     // RULE: STORY cards in HAND must be PLAYED, not ACTIVATED
@@ -914,8 +895,9 @@ export const ServerGameService = {
             const effect = card.effects?.find(e => e.type === 'ALWAYS' || e.type === 'ACTIVATE' || e.type === 'ACTIVATED');
             if (effect) {
               // Enforce limits and requirements (effectively from HAND since it's a STORY card play)
-              if (!ServerGameService.checkEffectLimitsAndReqs(gameState, stackItem.ownerUid, card, effect, 'PLAY')) {
-                gameState.logs.push(`[连锁结算] ${card.fullName} 的效果已达到本日限制或不满足条件，结算失败。`);
+              const result = ServerGameService.checkEffectLimitsAndReqs(gameState, stackItem.ownerUid, card, effect, 'PLAY');
+              if (!result.valid) {
+                gameState.logs.push(`[连锁结算] ${card.fullName} 的效果故障: ${result.reason || '条件不足'}，结算失败。`);
               } else {
                 ServerGameService.recordEffectUsage(gameState, stackItem.ownerUid, card, effect);
                 if (effect.execute) {
@@ -1961,7 +1943,8 @@ export const ServerGameService = {
 
       for (const subCard of substitutionCards) {
         const effect = subCard.effects.find(e => e.substitutionFilter && AtomicEffectExecutor.matchesFilter(unit, e.substitutionFilter, subCard));
-        if (effect && ServerGameService.checkEffectLimitsAndReqs(gameState, playerId, subCard, effect)) {
+        const result = ServerGameService.checkEffectLimitsAndReqs(gameState, playerId, subCard, effect);
+        if (effect && result.valid) {
           // Issue Query
           const queryId = Math.random().toString(36).substring(7);
           gameState.pendingQuery = {

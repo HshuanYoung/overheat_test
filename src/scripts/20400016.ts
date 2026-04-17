@@ -4,6 +4,7 @@ import { AtomicEffectExecutor } from '../services/AtomicEffectExecutor';
 const effect_20400016_activate: CardEffect = {
   id: '20400016_activate',
   type: 'ACTIVATE',
+  triggerLocation: ['PLAY', 'HAND'],
   description: '选择你侵蚀位前区的一张卡牌加入手牌。',
   condition: (gameState: GameState, playerState: PlayerState) => {
     return playerState.erosionFront.some(c => c !== null);

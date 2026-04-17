@@ -432,9 +432,26 @@ export class AtomicEffectExecutor {
   }
 
   private static moveCards(gameState: GameState, playerUid: string, effect: AtomicEffect, toZone: TriggerLocation, fromZonePref?: TriggerLocation, sourceCard?: Card, querySelections?: string[]) {
-    const targets = this.findTargets(gameState, effect.targetFilter, sourceCard, querySelections);
-    // Limit by targetCount if specified
-    const finalTargets = effect.targetCount ? targets.slice(0, effect.targetCount) : targets;
+    // Ensure we only look in the preferred zone if provided and no specific zone filter is set
+    let filter = effect.targetFilter;
+    if (fromZonePref && (!filter || !filter.zone)) {
+      filter = { ...filter, zone: [fromZonePref] };
+    }
+
+    const targets = this.findTargets(gameState, filter, sourceCard, querySelections);
+
+    // For deck movements, top card is the last card in the array. 
+    // findTargets returns them in array order [bottom...top].
+    // If no specific IDs are targeted, we should reverse to pick from the top.
+    let processedTargets = targets;
+    if (fromZonePref === 'DECK' && (!effect.targetFilter || (!effect.targetFilter.gamecardId && !effect.targetFilter.id)) && !querySelections) {
+      processedTargets = [...targets].reverse();
+    }
+
+    // Limit by targetCount. Default to 1 for MOVE_FROM_DECK if not specified to prevent moving whole deck.
+    const defaultCount = (fromZonePref === 'DECK' && !querySelections) ? 1 : undefined;
+    const count = effect.targetCount !== undefined ? effect.targetCount : defaultCount;
+    const finalTargets = count !== undefined ? processedTargets.slice(0, count) : processedTargets;
 
     finalTargets.forEach(card => {
       if (this.shouldSkipEffect(gameState, card)) return;

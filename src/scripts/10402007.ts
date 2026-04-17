@@ -104,6 +104,8 @@ const activate_10402007_1: CardEffect = {
           // Still try to do the deck part
           await AtomicEffectExecutor.execute(gameState, selectedPlayerUid, {
             type: 'MOVE_FROM_DECK',
+            targetCount: 1,
+            targetFilter: { zone: ['DECK'] },
             destinationZone: 'EROSION_FRONT'
           }, instance);
           gameState.logs.push(`[老练的狐族商人] 将 ${targetPlayer.displayName} 卡组顶的卡放置在了侵蚀前区`);
@@ -128,6 +130,8 @@ const activate_10402007_1: CardEffect = {
         // Place top card of deck to erosion
         await AtomicEffectExecutor.execute(gameState, selectedPlayerUid, {
           type: 'MOVE_FROM_DECK',
+          targetCount: 1,
+          targetFilter: { zone: ['DECK'] },
           destinationZone: 'EROSION_FRONT'
         }, instance);
         gameState.logs.push(`[老练的狐族商人] 将 ${targetPlayer.displayName} 卡组顶的卡放置在了侵蚀前区`);
