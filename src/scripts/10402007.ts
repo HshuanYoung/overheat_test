@@ -99,16 +99,6 @@ const activate_10402007_1: CardEffect = {
               step: 2
             }
           };
-        } else {
-          gameState.logs.push(`[老练的狐族商人] ${targetPlayer.displayName} 侵蚀前区没有正面向上的卡，效果部分失败。`);
-          // Still try to do the deck part
-          await AtomicEffectExecutor.execute(gameState, selectedPlayerUid, {
-            type: 'MOVE_FROM_DECK',
-            targetCount: 1,
-            targetFilter: { zone: ['DECK'] },
-            destinationZone: 'EROSION_FRONT'
-          }, instance);
-          gameState.logs.push(`[老练的狐族商人] 将 ${targetPlayer.displayName} 卡组顶的卡放置在了侵蚀前区`);
         }
       }
     } else if (context.step === 2) {

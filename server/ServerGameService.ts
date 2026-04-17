@@ -861,6 +861,9 @@ export const ServerGameService = {
         continue;
       }
 
+      const card = stackItem.card;
+      const owner = gameState.players[stackItem.ownerUid];
+
       if (stackItem.isNegated) {
         gameState.logs.push(`[连锁结算] Link ${gameState.counterStack.length + 1} 已被无效，跳过效果执行。`);
         // We still need to cleanup the card if it was played to the field/play zone
@@ -875,9 +878,6 @@ export const ServerGameService = {
         }
         continue;
       }
-
-      const card = stackItem.card;
-      const owner = gameState.players[stackItem.ownerUid];
 
       switch (stackItem.type) {
         case 'PLAY':
@@ -2956,7 +2956,7 @@ export const ServerGameService = {
           cardsToReturn.push(player.hand.splice(index, 1)[0]);
         }
       }
-      player.deck = [...player.deck, ...cardsToReturn];
+      player.deck = [...player.deck, ...cardsToReturn.map(c => ({ ...c, cardlocation: 'DECK' }))];
 
       // Shuffle
       player.deck = ServerGameService.shuffle(player.deck);

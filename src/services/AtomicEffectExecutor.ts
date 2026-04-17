@@ -371,7 +371,7 @@ export class AtomicEffectExecutor {
       const card = player.deck.pop()!;
       card.displayState = 'FRONT_UPRIGHT';
       card.cardlocation = finalDestination;
-      
+
       if (finalDestination === 'EROSION_FRONT') {
         const emptyIndex = player.erosionFront.findIndex(c => c === null);
         if (emptyIndex !== -1) player.erosionFront[emptyIndex] = card;
@@ -577,7 +577,7 @@ export class AtomicEffectExecutor {
     return false;
   }
 
-  static matchesFilter(card: Card, filter?: CardFilter, sourceCard?: Card, querySelections?: string[]): boolean {
+  static matchesFilter(card: Card, filter?: CardFilter, sourceCard?: Card, querySelections?: string[], currentZone?: TriggerLocation): boolean {
     if (!filter) return true;
 
     if (filter.querySelection && querySelections) {
@@ -604,38 +604,49 @@ export class AtomicEffectExecutor {
     // Exclusions
     if (filter.excludeColor && card.color === filter.excludeColor) return false;
     if (filter.excludeSelf && sourceCard && card.gamecardId === sourceCard.gamecardId) return false;
-    if (filter.excludeId && card.id === filter.excludeId) return false;
+    if (filter.excludeId && card.id !== filter.id) return false;
     if (filter.excludeGamecardId && card.gamecardId === filter.excludeGamecardId) return false;
 
     if (filter.fuzzyName && !card.fullName.includes(filter.fuzzyName)) return false;
     if (filter.isExhausted !== undefined && card.isExhausted !== filter.isExhausted) return false;
 
-    // Field/Zone check
-    if (filter.onField && !['UNIT', 'ITEM'].includes(card.cardlocation as string)) return false;
-    if (filter.zone && !filter.zone.includes(card.cardlocation as any)) return false;
+    // Field/Zone check (with robust fallback)
+    const effectiveLocation = (card.cardlocation as TriggerLocation) || currentZone;
+    if (filter.onField && !['UNIT', 'ITEM'].includes(effectiveLocation as string)) return false;
+    if (filter.zone && !filter.zone.includes(effectiveLocation as any)) return false;
 
     return true;
   }
 
   static findTargets(gameState: GameState, filter?: CardFilter, sourceCard?: Card, querySelections?: string[]): Card[] {
     const results: Card[] = [];
-    const checkCard = (card: Card | null) => {
-      if (!card) return;
-
-      // Check for immunity to unit effects
-      if (card.isImmuneToUnitEffects && sourceCard && sourceCard.type === 'UNIT') {
-        // "other than that one" - it can still affect itself
-        if (card.gamecardId !== sourceCard.gamecardId) {
-          return;
-        }
-      }
-
-      if (this.matchesFilter(card, filter, sourceCard, querySelections)) results.push(card);
-    };
 
     Object.values(gameState.players).forEach(player => {
-      const zones = [player.hand, player.unitZone, player.itemZone, player.grave, player.exile, player.deck, player.erosionFront, player.erosionBack];
-      zones.forEach(zone => zone.forEach(checkCard));
+      const zones: { data: (Card | null)[], type: TriggerLocation }[] = [
+        { data: player.hand, type: 'HAND' },
+        { data: player.unitZone, type: 'UNIT' },
+        { data: player.itemZone, type: 'ITEM' },
+        { data: player.grave, type: 'GRAVE' },
+        { data: player.exile, type: 'EXILE' },
+        { data: player.deck, type: 'DECK' },
+        { data: player.erosionFront, type: 'EROSION_FRONT' },
+        { data: player.erosionBack, type: 'EROSION_BACK' }
+      ];
+
+      zones.forEach(zone => {
+        zone.data.forEach(card => {
+          if (!card) return;
+
+          // Check for immunity to unit effects
+          if (card.isImmuneToUnitEffects && sourceCard && sourceCard.type === 'UNIT') {
+            if (card.gamecardId !== sourceCard.gamecardId) return;
+          }
+
+          if (this.matchesFilter(card, filter, sourceCard, querySelections, zone.type)) {
+            results.push(card);
+          }
+        });
+      });
     });
 
     return results;
