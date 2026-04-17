@@ -1,4 +1,4 @@
-import { GameState, PlayerState, Card, Deck, TriggerLocation, CardEffect, StackItem, GamePhase, GAME_TIMEOUTS } from '../src/types/game';
+import { GameState, PlayerState, Card, Deck, TriggerLocation, CardEffect, StackItem, GamePhase, GAME_TIMEOUTS, GameEvent } from '../src/types/game';
 import { CARD_LIBRARY } from '../src/data/cards';
 import { EventEngine } from '../src/services/EventEngine';
 import { AtomicEffectExecutor } from '../src/services/AtomicEffectExecutor';
@@ -524,8 +524,7 @@ export const ServerGameService = {
     if (playEffect) {
       const isStory = card.type === 'STORY';
       const isAlways = playEffect.type === 'ALWAYS';
-      const isHandTrigger = playEffect.type === 'TRIGGER' && playEffect.triggerLocation?.includes('HAND');
-      const shouldValidate = isStory || isAlways || isHandTrigger;
+      const shouldValidate = isStory || isAlways;
 
       if (shouldValidate) {
         // Use the comprehensive engine check to validate limits, conditions, and erosion counts
@@ -793,7 +792,8 @@ export const ServerGameService = {
         gameState.pendingQuery.context = {
           ...gameState.pendingQuery.context,
           sourceCardId: card.gamecardId,
-          effectIndex: effectIndex
+          effectIndex: effectIndex,
+          activationPlayerUid: playerId
         };
         return gameState;
       }
@@ -802,6 +802,9 @@ export const ServerGameService = {
         throw new Error('发动费用不足或无法支付费用');
       }
     }
+
+    ServerGameService.finalizeEffectActivation(gameState, playerId, card, effect, effectIndex);
+    return gameState;
 
     ServerGameService.recordEffectUsage(gameState, playerId, card, effect);
 
@@ -825,6 +828,30 @@ export const ServerGameService = {
     });
 
     return gameState;
+  },
+
+  finalizeEffectActivation(gameState: GameState, playerId: string, card: Card, effect: CardEffect, effectIndex: number) {
+    const player = gameState.players[playerId];
+
+    ServerGameService.recordEffectUsage(gameState, playerId, card, effect);
+
+    if (card.faction) {
+      if (!player.factionsUsedThisTurn) player.factionsUsedThisTurn = [];
+      if (!player.factionsUsedThisTurn.includes(card.faction)) {
+        player.factionsUsedThisTurn.push(card.faction);
+      }
+    }
+
+    const identity = getCardIdentity(gameState, playerId, card);
+    gameState.logs.push(`${player.displayName} 鍙戝姩浜?${identity} ${card.fullName} 鐨勬晥鏋? ${effect.description}`);
+
+    ServerGameService.enterCountering(gameState, playerId, {
+      card,
+      ownerUid: playerId,
+      type: 'EFFECT',
+      effectIndex,
+      timestamp: Date.now()
+    });
   },
 
   async passConfrontation(gameState: GameState, playerId: string, onUpdate?: (state: GameState) => Promise<void>) {
@@ -1230,9 +1257,28 @@ export const ServerGameService = {
       }
       const effectIndex = query.context?.effectIndex;
       const effect = sourceCard.effects?.[effectIndex];
+      const activationPlayerUid = query.context?.activationPlayerUid || playerUid;
 
       if (effect && effect.onQueryResolve) {
         await (effect.onQueryResolve as any)(sourceCard, gameState, gameState.players[playerUid], selections, query.context);
+      }
+
+      if (gameState.pendingQuery) {
+        gameState.pendingQuery.callbackKey = 'ACTIVATE_COST_RESOLVE';
+        gameState.pendingQuery.context = {
+          ...query.context,
+          ...gameState.pendingQuery.context,
+          sourceCardId: sourceCard.gamecardId,
+          effectIndex,
+          activationPlayerUid,
+          isTrigger: query.context?.isTrigger,
+          event: query.context?.event
+        };
+        return gameState;
+      }
+
+      if (query.context?.cancelActivation) {
+        return gameState;
       }
 
       // If it was a trigger cost, execute immediately, otherwise enter countering
@@ -1243,14 +1289,8 @@ export const ServerGameService = {
           event: query.context.event,
           skipCost: true
         }, onUpdate);
-      } else {
-        ServerGameService.enterCountering(gameState, playerUid, {
-          card: sourceCard,
-          ownerUid: playerUid,
-          type: 'EFFECT',
-          effectIndex,
-          timestamp: Date.now()
-        });
+      } else if (effect) {
+        ServerGameService.finalizeEffectActivation(gameState, activationPlayerUid, sourceCard, effect, effectIndex);
       }
       return gameState;
     }

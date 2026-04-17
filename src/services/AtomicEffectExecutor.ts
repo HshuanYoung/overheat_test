@@ -525,6 +525,9 @@ export class AtomicEffectExecutor {
 
   private static searchDeck(gameState: GameState, playerUid: string, effect: AtomicEffect, sourceCard?: Card) {
     const player = gameState.players[playerUid];
+    const effectSourcePlayerUid = sourceCard?.gamecardId
+      ? (this.findCardOwnerKey(gameState, sourceCard.gamecardId) || playerUid)
+      : playerUid;
     const results = player.deck.filter(c => this.matchesFilter(c, effect.targetFilter, sourceCard));
     if (results.length > 0) {
       // In a real game, this would be a UI choice if there are multiple. 

@@ -86,7 +86,7 @@ const handActivationEffect: CardEffect = {
     );
     return eligibleBlueUnits.length >= 2;
   },
-  execute: async (card, gameState, playerState) => {
+  cost: async (gameState, playerState, card) => {
     gameState.pendingQuery = {
       id: Math.random().toString(36).substring(7),
       type: 'SELECT_PAYMENT',
@@ -96,7 +96,7 @@ const handActivationEffect: CardEffect = {
       description: '请支付 2 点费用以从手牌发动效果。',
       minSelections: 1,
       maxSelections: 1,
-      callbackKey: 'EFFECT_RESOLVE',
+      callbackKey: 'ACTIVATE_COST_RESOLVE',
       paymentCost: 2,
       paymentColor: card.color,
       context: {
@@ -105,6 +105,10 @@ const handActivationEffect: CardEffect = {
         step: 1
       }
     };
+    return true;
+  },
+  execute: async () => {
+    // The hand activation's practical resolution is completed during the cost flow.
   },
   onQueryResolve: async (card, gameState, playerState, selections, context) => {
     if (context.step === 1) {
@@ -115,6 +119,7 @@ const handActivationEffect: CardEffect = {
 
       if (targets.length < 2) {
         gameState.logs.push(`[系统] 符合条件的非神蚀非战斗单位不足 2 个，发动失败。`);
+        context.cancelActivation = true;
         return;
       }
 
@@ -127,7 +132,7 @@ const handActivationEffect: CardEffect = {
         description: '请选择 2 个我方非神蚀且不在战斗中的单位返回手牌。',
         minSelections: 2,
         maxSelections: 2,
-        callbackKey: 'EFFECT_RESOLVE',
+        callbackKey: 'ACTIVATE_COST_RESOLVE',
         context: { ...context, step: 2 }
       };
     } else if (context.step === 2) {
@@ -153,6 +158,7 @@ const handActivationEffect: CardEffect = {
       if (units.length === 0) {
         gameState.logs.push(`[系统] ${card.fullName} 已登场，但场上没有剩余可装备的目标。`);
         card.equipTargetId = undefined;
+        context.cancelActivation = true;
         return;
       }
 
@@ -165,7 +171,7 @@ const handActivationEffect: CardEffect = {
         description: `请选择一个单位进行装备。`,
         minSelections: 1,
         maxSelections: 1,
-        callbackKey: 'EFFECT_RESOLVE',
+        callbackKey: 'ACTIVATE_COST_RESOLVE',
         context: { ...context, step: 3 }
       };
     } else if (context.step === 3) {

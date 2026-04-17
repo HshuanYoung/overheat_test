@@ -4,7 +4,7 @@
  */
 
 import { socket } from '../socket';
-import { GameState, Card, CardEffect, TriggerLocation } from '../types/game';
+import { GameState, Card, CardEffect, TriggerLocation, GameEvent } from '../types/game';
 
 /**
  * GameService (Frontend Proxy)
@@ -192,8 +192,7 @@ export const GameService = {
     if (playEffect) {
       const isStory = card.type === 'STORY';
       const isAlways = playEffect.type === 'ALWAYS';
-      const isHandTrigger = playEffect.type === 'TRIGGER' && playEffect.triggerLocation?.includes('HAND');
-      const shouldValidate = isStory || isAlways || isHandTrigger;
+      const shouldValidate = isStory || isAlways;
 
       if (shouldValidate) {
         const result = GameService.checkEffectLimitsAndReqs(gameState, player.uid, card, playEffect, card.cardlocation as TriggerLocation);

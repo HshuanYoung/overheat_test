@@ -132,7 +132,7 @@ const trigger_10401057: CardEffect = {
 const card: Card = {
   id: '10401057',
   fullName: '水仙--舞姬',
-  specialName: '舞姬',
+  specialName: '',
   type: 'UNIT',
   color: 'BLUE',
   gamecardId: null as any,
