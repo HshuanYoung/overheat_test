@@ -19,7 +19,7 @@ const card: Card = {
     {
       id: 'accept_commission_activate',
       type: 'ACTIVATE',
-      triggerLocation: ['PLAY'],
+      triggerLocation: ['HAND', 'PLAY'],
       description: '从你的侵蚀区正面选择一张AC为2或以下的且不具有「神蚀」的单位卡，将其正面向上的纵置摆放到战场。',
       condition: (gameState, playerState) => {
         return playerState.erosionFront.some(c =>
