@@ -64,6 +64,9 @@ export class AtomicEffectExecutor {
     const player = gameState.players[playerUid];
     const opponentUid = Object.keys(gameState.players).find(id => id !== playerUid)!;
     const opponent = gameState.players[opponentUid];
+    const effectSourcePlayerUid = sourceCard?.gamecardId
+      ? (this.findCardOwnerKey(gameState, sourceCard.gamecardId) || playerUid)
+      : playerUid;
 
     switch (effect.type) {
       case 'DRAW':
@@ -102,27 +105,27 @@ export class AtomicEffectExecutor {
         break;
 
       case 'MOVE_FROM_HAND':
-        this.moveCards(gameState, playerUid, effect, effect.destinationZone || 'GRAVE', 'HAND', sourceCard, querySelections);
+        this.moveCards(gameState, playerUid, effect, effect.destinationZone || 'GRAVE', 'HAND', sourceCard, querySelections, effectSourcePlayerUid);
         break;
 
       case 'MOVE_FROM_EROSION':
-        this.moveCards(gameState, playerUid, effect, effect.destinationZone || 'HAND', 'EROSION_FRONT', sourceCard, querySelections);
+        this.moveCards(gameState, playerUid, effect, effect.destinationZone || 'HAND', 'EROSION_FRONT', sourceCard, querySelections, effectSourcePlayerUid);
         break;
 
       case 'MOVE_FROM_EROSION_BACK':
-        this.moveCards(gameState, playerUid, effect, effect.destinationZone || 'GRAVE', 'EROSION_BACK', sourceCard, querySelections);
+        this.moveCards(gameState, playerUid, effect, effect.destinationZone || 'GRAVE', 'EROSION_BACK', sourceCard, querySelections, effectSourcePlayerUid);
         break;
 
       case 'MOVE_FROM_DECK':
-        this.moveCards(gameState, playerUid, effect, effect.destinationZone || 'HAND', 'DECK', sourceCard, querySelections);
+        this.moveCards(gameState, playerUid, effect, effect.destinationZone || 'HAND', 'DECK', sourceCard, querySelections, effectSourcePlayerUid);
         break;
       case 'MOVE_FROM_FIELD':
         // Standardize MOVE_FROM_FIELD to search both UNIT and ITEM zones
-        this.moveCards(gameState, playerUid, effect, effect.destinationZone || 'HAND', ['UNIT', 'ITEM'], sourceCard, querySelections);
+        this.moveCards(gameState, playerUid, effect, effect.destinationZone || 'HAND', ['UNIT', 'ITEM'], sourceCard, querySelections, effectSourcePlayerUid);
         break;
 
       case 'MOVE_FROM_GRAVE':
-        this.moveCards(gameState, playerUid, effect, effect.destinationZone || 'HAND', 'GRAVE', sourceCard, querySelections);
+        this.moveCards(gameState, playerUid, effect, effect.destinationZone || 'HAND', 'GRAVE', sourceCard, querySelections, effectSourcePlayerUid);
         break;
 
       case 'NEGATE_EFFECT':
@@ -191,7 +194,7 @@ export class AtomicEffectExecutor {
           targets.forEach(c => {
             const ownerUid = this.findCardOwnerKey(gameState, c.gamecardId) || playerUid;
             this.moveCard(gameState, ownerUid, c.cardlocation as any, ownerUid, 'PLAY', c.gamecardId, true, {
-              effectSourcePlayerUid: playerUid,
+              effectSourcePlayerUid,
               effectSourceCardId: sourceCard?.gamecardId
             });
             EventEngine.dispatchEvent(gameState, {
@@ -435,7 +438,16 @@ export class AtomicEffectExecutor {
     }
   }
 
-  private static moveCards(gameState: GameState, playerUid: string, effect: AtomicEffect, toZone: TriggerLocation, fromZonePref?: TriggerLocation | TriggerLocation[], sourceCard?: Card, querySelections?: string[]) {
+  private static moveCards(
+    gameState: GameState,
+    playerUid: string,
+    effect: AtomicEffect,
+    toZone: TriggerLocation,
+    fromZonePref?: TriggerLocation | TriggerLocation[],
+    sourceCard?: Card,
+    querySelections?: string[],
+    effectSourcePlayerUid?: string
+  ) {
     // Ensure we only look in the preferred zone if provided and no specific zone filter is set
     let filter = effect.targetFilter;
     if (fromZonePref && (!filter || !filter.zone)) {
@@ -483,7 +495,7 @@ export class AtomicEffectExecutor {
       }
 
       this.moveCard(gameState, ownerUid, currentZone, ownerUid, toZone, card.gamecardId, true, {
-        effectSourcePlayerUid: playerUid,
+        effectSourcePlayerUid,
         effectSourceCardId: sourceCard?.gamecardId
       });
 
@@ -519,7 +531,7 @@ export class AtomicEffectExecutor {
       // For atomic execution, we might pick the first one or the specific one.
       const card = results[0];
       this.moveCard(gameState, playerUid, 'DECK', playerUid, effect.destinationZone || 'HAND', card.gamecardId, true, {
-        effectSourcePlayerUid: playerUid,
+        effectSourcePlayerUid,
         effectSourceCardId: sourceCard?.gamecardId
       });
       this.shuffleDeck(gameState, playerUid);

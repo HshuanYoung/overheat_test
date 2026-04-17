@@ -54,10 +54,12 @@ const card: Card = {
       },
       onQueryResolve: async (card, gameState, playerState, selections) => {
         const targetId = selections[0];
+        const targetOwnerUid = AtomicEffectExecutor.findCardOwnerKey(gameState, targetId);
         // Mark the target and current turn
         (card as any).data = {
           ...((card as any).data || {}),
           markedTargetId: targetId,
+          markedTargetOwnerUid: targetOwnerUid,
           playedTurn: gameState.turnCount
         };
         gameState.logs.push(`[任务：击溃恶党] 已标记目标单位。当其离开战场时将触发后续效果。`);
@@ -87,9 +89,12 @@ const card: Card = {
         return isMatch;
       },
       execute: async (card, gameState, playerState, event) => {
-        const opponentId = Object.keys(gameState.players).find(id => id !== playerState.uid)!;
-        const opponent = gameState.players[opponentId];
-        const targets = [...opponent.unitZone, ...opponent.itemZone].filter(c => c && !c.godMark) as Card[];
+        const data = (card as any).data || {};
+        const targetOwnerUid = data.markedTargetOwnerUid || AtomicEffectExecutor.findCardOwnerKey(gameState, data.markedTargetId);
+        const targetOwner = targetOwnerUid ? gameState.players[targetOwnerUid] : undefined;
+        const targets = targetOwner
+          ? [...targetOwner.unitZone, ...targetOwner.itemZone].filter(c => c && !c.godMark) as Card[]
+          : [];
 
         if (targets.length === 0) {
             gameState.logs.push(`[任务：击溃恶党] 对方战场没有非神蚀卡，效果处理结束。`);
@@ -117,7 +122,6 @@ const card: Card = {
       },
       onQueryResolve: async (card, gameState, playerState, selections) => {
         const targetId = selections[0];
-        const opponentId = Object.keys(gameState.players).find(id => id !== playerState.uid)!;
 
         await AtomicEffectExecutor.execute(gameState, playerState.uid, {
           type: 'MOVE_FROM_FIELD',
