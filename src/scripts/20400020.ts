@@ -92,11 +92,13 @@ const card: Card = {
             return;
         }
 
+        const options = AtomicEffectExecutor.enrichQueryOptions(gameState, playerState.uid, targets.map(t => ({ card: t, source: t.cardlocation as any })));
+
         gameState.pendingQuery = {
           id: Math.random().toString(36).substring(7),
           type: 'SELECT_CARD',
           playerUid: playerState.uid,
-          options: AtomicEffectExecutor.enrichQueryOptions(gameState, playerState.uid, targets.map(t => ({ card: t, source: t.cardlocation as any }))),
+          options: options,
           title: '选择对手卡牌回卡组顶',
           description: '标记单位已离场，请选择对手战场一张非神蚀卡放置在对手卡组顶。',
           minSelections: 1,
@@ -104,7 +106,7 @@ const card: Card = {
           callbackKey: 'EFFECT_RESOLVE',
           context: {
             sourceCardId: card.gamecardId,
-            effectIndex: 2, // Index of this effect is now 2
+            effectIndex: 1, // Index of this effect is 1
             step: 2
           }
         };
@@ -144,7 +146,7 @@ const card: Card = {
           callbackKey: 'ACTIVATE_COST_RESOLVE',
           context: {
             sourceCardId: card.gamecardId,
-            effectIndex: 3 // Index of this effect is now 3
+            effectIndex: 2 // Index of this effect is 2
           }
         };
         return true;

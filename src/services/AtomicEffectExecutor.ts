@@ -117,7 +117,8 @@ export class AtomicEffectExecutor {
         this.moveCards(gameState, playerUid, effect, effect.destinationZone || 'HAND', 'DECK', sourceCard, querySelections);
         break;
       case 'MOVE_FROM_FIELD':
-        this.moveCards(gameState, playerUid, effect, effect.destinationZone || 'HAND', 'UNIT', sourceCard, querySelections);
+        // Standardize MOVE_FROM_FIELD to search both UNIT and ITEM zones
+        this.moveCards(gameState, playerUid, effect, effect.destinationZone || 'HAND', ['UNIT', 'ITEM'], sourceCard, querySelections);
         break;
 
       case 'MOVE_FROM_GRAVE':
@@ -431,15 +432,21 @@ export class AtomicEffectExecutor {
     }
   }
 
-  private static moveCards(gameState: GameState, playerUid: string, effect: AtomicEffect, toZone: TriggerLocation, fromZonePref?: TriggerLocation, sourceCard?: Card, querySelections?: string[]) {
+  private static moveCards(gameState: GameState, playerUid: string, effect: AtomicEffect, toZone: TriggerLocation, fromZonePref?: TriggerLocation | TriggerLocation[], sourceCard?: Card, querySelections?: string[]) {
     // Ensure we only look in the preferred zone if provided and no specific zone filter is set
     let filter = effect.targetFilter;
     if (fromZonePref && (!filter || !filter.zone)) {
-      filter = { ...filter, zone: [fromZonePref] };
+      const preferredZones = Array.isArray(fromZonePref) ? fromZonePref : [fromZonePref];
+      filter = { ...filter, zone: preferredZones };
     }
 
-    // Bug Fix: Scope deck/hand/erosion movements to the acting player by default to prevent targeting opponent's cards in generic filters
-    let preferredOwner = playerUid;
+    // Bug Fix: If targeting a specific gamecardId (e.g. from a resolve query), 
+    // allow searching ALL players' zones.
+    let preferredOwner: string | undefined = playerUid;
+    if (filter?.gamecardId || querySelections) {
+      preferredOwner = undefined;
+    }
+    
     const targets = this.findTargets(gameState, filter, sourceCard, querySelections, preferredOwner);
 
     // For deck movements, top card is the last card in the array. 

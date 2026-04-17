@@ -2367,7 +2367,7 @@ export const ServerGameService = {
           if (gameState.turnCount === 1) {
             throw new Error('先手玩家第一回合不能进入战斗阶段');
           }
-          if (action === 'BATTLE_DECLARATION') {
+          if (action === 'BATTLE_DECLARATION' || action === 'DECLARE_BATTLE') {
             gameState.phase = 'BATTLE_DECLARATION';
             EventEngine.dispatchEvent(gameState, { type: 'PHASE_CHANGED', data: { phase: 'BATTLE_DECLARATION' } });
             gameState.logs.push(`[阶段切换] ${actingPlayer.displayName} 进入战斗阶段`);
@@ -2410,7 +2410,7 @@ export const ServerGameService = {
             });
           }
         } else if (action === 'RETURN_MAIN' || action === 'MAIN') {
-          if (action === 'MAIN') {
+          if (action === 'MAIN' || action === 'RETURN_MAIN') {
             gameState.phase = 'MAIN';
             EventEngine.dispatchEvent(gameState, { type: 'PHASE_CHANGED', data: { phase: 'MAIN' } });
             gameState.logs.push(`[阶段切换] ${actingPlayer.displayName} 返回主要阶段`);

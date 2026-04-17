@@ -36,7 +36,7 @@ const CardSlot: React.FC<{
   isExhausted?: boolean;
   isSelectedForPayment?: boolean;
   isDeck?: boolean;
-  count?: number;
+  count?: number | string;
   showCount?: boolean;
   isAttacking?: boolean;
   isDefending?: boolean;
@@ -47,7 +47,8 @@ const CardSlot: React.FC<{
 }> = ({ card, label, onClick, onPreview, className, isFaceUp = true, isExhausted, isSelectedForPayment, isDeck, count = 0, showCount = true, isAttacking, isDefending, isOpponent, isAllianceInitiator, displayMode, cardBackUrl }) => {
   // Dynamic height scaling for stack areas (Deck, Grave, Exile)
   const isStackArea = isDeck || label === 'GRAVE' || label === 'EXILE';
-  const heightScale = isStackArea ? 1 + Math.min(count / 100, 0.2) : 1;
+  const numericCount = typeof count === 'number' ? count : 0;
+  const heightScale = isStackArea ? 1 + Math.min(numericCount / 100, 0.2) : 1;
 
   return (
     <div
@@ -176,6 +177,12 @@ const PlayerHalf: React.FC<{
   setViewingZone?: (zone: { title: string, cards: Card[], type: string, erosionBackIds?: string[] } | null) => void;
 }> = ({ player, isOpponent, onCardClick, onPreviewCard, onPlayCard, paymentSelection, pendingPlayCard, selectedAttackers, selectedDefender, game, allianceInitiator, cardBackUrl, viewingZone, setViewingZone }) => {
   if (!player) return null;
+  const getMobileErosionCount = (playerState: PlayerState): number | string => {
+    const frontCount = playerState.erosionFront?.filter(Boolean).length || 0;
+    const backCount = playerState.erosionBack?.filter(Boolean).length || 0;
+    const totalCount = frontCount + backCount;
+    return totalCount > 0 ? `${totalCount}(${backCount})` : 0;
+  };
   const romanNumerals = ['Ⅰ', 'Ⅱ', 'Ⅲ', 'Ⅳ', 'Ⅴ', 'Ⅵ', 'Ⅶ', 'Ⅷ', 'Ⅸ', 'Ⅹ'];
 
 
@@ -233,7 +240,7 @@ const PlayerHalf: React.FC<{
             <CardSlot
               card={player.erosionFront?.filter(Boolean).slice(-1)[0] || player.erosionBack?.filter(Boolean).slice(-1)[0] || null}
               label="EROSION"
-              count={(player.erosionFront?.filter(Boolean).length || 0) + (player.erosionBack?.filter(Boolean).length || 0)}
+              count={getMobileErosionCount(player)}
               className="border-red-500/30 scale-[0.8] md:scale-100 md:hidden" cardBackUrl={cardBackUrl}
               onClick={() => {
                 const backCards = player.erosionBack?.filter((c): c is Card => c !== null) || [];
@@ -458,7 +465,7 @@ const PlayerHalf: React.FC<{
             <CardSlot
               card={player.erosionFront?.filter(Boolean).slice(-1)[0] || player.erosionBack?.filter(Boolean).slice(-1)[0] || null}
               label="EROSION"
-              count={(player.erosionFront?.filter(Boolean).length || 0) + (player.erosionBack?.filter(Boolean).length || 0)}
+              count={getMobileErosionCount(player)}
               className="border-red-500/30 scale-[0.8] md:scale-100 md:hidden" cardBackUrl={cardBackUrl}
               onClick={() => {
                 const backCards = player.erosionBack?.filter((c): c is Card => c !== null) || [];
