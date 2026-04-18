@@ -8,6 +8,34 @@ export class AtomicEffectExecutor {
    * Enriches query options with ownership metadata.
    */
   static enrichQueryOptions(gameState: GameState, viewerUid: string, options: any[]): any[] {
+    const getZonePositionMeta = (owner: PlayerState, cardId: string) => {
+      const unitIndex = owner.unitZone.findIndex(c => c?.gamecardId === cardId);
+      if (unitIndex !== -1) {
+        const slotNumber = owner.uid === viewerUid ? unitIndex + 1 : 6 - unitIndex;
+        return {
+          slotNumber,
+          slotLabel: `单位区 ${slotNumber}`,
+          zoneLabel: '单位区'
+        };
+      }
+
+      const erosionCards = [
+        ...owner.erosionBack.filter((c): c is Card => !!c),
+        ...owner.erosionFront.filter((c): c is Card => !!c)
+      ];
+      const erosionIndex = erosionCards.findIndex(c => c.gamecardId === cardId);
+      if (erosionIndex !== -1) {
+        const slotNumber = erosionIndex + 1;
+        return {
+          slotNumber,
+          slotLabel: `侵蚀区 ${slotNumber}`,
+          zoneLabel: '侵蚀区'
+        };
+      }
+
+      return {};
+    };
+
     return options.map(opt => {
       if (!opt.card) return opt;
       const cardId = opt.card.gamecardId;
@@ -33,7 +61,7 @@ export class AtomicEffectExecutor {
       // Find real owner
       for (const uid of Object.keys(gameState.players)) {
         const p = gameState.players[uid];
-        const hasCard = [...p.hand, ...p.unitZone, ...p.itemZone, ...p.grave, ...p.exile, ...p.erosionFront, ...p.erosionBack, ...p.deck]
+        const hasCard = [...p.hand, ...p.unitZone, ...p.itemZone, ...p.grave, ...p.exile, ...p.erosionFront, ...p.erosionBack, ...p.playZone, ...p.deck]
           .some(c => c && c.gamecardId === cardId);
         if (hasCard) {
           cardOwner = p;
@@ -41,11 +69,14 @@ export class AtomicEffectExecutor {
         }
       }
 
+      const positionMeta = cardOwner ? getZonePositionMeta(cardOwner, cardId) : {};
+
       return {
         ...opt,
         id: cardId, // Ensure ID is present for bot and frontend selection
         isMine: cardOwner ? cardOwner.uid === viewerUid : false,
-        ownerName: cardOwner ? cardOwner.displayName : 'UNKNOWN'
+        ownerName: cardOwner ? cardOwner.displayName : 'UNKNOWN',
+        ...positionMeta
       };
     });
   }
@@ -734,6 +765,8 @@ export class AtomicEffectExecutor {
       const newGamecardId = Math.random().toString(36).substring(2, 10);
       card.gamecardId = newGamecardId;
       card.runtimeFingerprint = `FP_${newGamecardId}_${Date.now()}`;
+      delete (card as any).data;
+      delete (card as any).__playSnapshot;
       card.equipTargetId = undefined;
       card.isExhausted = false;
       card.displayState = 'FRONT_UPRIGHT';

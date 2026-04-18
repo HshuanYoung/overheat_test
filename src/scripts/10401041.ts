@@ -1,5 +1,6 @@
 import { Card, GameState, PlayerState, CardEffect, GameEvent } from '../types/game';
 import { AtomicEffectExecutor } from '../services/AtomicEffectExecutor';
+import { EventEngine } from '../services/EventEngine';
 
 const trigger_10401041: CardEffect = {
   id: 'daowuzhe_trigger',
@@ -34,18 +35,34 @@ const trigger_10401041: CardEffect = {
     return blueUnitsCount >= 1;
   },
   execute: async (instance: Card, gameState: GameState, playerState: PlayerState) => {
-    AtomicEffectExecutor.moveCard(
-      gameState,
-      playerState.uid,
-      'EROSION_FRONT',
-      playerState.uid,
-      'UNIT',
-      instance.gamecardId,
-      true,
-      { effectSourcePlayerUid: playerState.uid, effectSourceCardId: instance.gamecardId }
-    );
+    const frontIdx = playerState.erosionFront.findIndex(c => c?.gamecardId === instance.gamecardId);
+    if (frontIdx === -1) return;
+
+    const targetIndex = playerState.unitZone.findIndex(c => c === null);
+    if (targetIndex === -1 && playerState.unitZone.length >= 6) return;
+
+    playerState.erosionFront[frontIdx] = null;
+    instance.cardlocation = 'UNIT';
+    instance.displayState = 'FRONT_UPRIGHT';
     instance.isExhausted = false;
     instance.playedTurn = gameState.turnCount;
+
+    if (targetIndex !== -1) {
+      playerState.unitZone[targetIndex] = instance;
+    } else {
+      playerState.unitZone.push(instance);
+    }
+
+    EventEngine.handleCardEnteredZone(gameState, playerState.uid, instance, 'UNIT', true);
+    EventEngine.dispatchMovementSubEvents(gameState, {
+      card: instance,
+      cardOwnerUid: playerState.uid,
+      fromZone: 'EROSION_FRONT',
+      toZone: 'UNIT',
+      isEffect: true,
+      effectSourcePlayerUid: playerState.uid,
+      effectSourceCardId: instance.gamecardId
+    });
   }
 };
 

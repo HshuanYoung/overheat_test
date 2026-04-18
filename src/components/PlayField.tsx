@@ -43,8 +43,9 @@ const CardSlot: React.FC<{
   isOpponent?: boolean;
   isAllianceInitiator?: boolean;
   displayMode?: 'deck' | 'unit' | 'erosion_item' | 'none';
+  slotLabel?: string;
   cardBackUrl?: string;
-}> = ({ card, label, onClick, onPreview, className, isFaceUp = true, isExhausted, isSelectedForPayment, isDeck, count = 0, showCount = true, isAttacking, isDefending, isOpponent, isAllianceInitiator, displayMode, cardBackUrl }) => {
+}> = ({ card, label, onClick, onPreview, className, isFaceUp = true, isExhausted, isSelectedForPayment, isDeck, count = 0, showCount = true, isAttacking, isDefending, isOpponent, isAllianceInitiator, displayMode, slotLabel, cardBackUrl }) => {
   // Dynamic height scaling for stack areas (Deck, Grave, Exile)
   const isStackArea = isDeck || label === 'GRAVE' || label === 'EXILE';
   const numericCount = typeof count === 'number' ? count : 0;
@@ -96,6 +97,15 @@ const CardSlot: React.FC<{
           <span className="text-[8px] uppercase font-bold opacity-20 tracking-widest text-center px-1">
             {label}
           </span>
+        )}
+
+        {slotLabel && (
+          <div className={cn(
+            "absolute z-20 rounded-full border border-white/15 bg-black/75 px-2 py-0.5 text-[10px] font-black text-white shadow-lg backdrop-blur-sm",
+            isOpponent ? "bottom-1 left-1 rotate-180" : "top-1 left-1"
+          )}>
+            {slotLabel}
+          </div>
         )}
 
         {/* Count Badge - Repositioned to center and enlarged */}
@@ -183,7 +193,7 @@ const PlayerHalf: React.FC<{
     const totalCount = frontCount + backCount;
     return totalCount > 0 ? `${totalCount}(${backCount})` : 0;
   };
-  const romanNumerals = ['Ⅰ', 'Ⅱ', 'Ⅲ', 'Ⅳ', 'Ⅴ', 'Ⅵ', 'Ⅶ', 'Ⅷ', 'Ⅸ', 'Ⅹ'];
+  const erosionSlotLabels = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10'];
 
 
   return (
@@ -306,7 +316,7 @@ const PlayerHalf: React.FC<{
                   ...frontCards.map(c => ({ ...c, isFaceUp: true }))
                 ];
 
-                return romanNumerals.map((num, i) => {
+                return erosionSlotLabels.map((num, i) => {
                   const displayCard = allCards[i];
                   return (
                     <div key={i} className="flex flex-col gap-1 items-center">
@@ -318,7 +328,7 @@ const PlayerHalf: React.FC<{
                             onClick={(e) => displayCard.isFaceUp && onCardClick?.(displayCard, 'erosion_front', i, e)}
                             isSelectedForPayment={displayCard.isFaceUp && paymentSelection?.erosionFrontIds?.includes(displayCard.gamecardId)}
                             className={displayCard.isFaceUp ? "border-red-600" : "border-red-900/50"}
-                            showCount={false} isOpponent={isOpponent} displayMode="erosion_item" cardBackUrl={cardBackUrl}
+                            showCount={false} isOpponent={isOpponent} displayMode="erosion_item" slotLabel={num} cardBackUrl={cardBackUrl}
                           />
                         ) : (
                           <div className="h-full w-full rounded-md border border-dashed border-white/5 bg-white/5 flex items-center justify-center">
@@ -345,7 +355,7 @@ const PlayerHalf: React.FC<{
                     isSelectedForPayment={unit ? paymentSelection?.exhaustIds.includes(unit.gamecardId) : false}
                     isAttacking={unit ? (selectedAttackers?.includes(unit.gamecardId) || game?.battleState?.attackers.includes(unit.gamecardId)) : false}
                     isDefending={unit ? (selectedDefender === unit.gamecardId || game?.battleState?.defender === unit.gamecardId) : false}
-                    showCount={false} isOpponent={isOpponent} displayMode="unit" cardBackUrl={cardBackUrl}
+                    showCount={false} isOpponent={isOpponent} displayMode="unit" slotLabel={`${6 - i}`} cardBackUrl={cardBackUrl}
                   />
                 );
               })}
@@ -367,7 +377,7 @@ const PlayerHalf: React.FC<{
                     isAttacking={unit ? (selectedAttackers?.includes(unit.gamecardId) || game?.battleState?.attackers.includes(unit.gamecardId)) : false}
                     isDefending={unit ? (selectedDefender === unit.gamecardId || game?.battleState?.defender === unit.gamecardId) : false}
                     isAllianceInitiator={unit && allianceInitiator === unit.gamecardId}
-                    showCount={false} displayMode="unit" cardBackUrl={cardBackUrl}
+                    showCount={false} displayMode="unit" slotLabel={`${i + 1}`} cardBackUrl={cardBackUrl}
                   />
                 );
               })}
@@ -383,7 +393,7 @@ const PlayerHalf: React.FC<{
                   ...frontCards.map(c => ({ ...c, isFaceUp: true }))
                 ];
 
-                return romanNumerals.map((num, i) => {
+                return erosionSlotLabels.map((num, i) => {
                   const displayCard = allCards[i];
                   return (
                     <div key={i} className="flex flex-col gap-1 items-center">
@@ -402,6 +412,7 @@ const PlayerHalf: React.FC<{
                             className={displayCard.isFaceUp ? "border-red-600" : "border-red-900/50"}
                             showCount={false}
                             displayMode="erosion_item"
+                            slotLabel={num}
                             cardBackUrl={cardBackUrl}
                           />
                         ) : (

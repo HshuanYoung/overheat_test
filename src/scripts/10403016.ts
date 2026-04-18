@@ -5,9 +5,15 @@ const effect_10403016_trigger: CardEffect = {
   id: 'cocola_main_phase_trigger',
   type: 'TRIGGER',
   triggerEvent: 'PHASE_CHANGED',
+  triggerLocation: ['UNIT'],
   description: '【诱发】在你的主要阶段开始时，选择对手的一个非神蚀单位，在本回合中，你的单位可以攻击该单位。',
-  condition: (gameState: GameState, playerState: PlayerState) => {
-    return gameState.phase === 'MAIN' && playerState.isTurn && !playerState.markedUnitAttackTarget;
+  condition: (gameState: GameState, playerState: PlayerState, instance: Card, event?: any) => {
+    return event?.type === 'PHASE_CHANGED' &&
+      event.data?.phase === 'MAIN' &&
+      gameState.phase === 'MAIN' &&
+      instance.cardlocation === 'UNIT' &&
+      playerState.isTurn &&
+      !playerState.markedUnitAttackTarget;
   },
   execute: async (instance: Card, gameState: GameState, playerState: PlayerState) => {
     const opponentId = gameState.playerIds.find(id => id !== playerState.uid)!;

@@ -5,31 +5,59 @@ const effect_20402007_activate: CardEffect = {
   id: '20402007_activate',
   type: 'ACTIVATE',
   description: '选择以下效果之一发动：a.选择战场上一个非神位单位转为休息状态。b.选择单位区或道具区中一个处于休息状态的非神位卡牌返回持有者手牌。',
+  condition: (gameState: GameState) => {
+    const hasExhaustMode = Object.values(gameState.players).some(p =>
+      p.unitZone.some(u => u && !u.godMark && !u.isExhausted)
+    );
+    const hasBounceMode = Object.values(gameState.players).some(p =>
+      p.unitZone.some(u => u && !u.godMark && u.isExhausted) ||
+      p.itemZone.some(i => i && !i.godMark && i.isExhausted)
+    );
+    return hasExhaustMode || hasBounceMode;
+  },
   execute: async (instance: Card, gameState: GameState, playerState: PlayerState) => {
-    const choiceOptions = [
-      {
+    const hasExhaustMode = Object.values(gameState.players).some(p =>
+      p.unitZone.some(u => u && !u.godMark && !u.isExhausted)
+    );
+    const hasBounceMode = Object.values(gameState.players).some(p =>
+      p.unitZone.some(u => u && !u.godMark && u.isExhausted) ||
+      p.itemZone.some(i => i && !i.godMark && i.isExhausted)
+    );
+
+    const choiceOptions: any[] = [];
+
+    if (hasExhaustMode) {
+      choiceOptions.push({
         card: {
           gamecardId: 'MODE_EXHAUST',
           id: 'MODE_EXHAUST',
-          fullName: '横置效果',
+          fullName: '模式A：横置单位',
           type: 'STORY',
           color: 'BLUE',
           rarity: 'C'
         } as any,
         source: 'HAND'
-      },
-      {
+      });
+    }
+
+    if (hasBounceMode) {
+      choiceOptions.push({
         card: {
           gamecardId: 'MODE_BOUNCE',
           id: 'MODE_BOUNCE',
-          fullName: '回手效果',
+          fullName: '模式B：回手横置牌',
           type: 'STORY',
           color: 'BLUE',
           rarity: 'C'
         } as any,
         source: 'HAND'
-      }
-    ];
+      });
+    }
+
+    if (choiceOptions.length === 0) {
+      gameState.logs.push(`[${instance.fullName}] 没有可发动的模式。`);
+      return;
+    }
 
     gameState.pendingQuery = {
       id: Math.random().toString(36).substring(7),
@@ -55,7 +83,7 @@ const effect_20402007_activate: CardEffect = {
         const targets: Card[] = [];
         Object.values(gameState.players).forEach(p => {
           p.unitZone.forEach(u => {
-            if (u && !u.godMark) targets.push(u);
+            if (u && !u.godMark && !u.isExhausted) targets.push(u);
           });
         });
 

@@ -32,7 +32,11 @@ const trigger_30403004: CardEffect = {
     }
 
     // Option B: Exhaust Opponent
-    if (!gameState.effectUsage?.[usageKeyPrefix + 'b']) {
+    const opponentUid = Object.keys(gameState.players).find(uid => uid !== playerState.uid)!;
+    const opponent = gameState.players[opponentUid];
+    const hasExhaustTarget = opponent.unitZone.some(u => u && !u.godMark && !u.isExhausted);
+
+    if (!gameState.effectUsage?.[usageKeyPrefix + 'b'] && hasExhaustTarget) {
       options.push({
         card: {
           gamecardId: 'OPTION_B',

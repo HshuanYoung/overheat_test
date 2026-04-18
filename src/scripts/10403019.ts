@@ -11,27 +11,34 @@ const trigger_10403019_buff: CardEffect = {
   condition: (gameState: GameState, playerState: PlayerState, instance: Card, event?: GameEvent) => {
     return event?.sourceCardId === instance.gamecardId || event?.sourceCard === instance;
   },
-  execute: async (instance: Card, gameState: GameState, playerState: PlayerState) => {
-    await AtomicEffectExecutor.execute(gameState, playerState.uid, {
-      type: 'CHANGE_POWER',
-      targetFilter: { gamecardId: instance.gamecardId },
-      value: 1000,
-      turnDuration: -1
-    }, instance);
-    await AtomicEffectExecutor.execute(gameState, playerState.uid, {
-      type: 'CHANGE_DAMAGE',
-      targetFilter: { gamecardId: instance.gamecardId },
-      value: 1,
-      turnDuration: -1
-    }, instance);
-    await AtomicEffectExecutor.execute(gameState, playerState.uid, {
-      type: 'GAIN_KEYWORD',
-      targetFilter: { gamecardId: instance.gamecardId },
-      params: { keyword: 'RUSH' },
-      turnDuration: -1
-    }, instance);
+  execute: async (instance: Card, gameState: GameState) => {
+    (instance as any).data = {
+      ...((instance as any).data || {}),
+      erosionEntryBuffActive: true
+    };
 
     gameState.logs.push(`[${instance.fullName}] 触发：从侵蚀区登场，获得+1/+1000与【速攻】。`);
+  }
+};
+
+const continuous_10403019_buff: CardEffect = {
+  id: '10403019_entry_buff_continuous',
+  type: 'CONTINUOUS',
+  description: '此卡若曾从侵蚀区进入单位区，则在场上持续获得+1/+1000与【速攻】。',
+  applyContinuous: (gameState: GameState, instance: Card) => {
+    if (instance.cardlocation !== 'UNIT' || !(instance as any).data?.erosionEntryBuffActive) {
+      return;
+    }
+
+    instance.power = (instance.power || 0) + 1000;
+    instance.damage = (instance.damage || 0) + 1;
+    instance.isrush = true;
+
+    if (!instance.influencingEffects) instance.influencingEffects = [];
+    instance.influencingEffects.push({
+      sourceCardName: instance.fullName,
+      description: '从侵蚀区登场：+1/+1000，获得【速攻】'
+    });
   }
 };
 
@@ -52,7 +59,6 @@ const activate_10403019_swap: CardEffect = {
     const available = playerState.erosionFront.filter(c => c !== null);
     if (available.length < 1) return false;
 
-    // Trigger payment selection (1 fee)
     gameState.pendingQuery = {
       id: Math.random().toString(36).substring(7),
       type: 'SELECT_PAYMENT',
@@ -70,11 +76,9 @@ const activate_10403019_swap: CardEffect = {
       }
     };
 
-    return true; // Wait for selection
+    return true;
   },
   execute: async (instance: Card, gameState: GameState, playerState: PlayerState) => {
-    // This runs when the effect resolves from the stack
-    // 1. Move self from HAND to erosion front
     await AtomicEffectExecutor.execute(gameState, playerState.uid, {
       type: 'MOVE_FROM_HAND',
       targetFilter: { gamecardId: instance.gamecardId },
@@ -82,7 +86,6 @@ const activate_10403019_swap: CardEffect = {
     }, instance);
     instance.displayState = 'FRONT_UPRIGHT';
 
-    // 2. Select replacement from erosion
     const fieldSpecialNames = new Set(playerState.unitZone.filter(u => u && u.specialName).map(u => u!.specialName));
     const itemSpecialNames = new Set(playerState.itemZone.filter(i => i && i.specialName).map(i => i!.specialName));
 
@@ -155,7 +158,8 @@ const card: Card = {
   canResetCount: 0,
   effects: [
     trigger_10403019_buff,
-    activate_10403019_swap
+    activate_10403019_swap,
+    continuous_10403019_buff
   ],
   rarity: 'R',
   availableRarities: ['R'],

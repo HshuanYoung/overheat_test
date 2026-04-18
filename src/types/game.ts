@@ -295,6 +295,9 @@ export interface EffectQuery {
     source?: TriggerLocation;
     ownerName?: string;
     isMine?: boolean;
+    slotNumber?: number;
+    slotLabel?: string;
+    zoneLabel?: string;
   }[];
   title: string;
   description: string;

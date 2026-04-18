@@ -16,7 +16,7 @@ export class EventEngine {
       // but TRIGGER effects should only fire if the card is in an allowed triggerLocation.
       const activeZones = [
         ...player.unitZone, ...player.itemZone, ...player.erosionFront, ...player.erosionBack,
-        ...player.grave, ...player.hand, ...player.exile, ...player.deck
+        ...player.playZone, ...player.grave, ...player.hand, ...player.exile, ...player.deck
       ];
 
       activeZones.forEach(card => {
@@ -156,6 +156,12 @@ export class EventEngine {
           if (card.baseIsImmuneToUnitEffects !== undefined) card.isImmuneToUnitEffects = card.baseIsImmuneToUnitEffects;
           if (card.baseShenyi !== undefined) card.isShenyi = card.baseShenyi;
           card.influencingEffects = [];
+          if (card.cardlocation === 'ITEM' && card.isExhausted) {
+            card.influencingEffects.push({ sourceCardName: '绯荤粺鐘舵€?', description: '已横置' });
+          }
+          if ((card.cardlocation === 'UNIT' || card.cardlocation === 'ITEM') && card.nextEffectProtection) {
+            card.influencingEffects.push({ sourceCardName: '变装', description: '已变装' });
+          }
 
           if (card.temporaryPowerBuff) {
             const source = card.temporaryBuffSources?.['power'] || '效果';

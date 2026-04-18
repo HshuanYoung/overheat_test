@@ -155,9 +155,12 @@ export const ServerGameService = {
   },
 
   refreshCardAsNewInstance(card: Card) {
+    const masterCard = SERVER_CARD_LIBRARY[card.uniqueId] || SERVER_CARD_LIBRARY[card.id];
     const newGamecardId = Math.random().toString(36).substring(2, 10);
     card.gamecardId = newGamecardId;
     card.runtimeFingerprint = `FP_${newGamecardId}_${Date.now()}`;
+    delete (card as any).data;
+    delete (card as any).__playSnapshot;
     card.equipTargetId = undefined;
     card.isExhausted = false;
     card.displayState = 'FRONT_UPRIGHT';
@@ -172,6 +175,15 @@ export const ServerGameService = {
     card.temporaryCanAttackAny = false;
     card.temporaryBuffSources = {};
     card.influencingEffects = [];
+    if (masterCard) {
+      card.basePower = masterCard.basePower ?? masterCard.power;
+      card.baseDamage = masterCard.baseDamage ?? masterCard.damage;
+      card.baseAcValue = masterCard.baseAcValue ?? masterCard.acValue;
+      card.baseIsrush = masterCard.baseIsrush ?? masterCard.isrush;
+      card.baseCanAttack = masterCard.baseCanAttack ?? masterCard.canAttack;
+      card.baseGodMark = masterCard.baseGodMark ?? masterCard.godMark;
+      card.baseCanActivateEffect = masterCard.baseCanActivateEffect ?? masterCard.canActivateEffect ?? true;
+    }
     if (card.basePower !== undefined) card.power = card.basePower;
     if (card.baseDamage !== undefined) card.damage = card.baseDamage;
     if (card.baseAcValue !== undefined) card.acValue = card.baseAcValue;
@@ -702,6 +714,10 @@ export const ServerGameService = {
 
     const canPlay = ServerGameService.canPlayCard(gameState, player, card);
     if (!canPlay.canPlay) throw new Error(canPlay.reason);
+
+    (card as any).__playSnapshot = {
+      isGoddessMode: !!player.isGoddessMode
+    };
 
     // RULE 2: During countering phase, only story cards can be played
     if (gameState.phase === 'COUNTERING' && card.type !== 'STORY') {

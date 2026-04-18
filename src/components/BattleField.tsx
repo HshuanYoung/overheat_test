@@ -400,6 +400,120 @@ export const BattleField: React.FC = () => {
     return me.unitZone.filter(c => c !== null && !c.isExhausted) as Card[];
   };
 
+  const getGraphicOptionMeta = (card: Card) => {
+    switch (card.id) {
+      case 'OPTION_A':
+        return {
+          title: '选项A',
+          subtitle: '本回合 +500 / +1，并获得速攻',
+          accent: 'from-amber-500 via-orange-500 to-red-500',
+          glow: 'shadow-[0_0_35px_rgba(249,115,22,0.35)]',
+          Icon: Flame
+        };
+      case 'OPTION_B':
+        return {
+          title: '选项B',
+          subtitle: '横置对方 1 张未横置的非神蚀单位',
+          accent: 'from-cyan-500 via-sky-500 to-blue-600',
+          glow: 'shadow-[0_0_35px_rgba(14,165,233,0.35)]',
+          Icon: Shield
+        };
+      case 'OPTION_C':
+        return {
+          title: '选项C',
+          subtitle: '将墓地 1 张冒险家公会卡放入侵蚀区',
+          accent: 'from-emerald-500 via-teal-500 to-green-600',
+          glow: 'shadow-[0_0_35px_rgba(16,185,129,0.35)]',
+          Icon: Layers
+        };
+      case 'MODE_A':
+        return {
+          title: '模式A',
+          subtitle: '对手抽 3，然后选择 2 张手牌放入侵蚀区',
+          accent: 'from-violet-500 via-fuchsia-500 to-pink-500',
+          glow: 'shadow-[0_0_35px_rgba(217,70,239,0.35)]',
+          Icon: Sparkles
+        };
+      case 'MODE_B':
+        return {
+          title: '模式B',
+          subtitle: '选择并破坏 1 张横置单位',
+          accent: 'from-rose-500 via-red-500 to-orange-600',
+          glow: 'shadow-[0_0_35px_rgba(244,63,94,0.35)]',
+          Icon: Sword
+        };
+      case 'MODE_EXHAUST':
+        return {
+          title: '模式A',
+          subtitle: '选择 1 张未横置的非神蚀单位并横置',
+          accent: 'from-cyan-500 via-sky-500 to-blue-600',
+          glow: 'shadow-[0_0_35px_rgba(14,165,233,0.35)]',
+          Icon: Shield
+        };
+      case 'MODE_BOUNCE':
+        return {
+          title: '模式B',
+          subtitle: '选择 1 张横置的非神蚀单位或道具返回手牌',
+          accent: 'from-emerald-500 via-teal-500 to-green-600',
+          glow: 'shadow-[0_0_35px_rgba(16,185,129,0.35)]',
+          Icon: Layers
+        };
+      default:
+        return null;
+    }
+  };
+
+  const renderGraphicQueryOption = (card: Card) => {
+    const meta = getGraphicOptionMeta(card);
+    if (!meta) return null;
+
+    const { Icon } = meta;
+
+    return (
+      <div className={cn(
+        "relative w-full aspect-[3/4] overflow-hidden rounded-lg md:rounded-2xl border border-white/10 bg-zinc-950",
+        meta.glow
+      )}>
+        <div className={cn("absolute inset-0 bg-gradient-to-br opacity-90", meta.accent)} />
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(255,255,255,0.28),_transparent_48%)]" />
+        <div className="absolute inset-x-5 top-5 h-px bg-white/30" />
+        <div className="absolute inset-x-5 bottom-5 h-px bg-white/20" />
+        <div className="relative z-10 flex h-full flex-col items-center justify-between px-4 py-5 text-white">
+          <div className="w-full text-center">
+            <div className="text-[10px] font-black uppercase tracking-[0.45em] text-white/80">{meta.title}</div>
+            <div className="mt-2 text-lg md:text-xl font-black leading-tight">{card.fullName}</div>
+          </div>
+          <div className="flex h-24 w-24 items-center justify-center rounded-full border border-white/30 bg-black/20 backdrop-blur-sm md:h-28 md:w-28">
+            <Icon className="h-12 w-12 md:h-14 md:w-14" />
+          </div>
+          <div className="w-full rounded-2xl border border-white/15 bg-black/20 px-4 py-3 text-center backdrop-blur-sm">
+            <div className="text-[11px] md:text-xs font-bold leading-relaxed text-white/90">{meta.subtitle}</div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const getOwnedCardLocationLabel = (card: Card) => {
+    const handIndex = me.hand.findIndex(c => c.gamecardId === card.gamecardId);
+    if (handIndex !== -1) return '手牌';
+
+    const unitIndex = me.unitZone.findIndex(c => c?.gamecardId === card.gamecardId);
+    if (unitIndex !== -1) return `单位区 ${unitIndex + 1}`;
+
+    const itemIndex = me.itemZone.findIndex(c => c?.gamecardId === card.gamecardId);
+    if (itemIndex !== -1) return '道具区';
+
+    const erosionCards = [
+      ...me.erosionBack.filter((c): c is Card => !!c),
+      ...me.erosionFront.filter((c): c is Card => !!c)
+    ];
+    const erosionIndex = erosionCards.findIndex(c => c.gamecardId === card.gamecardId);
+    if (erosionIndex !== -1) return `侵蚀区 ${erosionIndex + 1}`;
+
+    return '';
+  };
+
   const handleDeclareAttack = async (attackers: string[] = selectedAttackers, alliance: boolean = isAlliance) => {
     if (!gameId || attackers.length === 0) return;
     try {
@@ -824,18 +938,23 @@ export const BattleField: React.FC = () => {
               {(erosionChoice === 'B' || erosionChoice === 'C') && (
                 <div className="flex flex-col items-center gap-4 animate-in fade-in slide-in-from-bottom-4">
                   <p className="text-[#f27d26] font-bold uppercase tracking-widest text-sm">Please click a card below to select</p>
-                  <div className="grid grid-cols-2 lg:flex lg:flex-row lg:flex-nowrap lg:justify-center lg:overflow-x-auto gap-3 p-4 w-full justify-items-center custom-scrollbar">
+                  <div className="flex w-full max-w-full gap-3 overflow-x-auto px-2 py-4 custom-scrollbar">
                     {me.erosionFront.filter(c => c !== null && c.displayState === 'FRONT_UPRIGHT').map((card, i) => (
                       <motion.div
                         key={card!.gamecardId}
                         whileHover={{ y: -10 }}
                         onClick={() => setSelectedErosionCardId(card!.gamecardId)}
                         className={cn(
-                          "w-full lg:w-48 lg:shrink-0 cursor-pointer transition-all rounded-lg overflow-hidden border-2",
+                          "w-[132px] md:w-48 shrink-0 cursor-pointer transition-all rounded-lg overflow-hidden border-2",
                           selectedErosionCardId === card!.gamecardId ? "border-[#f27d26] scale-105 shadow-[0_0_20px_rgba(242,125,38,0.4)]" : "border-transparent opacity-60"
                         )}
                       >
-                        <CardComponent card={card!} disableZoom={true} cardBackUrl={cardBackUrl} />
+                        <div className="relative">
+                          <CardComponent card={card!} disableZoom={true} cardBackUrl={cardBackUrl} />
+                          <div className="absolute left-2 top-2 rounded-full bg-black/75 px-2 py-1 text-[10px] font-black text-white shadow-lg">
+                            侵蚀区 {i + 1}
+                          </div>
+                        </div>
                       </motion.div>
                     ))}
                   </div>
@@ -925,7 +1044,12 @@ export const BattleField: React.FC = () => {
                                     isSelected ? "border-blue-500 scale-105 shadow-[0_0_20px_rgba(59,130,246,0.5)]" : "border-white/5 opacity-60 grayscale hover:grayscale-0 hover:opacity-100"
                                   )}
                                 >
-                                  <CardComponent card={card} disableZoom cardBackUrl={cardBackUrl} />
+                                  <div className="relative h-full w-full">
+                                    <CardComponent card={card} disableZoom cardBackUrl={cardBackUrl} />
+                                    <div className="absolute left-2 top-2 rounded-lg bg-black/75 px-2 py-1 text-[10px] font-black text-white shadow-lg">
+                                      {getOwnedCardLocationLabel(card)}
+                                    </div>
+                                  </div>
                                 </motion.div>
                               );
                             })}
@@ -954,7 +1078,12 @@ export const BattleField: React.FC = () => {
                                     isSelected ? "border-green-500 scale-105 shadow-[0_0_20px_rgba(34,197,94,0.5)]" : "border-white/5 opacity-60 grayscale hover:grayscale-0 hover:opacity-100"
                                   )}
                                 >
-                                  <CardComponent card={card!} disableZoom cardBackUrl={cardBackUrl} />
+                                  <div className="relative h-full w-full">
+                                    <CardComponent card={card!} disableZoom cardBackUrl={cardBackUrl} />
+                                    <div className="absolute left-2 top-2 rounded-lg bg-black/75 px-2 py-1 text-[10px] font-black text-white shadow-lg">
+                                      {getOwnedCardLocationLabel(card!)}
+                                    </div>
+                                  </div>
                                 </motion.div>
                               );
                             })}
@@ -983,7 +1112,12 @@ export const BattleField: React.FC = () => {
                                 isSelected ? "border-red-500 scale-105 shadow-[0_0_20px_rgba(239,68,68,0.5)]" : "border-white/5 opacity-60 grayscale hover:grayscale-0 hover:opacity-100"
                               )}
                             >
-                              <CardComponent card={card!} disableZoom cardBackUrl={cardBackUrl} />
+                              <div className="relative h-full w-full">
+                                <CardComponent card={card!} disableZoom cardBackUrl={cardBackUrl} />
+                                <div className="absolute left-2 top-2 rounded-lg bg-black/75 px-2 py-1 text-[10px] font-black text-white shadow-lg">
+                                  {getOwnedCardLocationLabel(card!)}
+                                </div>
+                              </div>
                             </motion.div>
                           );
                         })}
@@ -2029,12 +2163,12 @@ export const BattleField: React.FC = () => {
               </div>
 
               {game.pendingQuery.type.replace(/-/g, '_').toUpperCase() === 'SELECT_CARD' ? (
-                <div className="grid grid-cols-2 lg:flex lg:flex-row lg:flex-nowrap lg:justify-center gap-3 md:gap-6 max-h-[45vh] md:max-h-[65vh] overflow-y-auto lg:overflow-x-auto p-2 md:p-6 custom-scrollbar w-full">
+                <div className="flex w-full max-w-full gap-3 md:gap-6 overflow-x-auto overflow-y-hidden p-2 md:p-6 custom-scrollbar">
                   {game.pendingQuery.options.map((option, i) => {
                     const isSelected = selectedQueryIds.includes(option.card.gamecardId);
                     const isDiscardQuery = game.pendingQuery!.title.includes('舍弃') || game.pendingQuery!.title.includes('Discard');
                     return (
-                      <div key={`${option.card.gamecardId}-${i}`} className="flex flex-col items-center gap-4 group w-full lg:w-48 lg:shrink-0">
+                      <div key={`${option.card.gamecardId}-${i}`} className="flex w-[140px] md:w-48 shrink-0 flex-col items-center gap-4 group">
                         <div className="relative w-full">
                           <motion.div
                             whileHover={{ scale: 1.08, y: -12 }}
@@ -2066,6 +2200,8 @@ export const BattleField: React.FC = () => {
                                 />
                                 <span className="text-[#f27d26] font-display font-black text-[10px] md:text-xl uppercase italic tracking-widest text-center">{option.card.fullName}</span>
                               </div>
+                            ) : getGraphicOptionMeta(option.card) ? (
+                              renderGraphicQueryOption(option.card)
                             ) : (
                               <div className="aspect-[3/4] drop-shadow-2xl">
                                 <CardComponent card={option.card} disableZoom={true} cardBackUrl={cardBackUrl} />
@@ -2109,10 +2245,19 @@ export const BattleField: React.FC = () => {
                               {option.isMine ? '我方' : '对方'}
                             </div>
                           )}
+
+                          {option.slotLabel && (
+                            <div className="absolute left-2 bottom-2 px-2 py-1 rounded-lg text-[10px] font-black tracking-wide shadow-2xl z-20 border border-white/20 bg-black/75 text-white">
+                              {option.slotLabel}
+                            </div>
+                          )}
                         </div>
                         <div className="text-center">
                           <p className="text-white text-[13px] font-black uppercase tracking-tight truncate max-w-[192px]">{option.card.fullName}</p>
-                          <p className="text-zinc-500 text-[9px] uppercase tracking-widest mt-0.5">{option.card.type}</p>
+                          <p className="text-zinc-500 text-[9px] uppercase tracking-widest mt-0.5">
+                            {option.card.type}
+                            {option.slotLabel ? ` · ${option.slotLabel}` : ''}
+                          </p>
                         </div>
                       </div>
                     );
@@ -2142,7 +2287,12 @@ export const BattleField: React.FC = () => {
                                 isSelected ? "border-blue-500 scale-105 shadow-[0_0_20px_rgba(59,130,246,0.5)]" : "border-white/5 opacity-60 hover:opacity-100"
                               )}
                             >
-                              <CardComponent card={card} disableZoom displayMode="hand" cardBackUrl={cardBackUrl} />
+                              <div className="relative h-full w-full">
+                                <CardComponent card={card} disableZoom displayMode="hand" cardBackUrl={cardBackUrl} />
+                                <div className="absolute left-2 top-2 rounded-lg bg-black/75 px-2 py-1 text-[10px] font-black text-white shadow-lg">
+                                  {getOwnedCardLocationLabel(card)}
+                                </div>
+                              </div>
                             </motion.div>
                           );
                         })}
@@ -2171,7 +2321,12 @@ export const BattleField: React.FC = () => {
                                 isSelected ? "border-green-500 scale-105 shadow-[0_0_20px_rgba(34,197,94,0.5)]" : "border-white/5 opacity-60 hover:opacity-100"
                               )}
                             >
-                              <CardComponent card={card!} disableZoom cardBackUrl={cardBackUrl} />
+                              <div className="relative h-full w-full">
+                                <CardComponent card={card!} disableZoom cardBackUrl={cardBackUrl} />
+                                <div className="absolute left-2 top-2 rounded-lg bg-black/75 px-2 py-1 text-[10px] font-black text-white shadow-lg">
+                                  {getOwnedCardLocationLabel(card!)}
+                                </div>
+                              </div>
                             </motion.div>
                           );
                         })}
@@ -2200,7 +2355,12 @@ export const BattleField: React.FC = () => {
                                 isSelected ? "border-red-500 scale-105 shadow-[0_0_20px_rgba(239,68,68,0.5)]" : "border-white/5 opacity-60 hover:opacity-100"
                               )}
                             >
-                              <CardComponent card={card!} disableZoom cardBackUrl={cardBackUrl} />
+                              <div className="relative h-full w-full">
+                                <CardComponent card={card!} disableZoom cardBackUrl={cardBackUrl} />
+                                <div className="absolute left-2 top-2 rounded-lg bg-black/75 px-2 py-1 text-[10px] font-black text-white shadow-lg">
+                                  {getOwnedCardLocationLabel(card!)}
+                                </div>
+                              </div>
                             </motion.div>
                           );
                         })}
@@ -2236,7 +2396,14 @@ export const BattleField: React.FC = () => {
                       className="px-4 py-6 md:px-10 md:py-8 bg-zinc-900/80 backdrop-blur-md text-white border-2 border-white/10 font-black italic uppercase tracking-[0.1em] rounded-3xl hover:bg-[#f27d26] hover:text-black hover:border-transparent transition-all hover:scale-105 active:scale-95 shadow-[0_10px_30px_rgba(0,0,0,0.5)] group relative overflow-hidden text-center flex items-center justify-center min-h-[100px]"
                     >
                       <div className="absolute inset-0 bg-gradient-to-tr from-white/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-                      <span className="relative z-10 text-xs md:text-sm">{option.label || option.card?.fullName || option.id}</span>
+                      <div className="relative z-10 flex flex-col items-center gap-2">
+                        <span className="text-xs md:text-sm">{option.label || option.card?.fullName || option.id}</span>
+                        {(option.slotLabel || option.zoneLabel || option.ownerName) && (
+                          <span className="text-[10px] md:text-xs font-bold tracking-wide opacity-80">
+                            {[option.ownerName, option.slotLabel || option.zoneLabel].filter(Boolean).join(' · ')}
+                          </span>
+                        )}
+                      </div>
                     </button>
                   ))}
                 </div>

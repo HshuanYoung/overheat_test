@@ -8,7 +8,10 @@ const effect_10401044_activation: CardEffect = {
   description: '【启】侵蚀区域在1-4张时：将此单位返回持有者手牌，选择场上一张横置的非神蚀单位返回其持有者手牌。',
   erosionTotalLimit: [1, 4],
   condition: (gameState: GameState, playerState: PlayerState) => {
-    return playerState.isTurn && gameState.phase === 'MAIN';
+    const hasValidTarget = Object.values(gameState.players).some(p =>
+      p.unitZone.some(c => c && !c.godMark && c.isExhausted)
+    );
+    return playerState.isTurn && gameState.phase === 'MAIN' && hasValidTarget;
   },
   execute: async (instance: Card, gameState: GameState, playerState: PlayerState) => {
     const pUid = playerState.uid;

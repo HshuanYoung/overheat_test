@@ -7,7 +7,8 @@ const effect_20402014_activate: CardEffect = {
   description: '对手选择以下效果之一发动。若你在神依状态下发动，则由你代替对手进行选择：a.抽三张牌，选择其两张手牌，放置在侵蚀前区。b.选择一个横置单位并破坏。',
   execute: async (instance: Card, gameState: GameState, playerState: PlayerState) => {
     const opponentUid = Object.keys(gameState.players).find(uid => uid !== playerState.uid)!;
-    const selectorUid = playerState.isGoddessMode ? playerState.uid : opponentUid;
+    const activatedInGoddess = !!((instance as any).__playSnapshot?.isGoddessMode ?? playerState.isGoddessMode);
+    const selectorUid = activatedInGoddess ? playerState.uid : opponentUid;
 
     const options = [
       {
@@ -70,7 +71,7 @@ const effect_20402014_activate: CardEffect = {
           gameState.pendingQuery = {
             id: Math.random().toString(36).substring(7),
             type: 'SELECT_CARD',
-            playerUid: opponentUid, 
+            playerUid: selectorUid,
             options: opponent.hand.map(c => ({ card: c, source: 'HAND' as any })),
             title: '选择手牌放置到侵蚀区',
             description: '请选择 2 张手牌放置在侵蚀前区。',

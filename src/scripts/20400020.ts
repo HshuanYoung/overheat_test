@@ -1,4 +1,4 @@
-import { Card, GameState, PlayerState, GameEvent } from '../types/game';
+import { Card, GameState, GameEvent } from '../types/game';
 import { AtomicEffectExecutor } from '../services/AtomicEffectExecutor';
 import { EventEngine } from '../services/EventEngine';
 
@@ -25,8 +25,6 @@ const card: Card = {
       limitNameType: true,
       condition: (gameState, playerState) => {
         if (gameState.phase !== 'MAIN' || gameState.players[gameState.playerIds[gameState.currentTurnPlayer]].uid !== playerState.uid) return false;
-
-        // Check for opponent horizontal units
         const opponentId = Object.keys(gameState.players).find(id => id !== playerState.uid)!;
         const opponent = gameState.players[opponentId];
         return opponent.unitZone.some(u => u && u.isExhausted);
@@ -56,14 +54,13 @@ const card: Card = {
       onQueryResolve: async (card, gameState, playerState, selections) => {
         const targetId = selections[0];
         const targetOwnerUid = AtomicEffectExecutor.findCardOwnerKey(gameState, targetId);
-        // Mark the target and current turn
         (card as any).data = {
           ...((card as any).data || {}),
           markedTargetId: targetId,
           markedTargetOwnerUid: targetOwnerUid,
           playedTurn: gameState.turnCount
         };
-        gameState.logs.push(`[任务：击溃恶党] 已标记目标单位。当其离开战场时将触发后续效果。`);
+        gameState.logs.push('[任务：击溃恶党] 已标记目标单位。当其离开战场时将触发后续效果。');
       }
     },
     {
@@ -74,22 +71,14 @@ const card: Card = {
       triggerEvent: 'CARD_LEFT_FIELD',
       isGlobal: true,
       isMandatory: true,
-      condition: (gameState, playerState, card, event) => {
+      condition: (gameState, playerState, card, event?: GameEvent) => {
         const data = (card as any).data;
         if (!data || !event) return false;
-
-        // Must be the marked target leaving in the same turn
-        const isMatch =
-          event.sourceCardId === data.markedTargetId &&
+        return event.sourceCardId === data.markedTargetId &&
           event.data?.zone === 'UNIT' &&
           gameState.turnCount === data.playedTurn;
-        
-        if (isMatch) {
-            console.log(`[20400020] Trigger matched for target ${data.markedTargetId} leaving zone.`);
-        }
-        return isMatch;
       },
-      execute: async (card, gameState, playerState, event) => {
+      execute: async (card, gameState, playerState) => {
         const data = (card as any).data || {};
         const targetOwnerUid = data.markedTargetOwnerUid || AtomicEffectExecutor.findCardOwnerKey(gameState, data.markedTargetId);
         const targetOwner = targetOwnerUid ? gameState.players[targetOwnerUid] : undefined;
@@ -98,17 +87,15 @@ const card: Card = {
           : [];
 
         if (targets.length === 0) {
-            gameState.logs.push(`[任务：击溃恶党] 对方战场没有非神蚀卡，效果处理结束。`);
-            return;
+          gameState.logs.push('[任务：击溃恶党] 对方战场没有非神蚀卡，效果处理结束。');
+          return;
         }
-
-        const options = AtomicEffectExecutor.enrichQueryOptions(gameState, playerState.uid, targets.map(t => ({ card: t, source: t.cardlocation as any })));
 
         gameState.pendingQuery = {
           id: Math.random().toString(36).substring(7),
           type: 'SELECT_CARD',
           playerUid: playerState.uid,
-          options: options,
+          options: AtomicEffectExecutor.enrichQueryOptions(gameState, playerState.uid, targets.map(t => ({ card: t, source: t.cardlocation as any }))),
           title: '选择对手卡牌回卡组顶',
           description: '标记单位已离场，请选择对手战场一张非神蚀卡放置在对手卡组顶。',
           minSelections: 1,
@@ -116,14 +103,13 @@ const card: Card = {
           callbackKey: 'EFFECT_RESOLVE',
           context: {
             sourceCardId: card.gamecardId,
-            effectIndex: 1, // Index of this effect is 1
+            effectIndex: 1,
             step: 2
           }
         };
       },
       onQueryResolve: async (card, gameState, playerState, selections) => {
         const targetId = selections[0];
-
         await AtomicEffectExecutor.execute(gameState, playerState.uid, {
           type: 'MOVE_FROM_FIELD',
           targetFilter: { gamecardId: targetId },
@@ -136,11 +122,13 @@ const card: Card = {
       id: 'defeat_villains_activate_erosion',
       type: 'ACTIVATE',
       description: '【启】：若你的战场上有「冒险家公会」单位且此卡在侵蚀区，舍弃1张手牌：打出此卡。',
-      triggerLocation: ['EROSION_FRONT', 'EROSION_BACK'],
-      condition: (gameState, playerState) => {
-        // Must have Adventure Guild unit
+      limitCount: 1,
+      limitNameType: false,
+      triggerLocation: ['EROSION_FRONT'],
+      condition: (gameState, playerState, instance) => {
         const hasGuildUnit = playerState.unitZone.some(u => u && u.faction === '冒险家公会');
-        return hasGuildUnit && playerState.hand.length > 0;
+        if (playerState.factionLock && instance.faction !== playerState.factionLock) return false;
+        return instance.cardlocation === 'EROSION_FRONT' && hasGuildUnit && playerState.hand.length > 0;
       },
       cost: async (gameState, playerState, card) => {
         gameState.pendingQuery = {
@@ -155,13 +143,12 @@ const card: Card = {
           callbackKey: 'ACTIVATE_COST_RESOLVE',
           context: {
             sourceCardId: card.gamecardId,
-            effectIndex: 2 // Index of this effect is 2
+            effectIndex: 2
           }
         };
         return true;
       },
       onQueryResolve: async (card, gameState, playerState, selections) => {
-        // Discard selected card
         const discardId = selections[0];
         await AtomicEffectExecutor.execute(gameState, playerState.uid, {
           type: 'DISCARD_CARD',
@@ -169,7 +156,7 @@ const card: Card = {
         }, card);
       },
       execute: async (card, gameState, playerState) => {
-        const currentZone = card.cardlocation as 'EROSION_FRONT' | 'EROSION_BACK';
+        const currentZone = card.cardlocation as 'EROSION_FRONT';
         const mainEffect = card.effects?.[0];
 
         AtomicEffectExecutor.moveCard(

@@ -1,20 +1,16 @@
-import { Card, GameState, PlayerState, CardEffect, TriggerLocation, GameEvent } from '../types/game';
-import { AtomicEffectExecutor } from '../services/AtomicEffectExecutor';
+import { Card, GameState, PlayerState, CardEffect } from '../types/game';
 
 const effect_20400021_counter: CardEffect = {
   id: 'gensou_swallow_counter',
   type: 'ACTIVATE',
   triggerLocation: ['HAND', 'PLAY'],
   description: '【启】手牌中：若我侵蚀区域背面卡牌在2张或以上，对手使用故事卡时：使该故事卡发动无效并送入墓地。',
-  condition: (gameState: GameState, playerState: PlayerState, instance: Card) => {
-    // 1. Check phase
+  condition: (gameState: GameState, playerState: PlayerState) => {
     if (gameState.phase !== 'COUNTERING') return false;
 
-    // 2. Erosion Back requirement
     const backCount = playerState.erosionBack.filter(c => c !== null).length;
     if (backCount < 2) return false;
 
-    // 3. Opponent has a STORY card on stack
     const opponentId = gameState.playerIds.find(id => id !== playerState.uid)!;
     return gameState.counterStack.some(item =>
       item.type === 'PLAY' &&
@@ -24,52 +20,24 @@ const effect_20400021_counter: CardEffect = {
     );
   },
   execute: async (instance: Card, gameState: GameState, playerState: PlayerState) => {
-    // Select payment (2 AC)
-    gameState.pendingQuery = {
-      id: Math.random().toString(36).substring(7),
-      type: 'SELECT_PAYMENT',
-      playerUid: playerState.uid,
-      options: [],
-      title: '支付发动费用',
-      description: '支付2点费用以发动「吞噬幻想」。',
-      minSelections: 1,
-      maxSelections: 1,
-      callbackKey: 'EFFECT_RESOLVE',
-      paymentCost: 2,
-      paymentColor: 'BLUE',
-      context: {
-        effectId: 'gensou_swallow_counter',
-        sourceCardId: instance.gamecardId,
-        step: 'PAYMENT'
-      }
-    };
-  },
-  onQueryResolve: async (instance: Card, gameState: GameState, playerState: PlayerState, selections: string[], context: any) => {
-    if (context.step === 'PAYMENT') {
-      // 1. Move self to grave (consuming the story card)
-      await AtomicEffectExecutor.execute(gameState, playerState.uid, {
-        type: 'DISCARD_CARD',
-        targetFilter: { gamecardId: instance.gamecardId }
-      }, instance);
-      gameState.logs.push(`[${instance.fullName}] 发动并送入了墓地。`);
+    const opponentId = gameState.playerIds.find(id => id !== playerState.uid)!;
+    let found = false;
 
-      const opponentId = gameState.playerIds.find(id => id !== playerState.uid)!;
-      let found = false;
-      for (let i = gameState.counterStack.length - 1; i >= 0; i--) {
-        const item = gameState.counterStack[i];
-        const isStory = item.card?.type === 'STORY';
-        const isOpponent = item.ownerUid === opponentId;
+    for (let i = gameState.counterStack.length - 1; i >= 0; i--) {
+      const item = gameState.counterStack[i];
+      const isStory = item.card?.type === 'STORY';
+      const isOpponent = item.ownerUid === opponentId;
 
-        if ((item.type === 'PLAY' || item.type === 'EFFECT') && isOpponent && isStory && !item.isNegated) {
-          item.isNegated = true;
-          found = true;
-          gameState.logs.push(`[${instance.fullName}] 成功拦截并使对手的 [${item.card?.fullName || '故事卡'}] 发动无效。`);
-          break;
-        }
+      if ((item.type === 'PLAY' || item.type === 'EFFECT') && isOpponent && isStory && !item.isNegated) {
+        item.isNegated = true;
+        found = true;
+        gameState.logs.push(`[${instance.fullName}] 成功拦截并使对手的 [${item.card?.fullName || '故事卡'}] 发动无效。`);
+        break;
       }
-      if (!found) {
-        gameState.logs.push(`[${instance.fullName}] 未能在连锁中找到有效的故事卡发动。`);
-      }
+    }
+
+    if (!found) {
+      gameState.logs.push(`[${instance.fullName}] 未能在连锁中找到有效的故事卡发动。`);
     }
   }
 };
@@ -81,7 +49,7 @@ const card: Card = {
   specialName: '',
   type: 'STORY',
   color: 'BLUE',
-  colorReq: { 'BLUE': 1 },
+  colorReq: { BLUE: 1 },
   faction: '无',
   acValue: 2,
   power: 0,
@@ -95,9 +63,7 @@ const card: Card = {
   canAttack: false,
   feijingMark: false,
   canResetCount: 0,
-  effects: [
-    effect_20400021_counter
-  ],
+  effects: [effect_20400021_counter],
   rarity: 'U',
   availableRarities: ['U'],
   uniqueId: null,
