@@ -86,7 +86,7 @@ const card: Card = {
   type: 'UNIT',
   color: 'BLUE',
   colorReq: { BLUE: 1 },
-  faction: '百濑之水域',
+  faction: '百濑之水城',
   acValue: 3,
   power: 2500,
   basePower: 2500,

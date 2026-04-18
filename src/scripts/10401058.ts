@@ -165,7 +165,7 @@ const card: Card = {
   color: 'BLUE',
   gamecardId: null as any,
   colorReq: { BLUE: 2 },
-  faction: '百濑之水域',
+  faction: '百濑之水城',
   acValue: 4,
   power: 3000,
   basePower: 3000,

@@ -1107,7 +1107,7 @@ function createInitialPlayer(deckCards: Card[], displayName: string, isFirst: bo
         grave: [],
         exile: [],
         playZone: [],
-        unitZone: new Array(5).fill(null),
+        unitZone: new Array(6).fill(null),
         itemZone: new Array(2).fill(null),
         erosionFront: new Array(10).fill(null),
         erosionBack: new Array(10).fill(null),
@@ -1416,4 +1416,3 @@ const start = async () => {
 };
 
 start();
-

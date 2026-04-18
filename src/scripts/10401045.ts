@@ -4,7 +4,7 @@ import { AtomicEffectExecutor } from '../services/AtomicEffectExecutor';
 const trigger_10401045: CardEffect = {
   id: '10401045_trigger',
   type: 'TRIGGER',
-  description: '【诱发】【名称一回合一次】侵蚀区数量为1-4时，当此单位因你的卡牌效果从单位区返回手牌时：你可以发动。从手牌中选择一张除「水仙-灵法师」以外、「百濑之水域」势力的单位卡放置到战场上。',
+  description: '【诱发】【名称一回合一次】侵蚀区数量为1-4时，当此单位因你的卡牌效果从单位区返回手牌时：你可以发动。从手牌中选择一张除「水仙-灵法师」以外、「百濑之水城」势力的单位卡放置到战场上。',
   triggerLocation: ['HAND'],
   triggerEvent: 'CARD_FIELD_TO_HAND',
   isMandatory: false,
@@ -29,7 +29,7 @@ const trigger_10401045: CardEffect = {
     const targets = playerState.hand.filter(c =>
       c.gamecardId !== instance.gamecardId &&
       c.type === 'UNIT' &&
-      c.faction === '百濑之水域' &&
+      c.faction === '百濑之水城' &&
       c.fullName !== '水仙--灵法师'
     );
 
@@ -39,7 +39,7 @@ const trigger_10401045: CardEffect = {
     const targets = playerState.hand.filter(c =>
       c.gamecardId !== instance.gamecardId &&
       c.type === 'UNIT' &&
-      c.faction === '百濑之水域' &&
+      c.faction === '百濑之水城' &&
       c.fullName !== '水仙--灵法师'
     ) as Card[];
 
@@ -51,7 +51,7 @@ const trigger_10401045: CardEffect = {
       playerUid: playerState.uid,
       options: AtomicEffectExecutor.enrichQueryOptions(gameState, playerState.uid, targets.map(c => ({ card: c, source: 'HAND' }))),
       title: '选择放置的单位',
-      description: '请选择一张「百濑之水域」单位放置到战场上。',
+      description: '请选择一张「百濑之水城」单位放置到战场上。',
       minSelections: 1,
       maxSelections: 1,
       callbackKey: 'EFFECT_RESOLVE',
@@ -87,7 +87,7 @@ const card: Card = {
   color: 'BLUE',
   gamecardId: null as any,
   colorReq: { BLUE: 1 },
-  faction: '百濑之水域',
+  faction: '百濑之水城',
   acValue: 2,
   power: 1500,
   basePower: 1500,
