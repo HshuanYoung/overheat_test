@@ -152,8 +152,14 @@ export class EventEngine {
           }
           if (card.baseGodMark !== undefined) card.godMark = card.baseGodMark;
           if (card.baseAcValue !== undefined) card.acValue = card.baseAcValue;
-          if (card.baseCanActivateEffect !== undefined) card.canActivateEffect = card.baseCanActivateEffect;
-          if (card.baseIsImmuneToUnitEffects !== undefined) card.isImmuneToUnitEffects = card.baseIsImmuneToUnitEffects;
+          card.canActivateEffect = card.baseCanActivateEffect !== undefined ? card.baseCanActivateEffect : true;
+          if (card.temporaryCanActivateEffect !== undefined) {
+            card.canActivateEffect = card.temporaryCanActivateEffect;
+          }
+          card.isImmuneToUnitEffects = card.baseIsImmuneToUnitEffects ?? false;
+          if (card.temporaryImmuneToUnitEffects !== undefined) {
+            card.isImmuneToUnitEffects = card.temporaryImmuneToUnitEffects;
+          }
           if (card.baseShenyi !== undefined) card.isShenyi = card.baseShenyi;
           card.influencingEffects = [];
           if (card.cardlocation === 'ITEM' && card.isExhausted) {
@@ -178,6 +184,9 @@ export class EventEngine {
           if (card.temporaryCanAttackAny) {
             const source = card.temporaryBuffSources?.['full_attack'] || '效果';
             card.influencingEffects.push({ sourceCardName: source, description: '获得【全攻】' });
+          }
+          if ((card as any).data?.clearMirrorActiveTurn === gameState.turnCount) {
+            card.influencingEffects.push({ sourceCardName: '明镜止水', description: '已明镜止水' });
           }
         }
       });

@@ -59,6 +59,7 @@ const card: Card = {
       },
       onQueryResolve: async (card, gameState, playerState, selections) => {
         const targetId = selections[0];
+        const targetCard = AtomicEffectExecutor.findCardById(gameState, targetId);
 
         // 1. Silence (Negate instance effects for the turn)
         await AtomicEffectExecutor.execute(gameState, playerState.uid, {
@@ -75,6 +76,13 @@ const card: Card = {
           turnDuration: 1, // Current turn
           targetFilter: { gamecardId: targetId }
         }, card);
+
+        if (targetCard) {
+          (targetCard as any).data = {
+            ...((targetCard as any).data || {}),
+            clearMirrorActiveTurn: gameState.turnCount
+          };
+        }
 
         gameState.logs.push(`[明镜止水] 已对目标单位生效。`);
       }

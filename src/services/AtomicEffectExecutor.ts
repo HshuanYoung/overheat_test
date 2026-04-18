@@ -822,6 +822,8 @@ export class AtomicEffectExecutor {
       card.usedShenyiThisTurn = false;
       card.playedTurn = undefined;
       card.silencedEffectIds = [];
+      card.temporaryCanActivateEffect = undefined;
+      card.temporaryImmuneToUnitEffects = undefined;
       card.temporaryPowerBuff = 0;
       card.temporaryDamageBuff = 0;
       card.temporaryRush = false;
@@ -981,6 +983,8 @@ export class AtomicEffectExecutor {
         const val = !!effect.value;
         if (effect.turnDuration === 0 || effect.turnDuration === -1) {
           card.baseCanActivateEffect = val;
+        } else if (effect.turnDuration === 1) {
+          card.temporaryCanActivateEffect = val;
         }
         card.canActivateEffect = val;
         gameState.logs.push(`${card.fullName} 的效果在本回合内被屏蔽了。`);
@@ -995,7 +999,10 @@ export class AtomicEffectExecutor {
         const val = !!effect.value;
         if (effect.turnDuration === 0 || effect.turnDuration === -1) {
           card.baseIsImmuneToUnitEffects = val;
+        } else if (effect.turnDuration === 1) {
+          card.temporaryImmuneToUnitEffects = val;
         }
+        card.isImmuneToUnitEffects = val;
       }
     });
   }

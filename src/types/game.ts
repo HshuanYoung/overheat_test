@@ -216,6 +216,8 @@ export interface Card {
   canResetCount?: number;    //only 0 can be reset,if not 0,at the start of turn,canResetCount-1
   isImmuneToUnitEffects?: boolean;
   baseIsImmuneToUnitEffects?: boolean;
+  temporaryCanActivateEffect?: boolean;
+  temporaryImmuneToUnitEffects?: boolean;
   temporaryPowerBuff?: number; // cleared at turn start
   temporaryDamageBuff?: number; // cleared at turn start
   temporaryRush?: boolean; // cleared at turn start

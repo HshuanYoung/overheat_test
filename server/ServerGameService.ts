@@ -2248,6 +2248,21 @@ export const ServerGameService = {
       Object.values(gameState.players).forEach(p => {
         p.hasUnitReturnedThisTurn = false;
         p.hasExhaustedThisTurn = [];
+        p.negatedNames = [];
+
+        const allCards = [
+          ...p.deck, ...p.hand, ...p.grave, ...p.exile,
+          ...p.unitZone, ...p.itemZone, ...p.erosionFront, ...p.erosionBack, ...p.playZone
+        ];
+        allCards.forEach(card => {
+          if (!card) return;
+          card.temporaryCanActivateEffect = undefined;
+          card.temporaryImmuneToUnitEffects = undefined;
+          if ((card as any).data?.clearMirrorActiveTurn !== undefined) {
+            delete (card as any).data.clearMirrorActiveTurn;
+          }
+        });
+
         p.unitZone.forEach(u => {
           if (u) {
             u.hasAttackedThisTurn = false;
@@ -2679,11 +2694,18 @@ export const ServerGameService = {
         }
       }
 
+      p.negatedNames = [];
+
       // Reset target protection and effect negation
-      [...p.unitZone, ...p.itemZone].forEach(c => {
+      [...p.deck, ...p.hand, ...p.grave, ...p.exile, ...p.unitZone, ...p.itemZone, ...p.erosionFront, ...p.erosionBack, ...p.playZone].forEach(c => {
         if (c) {
           c.nextEffectProtection = false;
           c.silencedEffectIds = [];
+          c.temporaryCanActivateEffect = undefined;
+          c.temporaryImmuneToUnitEffects = undefined;
+          if ((c as any).data?.clearMirrorActiveTurn !== undefined) {
+            delete (c as any).data.clearMirrorActiveTurn;
+          }
         }
       });
     });
