@@ -101,6 +101,7 @@ const card: Card = {
 
         const hasValidTarget = playerState.erosionFront.some(c =>
           c !== null &&
+          c.displayState === 'FRONT_UPRIGHT' &&
           c.type === 'UNIT' &&
           c.faction === '冒险家公会' &&
           c.specialName !== instance.specialName &&
@@ -137,6 +138,23 @@ const card: Card = {
         if (step === 1) {
           gameState.logs.push(`[援护药师【文】] 费用支付成功。`);
 
+          const fieldSpecialNames = new Set(playerState.unitZone.filter(u => u && u.specialName).map(u => u!.specialName));
+          const itemSpecialNames = new Set(playerState.itemZone.filter(i => i && i.specialName).map(i => i!.specialName));
+
+          const validTargets = sourcePlayer.erosionFront.filter(c =>
+            c !== null &&
+            c.displayState === 'FRONT_UPRIGHT' &&
+            c.type === 'UNIT' &&
+            c.faction === '冒险家公会' &&
+            !c.fullName.includes('文') &&
+            (!c.specialName || (!fieldSpecialNames.has(c.specialName) && !itemSpecialNames.has(c.specialName)))
+          ) as Card[];
+
+          if (validTargets.length === 0) {
+            gameState.logs.push(`[援护药师【文】] 侵蚀区中没有符合条件的目标单位，效果失败。`);
+            return;
+          }
+
           // Move self to erosion front
           await AtomicEffectExecutor.execute(gameState, playerState.uid, {
             type: 'MOVE_FROM_FIELD',
@@ -145,22 +163,6 @@ const card: Card = {
           }, card);
 
           card.displayState = 'FRONT_UPRIGHT';
-
-          const fieldSpecialNames = new Set(playerState.unitZone.filter(u => u && u.specialName).map(u => u!.specialName));
-          const itemSpecialNames = new Set(playerState.itemZone.filter(i => i && i.specialName).map(i => i!.specialName));
-
-          const validTargets = sourcePlayer.erosionFront.filter(c =>
-            c !== null &&
-            c.type === 'UNIT' &&
-            c.faction === '冒险家公会' &&
-            !c.fullName.includes('文') &&
-            (!c.specialName || (!fieldSpecialNames.has(c.specialName) && !itemSpecialNames.has(c.specialName)))
-          ) as Card[];
-
-          if (validTargets.length === 0) {
-            gameState.logs.push(`[援护药师【文】] 侵蚀区中没有符合条件的目标单位，效果结束。`);
-            return;
-          }
 
           gameState.pendingQuery = {
             id: Math.random().toString(36).substring(7),
@@ -193,6 +195,8 @@ const card: Card = {
             }, card);
 
             gameState.logs.push(`[援护药师【文】] 效果生效：${targetCard.fullName} 从侵蚀区进入了战场。`);
+          } else {
+            gameState.logs.push(`[援护药师【文】] 结算时目标已不合法，效果失败。`);
           }
         }
       }

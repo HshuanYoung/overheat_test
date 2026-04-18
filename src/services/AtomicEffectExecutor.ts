@@ -9,6 +9,16 @@ export class AtomicEffectExecutor {
    */
   static enrichQueryOptions(gameState: GameState, viewerUid: string, options: any[]): any[] {
     const getZonePositionMeta = (owner: PlayerState, cardId: string) => {
+      const handIndex = owner.hand.findIndex(c => c?.gamecardId === cardId);
+      if (handIndex !== -1) {
+        const slotNumber = handIndex + 1;
+        return {
+          slotNumber,
+          slotLabel: `手牌 ${slotNumber}`,
+          zoneLabel: '手牌'
+        };
+      }
+
       const unitIndex = owner.unitZone.findIndex(c => c?.gamecardId === cardId);
       if (unitIndex !== -1) {
         const slotNumber = owner.uid === viewerUid ? unitIndex + 1 : 6 - unitIndex;
@@ -16,6 +26,16 @@ export class AtomicEffectExecutor {
           slotNumber,
           slotLabel: `单位区 ${slotNumber}`,
           zoneLabel: '单位区'
+        };
+      }
+
+      const itemIndex = owner.itemZone.findIndex(c => c?.gamecardId === cardId);
+      if (itemIndex !== -1) {
+        const slotNumber = itemIndex + 1;
+        return {
+          slotNumber,
+          slotLabel: `道具区 ${slotNumber}`,
+          zoneLabel: '道具区'
         };
       }
 
@@ -761,7 +781,34 @@ export class AtomicEffectExecutor {
 
     if (!card) return;
 
-    if ((toZone === 'HAND' || toZone === 'DECK') && fromZone !== 'HAND' && fromZone !== 'DECK') {
+    const shouldRefreshAsNewInstance =
+      (toZone === 'HAND' || toZone === 'DECK') &&
+      fromZone !== 'HAND' &&
+      fromZone !== 'DECK';
+
+    const previousSourceCardId = card.gamecardId;
+
+    if (fromZone !== toZone && shouldRefreshAsNewInstance) {
+      // Preserve the leaving card identity for leave-field triggers before instance refresh.
+      EventEngine.handleCardLeftZone(gameState, playerUid, card, fromZone, isEffect, toZone, {
+        effectSourcePlayerUid: options?.effectSourcePlayerUid,
+        effectSourceCardId: options?.effectSourceCardId,
+        previousSourceCardId
+      });
+      EventEngine.dispatchMovementSubEvents(gameState, {
+        card,
+        cardOwnerUid: playerUid,
+        fromZone,
+        toZone,
+        isEffect,
+        effectSourcePlayerUid: options?.effectSourcePlayerUid,
+        effectSourceCardId: options?.effectSourceCardId,
+        previousSourceCardId,
+        onlyLeftFieldEvent: true
+      });
+    }
+
+    if (shouldRefreshAsNewInstance) {
       const newGamecardId = Math.random().toString(36).substring(2, 10);
       card.gamecardId = newGamecardId;
       card.runtimeFingerprint = `FP_${newGamecardId}_${Date.now()}`;
@@ -841,7 +888,22 @@ export class AtomicEffectExecutor {
     }
 
     // Specific Events based on movement
-    this.dispatchMovementEvents(gameState, playerUid, card, fromZone, toZone, isEffect, options);
+    if (shouldRefreshAsNewInstance) {
+      EventEngine.handleCardEnteredZone(gameState, playerUid, card, toZone, isEffect);
+      EventEngine.dispatchMovementSubEvents(gameState, {
+        card,
+        cardOwnerUid: playerUid,
+        fromZone,
+        toZone,
+        isEffect,
+        effectSourcePlayerUid: options?.effectSourcePlayerUid,
+        effectSourceCardId: options?.effectSourceCardId,
+        previousSourceCardId,
+        skipLeftFieldEvent: true
+      });
+    } else {
+      this.dispatchMovementEvents(gameState, playerUid, card, fromZone, toZone, isEffect, options);
+    }
   }
 
   private static dispatchMovementEvents(
@@ -855,7 +917,10 @@ export class AtomicEffectExecutor {
   ) {
     // Use centralized EventEngine handlers for movement events to avoid double dispatches
     if (from !== to) {
-      EventEngine.handleCardLeftZone(gameState, playerUid, card, from, isEffect, to);
+      EventEngine.handleCardLeftZone(gameState, playerUid, card, from, isEffect, to, {
+        effectSourcePlayerUid: options?.effectSourcePlayerUid,
+        effectSourceCardId: options?.effectSourceCardId
+      });
       EventEngine.handleCardEnteredZone(gameState, playerUid, card, to, isEffect);
     }
 

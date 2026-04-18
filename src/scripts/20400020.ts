@@ -80,7 +80,11 @@ const card: Card = {
       },
       execute: async (card, gameState, playerState) => {
         const data = (card as any).data || {};
-        const targetOwnerUid = data.markedTargetOwnerUid || AtomicEffectExecutor.findCardOwnerKey(gameState, data.markedTargetId);
+        const fallbackOpponentUid = Object.keys(gameState.players).find(id => id !== playerState.uid);
+        const targetOwnerUid =
+          data.markedTargetOwnerUid ||
+          AtomicEffectExecutor.findCardOwnerKey(gameState, data.markedTargetId) ||
+          fallbackOpponentUid;
         const targetOwner = targetOwnerUid ? gameState.players[targetOwnerUid] : undefined;
         const targets = targetOwner
           ? [...targetOwner.unitZone, ...targetOwner.itemZone].filter(c => c && !c.godMark) as Card[]

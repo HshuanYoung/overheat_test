@@ -4,38 +4,32 @@ import { AtomicEffectExecutor } from '../services/AtomicEffectExecutor';
 const trigger_10401045: CardEffect = {
   id: '10401045_trigger',
   type: 'TRIGGER',
-  description: '【诱】[名称一回合一次] 侵蚀区数量为1-4张时，当此单位因你卡牌的效果返回手牌时：可以发动：从手牌中选择一张除「水仙--灵法师」以外、「百濑之水城」派系的单位卡放置在战场上。',
+  description: '【诱发】【名称一回合一次】侵蚀区数量为1-4时，当此单位因你的卡牌效果从单位区返回手牌时：你可以发动。从手牌中选择一张除「水仙-灵法师」以外、「百濑之水域」势力的单位卡放置到战场上。',
   triggerLocation: ['HAND'],
-  triggerEvent: 'CARD_LEFT_ZONE',
+  triggerEvent: 'CARD_FIELD_TO_HAND',
   isMandatory: false,
   limitCount: 1,
   limitNameType: true,
   condition: (gameState: GameState, playerState: PlayerState, instance: Card, event?: GameEvent) => {
-    // 1. Erosion count check (1-4 total)
     const totalErosion = [...playerState.erosionFront, ...playerState.erosionBack].filter(c => c !== null).length;
     if (totalErosion < 1 || totalErosion > 4) return false;
-
-    // 2. Unit Zone open space check
     if (!playerState.unitZone.some(u => u === null)) return false;
+    if (!event || event.type !== 'CARD_FIELD_TO_HAND') return false;
 
-    // 3. Movement event check
-    if (!event || event.type !== 'CARD_LEFT_ZONE') return false;
-
-    const isSelf = event.sourceCardId === instance.gamecardId || event.sourceCard === instance;
+    const isSelf =
+      event.sourceCard === instance ||
+      event.sourceCardId === instance.gamecardId ||
+      event.data?.previousSourceCardId === instance.gamecardId;
     const isFromUnitZone = event.data?.zone === 'UNIT';
-    const isToHand = event.data?.targetZone === 'HAND';
     const isByEffect = !!event.data?.isEffect;
+    const isMyEffect = event.data?.effectSourcePlayerUid === playerState.uid;
 
-    // 4. "Your card effect" check (approximated by checking if player triggered the event)
-    const isMyEffect = event.playerUid === playerState.uid;
+    if (!isSelf || !isFromUnitZone || !isByEffect || !isMyEffect) return false;
 
-    if (!isSelf || !isFromUnitZone || !isToHand || !isByEffect || !isMyEffect) return false;
-
-    // 5. Valid targets in hand check
     const targets = playerState.hand.filter(c =>
       c.gamecardId !== instance.gamecardId &&
       c.type === 'UNIT' &&
-      c.faction === '百濑之水城' &&
+      c.faction === '百濑之水域' &&
       c.fullName !== '水仙--灵法师'
     );
 
@@ -45,44 +39,43 @@ const trigger_10401045: CardEffect = {
     const targets = playerState.hand.filter(c =>
       c.gamecardId !== instance.gamecardId &&
       c.type === 'UNIT' &&
-      c.faction === '百濑之水城' &&
+      c.faction === '百濑之水域' &&
       c.fullName !== '水仙--灵法师'
     ) as Card[];
 
-    if (targets.length > 0) {
-      gameState.pendingQuery = {
-        id: Math.random().toString(36).substring(7),
-        type: 'SELECT_CARD',
-        playerUid: playerState.uid,
-        options: AtomicEffectExecutor.enrichQueryOptions(gameState, playerState.uid, targets.map(c => ({ card: c, source: 'HAND' }))),
-        title: '选择放置的单位',
-        description: '请选择一张「百濑之水城」单位放置在战场上',
-        minSelections: 1,
-        maxSelections: 1,
-        callbackKey: 'EFFECT_RESOLVE',
-        context: {
-          sourceCardId: instance.gamecardId,
-          effectId: '10401045_trigger',
-          step: 1
-        }
-      };
-    }
+    if (targets.length === 0) return;
+
+    gameState.pendingQuery = {
+      id: Math.random().toString(36).substring(7),
+      type: 'SELECT_CARD',
+      playerUid: playerState.uid,
+      options: AtomicEffectExecutor.enrichQueryOptions(gameState, playerState.uid, targets.map(c => ({ card: c, source: 'HAND' }))),
+      title: '选择放置的单位',
+      description: '请选择一张「百濑之水域」单位放置到战场上。',
+      minSelections: 1,
+      maxSelections: 1,
+      callbackKey: 'EFFECT_RESOLVE',
+      context: {
+        sourceCardId: instance.gamecardId,
+        effectId: '10401045_trigger',
+        step: 1
+      }
+    };
   },
   onQueryResolve: async (instance: Card, gameState: GameState, playerState: PlayerState, selections: string[], context: any) => {
-    if (context.step === 1) {
-      const targetId = selections[0];
-      const targetCard = playerState.hand.find(c => c.gamecardId === targetId);
+    if (context.step !== 1) return;
 
-      if (targetCard) {
-        await AtomicEffectExecutor.execute(gameState, playerState.uid, {
-          type: 'MOVE_FROM_HAND',
-          targetFilter: { gamecardId: targetId },
-          destinationZone: 'UNIT'
-        }, instance);
+    const targetId = selections[0];
+    const targetCard = playerState.hand.find(c => c.gamecardId === targetId);
+    if (!targetCard) return;
 
-        gameState.logs.push(`[${instance.fullName}] 效果：将手牌中的 ${targetCard.fullName} 特殊召唤到战场上。`);
-      }
-    }
+    await AtomicEffectExecutor.execute(gameState, playerState.uid, {
+      type: 'MOVE_FROM_HAND',
+      targetFilter: { gamecardId: targetId },
+      destinationZone: 'UNIT'
+    }, instance);
+
+    gameState.logs.push(`[${instance.fullName}] 效果：将手牌中的 ${targetCard.fullName} 放置到了战场上。`);
   }
 };
 
@@ -93,8 +86,8 @@ const card: Card = {
   type: 'UNIT',
   color: 'BLUE',
   gamecardId: null as any,
-  colorReq: { 'BLUE': 1 },
-  faction: '百濑之水城',
+  colorReq: { BLUE: 1 },
+  faction: '百濑之水域',
   acValue: 2,
   power: 1500,
   basePower: 1500,

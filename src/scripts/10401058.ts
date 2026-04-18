@@ -2,39 +2,44 @@ import { Card, GameState, PlayerState, CardEffect, GameEvent } from '../types/ga
 import { AtomicEffectExecutor } from '../services/AtomicEffectExecutor';
 
 const trigger_10401058_battle: CardEffect = {
-  id: '蜻蜓点击触发',
+  id: '10401058_battle_trigger',
   type: 'TRIGGER',
   triggerEvent: ['CARD_ATTACK_DECLARED', 'CARD_DEFENSE_DECLARED'],
   triggerLocation: ['UNIT'],
-  description: '【诱发】当此单位宣告攻击或防御时，可以选择发动：选择对手的一个非神位单位转为横置。',
+  description: '【诱发】当此单位宣言攻击或防御时，你可以选择发动：选择对手的一张非神蚀单位横置。',
   isMandatory: false,
-  condition: (gameState: GameState, playerState: PlayerState, instance: Card, event?: GameEvent) => {
-    // Check if this unit is the one attacking or defending
-    const isSelf = event?.sourceCardId === instance.gamecardId || event?.sourceCard === instance || event?.targetCardId === instance.gamecardId;
-    return isSelf === true;
+  condition: (_gameState: GameState, _playerState: PlayerState, instance: Card, event?: GameEvent) => {
+    return (
+      event?.sourceCardId === instance.gamecardId ||
+      event?.targetCardId === instance.gamecardId ||
+      event?.data?.defenderId === instance.gamecardId ||
+      event?.sourceCard === instance
+    );
   },
   execute: async (instance: Card, gameState: GameState, playerState: PlayerState) => {
-    const opponentUid = Object.keys(gameState.players).find(uid => uid !== playerState.uid)!;
-    const opponent = gameState.players[opponentUid];
-    
-    // Filter non-godmark units of opponent
-    const targets = opponent.unitZone.filter(u => u && !u.godMark) as Card[];
-    
+    const opponentUid = Object.keys(gameState.players).find(uid => uid !== playerState.uid);
+    if (!opponentUid) return;
+
+    const targets = gameState.players[opponentUid].unitZone.filter((u): u is Card => !!u && !u.godMark);
     if (targets.length === 0) return;
 
     gameState.pendingQuery = {
       id: Math.random().toString(36).substring(7),
       type: 'SELECT_CARD',
       playerUid: playerState.uid,
-      options: AtomicEffectExecutor.enrichQueryOptions(gameState, playerState.uid, targets.map(t => ({ card: t, source: 'UNIT' }))),
+      options: AtomicEffectExecutor.enrichQueryOptions(
+        gameState,
+        playerState.uid,
+        targets.map(t => ({ card: t, source: 'UNIT' }))
+      ),
       title: '选择横置目标',
-      description: '请选择对手的一个非神位单位转为横置。',
+      description: '请选择对手的一张非神蚀单位横置。',
       minSelections: 1,
       maxSelections: 1,
       callbackKey: 'EFFECT_RESOLVE',
       context: {
         sourceCardId: instance.gamecardId,
-        effectId: '蜻蜓点击触发'
+        effectId: '10401058_battle_trigger'
       }
     };
   },
@@ -46,54 +51,52 @@ const trigger_10401058_battle: CardEffect = {
     }, instance);
 
     const target = AtomicEffectExecutor.findCardById(gameState, targetId);
-    gameState.logs.push(`[${instance.fullName}] 效果：将 [${target?.fullName}] 转为横置。`);
+    gameState.logs.push(`[${instance.fullName}] 效果：将 [${target?.fullName}] 横置。`);
   }
 };
 
 const trigger_10401058_damage: CardEffect = {
-  id: '云十三回场触发',
+  id: '10401058_damage_trigger',
   type: 'TRIGGER',
   triggerEvent: 'COMBAT_DAMAGE_CAUSED',
   triggerLocation: ['UNIT'],
-  description: '【诱发】[名称一回合一次] 当我方侵蚀区为1-4张且此卡对对手造成战斗伤害时，可以选择发动：选择我方战场上一个单位和对方战场上一个横置单位返回持有者手牌。',
+  description: '【诱发】【名称一回合一次】当我方侵蚀区为1-4张且此卡对对手造成战斗伤害时，你可以选择发动：选择我方场上一张单位和对方场上一张横置单位返回持有者手牌。',
   isMandatory: false,
   limitCount: 1,
   limitNameType: true,
-  isGlobal: true, // Needed to check combat damage which often lacks individual source in this engine
+  isGlobal: true,
   condition: (gameState: GameState, playerState: PlayerState, instance: Card, event?: GameEvent) => {
-    // 1. Erosion count check (front + back)
-    const erosionCount = playerState.erosionFront.filter(c => c !== null).length + 
-                       playerState.erosionBack.filter(c => c !== null).length;
+    const erosionCount =
+      playerState.erosionFront.filter(c => c !== null).length +
+      playerState.erosionBack.filter(c => c !== null).length;
     if (erosionCount < 1 || erosionCount > 4) return false;
-
-    // 2. Damage event check
-    // Must be combat damage to opponent
     if (event?.type !== 'COMBAT_DAMAGE_CAUSED' || event.playerUid === playerState.uid) return false;
 
-    // 3. This unit must be one of the attackers
     const isAttacking = gameState.battleState?.attackers.includes(instance.gamecardId);
-    const isDirectAttack = !gameState.battleState?.defender; // Dealing damage to opponent typically means no defender
-
+    const isDirectAttack = !gameState.battleState?.defender;
     return !!isAttacking && isDirectAttack;
   },
   execute: async (instance: Card, gameState: GameState, playerState: PlayerState) => {
-    // Step 1: Select own unit
-    const myUnits = playerState.unitZone.filter(u => u !== null) as Card[];
+    const myUnits = playerState.unitZone.filter((u): u is Card => !!u);
     if (myUnits.length === 0) return;
 
     gameState.pendingQuery = {
       id: Math.random().toString(36).substring(7),
       type: 'SELECT_CARD',
       playerUid: playerState.uid,
-      options: AtomicEffectExecutor.enrichQueryOptions(gameState, playerState.uid, myUnits.map(u => ({ card: u, source: 'UNIT' }))),
-      title: '选择回场单位 (我方)',
-      description: '选择你战场上的一个单位返回手牌。',
+      options: AtomicEffectExecutor.enrichQueryOptions(
+        gameState,
+        playerState.uid,
+        myUnits.map(u => ({ card: u, source: 'UNIT' }))
+      ),
+      title: '选择我方返回单位',
+      description: '选择你场上的一张单位返回手牌。',
       minSelections: 1,
       maxSelections: 1,
       callbackKey: 'EFFECT_RESOLVE',
       context: {
         sourceCardId: instance.gamecardId,
-        effectId: '云十三回场触发',
+        effectId: '10401058_damage_trigger',
         step: 1
       }
     };
@@ -101,44 +104,42 @@ const trigger_10401058_damage: CardEffect = {
   onQueryResolve: async (instance: Card, gameState: GameState, playerState: PlayerState, selections: string[], context: any) => {
     if (context.step === 1) {
       const myTargetId = selections[0];
-      
-      // Step 2: Select opponent horizontal unit
-      const opponentUid = Object.keys(gameState.players).find(uid => uid !== playerState.uid)!;
-      const opponent = gameState.players[opponentUid];
-      const oppUnits = opponent.unitZone.filter(u => u && u.isExhausted) as Card[];
+      const opponentUid = Object.keys(gameState.players).find(uid => uid !== playerState.uid);
+      if (!opponentUid) return;
 
-      if (oppUnits.length > 0) {
-        gameState.pendingQuery = {
-          id: Math.random().toString(36).substring(7),
-          type: 'SELECT_CARD',
-          playerUid: playerState.uid,
-          options: AtomicEffectExecutor.enrichQueryOptions(gameState, playerState.uid, oppUnits.map(u => ({ card: u, source: 'UNIT' }))),
-          title: '选择回场单位 (对方)',
-          description: '选择对手战场上的一个横置单位返回其手牌。',
-          minSelections: 1,
-          maxSelections: 1,
-          callbackKey: 'EFFECT_RESOLVE',
-          context: {
-            ...context,
-            myTargetId,
-            step: 2
-          }
-        };
-      } else {
-        // If no opponent horizontal unit, still bounce own unit? 
-        // Card says "Return one of your units AND one of the opponent's...", usually implies both must exist if it's optional choice.
-        // But if user already chose to activate, let's just bounce mine. 
-        // Re-reading: "Choose whether to activate: Return A and B". If B doesn't exist, can't fully fulfill A and B?
-        // Usually in this game, if a part of a selection can't be made, the whole effect might fail.
-        // I will make the opponent selection mandatory if the player chose to activate.
-        // If no opp units, I'll just skip.
-        gameState.logs.push(`[${instance.fullName}] 由于对手没有横置单位，无法完成回场动作。`);
+      const oppUnits = gameState.players[opponentUid].unitZone.filter((u): u is Card => !!u && u.isExhausted);
+      if (oppUnits.length === 0) {
+        gameState.logs.push(`[${instance.fullName}] 由于对手没有横置单位，无法完成返回效果。`);
+        return;
       }
-    } else if (context.step === 2) {
+
+      gameState.pendingQuery = {
+        id: Math.random().toString(36).substring(7),
+        type: 'SELECT_CARD',
+        playerUid: playerState.uid,
+        options: AtomicEffectExecutor.enrichQueryOptions(
+          gameState,
+          playerState.uid,
+          oppUnits.map(u => ({ card: u, source: 'UNIT' }))
+        ),
+        title: '选择对手返回单位',
+        description: '选择对手场上的一张横置单位返回其持有者手牌。',
+        minSelections: 1,
+        maxSelections: 1,
+        callbackKey: 'EFFECT_RESOLVE',
+        context: {
+          ...context,
+          myTargetId,
+          step: 2
+        }
+      };
+      return;
+    }
+
+    if (context.step === 2) {
       const myTargetId = context.myTargetId;
       const oppTargetId = selections[0];
 
-      // Execute both bounces
       await AtomicEffectExecutor.execute(gameState, playerState.uid, {
         type: 'MOVE_FROM_FIELD',
         targetFilter: { gamecardId: myTargetId },
@@ -151,20 +152,20 @@ const trigger_10401058_damage: CardEffect = {
         destinationZone: 'HAND'
       }, instance);
 
-      gameState.logs.push(`[${instance.fullName}] 效果：将双方选定的单位返回持有者手牌。`);
+      gameState.logs.push(`[${instance.fullName}] 效果：将双方选定的单位返回了手牌。`);
     }
   }
 };
 
 const card: Card = {
   id: '10401058',
-  fullName: '蜻蜓点水【云十三】',
+  fullName: '蜘蛛点水【云十三】',
   specialName: '云十三',
   type: 'UNIT',
   color: 'BLUE',
   gamecardId: null as any,
   colorReq: { BLUE: 2 },
-  faction: '百濑之水城',
+  faction: '百濑之水域',
   acValue: 4,
   power: 3000,
   basePower: 3000,

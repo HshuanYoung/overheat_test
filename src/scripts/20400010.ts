@@ -5,8 +5,15 @@ const effect_20400010_activation: CardEffect = {
   id: 'hensou_protection',
   type: 'ACTIVATE',
   description: '【启】选择我方单位区或道具区的一张卡牌。在本回合中，该卡牌下一次成为效果的对象时，该效果不被处理。',
-  condition: (gameState: GameState, playerState: PlayerState) => {
-    return playerState.isTurn && gameState.phase === 'MAIN';
+  condition: (gameState: GameState, playerState: PlayerState, instance: Card) => {
+    if (instance.cardlocation === 'EROSION_FRONT' || instance.cardlocation === 'EROSION_BACK') {
+      return false;
+    }
+    const hasTargets =
+      playerState.unitZone.some(c => !!c) ||
+      playerState.itemZone.some(c => !!c);
+    const sharedPhases = ['MAIN', 'BATTLE_DECLARATION', 'BATTLE_FREE'];
+    return hasTargets && (sharedPhases.includes(gameState.phase) || gameState.phase === 'COUNTERING');
   },
   execute: async (instance: Card, gameState: GameState, playerState: PlayerState) => {
     const targets: Card[] = [];

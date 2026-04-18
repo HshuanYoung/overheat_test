@@ -496,13 +496,13 @@ export const BattleField: React.FC = () => {
 
   const getOwnedCardLocationLabel = (card: Card) => {
     const handIndex = me.hand.findIndex(c => c.gamecardId === card.gamecardId);
-    if (handIndex !== -1) return '手牌';
+    if (handIndex !== -1) return `手牌 ${handIndex + 1}`;
 
     const unitIndex = me.unitZone.findIndex(c => c?.gamecardId === card.gamecardId);
     if (unitIndex !== -1) return `单位区 ${unitIndex + 1}`;
 
     const itemIndex = me.itemZone.findIndex(c => c?.gamecardId === card.gamecardId);
-    if (itemIndex !== -1) return '道具区';
+    if (itemIndex !== -1) return `道具区 ${itemIndex + 1}`;
 
     const erosionCards = [
       ...me.erosionBack.filter((c): c is Card => !!c),
@@ -938,25 +938,27 @@ export const BattleField: React.FC = () => {
               {(erosionChoice === 'B' || erosionChoice === 'C') && (
                 <div className="flex flex-col items-center gap-4 animate-in fade-in slide-in-from-bottom-4">
                   <p className="text-[#f27d26] font-bold uppercase tracking-widest text-sm">Please click a card below to select</p>
-                  <div className="flex w-full max-w-full gap-3 overflow-x-auto px-2 py-4 custom-scrollbar">
-                    {me.erosionFront.filter(c => c !== null && c.displayState === 'FRONT_UPRIGHT').map((card, i) => (
-                      <motion.div
-                        key={card!.gamecardId}
-                        whileHover={{ y: -10 }}
-                        onClick={() => setSelectedErosionCardId(card!.gamecardId)}
-                        className={cn(
-                          "w-[132px] md:w-48 shrink-0 cursor-pointer transition-all rounded-lg overflow-hidden border-2",
-                          selectedErosionCardId === card!.gamecardId ? "border-[#f27d26] scale-105 shadow-[0_0_20px_rgba(242,125,38,0.4)]" : "border-transparent opacity-60"
-                        )}
-                      >
-                        <div className="relative">
-                          <CardComponent card={card!} disableZoom={true} cardBackUrl={cardBackUrl} />
-                          <div className="absolute left-2 top-2 rounded-full bg-black/75 px-2 py-1 text-[10px] font-black text-white shadow-lg">
-                            侵蚀区 {i + 1}
+                  <div className="w-full overflow-x-auto overflow-y-visible custom-scrollbar">
+                    <div className="flex min-w-max gap-3 px-4 py-4">
+                      {me.erosionFront.filter(c => c !== null && c.displayState === 'FRONT_UPRIGHT').map((card, i) => (
+                        <motion.div
+                          key={card!.gamecardId}
+                          whileHover={{ y: -10 }}
+                          onClick={() => setSelectedErosionCardId(card!.gamecardId)}
+                          className={cn(
+                            "w-[132px] md:w-48 shrink-0 cursor-pointer transition-all rounded-lg overflow-hidden border-2",
+                            selectedErosionCardId === card!.gamecardId ? "border-[#f27d26] scale-105 shadow-[0_0_20px_rgba(242,125,38,0.4)]" : "border-transparent opacity-60"
+                          )}
+                        >
+                          <div className="relative">
+                            <CardComponent card={card!} disableZoom={true} cardBackUrl={cardBackUrl} />
+                            <div className="absolute left-2 top-2 rounded-full bg-black/75 px-2 py-1 text-[10px] font-black text-white shadow-lg">
+                              侵蚀区 {i + 1}
+                            </div>
                           </div>
-                        </div>
-                      </motion.div>
-                    ))}
+                        </motion.div>
+                      ))}
+                    </div>
                   </div>
                 </div>
               )}
@@ -1687,8 +1689,10 @@ export const BattleField: React.FC = () => {
               {/* Action: Activate Effect (Green) */}
               {(() => {
                 const isCounteringTurn = game.phase === 'COUNTERING' && game.priorityPlayerId === myUid;
-                const isActivePhase = ['MAIN', 'BATTLE_FREE'].includes(game.phase);
-                const canActivateInPhase = (me.isTurn && isActivePhase) || isCounteringTurn;
+                const isOwnSharedPhase =
+                  me.isTurn &&
+                  ['MAIN', 'BATTLE_DECLARATION', 'BATTLE_FREE'].includes(game.phase);
+                const canActivateInPhase = isOwnSharedPhase || isCounteringTurn;
 
                 if (!canActivateInPhase) return null;
                 const isMyCard = [...me.unitZone, ...me.itemZone, ...me.erosionFront, ...me.hand].some(c => c?.gamecardId === cardMenu.card.gamecardId);

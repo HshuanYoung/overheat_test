@@ -128,7 +128,7 @@ const card: Card = {
   colorReq: { 'RED': 1 },
   faction: '伊列宇王国',
   acValue: 3,
-  godMark: false,
+  godMark: true,
   displayState: 'FRONT_UPRIGHT',
   feijingMark: false,
   canResetCount: 0,

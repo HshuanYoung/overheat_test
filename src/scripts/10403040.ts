@@ -1,6 +1,11 @@
 import { Card, GameState, PlayerState, CardEffect, TriggerLocation, GameEvent } from '../types/game';
 import { AtomicEffectExecutor } from '../services/AtomicEffectExecutor';
 
+const hasExistingCocolaOnField = (playerState: PlayerState) => {
+  const fieldCards = [...playerState.unitZone, ...playerState.itemZone];
+  return fieldCards.some(c => c && c.specialName === '可可拉');
+};
+
 const effect_10403040_kill_trigger: CardEffect = {
   id: 'cocoa_kill_trigger',
   type: 'TRIGGER',
@@ -63,7 +68,7 @@ const effect_10403040_activate: CardEffect = {
   limitCount: 1,
   limitNameType: true,
   condition: (gameState: GameState, playerState: PlayerState) => {
-    return !!playerState.isGoddessMode;
+    return !!playerState.isGoddessMode && !hasExistingCocolaOnField(playerState);
   },
   execute: async (instance: Card, gameState: GameState, playerState: PlayerState) => {
     const frontCards = playerState.erosionFront.filter(c => c && c.displayState === 'FRONT_UPRIGHT') as Card[];
@@ -88,6 +93,11 @@ const effect_10403040_activate: CardEffect = {
   },
   onQueryResolve: async (instance: Card, gameState: GameState, playerState: PlayerState, selections: string[], context: any) => {
     if (context.step === 'COST' && selections.length > 0) {
+      if (hasExistingCocolaOnField(playerState)) {
+        gameState.logs.push('场上已有专用名为“可可拉”的卡牌，效果发动失败。');
+        return;
+      }
+
       await AtomicEffectExecutor.execute(gameState, playerState.uid, {
         type: 'TURN_EROSION_FACE_DOWN',
         value: 1
@@ -129,6 +139,11 @@ const effect_10403040_activate: CardEffect = {
         gameState.logs.push('未发现符合条件的“可可拉”卡牌。');
       }
     } else if (context.step === 'SUMMON' && selections.length > 0) {
+      if (hasExistingCocolaOnField(playerState)) {
+        gameState.logs.push('场上已有专用名为“可可拉”的卡牌，无法放置。');
+        return;
+      }
+
       const cocolaId = selections[0];
       // Resolve source from option context if available, otherwise fallback to find
       const sourceOption = gameState.pendingQuery?.options.find((o: any) => o.card.gamecardId === cocolaId);

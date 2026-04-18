@@ -157,7 +157,7 @@ export class EventEngine {
           if (card.baseShenyi !== undefined) card.isShenyi = card.baseShenyi;
           card.influencingEffects = [];
           if (card.cardlocation === 'ITEM' && card.isExhausted) {
-            card.influencingEffects.push({ sourceCardName: '绯荤粺鐘舵€?', description: '已横置' });
+            card.influencingEffects.push({ sourceCardName: '系统状态', description: '已横置' });
           }
           if ((card.cardlocation === 'UNIT' || card.cardlocation === 'ITEM') && card.nextEffectProtection) {
             card.influencingEffects.push({ sourceCardName: '变装', description: '已变装' });
@@ -288,7 +288,19 @@ export class EventEngine {
     });
   }
 
-  static handleCardLeftZone(gameState: GameState, playerUid: string, card: Card, fromZone: TriggerLocation, isEffect?: boolean, targetZone?: TriggerLocation) {
+  static handleCardLeftZone(
+    gameState: GameState,
+    playerUid: string,
+    card: Card,
+    fromZone: TriggerLocation,
+    isEffect?: boolean,
+    targetZone?: TriggerLocation,
+    options?: {
+      effectSourcePlayerUid?: string;
+      effectSourceCardId?: string;
+      previousSourceCardId?: string;
+    }
+  ) {
     this.recalculateContinuousEffects(gameState);
 
     // Track "Returned from battlefield" (Bounce)
@@ -304,7 +316,14 @@ export class EventEngine {
       sourceCard: card,
       sourceCardId: card.gamecardId,
       playerUid,
-      data: { zone: fromZone, isEffect: !!isEffect, targetZone }
+      data: {
+        zone: fromZone,
+        isEffect: !!isEffect,
+        targetZone,
+        effectSourcePlayerUid: options?.effectSourcePlayerUid,
+        effectSourceCardId: options?.effectSourceCardId,
+        previousSourceCardId: options?.previousSourceCardId
+      }
     });
   }
 
@@ -317,7 +336,10 @@ export class EventEngine {
       toZone,
       isEffect,
       effectSourcePlayerUid,
-      effectSourceCardId
+      effectSourceCardId,
+      previousSourceCardId,
+      skipLeftFieldEvent,
+      onlyLeftFieldEvent
     }: {
       card: Card;
       cardOwnerUid: string;
@@ -326,6 +348,9 @@ export class EventEngine {
       isEffect?: boolean;
       effectSourcePlayerUid?: string;
       effectSourceCardId?: string;
+      previousSourceCardId?: string;
+      skipLeftFieldEvent?: boolean;
+      onlyLeftFieldEvent?: boolean;
     }
   ) {
     const data = {
@@ -334,8 +359,22 @@ export class EventEngine {
       sourceZone: fromZone,
       targetZone: toZone,
       effectSourcePlayerUid,
-      effectSourceCardId
+      effectSourceCardId,
+      previousSourceCardId
     };
+
+    if (onlyLeftFieldEvent) {
+      if (['UNIT', 'ITEM'].includes(fromZone)) {
+        this.dispatchEvent(gameState, {
+          type: 'CARD_LEFT_FIELD',
+          playerUid: cardOwnerUid,
+          sourceCard: card,
+          sourceCardId: card.gamecardId,
+          data
+        });
+      }
+      return;
+    }
 
     if (toZone === 'EROSION_FRONT') {
       this.dispatchEvent(gameState, {
@@ -389,7 +428,7 @@ export class EventEngine {
       });
     }
 
-    if (['UNIT', 'ITEM'].includes(fromZone)) {
+    if (!skipLeftFieldEvent && ['UNIT', 'ITEM'].includes(fromZone)) {
       this.dispatchEvent(gameState, {
         type: 'CARD_LEFT_FIELD',
         playerUid: cardOwnerUid,

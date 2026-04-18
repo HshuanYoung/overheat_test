@@ -1,4 +1,4 @@
-import { GameState, PlayerState, Card, Deck, TriggerLocation, CardEffect, StackItem, GamePhase, GAME_TIMEOUTS, GameEvent } from '../src/types/game';
+﻿import { GameState, PlayerState, Card, Deck, TriggerLocation, CardEffect, StackItem, GamePhase, GAME_TIMEOUTS, GameEvent } from '../src/types/game';
 import { CARD_LIBRARY } from '../src/data/cards';
 import { EventEngine } from '../src/services/EventEngine';
 import { AtomicEffectExecutor } from '../src/services/AtomicEffectExecutor';
@@ -350,7 +350,10 @@ export const ServerGameService = {
       } else {
         sourceArray.splice(index, 1);
       }
-      EventEngine.handleCardLeftZone(gameState, sourcePlayerId, card, sourceZone, options?.isEffect, targetZone);
+      EventEngine.handleCardLeftZone(gameState, sourcePlayerId, card, sourceZone, options?.isEffect, targetZone, {
+        effectSourcePlayerUid: options?.effectSourcePlayerUid,
+        effectSourceCardId: options?.effectSourceCardId
+      });
     }
 
     if (!card) return false;
@@ -464,7 +467,7 @@ export const ServerGameService = {
       if (effectiveLimit !== undefined) {
         const currentGodmarkCount = player.unitZone.filter(u => u && u.godMark).length;
         if (currentGodmarkCount >= effectiveLimit) {
-          return { canPlay: false, reason: `场上神迹单位数量达到上限 (${effectiveLimit})` };
+          return { canPlay: false, reason: `场上神蚀单位数量达到上限 (${effectiveLimit})` };
         }
       }
     }
@@ -556,7 +559,7 @@ export const ServerGameService = {
 
     // 6. Faction-lock Check
     if (player.factionLock && card.faction !== player.factionLock) {
-      return { canPlay: false, reason: `受到派系限制：只能打出 [${player.factionLock}] 派系的卡牌` };
+      return { canPlay: false, reason: `受到势力限制：只能打出 [${player.factionLock}] 势力的卡牌` };
     }
 
     return { canPlay: true };
@@ -569,7 +572,7 @@ export const ServerGameService = {
     if (cost < 0) {
       const absCost = Math.abs(cost);
       if (!paymentSelection.erosionFrontIds || paymentSelection.erosionFrontIds.length !== absCost) {
-        return { success: false, reason: `请选择 ${absCost} 张侵蚀区正面卡` };
+          return { success: false, reason: `请选择 ${absCost} 张侵蚀区正面卡` };
       }
 
       for (const id of paymentSelection.erosionFrontIds) {
@@ -619,7 +622,7 @@ export const ServerGameService = {
       if (remainingCost > 0) {
         const totalErosion = player.erosionFront.filter(c => c !== null).length + player.erosionBack.filter(c => c !== null).length;
         if (remainingCost >= 10 - totalErosion) {
-          return { success: false, reason: '侵蚀区空间不足以支付剩余费用 (不能达到10张)' };
+          return { success: false, reason: '侵蚀区空间不足以支付剩余费用 (不能达到 10 张)' };
         }
       }
 
@@ -691,7 +694,7 @@ export const ServerGameService = {
     const opponentId = gameState.playerIds.find(id => id !== sourcePlayerId);
     gameState.priorityPlayerId = opponentId;
 
-    const actionDesc = stackItem.type === 'PHASE_END' ? "请求结束阶段" : (stackItem.card ? `发动 ${getCardIdentity(gameState, sourcePlayerId, stackItem.card)} ${stackItem.card.fullName}` : "执行动作");
+    const actionDesc = stackItem.type === 'PHASE_END' ? '请求结束阶段' : (stackItem.card ? `发动 ${getCardIdentity(gameState, sourcePlayerId, stackItem.card)} ${stackItem.card.fullName}` : '执行动作');
     gameState.logs.push(`[连锁 Link ${linkNumber}] ${gameState.players[sourcePlayerId].displayName} ${actionDesc}。等待 ${gameState.players[opponentId!].displayName} 响应 (Link ${linkNumber + 1})。`);
   },
 
@@ -714,6 +717,13 @@ export const ServerGameService = {
 
     const canPlay = ServerGameService.canPlayCard(gameState, player, card);
     if (!canPlay.canPlay) throw new Error(canPlay.reason);
+
+    const isCounteringTurn = gameState.phase === 'COUNTERING' && gameState.priorityPlayerId === playerId;
+    const isMainTurn = player.isTurn && gameState.phase === 'MAIN';
+    const isBattleFreeTurn = player.isTurn && gameState.phase === 'BATTLE_FREE' && card.type === 'STORY';
+    if (!isMainTurn && !isBattleFreeTurn && !isCounteringTurn) {
+      throw new Error('当前阶段不能从手牌主动打出该卡');
+    }
 
     (card as any).__playSnapshot = {
       isGoddessMode: !!player.isGoddessMode
@@ -799,6 +809,14 @@ export const ServerGameService = {
       throw new Error('当前阶段手牌中的故事卡只能通过打出来发动');
     }
 
+    const isCounteringTurn = gameState.phase === 'COUNTERING' && gameState.priorityPlayerId === playerId;
+    const isOwnSharedPhase =
+      player.isTurn &&
+      ['MAIN', 'BATTLE_DECLARATION', 'BATTLE_FREE'].includes(gameState.phase);
+    if (!isOwnSharedPhase && !isCounteringTurn) {
+      throw new Error('当前阶段不能自由发动该起动效果');
+    }
+
     // RULE 2: During countering phase, only ACTIVATE/ACTIVATED effects can be used
     if (gameState.phase === 'COUNTERING' && effect.type !== 'ACTIVATE' && effect.type !== 'ACTIVATED') {
       throw new Error('对抗阶段只能发动主动效果');
@@ -866,7 +884,7 @@ export const ServerGameService = {
     }
 
     const identity = getCardIdentity(gameState, playerId, card);
-    gameState.logs.push(`${player.displayName} 鍙戝姩浜?${identity} ${card.fullName} 鐨勬晥鏋? ${effect.description}`);
+    gameState.logs.push(`${player.displayName} 发动了 ${identity} ${card.fullName} 的效果: ${effect.description}`);
 
     ServerGameService.enterCountering(gameState, playerId, {
       card,
@@ -887,7 +905,7 @@ export const ServerGameService = {
     if (topItem.type === 'PHASE_END') {
       gameState.logs.push(`${player.displayName} 接受了阶段结束请求 (Pass)。`);
     } else if (topItem.type === 'ATTACK') {
-      gameState.logs.push(`${player.displayName} 接受了攻击宣告 (Pass)。`);
+      gameState.logs.push(`${player.displayName} 接受了攻击宣言 (Pass)。`);
     } else {
       gameState.logs.push(`${player.displayName} 选择不进行对抗 (Pass)。`);
     }
@@ -984,7 +1002,7 @@ export const ServerGameService = {
               // Enforce limits and requirements (effectively from HAND since it's a STORY card play)
               const result = ServerGameService.checkEffectLimitsAndReqs(gameState, stackItem.ownerUid, card, effect, 'PLAY');
               if (!result.valid) {
-                gameState.logs.push(`[连锁结算] ${card.fullName} 的效果故障: ${result.reason || '条件不足'}，结算失败。`);
+                gameState.logs.push(`[连锁结算] ${card.fullName} 的效果未满足条件: ${result.reason || '条件不足'}，结算失败。`);
               } else {
                 ServerGameService.recordEffectUsage(gameState, stackItem.ownerUid, card, effect);
                 if (effect.execute) {
@@ -1132,7 +1150,7 @@ export const ServerGameService = {
           type: 'ASK_TRIGGER',
           playerUid: playerUid,
           options: [],
-          title: `发动提示`,
+          title: '发动提示',
           description: `是否发动 ${getCardIdentity(gameState, playerUid, card)} [${card.fullName}] 的诱发效果：${effect.description}`,
           minSelections: 1,
           maxSelections: 1,
@@ -1201,7 +1219,7 @@ export const ServerGameService = {
           throw new Error(result.reason || '支付失败');
         }
 
-        gameState.logs.push(`[系统] 支付成功，即将进入后续结算`);
+        gameState.logs.push(`[系统] 支付成功，即将进入后续结算。`);
 
         afterEffects = query.context?.remainingEffects || [];
         currentSelections = query.context?.targetSelections || [];
@@ -1214,14 +1232,14 @@ export const ServerGameService = {
     // 2. Trigger Option Processing
     if (query.callbackKey === 'TRIGGER_CHOICE') {
       if (currentSelections[0] === 'YES') {
-        gameState.logs.push(`[系统] ${gameState.players[playerUid].displayName} 选择发动 ${sourceCard?.fullName} 的诱发效果。`);
+          gameState.logs.push(`[系统] ${gameState.players[playerUid].displayName} 选择发动 ${sourceCard?.fullName} 的诱发效果。`);
         await ServerGameService.executeTriggeredEffect(gameState, playerUid, {
           effectIndex: query.context.effectIndex,
           card: sourceCard!,
           event: query.context.event
         }, onUpdate);
       } else {
-        gameState.logs.push(`[系统] ${gameState.players[playerUid].displayName} 放弃发动 ${sourceCard?.fullName} 的诱发效果。`);
+          gameState.logs.push(`[系统] ${gameState.players[playerUid].displayName} 放弃发动 ${sourceCard?.fullName} 的诱发效果。`);
         await ServerGameService.checkTriggeredEffects(gameState, onUpdate);
       }
       return gameState;
@@ -1230,7 +1248,16 @@ export const ServerGameService = {
     // 3. Generic Effect Resolution (Script-Driven via resolve callback)
     if (query.callbackKey === 'EFFECT_RESOLVE') {
       if (!sourceCard) {
-        gameState.logs.push(`[错误] EFFECT_RESOLVE 找不到来源卡 ID: ${sourceCardId}`);
+          gameState.logs.push(`[错误] EFFECT_RESOLVE 找不到来源卡 ID: ${sourceCardId}，当前结算失败并继续后续处理。`);
+        if (gameState.isResolvingStack) {
+          if (gameState.counterStack.length > 0) {
+            await ServerGameService.resolveCounterStack(gameState, onUpdate);
+          } else {
+            await ServerGameService.finishCounteringStack(gameState, onUpdate);
+          }
+        } else if (!gameState.isCountering) {
+          await ServerGameService.checkTriggeredEffects(gameState, onUpdate);
+        }
         return gameState;
       }
 
@@ -1251,7 +1278,11 @@ export const ServerGameService = {
           EventEngine.recalculateContinuousEffects(gameState);
         } catch (err: any) {
           console.error(`[Error] CRASH in onQueryResolve:`, err);
-          gameState.logs.push(`[错误] 脚本回调执行崩溃: ${err.message}`);
+          gameState.logs.push(`[閿欒] 鑴氭湰鍥炶皟鎵ц宕╂簝: ${err.message}`);
+        }
+
+        if (gameState.pendingQuery) {
+          return gameState;
         }
 
         // RESUME RESOLUTION: If this choice was part of a sequential settlement, resume it.
@@ -1275,7 +1306,16 @@ export const ServerGameService = {
 
     if (query.callbackKey === 'ACTIVATE_COST_RESOLVE') {
       if (!sourceCard) {
-        gameState.logs.push(`[错误] ACTIVATE_COST_RESOLVE 找不到来源卡 ID: ${sourceCardId}`);
+        gameState.logs.push(`[错误] ACTIVATE_COST_RESOLVE 找不到来源卡 ID: ${sourceCardId}，当前结算失败并继续后续处理。`);
+        if (gameState.isResolvingStack) {
+          if (gameState.counterStack.length > 0) {
+            await ServerGameService.resolveCounterStack(gameState, onUpdate);
+          } else {
+            await ServerGameService.finishCounteringStack(gameState, onUpdate);
+          }
+        } else if (!gameState.isCountering) {
+          await ServerGameService.checkTriggeredEffects(gameState, onUpdate);
+        }
         return gameState;
       }
       const effectIndex = query.context?.effectIndex;
@@ -1329,7 +1369,7 @@ export const ServerGameService = {
         const subCard = player.itemZone[subCardIdx];
         if (subCardIdx !== -1 && subCard) {
           ServerGameService.moveCard(gameState, playerUid, 'ITEM', playerUid, 'GRAVE', subCardId);
-          gameState.logs.push(`[系统] ${subCard.fullName} 代替了破坏`);
+          gameState.logs.push(`[系统] ${subCard.fullName} 代替了承受破坏。`);
 
           // Mark the unit as resolved (it survived)
           if (gameState.battleState) {
@@ -1371,7 +1411,7 @@ export const ServerGameService = {
 
       gameState.phase = 'MAIN';
       gameState.phaseTimerStart = Date.now();
-      gameState.logs.push(`${gameState.players[playerUid].displayName} 进入主要阶段`);
+        gameState.logs.push(`${gameState.players[playerUid].displayName} 进入主要阶段`);
       return gameState;
     }
 
@@ -1602,7 +1642,7 @@ export const ServerGameService = {
     };
 
     const attackerNames = attackers.map(a => a.fullName).join(' 和 ');
-    gameState.logs.push(`${player.displayName} 宣告了攻击: ${attackerNames}${isAlliance ? ' (联军攻击)' : ''}`);
+    gameState.logs.push(`${player.displayName} 宣告了攻击 ${attackerNames}${isAlliance ? ' (联军攻击)' : ''}`);
 
     EventEngine.dispatchEvent(gameState, {
       type: 'CARD_ATTACK_DECLARED',
@@ -1645,7 +1685,14 @@ export const ServerGameService = {
 
       ServerGameService.exhaustCard(unit);
       gameState.battleState.defender = defenderId;
-      gameState.logs.push(`${player.displayName} 宣告了防御: ${unit.fullName}`);
+      EventEngine.dispatchEvent(gameState, {
+        type: 'CARD_DEFENSE_DECLARED',
+        sourceCard: unit,
+        sourceCardId: unit.gamecardId,
+        playerUid: playerId,
+        data: { defenderId: unit.gamecardId }
+      });
+      gameState.logs.push(`${player.displayName} 宣告了防御 ${unit.fullName}`);
     } else {
       gameState.logs.push(`${player.displayName} 选择不防御`);
     }
@@ -1700,7 +1747,7 @@ export const ServerGameService = {
       const targetUnit = defender.unitZone.find(u => u && u.gamecardId === gameState.battleState!.unitTargetId);
       if (targetUnit) {
         gameState.battleState.defender = targetUnit.gamecardId;
-        gameState.logs.push(`[系统] 攻击指向了被指定的单位: ${targetUnit.fullName}`);
+        gameState.logs.push(`[系统] 攻击指向了被指定的单位 ${targetUnit.fullName}`);
       }
     }
 
@@ -1727,7 +1774,7 @@ export const ServerGameService = {
       const defendingUnit = defender.unitZone.find(c => c?.gamecardId === defendingUnitId);
 
       if (!defendingUnit) {
-        gameState.logs.push(`[系统] 由于指定防御单位离开战场，战斗宣告无效。`);
+        gameState.logs.push(`[系统] 由于指定防御单位离开战场，战斗宣言无效。`);
         gameState.battleState = undefined;
         gameState.phase = 'MAIN';
         await ServerGameService.checkTriggeredEffects(gameState);
@@ -1863,7 +1910,7 @@ export const ServerGameService = {
               }
             };
             gameState.priorityPlayerId = attackerId;
-            gameState.logs.push(`等待 ${attacker.displayName} 选择联军中要破坏的单位...`);
+            gameState.logs.push(`等待 ${attacker.displayName} 选择联军中要被破坏的单位...`);
             return gameState;
           } else {
             // Only one is lower (or equal) -> Lower one destroyed automatically
@@ -1871,7 +1918,7 @@ export const ServerGameService = {
             if (!gameState.battleState.resolvedUnitIds.includes(unitToDestroy.gamecardId)) {
               const destroyed = await ServerGameService.destroyUnit(gameState, attackerId, unitToDestroy.gamecardId);
               if (destroyed !== false) {
-                gameState.logs.push(`${defendingUnit.fullName} 抵挡了联军，${unitToDestroy.fullName} 被破坏`);
+                gameState.logs.push(`${defendingUnit.fullName} 挡下了联军，${unitToDestroy.fullName} 被破坏`);
                 gameState.battleState.resolvedUnitIds.push(unitToDestroy.gamecardId);
               }
               if (destroyed === undefined) return gameState;
@@ -1894,7 +1941,7 @@ export const ServerGameService = {
     if (gameState.phase !== 'SHENYI_CHOICE') {
       gameState.phase = 'MAIN';
       gameState.phaseTimerStart = Date.now();
-      gameState.logs.push(`${attacker.displayName} 主要阶段 (战斗结算后)`);
+      gameState.logs.push(`${attacker.displayName} 进入主要阶段 (战斗结算后)`);
     }
 
     // After all triggers are checked, see if we need to enter Shenyi choice
@@ -1925,7 +1972,7 @@ export const ServerGameService = {
     if (player.isGoddessMode) {
       finalAmount *= 2;
       finalDestination = 'GRAVE';
-      gameState.logs.push(`[女神化状态] ${player.displayName} 受到的伤害翻倍并直接进入墓地！`);
+      gameState.logs.push(`[女神化状态] ${player.displayName} 受到的伤害翻倍并直接进入墓地`);
     }
 
     if (player.deck.length < finalAmount) {
@@ -2149,7 +2196,7 @@ export const ServerGameService = {
       currentPlayer.isTurn = false;
       nextPlayer.isTurn = true;
 
-      gameState.logs.push(`--- 回合 ${gameState.turnCount}: ${nextPlayer.displayName} ---`);
+      gameState.logs.push(`--- 鍥炲悎 ${gameState.turnCount}: ${nextPlayer.displayName} ---`);
 
       // 1. Process pending resolutions (End-of-Turn Effects)
       if (gameState.pendingResolutions && gameState.pendingResolutions.length > 0) {
@@ -2208,7 +2255,7 @@ export const ServerGameService = {
       await ServerGameService.executeStartPhase(gameState, nextPlayer);
 
     } catch (err: any) {
-      gameState.logs.push(`[致命错误] 回合切换过程崩溃: ${err.message}`);
+      gameState.logs.push(`[鑷村懡閿欒] 鍥炲悎鍒囨崲杩囩▼宕╂簝: ${err.message}`);
       // Ensure we don't block the server response despite the crash
       if (gameState.phase === 'DECLARE_END') {
         gameState.phase = 'START';
@@ -2274,7 +2321,7 @@ export const ServerGameService = {
     const allAttackersGone = attackersFound.length === 0;
 
     if (defenderGone || allAttackersGone) {
-      gameState.logs.push(`[战斗中止] ${defenderGone ? '防御/目标单位' : '所有攻击单位'}已离开字段，战斗中止。`);
+      gameState.logs.push(`[战斗中止] ${defenderGone ? '防御/目标单位' : '所有攻击单位'} 已离开字段，战斗中止。`);
 
       const inConfrontation = gameState.isResolvingStack || (gameState.counterStack && gameState.counterStack.length > 0) || gameState.isCountering > 0;
 
@@ -2300,7 +2347,7 @@ export const ServerGameService = {
       }
 
       gameState.battleState = undefined;
-      EventEngine.dispatchEvent(gameState, { type: 'PHASE_CHANGED', data: { phase: 'MAIN' } });
+      EventEngine.dispatchEvent(gameState, { type: 'PHASE_CHANGED', data: { phase: 'MAIN', reason: 'BATTLE_INTERRUPTED' } });
     } else if (gameState.battleState.attackers.length !== attackersFound.length) {
       gameState.logs.push(`[战斗继续] 其中一个攻击单位已离开，剩余单位继续攻击。`);
       gameState.battleState.attackers = attackersFound;
@@ -2413,7 +2460,7 @@ export const ServerGameService = {
 
   async advancePhase(gameState: GameState, action?: string, playerId?: string, onUpdate?: (state: GameState) => Promise<void>) {
     if (gameState.pendingQuery || gameState.isResolvingStack || gameState.currentProcessingItem) {
-      throw new Error('当前有未结算骤，请等待处理完毕。');
+      throw new Error('当前有未结算阶段，请等待处理完毕。');
     }
 
     // Identity of the player performing the action
@@ -2514,7 +2561,7 @@ export const ServerGameService = {
         } else if (action === 'RETURN_MAIN' || action === 'MAIN') {
           if (action === 'MAIN' || action === 'RETURN_MAIN') {
             gameState.phase = 'MAIN';
-            EventEngine.dispatchEvent(gameState, { type: 'PHASE_CHANGED', data: { phase: 'MAIN' } });
+            EventEngine.dispatchEvent(gameState, { type: 'PHASE_CHANGED', data: { phase: 'MAIN', reason: 'RETURN_MAIN' } });
             gameState.logs.push(`[阶段切换] ${actingPlayer.displayName} 返回主要阶段`);
           } else {
             gameState.logs.push(`[对抗请求] ${actingPlayer.displayName} 请求返回主要阶段`);
@@ -2551,6 +2598,7 @@ export const ServerGameService = {
         } else if (action === 'RETURN_MAIN') {
           gameState.phase = 'MAIN';
           gameState.battleState = undefined;
+          EventEngine.dispatchEvent(gameState, { type: 'PHASE_CHANGED', data: { phase: 'MAIN', reason: 'RETURN_MAIN' } });
           gameState.logs.push(`[阶段切换] 战斗中止，返回主要阶段`);
         }
         break;
@@ -2577,7 +2625,7 @@ export const ServerGameService = {
               unit.usedShenyiThisTurn = true;
             }
           });
-          gameState.logs.push(`【神依】效果已触发！`);
+          gameState.logs.push(`【神依】效果已触发`);
         } else if (action === 'DECLINE_SHENYI') {
           const cardIds = gameState.pendingShenyi?.cardIds || [];
           const player = gameState.players[actingPlayerId];
@@ -2585,7 +2633,7 @@ export const ServerGameService = {
             const unit = player.unitZone.find(u => u?.gamecardId === cid);
             if (unit) unit.usedShenyiThisTurn = true;
           });
-          gameState.logs.push(`已跳过【神依】触发。`);
+          gameState.logs.push(`已跳过【神依】触发`);
         }
 
         gameState.phase = gameState.previousPhase || 'MAIN';
@@ -2673,18 +2721,18 @@ export const ServerGameService = {
   async executeDrawPhase(gameState: GameState, player: PlayerState) {
     if (player.skipDrawPhase) {
       player.skipDrawPhase = false;
-      gameState.logs.push(`${player.displayName} 的抽卡阶段被跳过了。`);
+      gameState.logs.push(`${player.displayName} 的抽牌阶段被跳过了。`);
       gameState.phase = 'EROSION';
       await ServerGameService.executeErosionPhase(gameState, player);
       return;
     }
 
-    gameState.logs.push(`${player.displayName} 的抽卡阶段`);
+    gameState.logs.push(`${player.displayName} 的抽牌阶段`);
 
 
     // First player on first turn does not draw
     if (gameState.turnCount === 1) {
-      gameState.logs.push('先手玩家第一回合不抽卡');
+      gameState.logs.push('先手玩家第一回合不抽牌');
       gameState.phase = 'EROSION';
       await ServerGameService.executeErosionPhase(gameState, player);
       return;
@@ -2696,7 +2744,7 @@ export const ServerGameService = {
       if (card) {
         card.cardlocation = 'HAND';
         player.hand.push(card);
-        gameState.logs.push(`${player.displayName} 抽了一张卡`);
+        gameState.logs.push(`${player.displayName} 鎶戒簡涓€寮犲崱`);
         EventEngine.dispatchEvent(gameState, {
           type: 'CARD_DRAWN',
           playerUid: player.uid,
@@ -2727,7 +2775,7 @@ export const ServerGameService = {
       gameState.logs.push(`${player.displayName} 侵蚀区没有正面卡，跳过侵蚀阶段。`);
       gameState.phase = 'MAIN';
       gameState.logs.push(`${player.displayName} 进入主要阶段`);
-      EventEngine.dispatchEvent(gameState, { type: 'PHASE_CHANGED', data: { phase: 'MAIN' } });
+      EventEngine.dispatchEvent(gameState, { type: 'PHASE_CHANGED', data: { phase: 'MAIN', reason: 'MAIN_PHASE_START' } });
       // console.log(`[ServerGameService] No face-up cards, auto-moving to MAIN phase`);
     } else {
       gameState.logs.push(`${player.displayName} 进入侵蚀阶段，请选择处理方式。`);
@@ -2763,7 +2811,7 @@ export const ServerGameService = {
         playerUid: playerId,
         options: AtomicEffectExecutor.enrichQueryOptions(gameState, playerId, goingToGrave.map(c => ({ card: c, source: 'EROSION_FRONT' }))),
         title: '选择保留的侵蚀卡',
-        description: `由于 [${keepEffectCard.fullName}] 的效果，你可以从即将移至墓地的卡牌中选择一张保留在侵蚀区。`,
+          description: `由于 [${keepEffectCard.fullName}] 的效果，你可以从即将移至墓地的卡牌中选择一张保留在侵蚀区。`,
         minSelections: 0,
         maxSelections: 1,
         callbackKey: 'EROSION_KEEP_RESOLVE',
@@ -2782,7 +2830,7 @@ export const ServerGameService = {
       gameState.phase = 'MAIN';
       gameState.phaseTimerStart = Date.now();
       gameState.logs.push(`${player.displayName} 进入主要阶段`);
-      EventEngine.dispatchEvent(gameState, { type: 'PHASE_CHANGED', data: { phase: 'MAIN' } });
+      EventEngine.dispatchEvent(gameState, { type: 'PHASE_CHANGED', data: { phase: 'MAIN', reason: 'MAIN_PHASE_START' } });
     } else {
       gameState.previousPhase = 'MAIN';
     }
@@ -2810,10 +2858,10 @@ export const ServerGameService = {
         if (card.gamecardId !== selectedCardId && card.gamecardId !== keptCardId) {
           ServerGameService.moveCard(gameState, playerId, 'EROSION_FRONT', playerId, 'GRAVE', card.gamecardId);
         } else if (card.gamecardId === keptCardId && card.gamecardId !== selectedCardId) {
-          gameState.logs.push(`[白夜效果] ${card.fullName} 被额外保留在侵蚀区。`);
+            gameState.logs.push(`[白夜效果] ${card.fullName} 被额外保留在侵蚀区。`);
         }
       }
-      gameState.logs.push(`${player.displayName} 选择保留一张正面卡，其余移至墓地。`);
+        gameState.logs.push(`${player.displayName} 选择保留一张正面卡，其余移至墓地。`);
     } else if (choice === 'C') {
       // c. Choose one to hand; others to Graveyard; then top card to Erosion Zone face-down
       if (!selectedCardId) throw new Error('Please select a card to add to hand');
@@ -2821,7 +2869,7 @@ export const ServerGameService = {
         if (card.gamecardId === selectedCardId) {
           ServerGameService.moveCard(gameState, playerId, 'EROSION_FRONT', playerId, 'HAND', card.gamecardId);
         } else if (card.gamecardId === keptCardId) {
-          gameState.logs.push(`[白夜效果] ${card.fullName} 被保留在侵蚀区。`);
+            gameState.logs.push(`[白夜效果] ${card.fullName} 被保留在侵蚀区。`);
         } else {
           ServerGameService.moveCard(gameState, playerId, 'EROSION_FRONT', playerId, 'GRAVE', card.gamecardId);
         }
@@ -2839,7 +2887,7 @@ export const ServerGameService = {
           player.erosionBack.push(topCard);
         }
       }
-      gameState.logs.push(`${player.displayName} 将一张正面卡加入手牌，其余移至墓地，并补充了一张背面卡。`);
+        gameState.logs.push(`${player.displayName} 将一张正面卡加入手牌，其余移至墓地，并补充了一张背面卡。`);
     }
   },
 
@@ -2867,7 +2915,7 @@ export const ServerGameService = {
     // This block is reachable either initially (if no triggers) or via resumption from checkTriggeredEffects
     if (player.hand.length > 6) {
       gameState.phase = 'DISCARD';
-      gameState.logs.push(`${player.displayName} 手牌超过 6 张，请弃置卡牌。`);
+        gameState.logs.push(`${player.displayName} 手牌超过 6 张，请弃置卡牌。`);
     } else {
       player.markedUnitAttackTarget = undefined;
       await ServerGameService.finishTurnTransition(gameState);
@@ -3460,7 +3508,7 @@ export const ServerGameService = {
     const gameState: GameState = {
       gameId: "match", phase: 'MULLIGAN', currentTurnPlayer: firstIdx, turnCount: 0, isCountering: 0, counterStack: [],
       passCount: 0,
-      playerIds: [uid1, uid2], gameStatus: 1, logs: ['匹配成功。对局开始'],
+      playerIds: [uid1, uid2], gameStatus: 1, logs: ['匹配成功。对局开始。'],
       players: { [uid1]: p1, [uid2]: p2 },
       mode: 'match',
       phaseTimerStart: 0,

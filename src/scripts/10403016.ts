@@ -1,6 +1,11 @@
 import { Card, GameState, PlayerState, CardEffect, TriggerLocation } from '../types/game';
 import { AtomicEffectExecutor } from '../services/AtomicEffectExecutor';
 
+const hasExistingCocoaOnField = (playerState: PlayerState) => {
+  const fieldCards = [...playerState.unitZone, ...playerState.itemZone];
+  return fieldCards.some(c => c && c.specialName === '可可亚');
+};
+
 const effect_10403016_trigger: CardEffect = {
   id: 'cocola_main_phase_trigger',
   type: 'TRIGGER',
@@ -10,6 +15,7 @@ const effect_10403016_trigger: CardEffect = {
   condition: (gameState: GameState, playerState: PlayerState, instance: Card, event?: any) => {
     return event?.type === 'PHASE_CHANGED' &&
       event.data?.phase === 'MAIN' &&
+      event.data?.reason === 'MAIN_PHASE_START' &&
       gameState.phase === 'MAIN' &&
       instance.cardlocation === 'UNIT' &&
       playerState.isTurn &&
@@ -54,7 +60,7 @@ const effect_10403016_activate: CardEffect = {
   limitCount: 1,
   limitNameType: true,
   condition: (gameState: GameState, playerState: PlayerState) => {
-    return !!playerState.isGoddessMode;
+    return !!playerState.isGoddessMode && !hasExistingCocoaOnField(playerState);
   },
   execute: async (instance: Card, gameState: GameState, playerState: PlayerState) => {
     const frontCards = playerState.erosionFront.filter(c => c && c.displayState === 'FRONT_UPRIGHT') as Card[];
@@ -79,6 +85,11 @@ const effect_10403016_activate: CardEffect = {
   },
   onQueryResolve: async (instance: Card, gameState: GameState, playerState: PlayerState, selections: string[], context: any) => {
     if (context.step === 'COST' && selections.length > 0) {
+      if (hasExistingCocoaOnField(playerState)) {
+        gameState.logs.push('场上已有专用名为“可可亚”的卡牌，效果发动失败。');
+        return;
+      }
+
       // Execute Cost: Turn face down
       await AtomicEffectExecutor.execute(gameState, playerState.uid, {
         type: 'TURN_EROSION_FACE_DOWN',
@@ -122,6 +133,11 @@ const effect_10403016_activate: CardEffect = {
         gameState.logs.push('未发现符合条件的“可可亚”卡牌。');
       }
     } else if (context.step === 'SUMMON' && selections.length > 0) {
+      if (hasExistingCocoaOnField(playerState)) {
+        gameState.logs.push('场上已有专用名为“可可亚”的卡牌，无法放置。');
+        return;
+      }
+
       const cocoaId = selections[0];
       const targetCard = AtomicEffectExecutor.findCardById(gameState, cocoaId)!;
       const sourceZone = targetCard.cardlocation as TriggerLocation;

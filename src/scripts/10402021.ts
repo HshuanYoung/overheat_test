@@ -45,6 +45,7 @@ const card: Card = {
 
         const hasErosionUnit = playerState.erosionFront.some(c =>
           c !== null &&
+          c.displayState === 'FRONT_UPRIGHT' &&
           c.type === 'UNIT' &&
           !c.godMark &&
           c.faction === '冒险家公会' &&
@@ -54,11 +55,6 @@ const card: Card = {
         return hasOtherFieldUnit && hasErosionUnit;
       },
       execute: async (card, gameState, playerState) => {
-        // 1. Cost: Exhaust
-        card.isExhausted = true;
-        gameState.logs.push(`${playerState.displayName} 横置了 ${card.fullName} 以触发效果。`);
-
-        // 2. Step 1: Select Field Unit
         const fieldUnits = playerState.unitZone.filter(u =>
           u !== null &&
           u.gamecardId !== card.gamecardId &&
@@ -66,6 +62,28 @@ const card: Card = {
           u.faction === '冒险家公会'
         ) as Card[];
 
+        const fieldSpecialNames = new Set(playerState.unitZone.filter(u => u && u.specialName).map(u => u!.specialName));
+        const itemSpecialNames = new Set(playerState.itemZone.filter(i => i && i.specialName).map(i => i!.specialName));
+
+        const erosionUnits = playerState.erosionFront.filter(c =>
+          c !== null &&
+          c.displayState === 'FRONT_UPRIGHT' &&
+          c.type === 'UNIT' &&
+          !c.godMark &&
+          c.faction === '冒险家公会' &&
+          (!c.specialName || (!fieldSpecialNames.has(c.specialName) && !itemSpecialNames.has(c.specialName)))
+        ) as Card[];
+
+        // 1. Cost: Exhaust
+        card.isExhausted = true;
+        gameState.logs.push(`${playerState.displayName} 横置了 ${card.fullName} 以触发效果。`);
+
+        if (fieldUnits.length === 0 || erosionUnits.length === 0) {
+          gameState.logs.push(`[龙翼看板娘[小婷]] 结算时已不存在有效的互换对象，效果发动失败。`);
+          return;
+        }
+
+        // 2. Step 1: Select Field Unit
         gameState.pendingQuery = {
           id: Math.random().toString(36).substring(7),
           type: 'SELECT_CARD',
@@ -91,6 +109,7 @@ const card: Card = {
 
           const erosionUnits = playerState.erosionFront.filter(c =>
             c !== null &&
+            c.displayState === 'FRONT_UPRIGHT' &&
             c.type === 'UNIT' &&
             !c.godMark &&
             c.faction === '冒险家公会' &&
@@ -141,6 +160,8 @@ const card: Card = {
             }, card);
 
             gameState.logs.push(`[龙翼看板娘[小婷]] 效果生效：${fieldUnit.fullName} 与 ${erosionUnit.fullName} 进行了互换。`);
+          } else {
+            gameState.logs.push(`[龙翼看板娘[小婷]] 结算时目标已不合法，效果发动失败。`);
           }
         }
       }
