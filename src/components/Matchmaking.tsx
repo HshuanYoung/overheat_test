@@ -1,4 +1,4 @@
-import { getAuthUser, getAuthToken, isSocketAuthenticated, socket } from '../socket';
+import { getAuthUser, getAuthToken, socket } from '../socket';
 import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { Loader2, ArrowLeft, Swords, X } from 'lucide-react';
@@ -81,9 +81,7 @@ export const Matchmaking: React.FC = () => {
       if (!socket.connected) {
         socket.connect();
       }
-      if (!isSocketAuthenticated()) {
-        socket.emit('authenticate', token);
-      }
+      socket.emit('authenticate', token);
     }
 
     const handleMatchFound = (data: { gameId: string }) => {

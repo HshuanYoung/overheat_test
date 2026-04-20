@@ -541,7 +541,23 @@ app.get('/api/games/friend/:gameId/status', async (req, res): Promise<void> => {
 const matchmakingQueue: { userId: string; socketId?: string; timestamp: number; deck?: Card[]; turnTimerLimit?: number }[] = [];
 // Matchmaking results map: userId -> gameId
 const matchmakingResults = new Map<string, string>();
+const authenticatedSockets = new Map<string, string>();
 const getMatchmakingQueueIndex = (userId: string | number) => matchmakingQueue.findIndex(q => q.userId === userId.toString());
+const removeMatchmakingQueueEntries = (userId: string | number) => {
+    const userIdStr = userId.toString();
+    for (let i = matchmakingQueue.length - 1; i >= 0; i--) {
+        if (matchmakingQueue[i].userId === userIdStr) {
+            matchmakingQueue.splice(i, 1);
+        }
+    }
+};
+const popMatchmakingOpponent = (userId: string | number) => {
+    const userIdStr = userId.toString();
+    const opponentIndex = matchmakingQueue.findIndex(q => q.userId !== userIdStr);
+    if (opponentIndex === -1) return null;
+    const [opponent] = matchmakingQueue.splice(opponentIndex, 1);
+    return opponent || null;
+};
 
 
 app.post('/api/games/matchmaking', async (req, res): Promise<void> => {
@@ -567,12 +583,11 @@ app.post('/api/games/matchmaking', async (req, res): Promise<void> => {
 
         // Remove self from queue if already there (to avoid duplicates or refresh timestamp)
         const userIdStr = user.userId.toString();
-        const existingIdx = getMatchmakingQueueIndex(userIdStr);
-        if (existingIdx !== -1) matchmakingQueue.splice(existingIdx, 1);
+        removeMatchmakingQueueEntries(userIdStr);
 
         // 2. Try to match with someone else
-        const opponent = matchmakingQueue.shift();
-        if (opponent && opponent.userId !== userIdStr) {
+        const opponent = popMatchmakingOpponent(userIdStr);
+        if (opponent) {
             // Create a match
             const gameId = 'match_' + Math.random().toString(36).substring(2, 9);
             const gameState = await ServerGameService.createMatchGameState(opponent.userId, opponent.deck!, userIdStr, validation.cards!, turnTimerLimit || opponent.turnTimerLimit);
@@ -588,11 +603,21 @@ app.post('/api/games/matchmaking', async (req, res): Promise<void> => {
             if (opponent.socketId) {
                 io.to(opponent.socketId).emit('matchFound', { gameId });
             }
+            const currentSocketId = authenticatedSockets.get(userIdStr);
+            if (currentSocketId) {
+                io.to(currentSocketId).emit('matchFound', { gameId });
+            }
 
             res.json({ gameId, matched: true });
         } else {
             // Add to queue
-            matchmakingQueue.push({ userId: userIdStr, deck: validation.cards, timestamp: Date.now(), turnTimerLimit });
+            matchmakingQueue.push({
+                userId: userIdStr,
+                socketId: authenticatedSockets.get(userIdStr),
+                deck: validation.cards,
+                timestamp: Date.now(),
+                turnTimerLimit
+            });
             res.json({ matched: false, position: matchmakingQueue.length });
         }
     } catch (err) {
@@ -629,8 +654,7 @@ app.post('/api/games/matchmaking/cancel', async (req, res): Promise<void> => {
     const user = verifyToken(authHeader.split(' ')[1]);
     if (!user) { res.status(401).json({ error: 'Invalid token' }); return; }
 
-    const idx = getMatchmakingQueueIndex(user.userId);
-    if (idx !== -1) matchmakingQueue.splice(idx, 1);
+    removeMatchmakingQueueEntries(user.userId);
     res.json({ success: true });
 });
 
@@ -1190,6 +1214,7 @@ io.on('connection', (socket) => {
         const user = verifyToken(token);
         if (user) {
             (socket as any).user = user;
+            authenticatedSockets.set(user.userId.toString(), socket.id);
             const queueEntry = matchmakingQueue.find(q => q.userId === user.userId.toString());
             if (queueEntry) queueEntry.socketId = socket.id;
             socket.emit('authenticated');
@@ -1454,6 +1479,15 @@ io.on('connection', (socket) => {
 
     socket.on('disconnect', () => {
         // console.log('Client disconnected:', socket.id);
+        const userIdStr = ((socket as any).user?.userId ?? '').toString();
+        if (userIdStr && authenticatedSockets.get(userIdStr) === socket.id) {
+            authenticatedSockets.delete(userIdStr);
+        }
+        matchmakingQueue.forEach(entry => {
+            if (entry.socketId === socket.id) {
+                delete entry.socketId;
+            }
+        });
     });
 });
 
