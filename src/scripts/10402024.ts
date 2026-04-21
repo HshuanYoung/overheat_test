@@ -50,6 +50,7 @@ const applyForcedGuard = async (instance: Card, target: Card, gameState: GameSta
 
   EventEngine.recalculateContinuousEffects(gameState);
   gameState.logs.push(`[${instance.fullName}] 强制本次攻击与 [${liveTarget.fullName}] 进行战斗，跳过防御宣告。`);
+  gameState.logs.push(`[调试][${instance.fullName}] phase=${gameState.phase}, target=${liveTarget.fullName}, exhausted=${liveTarget.isExhausted}, defender=${gameState.battleState.defender}`);
 };
 
 const continuous_10402024_power_fixed: CardEffect = {

@@ -66,6 +66,7 @@ export const CardComponent: React.FC<CardProps> = ({ card, onClick, className, c
 
   const imageUrl = card.imageUrl || getCardImageUrl(card.id, card.rarity, true);
   const fullImageUrl = card.fullImageUrl || getCardImageUrl(card.id, card.rarity, false);
+  const exhausted = isExhausted ?? !!card.isExhausted;
 
   const showStats = displayMode !== 'erosion_item' && displayMode !== 'none';
   const showAC = showStats && (displayMode === 'hand' || displayMode === 'deck' || displayMode === 'erosion_item');
@@ -76,7 +77,7 @@ export const CardComponent: React.FC<CardProps> = ({ card, onClick, className, c
     <>
       <motion.div
         layout
-        animate={{ rotate: isExhausted ? 90 : 0 }}
+        animate={{ rotate: exhausted ? 90 : 0 }}
         whileHover={{ scale: 1.02, y: -2 }}
         whileTap={{ scale: 0.98 }}
         onClick={handleCardClick}

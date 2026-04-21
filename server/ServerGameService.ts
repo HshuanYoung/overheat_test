@@ -193,6 +193,7 @@ export const ServerGameService = {
 
     if (!gameState.battleState.forcedGuardLogged) {
       gameState.logs.push(`[系统] 强制护卫生效，跳过防御宣告并与 [${target.fullName}] 进行战斗。`);
+      gameState.logs.push(`[调试][强制护卫] phase=${gameState.phase}, target=${target.fullName}, exhausted=${target.isExhausted}, defender=${gameState.battleState.defender}`);
       gameState.battleState.forcedGuardLogged = true;
     }
   },
