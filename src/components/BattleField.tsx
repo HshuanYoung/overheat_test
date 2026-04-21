@@ -1432,7 +1432,7 @@ export const BattleField: React.FC = () => {
                   <div className="w-48 md:w-56 relative z-10 transition-all">
                     {game.currentProcessingItem.card ? (
                       <div className="relative group">
-                        <CardComponent card={game.currentProcessingItem.card} disableZoom cardBackUrl={cardBackUrl} />
+                        <CardComponent card={game.currentProcessingItem.card} isExhausted={false} disableZoom cardBackUrl={cardBackUrl} />
                         <div className="absolute -inset-0.5 bg-gradient-to-t from-red-600/50 to-transparent opacity-50 rounded-2xl" />
 
                         {/* UL/UR Labels for Resolving Card */}
