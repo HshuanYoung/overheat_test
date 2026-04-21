@@ -959,15 +959,15 @@ export const BattleField: React.FC = () => {
               {(erosionChoice === 'B' || erosionChoice === 'C') && (
                 <div className="flex flex-col items-center gap-4 animate-in fade-in slide-in-from-bottom-4">
                   <p className="text-[#f27d26] font-bold tracking-widest text-sm">请点击下方卡牌进行选择</p>
-                  <div className="w-full overflow-x-auto overflow-y-visible custom-scrollbar">
-                    <div className="flex min-w-max gap-3 px-4 py-4">
+                  <div className="w-full max-h-[58vh] overflow-y-auto overflow-x-hidden custom-scrollbar md:max-h-none md:overflow-x-auto md:overflow-y-visible">
+                    <div className="mx-auto grid w-fit grid-cols-2 gap-1.5 px-0 py-4 md:mx-0 md:w-max md:flex md:min-w-max md:items-stretch md:gap-4 md:px-6">
                       {me.erosionFront.filter(c => c !== null && c.displayState === 'FRONT_UPRIGHT').map((card, i) => (
                         <motion.div
                           key={card!.gamecardId}
                           whileHover={{ y: -10 }}
                           onClick={() => setSelectedErosionCardId(card!.gamecardId)}
                           className={cn(
-                            "w-[132px] md:w-48 shrink-0 cursor-pointer transition-all rounded-lg overflow-hidden border-2",
+                            "w-48 shrink-0 cursor-pointer transition-all rounded-lg overflow-hidden border-2 md:first:ml-2 md:last:mr-2 md:first:origin-left md:last:origin-right",
                             selectedErosionCardId === card!.gamecardId ? "border-[#f27d26] scale-105 shadow-[0_0_20px_rgba(242,125,38,0.4)]" : "border-transparent opacity-60"
                           )}
                         >
