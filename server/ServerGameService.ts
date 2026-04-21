@@ -193,12 +193,11 @@ export const ServerGameService = {
 
     if (!gameState.battleState.forcedGuardLogged) {
       gameState.logs.push(`[系统] 强制护卫生效，跳过防御宣告并与 [${target.fullName}] 进行战斗。`);
-      gameState.logs.push(`[调试][强制护卫] phase=${gameState.phase}, target=${target.fullName}, exhausted=${target.isExhausted}, defender=${gameState.battleState.defender}`);
       gameState.battleState.forcedGuardLogged = true;
     }
   },
 
-  tryApplyMinotaurShieldGuardOnAttackDeclaration(gameState: GameState) {
+  async tryApplyMinotaurShieldGuardOnAttackDeclaration(gameState: GameState, onUpdate?: (state: GameState) => Promise<void>) {
     if (!gameState.battleState) return false;
 
     const defenderPlayerId = gameState.playerIds[gameState.currentTurnPlayer === 0 ? 1 : 0];
@@ -228,7 +227,17 @@ export const ServerGameService = {
     gameState.battleState.forcedGuardTargetId = target.gamecardId;
     gameState.battleState.forcedGuardLogged = false;
     gameState.logs.push(`[${target.fullName}] 强制本次攻击与 [${target.fullName}] 进行战斗，跳过防御宣告。`);
-    gameState.logs.push(`[调试][攻击宣告直连护卫] phase=${gameState.phase}, target=${target.fullName}, exhausted=${target.isExhausted}, defender=${gameState.battleState.defender}`);
+    gameState.currentProcessingItem = {
+      type: 'EFFECT',
+      card: target,
+      ownerUid: defenderPlayerId,
+      effectIndex: 1,
+      timestamp: Date.now()
+    };
+    if (onUpdate) await onUpdate(gameState);
+    await new Promise(resolve => setTimeout(resolve, 1500));
+    gameState.currentProcessingItem = null;
+    if (onUpdate) await onUpdate(gameState);
     EventEngine.recalculateContinuousEffects(gameState);
     return true;
   },
@@ -465,6 +474,10 @@ export const ServerGameService = {
     card.cardlocation = targetZone;
     if (options?.faceDown !== undefined) {
       card.displayState = options.faceDown ? 'FRONT_FACEDOWN' : 'FRONT_UPRIGHT';
+    }
+    if (targetZone === 'GRAVE') {
+      card.displayState = 'FRONT_UPRIGHT';
+      card.isExhausted = false;
     }
 
     if (targetZone === 'UNIT' || targetZone === 'ITEM') {
@@ -1591,11 +1604,11 @@ export const ServerGameService = {
       const { attackerIds, isAlliance, markedTargetId } = query.context;
       if (currentSelections[0] === 'YES') {
         // Execute attack declaration with forced target and skip defense
-        await ServerGameService.declareAttack(gameState, playerUid, attackerIds, isAlliance, markedTargetId, true);
+        await ServerGameService.declareAttack(gameState, playerUid, attackerIds, isAlliance, markedTargetId, true, onUpdate);
         gameState.logs.push(`[公会看板娘] 强制攻击生效，连锁结算后将跳过防御直接进入战斗自由阶段。`);
       } else {
         // Resume normal attack declaration (pass a special targetId to bypass prompt)
-        await ServerGameService.declareAttack(gameState, playerUid, attackerIds, isAlliance, 'NO_PROMPT');
+        await ServerGameService.declareAttack(gameState, playerUid, attackerIds, isAlliance, 'NO_PROMPT', undefined, onUpdate);
       }
       return gameState;
     }
@@ -1674,7 +1687,7 @@ export const ServerGameService = {
     return undefined;
   },
 
-  async declareAttack(gameState: GameState, playerId: string, attackerIds: string[], isAlliance: boolean, targetId?: string, skipDefense?: boolean) {
+  async declareAttack(gameState: GameState, playerId: string, attackerIds: string[], isAlliance: boolean, targetId?: string, skipDefense?: boolean, onUpdate?: (state: GameState) => Promise<void>) {
     if (gameState.pendingQuery || gameState.isResolvingStack || gameState.currentProcessingItem) {
       throw new Error('当前有未结算步骤，请等待处理完毕。');
     }
@@ -1761,7 +1774,7 @@ export const ServerGameService = {
 
     let effectiveSkipDefense = !!skipDefense;
     if (!effectiveSkipDefense) {
-      effectiveSkipDefense = ServerGameService.tryApplyMinotaurShieldGuardOnAttackDeclaration(gameState);
+      effectiveSkipDefense = await ServerGameService.tryApplyMinotaurShieldGuardOnAttackDeclaration(gameState, onUpdate);
     }
 
     const attackerNames = attackers.map(a => a.fullName).join(' 和 ');
@@ -3525,7 +3538,7 @@ export const ServerGameService = {
         return isRush || !wasPlayedThisTurn;
       });
       if (attacker) {
-        await ServerGameService.declareAttack(gameState, 'BOT_PLAYER', [attacker.gamecardId], false);
+        await ServerGameService.declareAttack(gameState, 'BOT_PLAYER', [attacker.gamecardId], false, undefined, undefined, onUpdate);
       } else {
         await ServerGameService.advancePhase(gameState, 'RETURN_MAIN');
       }

@@ -892,6 +892,9 @@ export class AtomicEffectExecutor {
       card.displayState = 'FRONT_UPRIGHT';
     } else if (toZone === 'EROSION_BACK') {
       card.displayState = 'FRONT_FACEDOWN';
+    } else if (toZone === 'GRAVE') {
+      card.displayState = 'FRONT_UPRIGHT';
+      card.isExhausted = false;
     }
 
     card.cardlocation = toZone;
