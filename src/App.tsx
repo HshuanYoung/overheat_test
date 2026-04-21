@@ -248,7 +248,7 @@ export default function App() {
             className="w-full rounded-[28px] border border-white/10 bg-zinc-900/95 p-4 text-left shadow-[0_24px_80px_rgba(0,0,0,0.45)] sm:p-8"
           >
             <h1 className="mb-3 text-center text-4xl font-black italic tracking-tighter text-red-600 md:text-6xl">神蚀创痕</h1>
-            <p className="mb-6 text-center text-[10px] uppercase tracking-[0.2em] text-zinc-400 md:mb-8 md:text-sm">OVERHEAT TCG ONLINE</p>
+            <p className="mb-6 text-center text-[10px] tracking-[0.2em] text-zinc-400 md:mb-8 md:text-sm">OVERHEAT TCG ONLINE</p>
 
             <div className="mb-5 grid grid-cols-2 rounded-2xl border border-white/10 bg-black/60 p-1">
               <button
@@ -340,7 +340,7 @@ export default function App() {
                     disabled={sendingCode || sendCodeCooldown > 0}
                     className="w-full rounded-xl bg-red-600 px-4 py-3 text-sm font-bold text-white transition-all hover:bg-red-500 disabled:opacity-60 disabled:hover:bg-red-600 sm:w-auto sm:min-w-[122px]"
                   >
-                    {sendingCode ? '发送中...' : sendCodeCooldown > 0 ? `${sendCodeCooldown}s` : '发送验证码'}
+                    {sendingCode ? '发送中...' : sendCodeCooldown > 0 ? `${sendCodeCooldown}秒` : '发送验证码'}
                   </button>
                 </div>
                 {registerMessage && <div className="text-sm font-bold text-emerald-400">{registerMessage}</div>}

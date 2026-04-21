@@ -92,7 +92,7 @@ export const Home: React.FC = () => {
           </AnimatePresence>
         </div>
 
-        <MenuButton title="练习模式" icon={<Bot className="w-6 h-6" />} description="与 AI 进行练习对战" to="/practice" />
+        <MenuButton title="练习模式" icon={<Bot className="w-6 h-6" />} description="与人机进行练习对战" to="/practice" />
 
         <MenuButton title="卡牌商店" icon={<ShoppingBag className="w-6 h-6" />} description="购买卡包并扩充收藏" to="/store" />
 

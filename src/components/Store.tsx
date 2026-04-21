@@ -160,7 +160,7 @@ export const Store: React.FC = () => {
               <ArrowLeft className="w-5 h-5 group-hover:-translate-x-1" />
             </button>
             <div>
-              <h1 className="text-2xl md:text-4xl font-black italic tracking-tighter uppercase">Card Store</h1>
+              <h1 className="text-2xl md:text-4xl font-black italic tracking-tighter">卡牌商店</h1>
               <p className="text-zinc-500 text-[10px] md:text-sm font-bold uppercase tracking-widest leading-none">扩充你的卡牌收藏</p>
             </div>
           </div>
@@ -192,7 +192,7 @@ export const Store: React.FC = () => {
               <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 md:gap-6 z-10 text-center px-6">
                 <div>
                   <h2 className="text-2xl md:text-3xl font-black italic tracking-tighter uppercase mb-1">基础包</h2>
-                  <p className="text-zinc-500 text-[8px] md:text-[10px] font-black tracking-[0.2em] uppercase">Basic Edition</p>
+                  <p className="text-zinc-500 text-[8px] md:text-[10px] font-black tracking-[0.2em]">基础卡包</p>
                 </div>
                 <div className="w-full h-px bg-gradient-to-r from-transparent via-red-600/50 to-transparent" />
                 <p className="text-[10px] md:text-xs text-zinc-400 font-bold leading-relaxed px-4">包含5张卡牌<br />保底一张R及以上稀有度</p>
@@ -200,7 +200,7 @@ export const Store: React.FC = () => {
               {buying?.startsWith('basic') && (
                 <div className="absolute inset-0 flex flex-col items-center justify-center z-20 bg-black/80 backdrop-blur-sm">
                   <Loader2 className="w-12 h-12 animate-spin text-red-500 mb-4" />
-                  <span className="text-xs font-black italic text-red-500 uppercase">Processing...</span>
+                  <span className="text-xs font-black italic text-red-500">处理中...</span>
                 </div>
               )}
             </motion.div>
@@ -232,7 +232,7 @@ export const Store: React.FC = () => {
                   className="w-full max-w-[288px] py-4 bg-red-600 hover:bg-red-500 rounded-2xl font-black italic text-sm transition-all flex items-center justify-center gap-2 group shadow-[0_0_30px_rgba(220,38,38,0.2)]"
                 >
                   <Coins className="w-4 h-4" />
-                  <span>BUY {selectedBasicCount} PACKS ({selectedBasicCount * 10} Coins)</span>
+                  <span>购买 {selectedBasicCount} 包（{selectedBasicCount * 10} 金币）</span>
                 </motion.button>
               )}
             </AnimatePresence>
@@ -254,7 +254,7 @@ export const Store: React.FC = () => {
               <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 md:gap-6 z-10 text-center px-6">
                 <div>
                   <h2 className="text-2xl md:text-3xl font-black italic tracking-tighter uppercase mb-1">奖品包</h2>
-                  <p className="text-zinc-500 text-[8px] md:text-[10px] font-black tracking-[0.2em] uppercase">Prize Collector</p>
+                  <p className="text-zinc-500 text-[8px] md:text-[10px] font-black tracking-[0.2em]">奖品卡包</p>
                 </div>
                 <div className="w-full h-px bg-gradient-to-r from-transparent via-rose-600/50 to-transparent" />
                 <p className="text-[10px] md:text-xs text-zinc-400 font-bold leading-relaxed px-4">包含1张卡牌<br />必得PR稀有度奖品卡</p>
@@ -262,7 +262,7 @@ export const Store: React.FC = () => {
               {buying?.startsWith('prize') && (
                 <div className="absolute inset-0 flex flex-col items-center justify-center z-20 bg-black/80 backdrop-blur-sm">
                   <Loader2 className="w-12 h-12 animate-spin text-rose-500 mb-4" />
-                  <span className="text-xs font-black italic text-rose-500 uppercase">Processing...</span>
+                  <span className="text-xs font-black italic text-rose-500">处理中...</span>
                 </div>
               )}
             </motion.div>
@@ -294,7 +294,7 @@ export const Store: React.FC = () => {
                   className="w-full max-w-[288px] py-4 bg-rose-600 hover:bg-rose-500 rounded-2xl font-black italic text-sm transition-all flex items-center justify-center gap-2 group shadow-[0_0_30px_rgba(244,63,94,0.2)]"
                 >
                   <Coins className="w-4 h-4" />
-                  <span>BUY {selectedPrizeCount} PACKS ({selectedPrizeCount * 20} Coins)</span>
+                  <span>购买 {selectedPrizeCount} 包（{selectedPrizeCount * 20} 金币）</span>
                 </motion.button>
               )}
             </AnimatePresence>
@@ -339,7 +339,7 @@ export const Store: React.FC = () => {
                     onClick={revealAll}
                     className="w-full md:w-auto px-6 py-3 bg-red-600/10 hover:bg-red-600 text-red-500 hover:text-white border border-red-500/20 rounded-2xl font-black italic text-xs md:text-sm transition-all uppercase"
                   >
-                    全部揭开 REVEAL ALL
+                    全部揭开
                   </button>
                 </div>
 
@@ -385,7 +385,7 @@ export const Store: React.FC = () => {
                               <img src="/assets/card_bg/default_card_bg.jpg" className="absolute inset-0 w-full h-full object-cover opacity-20 rounded-2xl grayscale" />
                               <div className="relative z-10 flex flex-col items-center gap-2">
                                 <ShoppingBag className="w-10 h-10 text-zinc-700 group-hover:text-red-500 animation-pulse" />
-                                <span className="text-[10px] font-black text-zinc-700 uppercase tracking-widest">Pack Card</span>
+                                <span className="text-[10px] font-black text-zinc-700 tracking-widest">卡包内容</span>
                               </div>
                             </div>
 
@@ -430,7 +430,7 @@ export const Store: React.FC = () => {
                         : "bg-zinc-900 text-zinc-500 cursor-not-allowed"
                     )}
                   >
-                    {currentPackIndex < allDrawnPacks.length - 1 ? "下一包 Next Pack" : "确认 Confirm"}
+                    {currentPackIndex < allDrawnPacks.length - 1 ? "下一包" : "确认"}
                   </button>
                   <p className="text-[10px] text-zinc-600 mt-4 font-bold uppercase tracking-widest transition-opacity duration-300">
                     {drawnCards.every(c => c.revealed)
@@ -450,7 +450,7 @@ export const Store: React.FC = () => {
               <ShoppingBag className="w-5 h-5 text-red-500" />
             </div>
             <div>
-              <h3 className="text-xl font-black italic tracking-tighter uppercase">抽取规则 Extraction Rules</h3>
+              <h3 className="text-xl font-black italic tracking-tighter">抽取规则</h3>
               <p className="text-zinc-500 text-[10px] font-black uppercase tracking-widest">请在购买前仔细阅读</p>
             </div>
           </div>

@@ -81,7 +81,7 @@ export const PracticeSetup: React.FC = () => {
           </button>
           <div>
             <h1 className="text-xl md:text-3xl font-black italic tracking-tighter uppercase">练习模式</h1>
-            <p className="text-zinc-500 text-[10px] md:text-sm font-bold uppercase tracking-widest leading-none">镜像对战 PRACTICE MODE</p>
+            <p className="text-zinc-500 text-[10px] md:text-sm font-bold tracking-widest leading-none">镜像对战练习</p>
           </div>
         </div>
 
@@ -92,7 +92,7 @@ export const PracticeSetup: React.FC = () => {
             <Bot className="w-8 h-8 md:w-10 md:h-10 text-white" />
           </div>
           <div>
-            <h2 className="text-lg md:text-xl font-black italic tracking-tighter uppercase">AI 对手</h2>
+            <h2 className="text-lg md:text-xl font-black italic tracking-tighter">人机对手</h2>
             <p className="text-zinc-500 text-[10px] md:text-sm mt-1">机器人将镜像你的卡组进行对战</p>
             <div className="flex flex-wrap justify-center md:justify-start gap-2 mt-2">
               <span className="px-2 py-0.5 bg-white/5 rounded text-[8px] md:text-[10px] text-zinc-500 font-bold uppercase tracking-widest">• 自动出牌</span>
@@ -146,7 +146,7 @@ export const PracticeSetup: React.FC = () => {
         <div className="mb-10 p-6 rounded-2xl bg-zinc-900/50 border border-zinc-800">
           <div className="flex justify-between items-center mb-4">
             <h2 className="text-sm font-bold text-zinc-500 uppercase tracking-widest">回合对局时间 (秒)</h2>
-            <span className="text-2xl font-black italic tracking-tighter text-red-500">{turnTime}s</span>
+            <span className="text-2xl font-black italic tracking-tighter text-red-500">{turnTime}秒</span>
           </div>
           <input
             type="range"
@@ -158,9 +158,9 @@ export const PracticeSetup: React.FC = () => {
             className="w-full h-1.5 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-red-600"
           />
           <div className="flex justify-between mt-2 text-[10px] text-zinc-600 font-bold uppercase tracking-widest">
-            <span>Minimum (180s)</span>
-            <span>Default (300s)</span>
-            <span>Maximum (999s)</span>
+            <span>最短 180 秒</span>
+            <span>默认 300 秒</span>
+            <span>最长 999 秒</span>
           </div>
         </div>
 
@@ -175,7 +175,7 @@ export const PracticeSetup: React.FC = () => {
             className="w-full md:w-auto px-8 md:px-12 py-3 md:py-4 bg-gradient-to-r from-red-600 to-orange-600 rounded-2xl font-black italic text-base md:text-xl tracking-tighter flex items-center justify-center gap-3 shadow-[0_0_30px_rgba(220,38,38,0.3)] disabled:opacity-50 transition-all uppercase"
           >
             {starting ? <Loader2 className="w-5 h-5 md:w-6 md:h-6 animate-spin" /> : <Play className="w-5 h-5 md:w-6 md:h-6" />}
-            开始练习 START
+            开始练习
           </motion.button>
         </div>
       </div>

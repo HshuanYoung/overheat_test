@@ -627,13 +627,13 @@ export const Collection: React.FC = () => {
                     onClick={() => setConfirmDeleteId(null)}
                     className="flex-1 py-4 bg-zinc-800 hover:bg-zinc-700 text-white font-black italic rounded-2xl transition-all uppercase tracking-widest text-xs"
                   >
-                    取消 CANCEL
+                    取消
                   </button>
                   <button
                     onClick={() => deleteDeck(confirmDeleteId)}
                     className="flex-1 py-4 bg-red-600 hover:bg-red-700 text-white font-black italic rounded-2xl transition-all shadow-lg shadow-red-600/20 uppercase tracking-widest text-xs"
                   >
-                    确定 DELETE
+                    确认删除
                   </button>
                 </div>
               </motion.div>

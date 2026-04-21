@@ -312,7 +312,7 @@ export const Matchmaking: React.FC = () => {
                 className="w-full md:w-auto px-8 md:px-12 py-3 md:py-4 bg-gradient-to-r from-red-600 to-orange-600 rounded-2xl font-black italic text-base md:text-xl tracking-tighter flex items-center justify-center gap-3 shadow-[0_0_30px_rgba(220,38,38,0.3)] disabled:opacity-50 transition-all uppercase"
               >
                 <Swords className="w-5 h-5 md:w-6 md:h-6" />
-                开始匹配 START
+                开始匹配
               </motion.button>
             </div>
           </>

@@ -13,7 +13,28 @@ import { PlayField } from './PlayField';
 import { Rulebook } from './Rulebook';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Flag, Trophy, Frown, Home, Sword, Shield, Zap, LogOut, BookOpen, Send, Loader2, Trash2, X, Play, Search, ChevronRight, ShieldCheck, Layers, Sparkles, Flame } from 'lucide-react';
-import { cn, getCardImageUrl, getCardIdentity } from '../lib/utils';
+import { cn, getCardColorLabel, getCardImageUrl, getCardIdentity, getCardTypeLabel, getLocationLabel, getPhaseLabel } from '../lib/utils';
+
+const EFFECT_TYPE_LABELS: Record<string, string> = {
+  ACTIVATE: '主动',
+  ACTIVATED: '主动',
+  TRIGGER: '触发',
+  CONTINUOUS: '永续'
+};
+
+const ACTION_TYPE_LABELS: Record<string, string> = {
+  PHASE_END: '阶段结束请求'
+};
+
+const getEffectTypeLabel = (type?: string | null) => {
+  if (!type) return '效果';
+  return EFFECT_TYPE_LABELS[type] || type;
+};
+
+const getActionTypeLabel = (type?: string | null) => {
+  if (!type) return '处理中';
+  return ACTION_TYPE_LABELS[type] || type.replace(/_/g, ' ');
+};
 
 export const BattleField: React.FC = () => {
   const { gameId } = useParams<{ gameId: string }>();
@@ -815,8 +836,8 @@ export const BattleField: React.FC = () => {
   if (game.phase === 'MULLIGAN' && !me.mulliganDone) {
     return (
       <div className="h-screen bg-black flex flex-col items-center justify-center p-8">
-        <h2 className="text-2xl md:text-4xl font-black italic text-[#f27d26] mb-2 md:mb-4 uppercase tracking-tighter">MULLIGAN PHASE</h2>
-        <p className="text-zinc-400 mb-8 md:mb-12 uppercase tracking-[0.2em] md:tracking-[0.3em] text-[10px] md:text-sm text-center">Click cards to preview. Select cards to redraw.</p>
+        <h2 className="text-2xl md:text-4xl font-black italic text-[#f27d26] mb-2 md:mb-4 tracking-tighter">调度阶段</h2>
+        <p className="text-zinc-400 mb-8 md:mb-12 tracking-[0.2em] md:tracking-[0.3em] text-[10px] md:text-sm text-center">选择需要重抽的卡牌。</p>
 
         <div className="flex flex-wrap justify-center gap-4 md:gap-6 mb-12 max-w-full overflow-x-auto px-4">
           {me.hand.map((card, i) => {
@@ -893,8 +914,8 @@ export const BattleField: React.FC = () => {
           >
             <div className="max-w-4xl w-full flex flex-col items-center gap-4 md:gap-8 overflow-y-auto max-h-screen">
               <div className="text-center">
-                <h2 className="text-xl md:text-4xl font-black italic text-[#f27d26] mb-1 md:mb-2 uppercase tracking-tighter">EROSION PHASE</h2>
-                <p className="text-zinc-400 uppercase tracking-[0.2em] md:tracking-[0.3em] text-[10px] md:text-sm">Choose how to process face-up erosion cards</p>
+                <h2 className="text-xl md:text-4xl font-black italic text-[#f27d26] mb-1 md:mb-2 tracking-tighter">侵蚀阶段</h2>
+                <p className="text-zinc-400 tracking-[0.2em] md:tracking-[0.3em] text-[10px] md:text-sm">选择如何处理正面朝上的侵蚀卡</p>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-6 w-full">
@@ -906,7 +927,7 @@ export const BattleField: React.FC = () => {
                   )}
                 >
                   <div className="w-8 h-8 md:w-12 md:h-12 rounded-full bg-zinc-800 flex items-center justify-center text-lg md:text-xl font-bold">A</div>
-                  <div className="font-bold text-white text-sm md:text-base">MOVE ALL TO GRAVE</div>
+                  <div className="font-bold text-white text-sm md:text-base">全部送入墓地</div>
                   <div className="text-[10px] md:text-xs text-zinc-500">将侵蚀区所有正面卡送入墓地</div>
                 </button>
 
@@ -918,8 +939,8 @@ export const BattleField: React.FC = () => {
                   )}
                 >
                   <div className="w-8 h-8 md:w-12 md:h-12 rounded-full bg-zinc-800 flex items-center justify-center text-lg md:text-xl font-bold">B</div>
-                  <div className="font-bold text-white text-sm md:text-base">KEEP ONE</div>
-                  <div className="text-[10px] md:text-xs text-zinc-500">Choose one card to keep, move others to the Graveyard</div>
+                  <div className="font-bold text-white text-sm md:text-base">保留一张</div>
+                  <div className="text-[10px] md:text-xs text-zinc-500">选择一张保留，其余送入墓地</div>
                 </button>
 
                 <button
@@ -930,14 +951,14 @@ export const BattleField: React.FC = () => {
                   )}
                 >
                   <div className="w-8 h-8 md:w-12 md:h-12 rounded-full bg-zinc-800 flex items-center justify-center text-lg md:text-xl font-bold">C</div>
-                  <div className="font-bold text-white text-sm md:text-base">ADD TO HAND</div>
-                  <div className="text-[10px] md:text-xs text-zinc-500">Choose one to add to hand, move others to Grave, replenish one from deck</div>
+                  <div className="font-bold text-white text-sm md:text-base">加入手牌</div>
+                  <div className="text-[10px] md:text-xs text-zinc-500">选择一张加入手牌，其余送墓，并从牌库放置一张到侵蚀区背面</div>
                 </button>
               </div>
 
               {(erosionChoice === 'B' || erosionChoice === 'C') && (
                 <div className="flex flex-col items-center gap-4 animate-in fade-in slide-in-from-bottom-4">
-                  <p className="text-[#f27d26] font-bold uppercase tracking-widest text-sm">Please click a card below to select</p>
+                  <p className="text-[#f27d26] font-bold tracking-widest text-sm">请点击下方卡牌进行选择</p>
                   <div className="w-full overflow-x-auto overflow-y-visible custom-scrollbar">
                     <div className="flex min-w-max gap-3 px-4 py-4">
                       {me.erosionFront.filter(c => c !== null && c.displayState === 'FRONT_UPRIGHT').map((card, i) => (
@@ -986,10 +1007,10 @@ export const BattleField: React.FC = () => {
           >
             <div className="max-w-2xl w-[95vw] md:w-full bg-zinc-900/90 border border-white/10 rounded-[2rem] flex flex-col items-center gap-3 md:gap-4 p-4 md:p-6 overflow-y-auto max-h-[90vh] shadow-2xl">
               <div className="text-center">
-                <h3 className="text-lg md:text-2xl font-black italic text-[#f27d26] uppercase tracking-tighter mb-1">支付费用 (PAY COST)</h3>
+                <h3 className="text-lg md:text-2xl font-black italic text-[#f27d26] tracking-tighter mb-1">支付费用</h3>
                 <div className="flex items-center justify-center gap-4">
                   <div className="flex items-center gap-2">
-                    <span className="text-zinc-500 uppercase text-[10px] font-bold tracking-widest">Required:</span>
+                    <span className="text-zinc-500 text-[10px] font-bold tracking-widest">需求</span>
                     <span className={cn(
                       "text-3xl font-black px-4 py-1 rounded-xl",
                       pendingPlayCard.acValue > 0 ? "bg-red-600/20 text-red-500" : "bg-green-600/20 text-green-500"
@@ -999,7 +1020,7 @@ export const BattleField: React.FC = () => {
                   </div>
                   <div className="h-8 w-px bg-white/10" />
                   <div className="flex items-center gap-2">
-                    <span className="text-zinc-500 uppercase text-[8px] font-bold tracking-widest">Selected:</span>
+                    <span className="text-zinc-500 text-[8px] font-bold tracking-widest">已选</span>
                     <span className="text-xl md:text-2xl font-black text-white">
                       {pendingPlayCard.acValue > 0
                         ? (paymentSelection.useFeijing.length * 3) + paymentSelection.exhaustIds.length
@@ -1017,7 +1038,7 @@ export const BattleField: React.FC = () => {
                   </div>
                   <div className="text-center">
                     <div className="text-sm md:text-lg font-black text-white uppercase italic tracking-tight">{pendingPlayCard.fullName}</div>
-                    <div className="text-[8px] md:text-[10px] text-zinc-500 uppercase tracking-widest mt-1">{pendingPlayCard.type} / {pendingPlayCard.color}</div>
+                    <div className="text-[8px] md:text-[10px] text-zinc-500 tracking-widest mt-1">{getCardTypeLabel(pendingPlayCard.type)} / {getCardColorLabel(pendingPlayCard.color)}</div>
                   </div>
                 </div>
 
@@ -1030,7 +1051,7 @@ export const BattleField: React.FC = () => {
                         <div className="flex flex-col gap-3">
                           <div className="flex items-center gap-2 text-blue-400 font-black uppercase italic tracking-widest text-sm">
                             <Zap className="w-4 h-4" />
-                            菲晶支付 (Feijing Payment - Cost -3)
+                            菲晶支付（费用至多-3）
                           </div>
                           <div className="grid grid-cols-2 gap-3 pb-2">
                             {me.hand.filter(c => c.feijingMark && c.color === pendingPlayCard.color && c.gamecardId !== pendingPlayCard.gamecardId).map(card => {
@@ -1064,7 +1085,7 @@ export const BattleField: React.FC = () => {
                         <div className="flex flex-col gap-3">
                           <div className="flex items-center gap-2 text-green-400 font-black uppercase italic tracking-widest text-sm">
                             <Sword className="w-4 h-4" />
-                            横置支付 (Exhaust Payment - Cost -1)
+                            横置支付（费用 -1）
                           </div>
                           <div className="grid grid-cols-2 gap-3 pb-2">
                             {me.unitZone.filter(c => c && !c.isExhausted).map(card => {
@@ -1098,7 +1119,7 @@ export const BattleField: React.FC = () => {
                     <div className="flex flex-col gap-3">
                       <div className="flex items-center gap-2 text-red-500 font-black uppercase italic tracking-widest text-sm">
                         <Trash2 className="w-4 h-4" />
-                        侵蚀支付 (Erosion Payment - Select {Math.abs(pendingPlayCard.acValue)} cards)
+                        侵蚀区支付 (Erosion Payment - Select {Math.abs(pendingPlayCard.acValue)} cards)
                       </div>
                       <div className="grid grid-cols-2 gap-3 pb-2 pt-2">
                         {me.erosionFront.filter(c => c && c.displayState === 'FRONT_UPRIGHT').map(card => {
@@ -1163,7 +1184,7 @@ export const BattleField: React.FC = () => {
           <div className="flex items-center gap-2 md:gap-8 w-full md:w-auto justify-between md:justify-start">
             {/* Round Display */}
             <div className="flex flex-col items-center md:items-start min-w-[40px]">
-              <span className="text-[7px] md:text-[10px] text-white/40 uppercase font-black tracking-[0.1em] md:tracking-[0.2em] hidden md:block">Turn</span>
+              <span className="text-[7px] md:text-[10px] text-white/40 font-black tracking-[0.1em] md:tracking-[0.2em] hidden md:block">回合</span>
               <span className="text-xl md:text-2xl font-black italic text-[#f27d26] leading-none">
                 {game.turnCount}
               </span>
@@ -1207,7 +1228,7 @@ export const BattleField: React.FC = () => {
                 <div className="flex items-center justify-between md:justify-start gap-2 md:gap-3">
                   <div className="flex flex-col">
                     <span className="text-[8px] md:text-[10px] text-white/40 uppercase font-black tracking-widest flex items-center gap-1 md:gap-2">
-                      <span className="hidden md:inline">Phase</span>
+                      <span className="hidden md:inline">阶段</span>
                       {['MULLIGAN', 'EROSION', 'COUNTERING', 'DEFENSE_DECLARATION', 'BATTLE_FREE'].includes(game.phase) && (
                         <span className="inline-block w-1.5 h-1.5 md:w-2 md:h-2 rounded-full animate-pulse bg-orange-500" />
                       )}
@@ -1215,19 +1236,19 @@ export const BattleField: React.FC = () => {
                     <span className="text-sm md:text-xl font-black italic text-white uppercase tracking-wider flex items-center gap-2 md:gap-3 truncate max-w-[120px] md:max-w-none">
                       {game.phase === 'BATTLE_DECLARATION' && <Sword className="w-4 h-4 md:w-6 md:h-6 text-red-500" />}
                       {game.phase === 'COUNTERING'
-                        ? `${game.previousPhase?.replace(/_/g, ' ') || 'MAIN'}|CNT`
-                        : game.phase.replace(/_/g, ' ').substring(0, 12)}
+                        ? `${getPhaseLabel(game.previousPhase)}|对抗`
+                        : getPhaseLabel(game.phase)}
                     </span>
                   </div>
 
                   {/* Visual Timer Stacked Inside on Mobile */}
                   <div className="md:hidden flex flex-col items-end">
-                    <span className="text-[7px] text-white/40 font-black uppercase">Time</span>
+                    <span className="text-[7px] text-white/40 font-black">时间</span>
                     <span className={cn(
                       "text-sm font-black tabular-nums",
                       timer < 30 ? "text-red-500 animate-pulse" : "text-[#f27d26]"
                     )}>
-                      {timer}s
+                      {timer}秒
                     </span>
                   </div>
                 </div>
@@ -1302,7 +1323,7 @@ export const BattleField: React.FC = () => {
                 : <img src="assets/icons/opponent.JPG" className="w-full h-full object-cover" />
               }
             </div>
-            {game.playerIds[game.currentTurnPlayer] === myUid ? "你的行动" : "对手行动"}
+            {game.playerIds[game.currentTurnPlayer] === myUid ? "你的回合" : "对手回合"}
           </div>
         </div>
 
@@ -1379,7 +1400,7 @@ export const BattleField: React.FC = () => {
                           "absolute -top-2 -left-2 px-3 py-1 rounded-full text-[10px] font-black uppercase italic shadow-lg z-[20] border border-white/20",
                           game.currentProcessingItem.ownerUid === myUid ? "bg-blue-600 text-white" : "bg-red-600 text-white"
                         )}>
-                          {game.currentProcessingItem.ownerUid === myUid ? "我方 / ME" : "对方 / OPP"}
+                          {game.currentProcessingItem.ownerUid === myUid ? "我方" : "对方"}
                         </div>
                         <div className="absolute -top-2 -right-2 px-3 py-1 bg-black/80 rounded-full text-[10px] font-bold text-white uppercase z-[20] border border-white/20">
                           {getCardIdentity(game, game.currentProcessingItem.ownerUid, game.currentProcessingItem.card).split('|')[1].replace(']', '')}
@@ -1389,7 +1410,7 @@ export const BattleField: React.FC = () => {
                       <div className="aspect-[3/4] bg-zinc-900 border-2 border-red-500/30 rounded-2xl flex flex-col items-center justify-center p-8 text-center shadow-2xl">
                         <Sword className="w-20 h-20 text-red-500/40 mb-6" />
                         <span className="text-2xl font-black text-white uppercase tracking-widest leading-none">
-                          {game.currentProcessingItem.type === 'PHASE_END' ? "阶段切换" : game.currentProcessingItem.type.replace(/_/g, ' ')}
+                          {getActionTypeLabel(game.currentProcessingItem.type)}
                         </span>
                       </div>
                     )}
@@ -1483,7 +1504,7 @@ export const BattleField: React.FC = () => {
                       <div className="w-full h-full bg-zinc-900 flex flex-col items-center justify-center p-4 text-center border-t-4 border-red-500/50">
                         <Sword className="w-10 h-10 text-red-500/40 mb-3" />
                         <span className="text-[12px] font-black text-white uppercase tracking-widest leading-tight">
-                          {item.type === 'PHASE_END' ? "PHASE END REQUEST" : item.type.replace(/_/g, ' ')}
+                          {getActionTypeLabel(item.type)}
                         </span>
                       </div>
                     )}
@@ -1658,7 +1679,7 @@ export const BattleField: React.FC = () => {
               onClick={(e) => e.stopPropagation()}
             >
               <div className="md:hidden w-12 h-1 bg-white/20 rounded-full mb-2 shrink-0" />
-              <div className="md:hidden text-[10px] font-black text-white/40 uppercase tracking-[0.2em] mb-2 shrink-0">Actions</div>
+              <div className="md:hidden text-[10px] font-black text-white/40 tracking-[0.2em] mb-2 shrink-0">操作</div>
               {/* Action: Play (Yellow) */}
               {(() => {
                 const isCounteringTurn = game.phase === 'COUNTERING' && game.priorityPlayerId === myUid;
@@ -1678,7 +1699,7 @@ export const BattleField: React.FC = () => {
                           setCardMenu(null);
                         }}
                       >
-                        PLAY
+                        出牌
                       </motion.button>
                     );
                   }
@@ -1744,7 +1765,7 @@ export const BattleField: React.FC = () => {
                         setCardMenu(null);
                       }}
                     >
-                      ACTIVATE
+                      发动
                     </motion.button>
                   );
                 }
@@ -1767,7 +1788,7 @@ export const BattleField: React.FC = () => {
                               setCardMenu(null);
                             }}
                           >
-                            ATTACK
+                            攻击
                           </motion.button>
                         )}
                         <motion.button
@@ -1778,7 +1799,7 @@ export const BattleField: React.FC = () => {
                             setCardMenu(null);
                           }}
                         >
-                          ALLIANCE
+                          联攻
                         </motion.button>
                       </div>
                     );
@@ -1801,7 +1822,7 @@ export const BattleField: React.FC = () => {
                           setCardMenu(null);
                         }}
                       >
-                        DEFEND
+                        防御
                       </motion.button>
                     );
                   }
@@ -1820,7 +1841,7 @@ export const BattleField: React.FC = () => {
                   }}
                 >
                   <Trash2 className="w-2.5 h-2.5 fill-current" />
-                  DISCARD
+                  弃置
                 </motion.button>
               )}
 
@@ -1833,7 +1854,7 @@ export const BattleField: React.FC = () => {
                   setCardMenu(null);
                 }}
               >
-                DETAILS
+                详情
               </motion.button>
             </motion.div>
           </>
@@ -1860,7 +1881,7 @@ export const BattleField: React.FC = () => {
                 <div className="w-12 h-12 md:w-16 md:h-16 bg-orange-500/10 rounded-2xl flex items-center justify-center shadow-inner">
                   <Sword className="w-8 h-8 md:w-10 md:h-10 text-orange-500" />
                 </div>
-                <h2 className="text-lg md:text-3xl font-black italic text-white uppercase tracking-tighter mt-2 md:mt-4 text-center">确认联军宣告 (CONFIRM ALLIANCE)</h2>
+                <h2 className="text-lg md:text-3xl font-black italic text-white tracking-tighter mt-2 md:mt-4 text-center">确认联军宣告</h2>
                 <p className="text-zinc-400 text-[10px] md:text-sm font-medium tracking-wide text-center">是否宣告这两个单位进行联军攻击？</p>
               </div>
 
@@ -1869,7 +1890,7 @@ export const BattleField: React.FC = () => {
                   <div className="w-24 md:w-40 aspect-[3/4] rounded-xl overflow-hidden border-2 border-white/10 shadow-2xl">
                     <CardComponent card={allianceConfirmation.attacker1} disableZoom cardBackUrl={cardBackUrl} />
                   </div>
-                  <span className="text-[8px] md:text-[10px] font-black text-white/40 uppercase tracking-widest">Attacker 1</span>
+                  <span className="text-[8px] md:text-[10px] font-black text-white/40 tracking-widest">攻击者 1</span>
                 </div>
 
                 <div className="flex flex-col items-center">
@@ -1882,7 +1903,7 @@ export const BattleField: React.FC = () => {
                   <div className="w-24 md:w-40 aspect-[3/4] rounded-xl overflow-hidden border-2 border-white/10 shadow-2xl">
                     <CardComponent card={allianceConfirmation.attacker2} disableZoom cardBackUrl={cardBackUrl} />
                   </div>
-                  <span className="text-[8px] md:text-[10px] font-black text-white/40 uppercase tracking-widest">Attacker 2</span>
+                  <span className="text-[8px] md:text-[10px] font-black text-white/40 tracking-widest">攻击者 2</span>
                 </div>
               </div>
 
@@ -1894,13 +1915,13 @@ export const BattleField: React.FC = () => {
                   }}
                   className="flex-1 py-3 md:py-5 bg-orange-600 hover:bg-orange-500 text-white font-black italic uppercase tracking-widest rounded-2xl transition-all shadow-xl hover:scale-[1.02] border border-orange-400/50 text-xs md:text-sm"
                 >
-                  确认宣告 (CONFIRM ALLIANCE)
+                  确认宣告
                 </button>
                 <button
                   onClick={() => setAllianceConfirmation(null)}
                   className="flex-1 py-3 md:py-5 bg-zinc-800 hover:bg-zinc-700 text-white font-black italic uppercase tracking-widest rounded-2xl transition-all border border-white/10 text-xs md:text-sm"
                 >
-                  取消 (CANCEL)
+                  取消
                 </button>
               </div>
             </motion.div>
@@ -1920,7 +1941,7 @@ export const BattleField: React.FC = () => {
             <div className="bg-zinc-900/90 border border-orange-500/50 px-8 py-4 rounded-full shadow-[0_0_30px_rgba(249,115,22,0.3)] backdrop-blur-sm">
               <p className="text-orange-400 font-bold tracking-widest uppercase flex items-center gap-3">
                 <Sword className="w-5 h-5" />
-                SELECT ANOTHER READY UNIT FOR ALLIANCE
+                请选择另一名可联攻的待机单位
               </p>
             </div>
             <button
@@ -2020,7 +2041,7 @@ export const BattleField: React.FC = () => {
               <div className="bg-black/50 p-4 md:p-6 rounded-xl border border-white/5 mb-6 md:mb-8">
                 <div className="flex items-center gap-2 mb-3">
                   <span className="px-2 py-0.5 rounded text-[10px] font-bold text-white bg-red-600">
-                    {effectConfirmation.effect.type}
+                    {getEffectTypeLabel(effectConfirmation.effect.type)}
                   </span>
                   <span className="text-xs font-bold text-zinc-500 uppercase tracking-widest">
                     {effectConfirmation.card.fullName}
@@ -2067,7 +2088,7 @@ export const BattleField: React.FC = () => {
           >
             <div className="bg-zinc-900 border-2 border-[#f27d26]/50 p-8 rounded-3xl flex flex-col items-center gap-6 shadow-[0_0_50px_rgba(242,125,38,0.3)] relative">
               <h2 className="text-3xl font-black italic text-[#f27d26] uppercase tracking-widest">确认对抗</h2>
-              <p className="text-white/80">Your opponent is proposing damage calculation. Would you like to counter first?</p>
+              <p className="text-white/80">对手准备进入伤害结算，你要先进行对抗吗？</p>
               <div className="flex gap-4">
                 <button onClick={() => GameService.advancePhase(gameId!, 'CONFIRM_CONFRONTATION')} className="px-8 py-3 bg-[#f27d26] text-black font-black uppercase rounded-lg hover:bg-orange-400">对抗</button>
                 <button onClick={() => GameService.advancePhase(gameId!, 'DECLINE_CONFRONTATION')} className="px-8 py-3 bg-zinc-700 text-white font-black uppercase rounded-lg hover:bg-zinc-600">放弃</button>
@@ -2083,7 +2104,7 @@ export const BattleField: React.FC = () => {
           >
             <div className="bg-zinc-900 border-2 border-[#f27d26]/50 p-8 rounded-3xl flex flex-col items-center gap-6 shadow-[0_0_50px_rgba(242,125,38,0.3)] relative">
               <h2 className="text-3xl font-black italic text-[#f27d26] uppercase tracking-widest">确认对抗</h2>
-              <p className="text-white/80">Opponent declined counter. Would you like to counter? (Choosing NO moves to damage calculation)</p>
+              <p className="text-white/80">对手放弃对抗，你要进行对抗吗？选择“放弃”将直接进入伤害结算。</p>
               <div className="flex gap-4">
                 <button onClick={() => GameService.advancePhase(gameId!, 'CONFIRM_CONFRONTATION')} className="px-8 py-3 bg-[#f27d26] text-black font-black uppercase rounded-lg hover:bg-orange-400">对抗</button>
                 <button onClick={() => GameService.advancePhase(gameId!, 'DECLINE_CONFRONTATION')} className="px-8 py-3 bg-zinc-700 text-white font-black uppercase rounded-lg hover:bg-zinc-600">放弃</button>
@@ -2104,7 +2125,7 @@ export const BattleField: React.FC = () => {
             <div className="bg-black/80 px-8 py-4 rounded-full border border-[#f27d26]/30 flex items-center gap-4 shadow-[0_0_30px_rgba(242,125,38,0.2)]">
               <Loader2 className="w-5 h-5 text-[#f27d26] animate-spin" />
               <span className="text-[#f27d26] font-black tracking-widest uppercase italic text-sm">
-                Waiting for opponent to resolve effect...
+                等待对手处理效果...
               </span>
             </div>
           </motion.div>
@@ -2145,17 +2166,17 @@ export const BattleField: React.FC = () => {
                 </p>
                 {game.pendingQuery.type.replace(/-/g, '_').toUpperCase() === 'SELECT_CARD' && (
                   <div className="mt-4 px-6 py-2 bg-white/5 rounded-full border border-white/10 inline-block font-mono text-xs text-zinc-500">
-                    SELECTIONS REQUIRED: {game.pendingQuery.minSelections} - {game.pendingQuery.maxSelections}
+                    需要选择：{game.pendingQuery.minSelections} - {game.pendingQuery.maxSelections}
                   </div>
                 )}
                 {game.pendingQuery.type.replace(/-/g, '_').toUpperCase() === 'SELECT_PAYMENT' && (
                   <div className="mt-2 md:mt-4 flex items-center justify-center gap-3 md:gap-6">
                     <div className="flex items-center gap-2">
-                      <span className="text-zinc-500 uppercase text-[8px] md:text-[10px] font-bold tracking-widest">Required:</span>
+                      <span className="text-zinc-500 text-[8px] md:text-[10px] font-bold tracking-widest">需求</span>
                       <span className="text-xl md:text-3xl font-black text-red-500">{game.pendingQuery.paymentCost}</span>
                     </div>
                     <div className="flex items-center gap-2">
-                      <span className="text-zinc-500 uppercase text-[8px] md:text-[10px] font-bold tracking-widest">Selected:</span>
+                      <span className="text-zinc-500 text-[8px] md:text-[10px] font-bold tracking-widest">已选</span>
                       <span className="text-xl md:text-3xl font-black text-white">
                         {(game.pendingQuery.paymentCost || 0) > 0
                           ? (paymentSelection.useFeijing.length * 3) + paymentSelection.exhaustIds.length
@@ -2238,7 +2259,7 @@ export const BattleField: React.FC = () => {
                           </motion.div>
 
                           <div className="absolute -top-3 -right-3 px-3 py-1 bg-black/80 border border-white/10 rounded-lg text-[10px] font-black uppercase tracking-widest shadow-2xl z-20 text-white/70">
-                            {option.source}
+                            {getLocationLabel(option.source)}
                           </div>
 
                           {(option.isMine !== undefined || option.ownerName) && (
@@ -2259,7 +2280,7 @@ export const BattleField: React.FC = () => {
                         <div className="text-center">
                           <p className="text-white text-[13px] font-black uppercase tracking-tight truncate max-w-[192px]">{option.card.fullName}</p>
                           <p className="text-zinc-500 text-[9px] uppercase tracking-widest mt-0.5">
-                            {option.card.type}
+                            {getCardTypeLabel(option.card.type)}
                             {option.slotLabel ? ` · ${option.slotLabel}` : ''}
                           </p>
                         </div>
@@ -2275,7 +2296,7 @@ export const BattleField: React.FC = () => {
                     <div className="flex flex-col gap-3">
                       <div className="flex items-center gap-2 text-blue-400 font-black uppercase italic tracking-widest text-sm">
                         <Zap className="w-4 h-4" />
-                        菲晶支付 (Feijing Payment - Cost -3)
+                        菲晶支付（费用 -3）
                       </div>
                       <div className="grid grid-cols-2 gap-3 pb-2 pt-2">
                         {me.hand.filter(c => c.feijingMark && (c.color === game.pendingQuery?.paymentColor || !game.pendingQuery?.paymentColor || game.pendingQuery?.paymentColor === 'NONE')).map(card => {
@@ -2309,7 +2330,7 @@ export const BattleField: React.FC = () => {
                     <div className="flex flex-col gap-3">
                       <div className="flex items-center gap-2 text-green-400 font-black uppercase italic tracking-widest text-sm">
                         <Sword className="w-4 h-4" />
-                        横置支付 (Exhaust Payment - Cost -1)
+                        横置支付（费用 -1）
                       </div>
                       <div className="grid grid-cols-2 gap-3 pb-2 pt-2">
                         {me.unitZone.filter(c => c && !c.isExhausted).map(card => {
@@ -2343,7 +2364,7 @@ export const BattleField: React.FC = () => {
                     <div className="flex flex-col gap-3">
                       <div className="flex items-center gap-2 text-red-400 font-black uppercase italic tracking-widest text-sm">
                         <Layers className="w-4 h-4" />
-                        水平支付 (Level Payment - Cost -1)
+                        水平支付（费用 -1）
                       </div>
                       <div className="grid grid-cols-2 gap-3 pb-2 pt-2">
                         {me.erosionFront.filter(c => c && c.displayState === 'FRONT_UPRIGHT').map(card => {
@@ -2468,11 +2489,11 @@ export const BattleField: React.FC = () => {
                   <Loader2 className="w-10 h-10 text-white animate-spin-slow" />
                 </div>
                 <h3 className="text-3xl font-black italic text-white uppercase tracking-tighter text-center leading-none">
-                  Stage Transition
+                  阶段切换
                 </h3>
                 <div className="px-6 py-1.5 bg-white/5 rounded-full border border-white/10 backdrop-blur-sm">
                   <p className="text-[12px] text-[#f27d26] uppercase font-black tracking-[0.3em]">
-                    Current: {game.phase}
+                    当前阶段：{getPhaseLabel(game.phase)}
                   </p>
                 </div>
               </div>
@@ -2491,7 +2512,7 @@ export const BattleField: React.FC = () => {
                         }}
                       >
                         <Sword className="w-6 h-6" />
-                        DECLARE BATTLE
+                        宣告战斗
                       </motion.button>
                     )}
                     <motion.button
@@ -2504,7 +2525,7 @@ export const BattleField: React.FC = () => {
                       }}
                     >
                       <LogOut className="w-6 h-6" />
-                      END ROUND
+                      结束回合
                     </motion.button>
                   </>
                 )}
@@ -2523,7 +2544,7 @@ export const BattleField: React.FC = () => {
                       }}
                     >
                       <Sword className="w-6 h-6" />
-                      {selectedAttackers.length === 2 ? 'ALLIANCE ATTACK' : 'DECLARE ATTACK'}
+                      {selectedAttackers.length === 2 ? '联军攻击' : '宣告攻击'}
                     </motion.button>
                     <motion.button
                       whileHover={{ scale: 1.05, y: -5 }}
@@ -2535,7 +2556,7 @@ export const BattleField: React.FC = () => {
                       }}
                     >
                       <ChevronRight className="w-6 h-6 rotate-180" />
-                      RETURN MAIN
+                      返回主要阶段
                     </motion.button>
                   </>
                 )}
@@ -2568,7 +2589,7 @@ export const BattleField: React.FC = () => {
                         }}
                       >
                         <ShieldCheck className="w-6 h-6" />
-                        END BATTLE FREE
+                        结束战斗自由
                       </motion.button>
                     )}
                   </>
@@ -2759,7 +2780,7 @@ export const BattleField: React.FC = () => {
                     <div className="flex items-center gap-3">
                       <span className="text-[10px] font-black text-[#f27d26] uppercase tracking-[0.2em]">{previewCard.id}</span>
                       <div className="h-px w-12 bg-[#f27d26]/30" />
-                      <span className="text-[10px] font-black text-white/40 uppercase tracking-[0.2em]">{previewCard.type}</span>
+                      <span className="text-[10px] font-black text-white/40 tracking-[0.2em]">{getCardTypeLabel(previewCard.type)}</span>
                     </div>
                     <h2 className="text-5xl font-black italic text-white uppercase tracking-tighter leading-none">
                       {previewCard.fullName}
@@ -2779,14 +2800,14 @@ export const BattleField: React.FC = () => {
                       {/* Type Box */}
                       <div className="bg-zinc-900/80 border border-white/5 rounded-2xl p-4 md:p-5 flex items-center justify-between">
                         <span className="text-[9px] md:text-[10px] font-black text-zinc-500 uppercase tracking-widest">类型</span>
-                        <span className="text-lg md:text-xl font-black italic text-orange-500 uppercase">{previewCard.type}</span>
+                        <span className="text-lg md:text-xl font-black italic text-orange-500">{getCardTypeLabel(previewCard.type)}</span>
                       </div>
 
                       {/* AC Value Box */}
                       <div className="bg-zinc-900/80 border border-white/5 rounded-2xl p-4 md:p-5 flex items-center justify-between">
                         <div className="flex items-center gap-3">
                           <Shield className="w-4 h-4 md:w-5 md:h-5 text-blue-500" />
-                          <span className="text-[9px] md:text-[10px] font-black text-zinc-500 uppercase tracking-widest">AC值</span>
+                          <span className="text-[9px] md:text-[10px] font-black text-zinc-500 tracking-widest">ACESS值</span>
                         </div>
                         <span className="text-xl md:text-2xl font-black text-white">{previewCard.acValue}</span>
                       </div>

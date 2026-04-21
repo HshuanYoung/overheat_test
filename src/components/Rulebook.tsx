@@ -28,7 +28,7 @@ export const Rulebook: React.FC<RulebookProps> = ({ isOpen, onClose }) => {
               <div className="flex items-center gap-2 md:gap-3">
                 <Book className="w-5 h-5 md:w-6 md:h-6 text-[#f27d26]" />
                 <h2 className="text-lg md:text-2xl font-bold tracking-tighter text-white uppercase italic">
-                  简易规则书 RULEBOOK
+                  简易规则书
                 </h2>
               </div>
               <button
@@ -45,12 +45,12 @@ export const Rulebook: React.FC<RulebookProps> = ({ isOpen, onClose }) => {
               {/* Section 1: Deck & Winning */}
               <section className="space-y-4">
                 <h3 className="text-lg md:text-xl font-bold text-[#f27d26] border-l-4 border-[#f27d26] pl-4 uppercase">
-                  一、核心规则 CORE RULES
+                  一、核心规则
                 </h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-8">
                   <div className="p-4 md:p-6 bg-white/5 rounded-xl border border-white/10">
                     <h4 className="flex items-center gap-2 text-white font-bold mb-3">
-                      <Shield className="w-4 h-4 text-blue-400" /> 卡组构筑 DECK
+                      <Shield className="w-4 h-4 text-blue-400" /> 卡组构筑
                     </h4>
                     <ul className="text-xs md:text-sm space-y-2 list-disc pl-5">
                       <li>卡组包含 50 张卡，不能少于 50 张。</li>
@@ -60,7 +60,7 @@ export const Rulebook: React.FC<RulebookProps> = ({ isOpen, onClose }) => {
                   </div>
                   <div className="p-4 md:p-6 bg-white/5 rounded-xl border border-white/10">
                     <h4 className="flex items-center gap-2 text-white font-bold mb-3">
-                      <Sword className="w-4 h-4 text-red-400" /> 胜利条件 VICTORY
+                      <Sword className="w-4 h-4 text-red-400" /> 胜利条件
                     </h4>
                     <ul className="text-xs md:text-sm space-y-2 list-disc pl-5">
                       <li>对手受到伤害时，卡组剩余卡不足以承受。</li>
@@ -74,17 +74,17 @@ export const Rulebook: React.FC<RulebookProps> = ({ isOpen, onClose }) => {
               {/* Section 2: Casting */}
               <section className="space-y-4">
                 <h3 className="text-lg md:text-xl font-bold text-[#f27d26] border-l-4 border-[#f27d26] pl-4 uppercase">
-                  二、使用卡牌 (CAST)
+                  二、使用卡牌
                 </h3>
                 <div className="space-y-4">
                   <p className="text-xs md:text-sm">使用卡牌需满足两个条件：</p>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
                     <div className="space-y-2">
-                      <h4 className="text-white font-semibold text-sm">1. 颜色需求 COLORS</h4>
+                      <h4 className="text-white font-semibold text-sm">1. 颜色需求</h4>
                       <p className="text-xs md:text-sm opacity-80">统计战场单位及侵蚀区正面卡的颜色，需满足卡牌左上角标记。</p>
                     </div>
                     <div className="space-y-2">
-                      <h4 className="text-white font-semibold text-sm">2. 支付 ACCESS 值</h4>
+                      <h4 className="text-white font-semibold text-sm">2. 支付ACESS值</h4>
                       <p className="text-xs md:text-sm opacity-80">
                         <span className="text-green-400">正值：</span> 从卡组顶将卡正面朝上放置到侵蚀区。横置单位可减少支付。<br/>
                         <span className="text-red-400">负值：</span> 从侵蚀区将对应数量正面卡送入墓地。
@@ -100,14 +100,14 @@ export const Rulebook: React.FC<RulebookProps> = ({ isOpen, onClose }) => {
                   <AlertTriangle className="w-8 h-8 text-[#f27d26] shrink-0" />
                   <div className="space-y-2">
                     <h3 className="text-lg md:text-xl font-black text-white uppercase italic tracking-widest leading-tight">
-                      女神化状态 (OVERHEAT)
+                      女神化状态
                     </h3>
                     <p className="text-xs md:text-sm">
                       若玩家侵蚀区的卡达到 <span className="text-[#f27d26] font-bold">10 张以上</span>，即进入女神化状态。
                     </p>
                     <ul className="text-xs md:text-sm space-y-1 list-disc pl-5 opacity-90">
                       <li>再次受到伤害时，伤害处理 <span className="text-red-500 font-bold">翻倍</span>。</li>
-                      <li>触发卡牌上的 <span className="text-yellow-400 font-bold">OH 刻度</span> 特别能力。</li>
+                      <li>触发卡牌上的 <span className="text-yellow-400 font-bold">OH刻度</span> 特别能力。</li>
                       <li>这是通往胜利的捷径，也是败北的深渊。</li>
                     </ul>
                   </div>
@@ -117,7 +117,7 @@ export const Rulebook: React.FC<RulebookProps> = ({ isOpen, onClose }) => {
               {/* Section 4: Phases */}
               <section className="space-y-6">
                 <h3 className="text-lg md:text-xl font-bold text-[#f27d26] border-l-4 border-[#f27d26] pl-4 uppercase">
-                  三、回合流程 FLOW
+                  三、回合流程
                 </h3>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-3 md:gap-4">
                   {[
@@ -138,7 +138,7 @@ export const Rulebook: React.FC<RulebookProps> = ({ isOpen, onClose }) => {
 
               {/* Footer */}
               <div className="pt-8 border-t border-white/10 text-center opacity-40 text-[10px] uppercase tracking-widest">
-                Overheat TCG Play Field V1.1 © RareCard Inc. All Rights Reserved
+                神蚀创痕对战界面 V1.1
               </div>
             </div>
           </motion.div>

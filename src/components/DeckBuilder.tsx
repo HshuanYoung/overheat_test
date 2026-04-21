@@ -7,7 +7,7 @@ import { CARD_LIBRARY } from '../data/cards';
 import { FACTIONS } from '../data/factions';
 import { Card as CardType, Deck } from '../types/game';
 import { CardComponent } from './Card';
-import { cn, getCardImageUrl } from '../lib/utils';
+import { cn, getCardImageUrl, getCardTypeLabel } from '../lib/utils';
 import { CARD_BACKS } from '../data/customization';
 import { TriggerLocation } from '../types/game';
 
@@ -617,15 +617,15 @@ export const DeckBuilder: React.FC = () => {
                 onChange={e => setFilters({ ...filters, color: e.target.value })}
               >
                 <option value="ALL">全部颜色</option>
-                <option value="RED">Red</option>
-                <option value="BLUE">Blue</option>
-                <option value="GREEN">Green</option>
-                <option value="YELLOW">Yellow</option>
-                <option value="WHITE">White</option>
+                <option value="RED">红色</option>
+                <option value="BLUE">蓝色</option>
+                <option value="GREEN">绿色</option>
+                <option value="YELLOW">黄色</option>
+                <option value="WHITE">白色</option>
               </select>
             </div>
             <div className="flex flex-col gap-1">
-              <label className="text-[10px] text-zinc-500 font-bold uppercase">Rarity</label>
+              <label className="text-[10px] text-zinc-500 font-bold uppercase">稀有度</label>
               <select
                 className="bg-black border border-zinc-800 rounded px-2 py-1 text-xs text-white appearance-none"
                 value={filters.rarity}
@@ -688,7 +688,7 @@ export const DeckBuilder: React.FC = () => {
                   </div>
                   <div className="flex-1 min-w-0">
                     <h4 className="font-black italic text-sm truncate">{card.fullName}</h4>
-                    <p className="text-[10px] text-zinc-500 uppercase tracking-widest mb-1">{card.type} - {card.rarity}</p>
+                    <p className="text-[10px] text-zinc-500 uppercase tracking-widest mb-1">{getCardTypeLabel(card.type)} - {card.rarity}</p>
                     <p className="text-[10px] text-zinc-400 font-bold">数量：{collection[card.uniqueId] || collection[card.id] || 0}</p>
                   </div>
                 </div>

@@ -10,7 +10,7 @@ import { RAY_CARDS, CARD_BACKS } from '../data/customization';
 export const Profile: React.FC = () => {
   const user = getAuthUser();
   const navigate = useNavigate();
-  const [nickname, setNickname] = useState(user?.displayName || 'User');
+  const [nickname, setNickname] = useState(user?.displayName || '玩家');
   const [favoriteCardId, setFavoriteCardId] = useState<string | null>(null);
   const [favoriteBackId, setFavoriteBackId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -121,7 +121,7 @@ export const Profile: React.FC = () => {
                     value={nickname}
                     onChange={e => setNickname(e.target.value)}
                   />
-                  <p className="text-zinc-500 uppercase tracking-widest text-[10px] md:text-xs">UID: {user?.uid?.slice(0, 8) || user?.uid}</p>
+                  <p className="text-zinc-500 tracking-widest text-[10px] md:text-xs">编号：{user?.uid?.slice(0, 8) || user?.uid}</p>
                 </div>
               </div>
             </div>

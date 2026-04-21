@@ -44,7 +44,7 @@ export const CardComponent: React.FC<CardProps> = ({ card, onClick, className, c
       >
         <img
           src={cardBackUrl || "/assets/card_bg/default_card_bg.jpg"}
-          alt="Card Back"
+          alt="卡背"
           className="absolute inset-0 w-full h-full object-cover"
           referrerPolicy="no-referrer"
         />
@@ -136,7 +136,7 @@ export const CardComponent: React.FC<CardProps> = ({ card, onClick, className, c
                 ? "bg-blue-600/90 border-blue-200 text-white"
                 : "bg-red-600/90 border-red-200 text-white"
             )}>
-              <span className="text-[4px] md:text-[6px] leading-none opacity-80 uppercase font-black">Ac</span>
+              <span className="text-[4px] md:text-[6px] leading-none opacity-80 font-black">接</span>
               <span className="text-[10px] md:text-xs leading-none mt-0 md:mt-0.5">
                 {isHand ? Math.abs(card.acValue) : (card.acValue >= 0 ? `+${card.acValue}` : card.acValue)}
               </span>

@@ -159,7 +159,7 @@ const trigger_10401058_damage: CardEffect = {
 
 const card: Card = {
   id: '10401058',
-  fullName: '蜘蛛点水【云十三】',
+  fullName: '蜻蜓点水【云十三】',
   specialName: '云十三',
   type: 'UNIT',
   color: 'BLUE',

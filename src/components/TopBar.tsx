@@ -50,7 +50,7 @@ export const TopBar: React.FC<{ onOpenRulebook: () => void }> = ({ onOpenRuleboo
               isInGame && "opacity-50 cursor-not-allowed pointer-events-none"
             )}
           >
-            <img src="/assets/logo.jpg" alt="Logo" className="w-10 h-10 rounded-lg object-cover border border-red-500/30" />
+            <img src="/assets/logo.jpg" alt="游戏标志" className="w-10 h-10 rounded-lg object-cover border border-red-500/30" />
             <span className="text-xl font-black italic text-red-600 tracking-tighter">神蚀创痕</span>
           </Link>
         </div> */}
@@ -65,7 +65,7 @@ export const TopBar: React.FC<{ onOpenRulebook: () => void }> = ({ onOpenRuleboo
               className="flex items-center gap-2 px-6 py-2 bg-red-950/30 hover:bg-red-600 border border-red-500/30 hover:border-red-500 rounded-full text-red-500 hover:text-white transition-all group shadow-[0_0_20px_rgba(220,38,38,0.1)]"
             >
               <Flag className="w-4 h-4 group-hover:animate-bounce" />
-              <span className="text-xs font-black uppercase tracking-[0.2em] italic">Surrender</span>
+              <span className="text-xs font-black tracking-[0.2em] italic">投降</span>
             </motion.button>
           </div>
         )}

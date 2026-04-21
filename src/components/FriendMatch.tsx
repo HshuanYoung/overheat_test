@@ -290,7 +290,7 @@ export const FriendMatch: React.FC = () => {
               <div className="mb-10 p-6 rounded-2xl bg-zinc-900/50 border border-zinc-800">
                 <div className="flex justify-between items-center mb-4">
                   <h2 className="text-sm font-bold text-zinc-500 tracking-widest">回合时间（秒）</h2>
-                  <span className="text-2xl font-black italic tracking-tighter text-red-500">{turnTime}s</span>
+                  <span className="text-2xl font-black italic tracking-tighter text-red-500">{turnTime}秒</span>
                 </div>
                 <input
                   type="range"
