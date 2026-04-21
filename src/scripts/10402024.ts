@@ -2,27 +2,36 @@ import { Card, CardEffect, GameEvent, GameState, PlayerState } from '../types/ga
 import { AtomicEffectExecutor } from '../services/AtomicEffectExecutor';
 import { EventEngine } from '../services/EventEngine';
 
+const GUILD_FACTION = '九尾商会联盟';
+
 const hasGuildGodmarkUnit = (playerState: PlayerState) => {
   return playerState.unitZone.some(unit =>
     unit &&
     unit.godMark &&
-    unit.faction === '九尾商会联盟'
+    unit.faction === GUILD_FACTION
   );
 };
 
 const getGuardianCandidates = (playerState: PlayerState) => {
+  if (!hasGuildGodmarkUnit(playerState)) return [] as Card[];
+
   return playerState.unitZone.filter((unit): unit is Card =>
     !!unit &&
     unit.id === '10402024' &&
-    !unit.isExhausted &&
-    hasGuildGodmarkUnit(playerState)
+    !unit.isExhausted
   );
 };
 
-const applyForcedGuard = async (instance: Card, target: Card, gameState: GameState, playerState: PlayerState) => {
+const findCardOwner = (gameState: GameState, cardId: string) => {
+  return Object.values(gameState.players).find(player =>
+    player.unitZone.some(unit => unit?.gamecardId === cardId)
+  );
+};
+
+const applyForcedGuard = async (instance: Card, target: Card, gameState: GameState, ownerState: PlayerState) => {
   if (!gameState.battleState) return;
 
-  await AtomicEffectExecutor.execute(gameState, playerState.uid, {
+  await AtomicEffectExecutor.execute(gameState, ownerState.uid, {
     type: 'ROTATE_HORIZONTAL',
     targetFilter: { gamecardId: target.gamecardId }
   }, instance);
@@ -35,7 +44,7 @@ const applyForcedGuard = async (instance: Card, target: Card, gameState: GameSta
   gameState.phaseTimerStart = Date.now();
 
   EventEngine.recalculateContinuousEffects(gameState);
-  gameState.logs.push(`[${instance.fullName}] 强制本次攻击与 [${target.fullName}] 进行战斗，跳过防御宣言。`);
+  gameState.logs.push(`[${instance.fullName}] 强制本次攻击与 [${target.fullName}] 进行战斗，跳过防御宣告。`);
 };
 
 const continuous_10402024_power_fixed: CardEffect = {
@@ -59,10 +68,9 @@ const trigger_10402024_guard: CardEffect = {
   condition: (_gameState: GameState, playerState: PlayerState, instance: Card, event?: GameEvent) => {
     if (event?.type !== 'CARD_ATTACK_DECLARED' || event.playerUid === playerState.uid) return false;
     if (instance.cardlocation !== 'UNIT' || instance.isExhausted) return false;
-    if (!hasGuildGodmarkUnit(playerState)) return false;
 
     const candidates = getGuardianCandidates(playerState);
-    return candidates.length > 0 && candidates[0].gamecardId === instance.gamecardId;
+    return candidates.some(card => card.gamecardId === instance.gamecardId);
   },
   execute: async (instance: Card, gameState: GameState, playerState: PlayerState, event?: GameEvent) => {
     if (!gameState.battleState || event?.playerUid === playerState.uid) return;
@@ -96,11 +104,14 @@ const trigger_10402024_guard: CardEffect = {
       }
     };
   },
-  onQueryResolve: async (instance: Card, gameState: GameState, playerState: PlayerState, selections: string[], context: any) => {
+  onQueryResolve: async (instance: Card, gameState: GameState, _playerState: PlayerState, selections: string[], context: any) => {
     if (context?.step !== 'SELECT_GUARD_TARGET' || !gameState.battleState || selections.length === 0) return;
 
+    const ownerState = findCardOwner(gameState, instance.gamecardId);
+    if (!ownerState) return;
+
     const targetId = selections[0];
-    const validTargets = getGuardianCandidates(playerState);
+    const validTargets = getGuardianCandidates(ownerState);
     const targetCard = validTargets.find(card => card.gamecardId === targetId);
 
     if (!targetCard) {
@@ -108,7 +119,7 @@ const trigger_10402024_guard: CardEffect = {
       return;
     }
 
-    await applyForcedGuard(instance, targetCard, gameState, playerState);
+    await applyForcedGuard(instance, targetCard, gameState, ownerState);
   }
 };
 
@@ -120,7 +131,7 @@ const card: Card = {
   type: 'UNIT',
   color: 'BLUE',
   colorReq: { BLUE: 1 },
-  faction: '九尾商会联盟',
+  faction: GUILD_FACTION,
   acValue: 3,
   power: 3500,
   basePower: 3500,

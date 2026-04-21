@@ -211,6 +211,12 @@ export class EventEngine {
           if (gameState.battleState?.forcedGuardTargetId === card.gamecardId) {
             card.influencingEffects.push({ sourceCardName: '????', description: '?????' });
           }
+          if (gameState.battleState?.forcedGuardTargetId === card.gamecardId) {
+            const hasGuardLabel = card.influencingEffects.some(effect => effect.description === '强制护卫中');
+            if (!hasGuardLabel) {
+              card.influencingEffects.push({ sourceCardName: '系统状态', description: '强制护卫中' });
+            }
+          }
           if (card.temporaryDamageBuff) {
             const source = card.temporaryBuffSources?.['damage'] || '效果';
             card.influencingEffects.push({ sourceCardName: source, description: `临时伤害加成: +${card.temporaryDamageBuff}` });
