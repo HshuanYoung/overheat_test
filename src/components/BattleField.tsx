@@ -393,6 +393,40 @@ export const BattleField: React.FC = () => {
   const opponentUid = useMemo(() => (game && myUid) ? Object.keys(game.players).find(uid => uid.toString() !== myUid.toString()) : null, [game, myUid]);
   const opponent = useMemo(() => (game && opponentUid) ? game.players[opponentUid] : null, [game, opponentUid]);
 
+  const canUse20400008AsPaymentSubstitute = (card: Card, paymentColor?: string, paymentCost?: number, excludeCardId?: string) =>
+    card.id === '20400008' &&
+    card.gamecardId !== excludeCardId &&
+    paymentColor === 'BLUE' &&
+    !!paymentCost &&
+    paymentCost > 0 &&
+    paymentCost <= 3;
+
+  const getHandPaymentValue = (card: Card, paymentColor?: string, paymentCost?: number, excludeCardId?: string) => {
+    if (canUse20400008AsPaymentSubstitute(card, paymentColor, paymentCost, excludeCardId)) {
+      return paymentCost || 0;
+    }
+    if (card.feijingMark && (card.color === paymentColor || !paymentColor || paymentColor === 'NONE')) {
+      return 3;
+    }
+    return 0;
+  };
+
+  const getHandPaymentOptions = (paymentColor?: string, paymentCost?: number, excludeCardId?: string) => {
+    if (!me || !paymentCost || paymentCost <= 0) return [];
+    return me.hand.filter(card =>
+      card.gamecardId !== excludeCardId &&
+      getHandPaymentValue(card, paymentColor, paymentCost, excludeCardId) > 0
+    );
+  };
+
+  const getSelectedHandPaymentValue = (paymentColor?: string, paymentCost?: number, excludeCardId?: string) => {
+    if (!me) return 0;
+    return paymentSelection.useFeijing.reduce((total, gamecardId) => {
+      const card = me.hand.find(c => c.gamecardId === gamecardId);
+      return total + (card ? getHandPaymentValue(card, paymentColor, paymentCost, excludeCardId) : 0);
+    }, 0);
+  };
+
   if (!game || !myUid || !me) {
     return (
       <div className="h-screen bg-black flex flex-col items-center justify-center p-8 text-center bg-[radial-gradient(circle_at_center,_#111_0%,_#000_100%)]">
@@ -782,7 +816,13 @@ export const BattleField: React.FC = () => {
       const isExhausted = prev.exhaustIds.includes(gamecardId);
       if (!isExhausted) {
         const required = pendingPlayCard ? pendingPlayCard.acValue : (game.pendingQuery?.paymentCost || 0);
-        const current = (prev.useFeijing.length * 3) + prev.exhaustIds.length;
+        const paymentColor = pendingPlayCard ? pendingPlayCard.color : game.pendingQuery?.paymentColor;
+        const excludeCardId = pendingPlayCard?.gamecardId;
+        const currentHandValue = prev.useFeijing.reduce((total, selectedId) => {
+          const selectedCard = me?.hand.find(c => c.gamecardId === selectedId);
+          return total + (selectedCard ? getHandPaymentValue(selectedCard, paymentColor, required, excludeCardId) : 0);
+        }, 0);
+        const current = currentHandValue + prev.exhaustIds.length;
         if (current >= required) return prev;
       }
       return {
@@ -1023,7 +1063,7 @@ export const BattleField: React.FC = () => {
                     <span className="text-zinc-500 text-[8px] font-bold tracking-widest">已选</span>
                     <span className="text-xl md:text-2xl font-black text-white">
                       {pendingPlayCard.acValue > 0
-                        ? (paymentSelection.useFeijing.length * 3) + paymentSelection.exhaustIds.length
+                        ? getSelectedHandPaymentValue(pendingPlayCard.color, pendingPlayCard.acValue, pendingPlayCard.gamecardId) + paymentSelection.exhaustIds.length
                         : paymentSelection.erosionFrontIds.length}
                     </span>
                   </div>
@@ -1046,15 +1086,15 @@ export const BattleField: React.FC = () => {
                 <div className="flex flex-col gap-8">
                   {pendingPlayCard.acValue > 0 ? (
                     <>
-                      {/* Feijing Section */}
-                      {me.hand.some(c => c.feijingMark && c.color === pendingPlayCard.color && c.gamecardId !== pendingPlayCard.gamecardId) && (
+                      {/* Hand Replacement Section */}
+                      {getHandPaymentOptions(pendingPlayCard.color, pendingPlayCard.acValue, pendingPlayCard.gamecardId).length > 0 && (
                         <div className="flex flex-col gap-3">
                           <div className="flex items-center gap-2 text-blue-400 font-black uppercase italic tracking-widest text-sm">
                             <Zap className="w-4 h-4" />
-                            菲晶支付（费用至多-3）
+                            手牌代替支付
                           </div>
                           <div className="grid grid-cols-2 gap-3 pb-2">
-                            {me.hand.filter(c => c.feijingMark && c.color === pendingPlayCard.color && c.gamecardId !== pendingPlayCard.gamecardId).map(card => {
+                            {getHandPaymentOptions(pendingPlayCard.color, pendingPlayCard.acValue, pendingPlayCard.gamecardId).map(card => {
                               const isSelected = paymentSelection.useFeijing.includes(card.gamecardId);
                               return (
                                 <motion.div
@@ -2179,7 +2219,7 @@ export const BattleField: React.FC = () => {
                       <span className="text-zinc-500 text-[8px] md:text-[10px] font-bold tracking-widest">已选</span>
                       <span className="text-xl md:text-3xl font-black text-white">
                         {(game.pendingQuery.paymentCost || 0) > 0
-                          ? (paymentSelection.useFeijing.length * 3) + paymentSelection.exhaustIds.length
+                          ? getSelectedHandPaymentValue(game.pendingQuery?.paymentColor, game.pendingQuery?.paymentCost) + paymentSelection.exhaustIds.length
                           : paymentSelection.erosionFrontIds.length}
                       </span>
                     </div>
@@ -2291,15 +2331,15 @@ export const BattleField: React.FC = () => {
               ) : game.pendingQuery.type.replace(/-/g, '_').toUpperCase() === 'SELECT_PAYMENT' ? (
                 /* Payment Selection for Query */
                 <div className="flex flex-col gap-8 w-full max-w-4xl max-h-[50vh] overflow-y-auto p-4 custom-scrollbar">
-                  {/* Feijing Section */}
-                  {(game.pendingQuery.paymentCost || 0) > 0 && me.hand.some(c => c.feijingMark && (c.color === game.pendingQuery?.paymentColor || !game.pendingQuery?.paymentColor || game.pendingQuery?.paymentColor === 'NONE')) && (
+                  {/* Hand Replacement Section */}
+                  {(game.pendingQuery.paymentCost || 0) > 0 && getHandPaymentOptions(game.pendingQuery?.paymentColor, game.pendingQuery?.paymentCost).length > 0 && (
                     <div className="flex flex-col gap-3">
                       <div className="flex items-center gap-2 text-blue-400 font-black uppercase italic tracking-widest text-sm">
                         <Zap className="w-4 h-4" />
-                        菲晶支付（费用 -3）
+                        手牌代替支付
                       </div>
                       <div className="grid grid-cols-2 gap-3 pb-2 pt-2">
-                        {me.hand.filter(c => c.feijingMark && (c.color === game.pendingQuery?.paymentColor || !game.pendingQuery?.paymentColor || game.pendingQuery?.paymentColor === 'NONE')).map(card => {
+                        {getHandPaymentOptions(game.pendingQuery?.paymentColor, game.pendingQuery?.paymentCost).map(card => {
                           const isSelected = paymentSelection.useFeijing.includes(card.gamecardId);
                           return (
                             <motion.div

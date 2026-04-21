@@ -559,11 +559,28 @@ export class AtomicEffectExecutor {
 
   private static rotateCards(gameState: GameState, playerUid: string, effect: AtomicEffect, direction: 'HORIZONTAL' | 'VERTICAL', sourceCard?: Card, querySelections?: string[]) {
     const targets = this.findTargets(gameState, effect.targetFilter, sourceCard, querySelections);
+    const effectSourcePlayerUid = sourceCard?.gamecardId
+      ? (this.findCardOwnerKey(gameState, sourceCard.gamecardId) || playerUid)
+      : playerUid;
+    const allTargetCardIds = targets.map(card => card.gamecardId);
+
     targets.forEach(card => {
       if (this.shouldSkipEffect(gameState, card)) return;
 
       card.isExhausted = direction === 'HORIZONTAL';
-      EventEngine.dispatchEvent(gameState, { type: 'CARD_ROTATED', targetCardId: card.gamecardId, data: { direction } });
+      EventEngine.dispatchEvent(gameState, {
+        type: 'CARD_ROTATED',
+        sourceCard,
+        sourceCardId: sourceCard?.gamecardId,
+        targetCardId: card.gamecardId,
+        playerUid: effectSourcePlayerUid,
+        data: {
+          direction,
+          effectSourcePlayerUid,
+          effectSourceCardId: sourceCard?.gamecardId,
+          allTargetCardIds
+        }
+      });
     });
   }
 

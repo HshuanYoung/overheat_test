@@ -4,6 +4,10 @@ import { AtomicEffectExecutor } from './AtomicEffectExecutor';
 import { getCardIdentity } from '../lib/utils';
 
 export class EventEngine {
+  private static isFullEffectSilenced(gameState: GameState, card: Card) {
+    return (card as any).data?.fullEffectSilencedTurn === gameState.turnCount;
+  }
+
   static dispatchEvent(gameState: GameState, event: GameEvent) {
     // 1. Find all active effects that listen to this event
     const triggeredEffects: { card: Card, effect: CardEffect, effectIndex: number, playerUid: string }[] = [];
@@ -193,12 +197,33 @@ export class EventEngine {
       player.effectDamageModifier = 0;
     };
     Object.values(gameState.players).forEach(resetCards);
+    Object.values(gameState.players).forEach(player => {
+      [...player.deck, ...player.hand, ...player.grave, ...player.exile, ...player.unitZone, ...player.itemZone, ...player.erosionFront, ...player.erosionBack, ...player.playZone].forEach(card => {
+        if (card && this.isFullEffectSilenced(gameState, card)) {
+          if (!card.influencingEffects) card.influencingEffects = [];
+          card.influencingEffects.push({
+            sourceCardName: (card as any).data?.fullEffectSilenceSource || '系统状态',
+            description: '本回合失去所有效果'
+          });
+        }
+        if (card && (card as any).data?.combatImmuneUntilOwnNextTurnStartUid) {
+          if (!card.influencingEffects) card.influencingEffects = [];
+          card.influencingEffects.push({
+            sourceCardName: (card as any).data?.combatImmuneSourceName || '系统状态',
+            description: '获得效果: 【永续】不会被战斗破坏'
+          });
+        }
+      });
+    });
 
     // 2. Apply all continuous effects from active zones
     const applyEffects = (player: PlayerState) => {
       const activeZones = [...player.unitZone, ...player.itemZone, ...player.erosionFront];
       activeZones.forEach(card => {
         if (card && card.effects) {
+          if (this.isFullEffectSilenced(gameState, card)) {
+            return;
+          }
           card.effects.forEach(effect => {
             if (effect.applyContinuous) {
               effect.applyContinuous(gameState, card);

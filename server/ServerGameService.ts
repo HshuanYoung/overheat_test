@@ -7,6 +7,20 @@ import { SERVER_CARD_LIBRARY } from './card_loader';
 import { GameService } from '../src/services/gameService';
 
 export const ServerGameService = {
+  isFullEffectSilencedThisTurn(gameState: GameState, card: Card) {
+    return (card as any).data?.fullEffectSilencedTurn === gameState.turnCount;
+  },
+
+  canUse20400008AsPaymentSubstitute(paymentCard: Card | undefined, cardColor?: string, cost?: number, playingCardId?: string) {
+    return !!paymentCard &&
+      paymentCard.id === '20400008' &&
+      paymentCard.gamecardId !== playingCardId &&
+      cardColor === 'BLUE' &&
+      !!cost &&
+      cost > 0 &&
+      cost <= 3;
+  },
+
   hydrateCard(card: Card | null) {
     if (!card || (!card.id && !card.uniqueId)) return;
     const masterCard = SERVER_CARD_LIBRARY[card.uniqueId] || SERVER_CARD_LIBRARY[card.id];
@@ -251,6 +265,11 @@ export const ServerGameService = {
         return { valid: false, reason: '侵蚀区卡牌总数不满足条件' };
       }
     }
+
+    if (ServerGameService.isFullEffectSilencedThisTurn(gameState, card)) {
+      return { valid: false, reason: '该卡牌本回合失去所有效果' };
+    }
+
     // 4. Condition Check
     if (effect.condition) {
       const isStoryResolution = gameState.phase === 'COUNTERING' && triggerLocation === 'PLAY' && card.type === 'STORY';
@@ -516,6 +535,12 @@ export const ServerGameService = {
       }
     } else if (cost > 0) {
       let remainingCost = cost;
+      const has20400008Substitute = player.hand.some(c =>
+        ServerGameService.canUse20400008AsPaymentSubstitute(c, card.color, cost, card.gamecardId)
+      );
+      if (has20400008Substitute) {
+        remainingCost = 0;
+      }
 
       // I. Check for Feijing card in hand (of the same color)
       const hasFeijing = player.hand.some(c =>
@@ -523,7 +548,7 @@ export const ServerGameService = {
         c.feijingMark &&
         c.color === card.color
       );
-      if (hasFeijing) {
+      if (remainingCost > 0 && hasFeijing) {
         remainingCost = Math.max(0, remainingCost - 3);
       }
 
@@ -590,17 +615,29 @@ export const ServerGameService = {
     if (cost > 0) {
       let remainingCost = cost;
       let feijingCard: Card | undefined;
+      let use20400008Replacement = false;
 
       if (paymentSelection.feijingCardId) {
         if (paymentSelection.feijingCardId === playingCardId) {
           return { success: false, reason: '不能使用正在打出的卡牌作为菲晶卡支付费用' };
         }
-        feijingCard = player.hand.find(c => c.gamecardId === paymentSelection.feijingCardId && c.feijingMark);
+        feijingCard = player.hand.find(c =>
+          c.gamecardId === paymentSelection.feijingCardId &&
+          (c.feijingMark || c.id === '20400008')
+        );
         if (feijingCard) {
-          if (cardColor && feijingCard.color !== cardColor) {
+          if (ServerGameService.canUse20400008AsPaymentSubstitute(feijingCard, cardColor, cost, playingCardId)) {
+            remainingCost = 0;
+            use20400008Replacement = true;
+          } else if (cardColor && feijingCard.color !== cardColor) {
             return { success: false, reason: '菲晶卡颜色与打出的卡牌颜色不匹配' };
+          } else if (!feijingCard.feijingMark) {
+            return { success: false, reason: '选择的手牌不能用于代替支付该费用' };
+          } else {
+            remainingCost = Math.max(0, remainingCost - 3);
           }
-          remainingCost = Math.max(0, remainingCost - 3);
+        } else {
+          return { success: false, reason: '选择的手牌支付卡无效' };
         }
       }
 
@@ -637,7 +674,7 @@ export const ServerGameService = {
         } else if (player.hand.some(c => c?.gamecardId === feijingCard!.gamecardId)) {
           fromZone = 'HAND';
         }
-        ServerGameService.moveCard(gameState, playerId, fromZone, playerId, 'GRAVE', feijingCard.gamecardId);
+        ServerGameService.moveCard(gameState, playerId, fromZone, playerId, use20400008Replacement ? 'EXILE' : 'GRAVE', feijingCard.gamecardId);
       }
       for (let i = 0; i < remainingCost; i++) {
         // 2. The cards in the damaged deck do not have enough damage value
@@ -2100,6 +2137,11 @@ export const ServerGameService = {
 
     const unit = zone === 'UNIT' ? player.unitZone[unitIdx]! : player.itemZone[unitIdx]!;
 
+    if (!isEffect && (unit as any).data?.combatImmuneUntilOwnNextTurnStartUid === playerId) {
+      gameState.logs.push(`[${unit.fullName}] 不会被战斗破坏，本次破坏无效。`);
+      return false;
+    }
+
     // Check for Substitution effects
     if (!skipSubstitution) {
       const substitutionCards = player.itemZone.filter(c =>
@@ -2260,6 +2302,14 @@ export const ServerGameService = {
           card.temporaryImmuneToUnitEffects = undefined;
           if ((card as any).data?.clearMirrorActiveTurn !== undefined) {
             delete (card as any).data.clearMirrorActiveTurn;
+          }
+          if ((card as any).data?.fullEffectSilencedTurn !== undefined) {
+            delete (card as any).data.fullEffectSilencedTurn;
+            delete (card as any).data.fullEffectSilenceSource;
+          }
+          if ((card as any).data?.combatImmuneUntilOwnNextTurnStartUid === nextPlayerId) {
+            delete (card as any).data.combatImmuneUntilOwnNextTurnStartUid;
+            delete (card as any).data.combatImmuneSourceName;
           }
         });
 
@@ -2705,6 +2755,14 @@ export const ServerGameService = {
           c.temporaryImmuneToUnitEffects = undefined;
           if ((c as any).data?.clearMirrorActiveTurn !== undefined) {
             delete (c as any).data.clearMirrorActiveTurn;
+          }
+          if ((c as any).data?.fullEffectSilencedTurn !== undefined) {
+            delete (c as any).data.fullEffectSilencedTurn;
+            delete (c as any).data.fullEffectSilenceSource;
+          }
+          if ((c as any).data?.combatImmuneUntilOwnNextTurnStartUid === player.uid) {
+            delete (c as any).data.combatImmuneUntilOwnNextTurnStartUid;
+            delete (c as any).data.combatImmuneSourceName;
           }
         }
       });

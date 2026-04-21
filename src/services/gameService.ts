@@ -6,6 +6,18 @@
 import { socket } from '../socket';
 import { GameState, Card, CardEffect, TriggerLocation, GameEvent } from '../types/game';
 
+const isFullEffectSilencedThisTurn = (gameState: GameState | null, card: Card) =>
+  !!gameState && (card as any).data?.fullEffectSilencedTurn === gameState.turnCount;
+
+const canUse20400008AsPaymentSubstitute = (paymentCard: Card | undefined, cardColor?: string, cost?: number, playingCardId?: string) =>
+  !!paymentCard &&
+  paymentCard.id === '20400008' &&
+  paymentCard.gamecardId !== playingCardId &&
+  cardColor === 'BLUE' &&
+  !!cost &&
+  cost > 0 &&
+  cost <= 3;
+
 /**
  * GameService (Frontend Proxy)
  * 
@@ -167,12 +179,18 @@ export const GameService = {
       }
     } else if (cost > 0) {
       let remainingCost = cost;
+      const has20400008Substitute = player.hand.some((c: any) =>
+        canUse20400008AsPaymentSubstitute(c, card.color, cost, card.gamecardId)
+      );
+      if (has20400008Substitute) {
+        remainingCost = 0;
+      }
       const hasFeijing = player.hand.some((c: any) =>
         c.gamecardId !== card.gamecardId &&
         c.feijingMark &&
         c.color === card.color
       );
-      if (hasFeijing) {
+      if (remainingCost > 0 && hasFeijing) {
         remainingCost = Math.max(0, remainingCost - 3);
       }
       const readyUnitsCount = player.unitZone.filter((c: any) => c !== null && !c.isExhausted).length;
@@ -260,6 +278,10 @@ export const GameService = {
       if (totalCount < effect.erosionTotalLimit[0] || totalCount > effect.erosionTotalLimit[1]) {
         return { valid: false, reason: '侵蚀区卡牌总数不满足条件' };
       }
+    }
+
+    if (isFullEffectSilencedThisTurn(gameState, card)) {
+      return { valid: false, reason: '该卡牌本回合失去所有效果' };
     }
 
     // 4. Condition Check
