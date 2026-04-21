@@ -13,8 +13,6 @@ const hasGuildGodmarkUnit = (playerState: PlayerState) => {
 };
 
 const getGuardianCandidates = (playerState: PlayerState) => {
-  if (!hasGuildGodmarkUnit(playerState)) return [] as Card[];
-
   return playerState.unitZone.filter((unit): unit is Card =>
     !!unit &&
     unit.id === '10402024' &&
@@ -40,6 +38,7 @@ const applyForcedGuard = async (instance: Card, target: Card, gameState: GameSta
   gameState.battleState.defender = target.gamecardId;
   gameState.battleState.defenseLockedToTargetId = target.gamecardId;
   gameState.battleState.forcedGuardTargetId = target.gamecardId;
+  gameState.battleState.forcedGuardLogged = false;
   gameState.phase = 'BATTLE_FREE';
   gameState.phaseTimerStart = Date.now();
 
@@ -76,10 +75,14 @@ const trigger_10402024_guard: CardEffect = {
     if (!gameState.battleState || event?.playerUid === playerState.uid) return;
 
     const candidates = getGuardianCandidates(playerState);
-    if (candidates.length === 0) return;
+    const selfOnField = playerState.unitZone.find(
+      (unit): unit is Card => !!unit && unit.gamecardId === instance.gamecardId && !unit.isExhausted
+    );
+    const resolvedCandidates = candidates.length > 0 ? candidates : (selfOnField ? [selfOnField] : []);
+    if (resolvedCandidates.length === 0) return;
 
-    if (candidates.length === 1) {
-      await applyForcedGuard(instance, candidates[0], gameState, playerState);
+    if (resolvedCandidates.length === 1) {
+      await applyForcedGuard(instance, resolvedCandidates[0], gameState, playerState);
       return;
     }
 
@@ -90,7 +93,7 @@ const trigger_10402024_guard: CardEffect = {
       options: AtomicEffectExecutor.enrichQueryOptions(
         gameState,
         event.playerUid!,
-        candidates.map(card => ({ card, source: 'UNIT' as any }))
+        resolvedCandidates.map(card => ({ card, source: 'UNIT' as any }))
       ),
       title: '选择攻击对象',
       description: '场上存在多个具有该效果的单位。请选择其中1张作为本次攻击对象。',
@@ -112,7 +115,11 @@ const trigger_10402024_guard: CardEffect = {
 
     const targetId = selections[0];
     const validTargets = getGuardianCandidates(ownerState);
-    const targetCard = validTargets.find(card => card.gamecardId === targetId);
+    const fallbackSelf = ownerState.unitZone.find(
+      (unit): unit is Card => !!unit && unit.gamecardId === instance.gamecardId && !unit.isExhausted
+    );
+    const resolvedTargets = validTargets.length > 0 ? validTargets : (fallbackSelf ? [fallbackSelf] : []);
+    const targetCard = resolvedTargets.find(card => card.gamecardId === targetId);
 
     if (!targetCard) {
       gameState.logs.push(`[${instance.fullName}] 选择的攻击对象已不合法，效果结算失败。`);
