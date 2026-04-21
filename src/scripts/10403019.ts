@@ -1,6 +1,12 @@
 import { Card, GameState, PlayerState, CardEffect, GameEvent } from '../types/game';
 import { AtomicEffectExecutor } from '../services/AtomicEffectExecutor';
 
+const getErosionCount = (player: PlayerState) => {
+  const front = player.erosionFront.filter(c => c !== null).length;
+  const back = player.erosionBack.filter(c => c !== null).length;
+  return front + back;
+};
+
 const getSwapTargets = (playerState: PlayerState, sourceCard: Card) => {
   const fieldSpecialNames = new Set(
     playerState.unitZone.filter((u): u is Card => !!u && !!u.specialName).map(u => u.specialName)
@@ -22,7 +28,7 @@ const getSwapTargets = (playerState: PlayerState, sourceCard: Card) => {
 const trigger_10403019_buff: CardEffect = {
   id: '10403019_entry_buff',
   type: 'TRIGGER',
-  description: '【诱发】当此卡从侵蚀位前区移动到单位区时：此卡获得+1/+1000并获得【速攻】。',
+  description: '【诱发】当此卡从侵蚀前区移动到单位区时：此卡获得+1/+1000并获得【速攻】。',
   triggerLocation: ['UNIT'],
   triggerEvent: 'CARD_EROSION_TO_FIELD',
   isMandatory: true,
@@ -63,14 +69,18 @@ const continuous_10403019_buff: CardEffect = {
 const activate_10403019_swap: CardEffect = {
   id: '10403019_swap',
   type: 'ACTIVATE',
-  description: '【启】【名称一回合一次】侵蚀区数量为3-7且在你的回合时，支付1费：将此单位正面表示置入侵蚀位前区，之后选择你侵蚀位前区除「巴特拉」以外的一张正面表示的「冒险家公会」单位卡，放置在单位区。',
+  description: '【启动】【名称一回合一次】侵蚀区数量为3-7且在你的回合时，支付1费：将此单位正面表示置入侵蚀前区，之后选择你侵蚀前区除「巴特拉」以外的一张正面表示的「冒险家公会」单位卡，放置在单位区。',
   limitCount: 1,
   limitNameType: true,
-  triggerLocation: ['HAND'],
+  triggerLocation: ['UNIT'],
   erosionTotalLimit: [3, 7],
   condition: (_gameState: GameState, playerState: PlayerState, instance: Card) => {
-    if (!playerState.isTurn || instance.cardlocation !== 'HAND') return false;
-    return true;
+    if (!playerState.isTurn || instance.cardlocation !== 'UNIT') return false;
+
+    const erosionCount = getErosionCount(playerState);
+    if (erosionCount < 3 || erosionCount > 7) return false;
+
+    return getSwapTargets(playerState, instance).length > 0;
   },
   execute: async (instance: Card, gameState: GameState, playerState: PlayerState) => {
     gameState.pendingQuery = {
@@ -79,7 +89,7 @@ const activate_10403019_swap: CardEffect = {
       playerUid: playerState.uid,
       options: [],
       title: `支付 [${instance.fullName}] 的费用`,
-      description: '请支付1费以发动效果。',
+      description: '请支付1点费用以发动效果。',
       minSelections: 1,
       maxSelections: 1,
       callbackKey: 'EFFECT_RESOLVE',
@@ -87,21 +97,31 @@ const activate_10403019_swap: CardEffect = {
       paymentColor: instance.color,
       context: {
         sourceCardId: instance.gamecardId,
-        effectId: '10403019_swap',
+        effectIndex: 1,
         step: 1
       }
     };
+
+    gameState.logs.push(`[${instance.fullName}] 等待 ${playerState.displayName} 支付 1 点费用...`);
   },
   onQueryResolve: async (instance: Card, gameState: GameState, playerState: PlayerState, selections: string[], context: any) => {
     if (context.step === 1) {
-      const cardInHand = playerState.hand.find(c => c.gamecardId === instance.gamecardId);
-      if (!cardInHand) {
-        gameState.logs.push(`[${instance.fullName}] 结算时已不在手牌，效果失败。`);
+      const cardOnField = playerState.unitZone.find(c => c?.gamecardId === instance.gamecardId);
+      if (!cardOnField) {
+        gameState.logs.push(`[${instance.fullName}] 结算时已不在单位区，效果失败。`);
+        return;
+      }
+
+      gameState.logs.push(`[${instance.fullName}] 费用支付成功。`);
+
+      const validTargets = getSwapTargets(playerState, instance);
+      if (validTargets.length === 0) {
+        gameState.logs.push(`[${instance.fullName}] 当前没有可放置到单位区的合法「冒险家公会」单位，效果失败。`);
         return;
       }
 
       await AtomicEffectExecutor.execute(gameState, playerState.uid, {
-        type: 'MOVE_FROM_HAND',
+        type: 'MOVE_FROM_FIELD',
         targetFilter: { gamecardId: instance.gamecardId },
         destinationZone: 'EROSION_FRONT'
       }, instance);
@@ -111,12 +131,6 @@ const activate_10403019_swap: CardEffect = {
         movedSelf.displayState = 'FRONT_UPRIGHT';
       }
 
-      const targets = getSwapTargets(playerState, instance);
-      if (targets.length === 0) {
-        gameState.logs.push(`[${instance.fullName}] 已放置到侵蚀区，但当前没有可放置到单位区的合法「冒险家公会」单位。`);
-        return;
-      }
-
       gameState.pendingQuery = {
         id: Math.random().toString(36).substring(7),
         type: 'SELECT_CARD',
@@ -124,16 +138,16 @@ const activate_10403019_swap: CardEffect = {
         options: AtomicEffectExecutor.enrichQueryOptions(
           gameState,
           playerState.uid,
-          targets.map(c => ({ card: c, source: 'EROSION_FRONT' }))
+          validTargets.map(c => ({ card: c, source: 'EROSION_FRONT' }))
         ),
         title: '选择进入单位区的单位',
-        description: '请选择一张侵蚀位前区的「冒险家公会」单位放置到单位区。',
+        description: '请选择一张侵蚀前区的「冒险家公会」单位放置到单位区。',
         minSelections: 1,
         maxSelections: 1,
         callbackKey: 'EFFECT_RESOLVE',
         context: {
           sourceCardId: instance.gamecardId,
-          effectId: '10403019_swap',
+          effectIndex: 1,
           step: 2
         }
       };
@@ -148,11 +162,15 @@ const activate_10403019_swap: CardEffect = {
         return;
       }
 
+      targetCard.isExhausted = false;
+      targetCard.displayState = 'FRONT_UPRIGHT';
+
       await AtomicEffectExecutor.execute(gameState, playerState.uid, {
         type: 'MOVE_FROM_EROSION',
         targetFilter: { gamecardId: targetId },
         destinationZone: 'UNIT'
       }, instance);
+
       gameState.logs.push(`[${instance.fullName}] 效果：将 [${targetCard.fullName}] 放置到了单位区。`);
     }
   }

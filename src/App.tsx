@@ -240,119 +240,125 @@ export default function App() {
 
   if (!user) {
     return (
-      <div className="h-screen bg-black flex flex-col items-center justify-center p-8 text-center text-white">
-        <motion.div
-          initial={{ scale: 0.8, opacity: 0 }}
-          animate={{ scale: 1, opacity: 1 }}
-          className="w-full max-w-md bg-zinc-900 border border-white/10 p-6 md:p-8 rounded-3xl mx-4"
-        >
-          <h1 className="text-4xl md:text-6xl font-black text-red-600 italic mb-4 tracking-tighter">绁炶殌鍒涚棔</h1>
-          <p className="text-zinc-400 mb-8 uppercase tracking-[0.2em] text-[10px] md:text-sm">OVERHEAT TCG ONLINE</p>
+      <div className="min-h-screen bg-black px-4 py-6 text-white sm:p-8">
+        <div className="mx-auto flex min-h-[calc(100vh-3rem)] w-full max-w-md items-center justify-center sm:min-h-[calc(100vh-4rem)]">
+          <motion.div
+            initial={{ scale: 0.8, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            className="w-full rounded-[28px] border border-white/10 bg-zinc-900/95 p-4 text-left shadow-[0_24px_80px_rgba(0,0,0,0.45)] sm:p-8"
+          >
+            <h1 className="mb-3 text-center text-4xl font-black italic tracking-tighter text-red-600 md:text-6xl">神蚀创痕</h1>
+            <p className="mb-6 text-center text-[10px] uppercase tracking-[0.2em] text-zinc-400 md:mb-8 md:text-sm">OVERHEAT TCG ONLINE</p>
 
-          <div className="mb-6 grid grid-cols-2 rounded-2xl bg-black/60 p-1 border border-white/10">
-            <button
-              type="button"
-              onClick={() => {
-                setAuthMode('login');
-                setLoginError('');
-              }}
-              className={`rounded-xl py-3 text-sm font-bold transition-all ${authMode === 'login' ? 'bg-white text-black' : 'text-zinc-400 hover:text-white'}`}
-            >
-              登录
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setAuthMode('register');
-                setRegisterError('');
-                setRegisterMessage('');
-              }}
-              className={`rounded-xl py-3 text-sm font-bold transition-all ${authMode === 'register' ? 'bg-white text-black' : 'text-zinc-400 hover:text-white'}`}
-            >
-              注册
-            </button>
-          </div>
-
-          {authMode === 'login' ? (
-            <form onSubmit={handleLogin} className="flex flex-col gap-4">
-              <input
-                type="text"
-                placeholder="用户名或邮箱"
-                value={loginUsername}
-                onChange={e => setLoginUsername(e.target.value)}
-                className="p-3 bg-black border border-white/20 rounded-lg text-white"
-              />
-              <input
-                type="password"
-                placeholder="密码"
-                value={loginPassword}
-                onChange={e => setLoginPassword(e.target.value)}
-                className="p-3 bg-black border border-white/20 rounded-lg text-white"
-              />
-              {loginError && <div className="text-red-500 text-sm font-bold">{loginError}</div>}
+            <div className="mb-5 grid grid-cols-2 rounded-2xl border border-white/10 bg-black/60 p-1">
               <button
-                type="submit"
-                disabled={loginSubmitting}
-                className="w-full py-4 mt-4 bg-white text-black font-bold rounded-xl hover:bg-zinc-200 transition-all shadow-[0_0_30px_rgba(255,255,255,0.1)] disabled:opacity-60"
+                type="button"
+                onClick={() => {
+                  setAuthMode('login');
+                  setLoginError('');
+                }}
+                className={`rounded-xl py-3 text-sm font-bold transition-all ${authMode === 'login' ? 'bg-white text-black' : 'text-zinc-400 hover:text-white'}`}
               >
-                {loginSubmitting ? '登录中...' : '登录'}
+                登录
               </button>
-            </form>
-          ) : (
-            <form onSubmit={handleRegister} className="flex flex-col gap-4">
-              <input
-                type="text"
-                placeholder="用户名"
-                value={registerUsername}
-                onChange={e => setRegisterUsername(e.target.value)}
-                className="p-3 bg-black border border-white/20 rounded-lg text-white"
-              />
-              <input
-                type="email"
-                placeholder="邮箱"
-                value={registerEmail}
-                onChange={e => setRegisterEmail(e.target.value)}
-                className="p-3 bg-black border border-white/20 rounded-lg text-white"
-              />
-              <input
-                type="password"
-                placeholder="密码"
-                value={registerPassword}
-                onChange={e => setRegisterPassword(e.target.value)}
-                className="p-3 bg-black border border-white/20 rounded-lg text-white"
-              />
-              <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  setAuthMode('register');
+                  setRegisterError('');
+                  setRegisterMessage('');
+                }}
+                className={`rounded-xl py-3 text-sm font-bold transition-all ${authMode === 'register' ? 'bg-white text-black' : 'text-zinc-400 hover:text-white'}`}
+              >
+                注册
+              </button>
+            </div>
+
+            {authMode === 'login' ? (
+              <form onSubmit={handleLogin} className="flex flex-col gap-3 sm:gap-4">
                 <input
                   type="text"
-                  placeholder="6位验证码"
-                  value={verificationCode}
-                  onChange={e => setVerificationCode(e.target.value)}
-                  className="flex-1 p-3 bg-black border border-white/20 rounded-lg text-white"
+                  placeholder="用户名或邮箱"
+                  value={loginUsername}
+                  onChange={e => setLoginUsername(e.target.value)}
+                  className="rounded-xl border border-white/15 bg-black px-4 py-3 text-white placeholder:text-zinc-500"
                 />
+                <input
+                  type="password"
+                  placeholder="密码"
+                  value={loginPassword}
+                  onChange={e => setLoginPassword(e.target.value)}
+                  className="rounded-xl border border-white/15 bg-black px-4 py-3 text-white placeholder:text-zinc-500"
+                />
+                {loginError && <div className="text-sm font-bold text-red-500">{loginError}</div>}
                 <button
-                  type="button"
-                  onClick={handleSendVerificationCode}
-                  disabled={sendingCode || sendCodeCooldown > 0}
-                  className="px-4 py-3 rounded-lg bg-red-600 text-white font-bold text-sm hover:bg-red-500 transition-all disabled:opacity-60 disabled:hover:bg-red-600"
+                  type="submit"
+                  disabled={loginSubmitting}
+                  className="mt-3 w-full rounded-2xl bg-white py-4 text-base font-bold text-black transition-all shadow-[0_0_30px_rgba(255,255,255,0.1)] hover:bg-zinc-200 disabled:opacity-60"
                 >
-                  {sendingCode ? '发送中...' : sendCodeCooldown > 0 ? `${sendCodeCooldown}s` : '发送验证码'}
+                  {loginSubmitting ? '登录中...' : '登录'}
                 </button>
-              </div>
-              {registerMessage && <div className="text-emerald-400 text-sm font-bold">{registerMessage}</div>}
-              {registerError && <div className="text-red-500 text-sm font-bold">{registerError}</div>}
-              <button
-                type="submit"
-                disabled={registerSubmitting}
-                className="w-full py-4 mt-2 bg-white text-black font-bold rounded-xl hover:bg-zinc-200 transition-all shadow-[0_0_30px_rgba(255,255,255,0.1)] disabled:opacity-60"
-              >
-                {registerSubmitting ? '注册中...' : '完成注册'}
-              </button>
-              <p className="text-zinc-500 text-xs leading-relaxed">
-                注册成功后会自动发放 100000 金币、100000 卡晶，并为每张卡初始化 4 张。
-              </p>
-            </form>
-          )}
-        </motion.div>
+              </form>
+            ) : (
+              <form onSubmit={handleRegister} className="flex flex-col gap-3 sm:gap-4">
+                <div className="rounded-2xl border border-red-500/20 bg-red-500/5 px-4 py-3 text-xs leading-relaxed text-zinc-300">
+                  <p className="font-bold tracking-wide text-white">新用户初始资源</p>
+                  <p className="mt-1 text-zinc-400">100000 金币 + 100000 卡晶 + 每种卡牌 4 张</p>
+                </div>
+                <input
+                  type="text"
+                  placeholder="用户名"
+                  value={registerUsername}
+                  onChange={e => setRegisterUsername(e.target.value)}
+                  className="rounded-xl border border-white/15 bg-black px-4 py-3 text-white placeholder:text-zinc-500"
+                />
+                <input
+                  type="email"
+                  placeholder="邮箱"
+                  value={registerEmail}
+                  onChange={e => setRegisterEmail(e.target.value)}
+                  className="rounded-xl border border-white/15 bg-black px-4 py-3 text-white placeholder:text-zinc-500"
+                />
+                <input
+                  type="password"
+                  placeholder="密码"
+                  value={registerPassword}
+                  onChange={e => setRegisterPassword(e.target.value)}
+                  className="rounded-xl border border-white/15 bg-black px-4 py-3 text-white placeholder:text-zinc-500"
+                />
+                <div className="flex flex-col gap-3 sm:flex-row">
+                  <input
+                    type="text"
+                    placeholder="6位验证码"
+                    value={verificationCode}
+                    onChange={e => setVerificationCode(e.target.value)}
+                    className="min-w-0 flex-1 rounded-xl border border-white/15 bg-black px-4 py-3 text-white placeholder:text-zinc-500"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleSendVerificationCode}
+                    disabled={sendingCode || sendCodeCooldown > 0}
+                    className="w-full rounded-xl bg-red-600 px-4 py-3 text-sm font-bold text-white transition-all hover:bg-red-500 disabled:opacity-60 disabled:hover:bg-red-600 sm:w-auto sm:min-w-[122px]"
+                  >
+                    {sendingCode ? '发送中...' : sendCodeCooldown > 0 ? `${sendCodeCooldown}s` : '发送验证码'}
+                  </button>
+                </div>
+                {registerMessage && <div className="text-sm font-bold text-emerald-400">{registerMessage}</div>}
+                {registerError && <div className="text-sm font-bold text-red-500">{registerError}</div>}
+                <button
+                  type="submit"
+                  disabled={registerSubmitting}
+                  className="mt-1 w-full rounded-2xl bg-white py-4 text-base font-bold text-black transition-all shadow-[0_0_30px_rgba(255,255,255,0.1)] hover:bg-zinc-200 disabled:opacity-60"
+                >
+                  {registerSubmitting ? '注册中...' : '完成注册'}
+                </button>
+                <p className="px-1 text-xs leading-relaxed text-zinc-500">
+                  注册成功后会自动发放 100000 金币、100000 卡晶，并为每张卡初始化 4 张。
+                </p>
+              </form>
+            )}
+          </motion.div>
+        </div>
       </div>
     );
   }
@@ -374,7 +380,7 @@ export default function App() {
               <Route path="/collection" element={<Collection />} />
               <Route path="/practice" element={<PracticeSetup />} />
               <Route path="/friend-match" element={<FriendMatch />} />
-              <Route path="/history" element={<div className="pt-24 px-12 text-zinc-500 uppercase tracking-widest text-center">鐎佃鍨崢鍡楀蕉閸楀啿鐨㈡稉濠勫殠</div>} />
+              <Route path="/history" element={<div className="pt-24 px-12 text-zinc-500 uppercase tracking-widest text-center">对战历史即将上线</div>} />
             </Routes>
           </Suspense>
         </main>
