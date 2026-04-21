@@ -198,6 +198,41 @@ export const ServerGameService = {
     }
   },
 
+  tryApplyMinotaurShieldGuardOnAttackDeclaration(gameState: GameState) {
+    if (!gameState.battleState) return false;
+
+    const defenderPlayerId = gameState.playerIds[gameState.currentTurnPlayer === 0 ? 1 : 0];
+    const defenderPlayer = gameState.players[defenderPlayerId];
+    if (!defenderPlayer) return false;
+
+    const hasGuildGodmarkUnit = defenderPlayer.unitZone.some(unit =>
+      unit &&
+      unit.godMark &&
+      unit.faction === '九尾商会联盟'
+    );
+    if (!hasGuildGodmarkUnit) return false;
+
+    const candidates = defenderPlayer.unitZone.filter((unit): unit is Card =>
+      !!unit &&
+      unit.id === '10402024' &&
+      !unit.isExhausted
+    );
+
+    if (candidates.length !== 1) return false;
+
+    const target = candidates[0];
+    target.isExhausted = true;
+    gameState.battleState.unitTargetId = target.gamecardId;
+    gameState.battleState.defender = target.gamecardId;
+    gameState.battleState.defenseLockedToTargetId = target.gamecardId;
+    gameState.battleState.forcedGuardTargetId = target.gamecardId;
+    gameState.battleState.forcedGuardLogged = false;
+    gameState.logs.push(`[${target.fullName}] 强制本次攻击与 [${target.fullName}] 进行战斗，跳过防御宣告。`);
+    gameState.logs.push(`[调试][攻击宣告直连护卫] phase=${gameState.phase}, target=${target.fullName}, exhausted=${target.isExhausted}, defender=${gameState.battleState.defender}`);
+    EventEngine.recalculateContinuousEffects(gameState);
+    return true;
+  },
+
   refreshCardAsNewInstance(card: Card) {
     const masterCard = SERVER_CARD_LIBRARY[card.uniqueId] || SERVER_CARD_LIBRARY[card.id];
     const newGamecardId = Math.random().toString(36).substring(2, 10);
@@ -1724,6 +1759,11 @@ export const ServerGameService = {
       defensePowerRestriction: 0
     };
 
+    let effectiveSkipDefense = !!skipDefense;
+    if (!effectiveSkipDefense) {
+      effectiveSkipDefense = ServerGameService.tryApplyMinotaurShieldGuardOnAttackDeclaration(gameState);
+    }
+
     const attackerNames = attackers.map(a => a.fullName).join(' 和 ');
     gameState.logs.push(`${player.displayName} 宣告了攻击 ${attackerNames}${isAlliance ? ' (联军攻击)' : ''}`);
 
@@ -1741,7 +1781,7 @@ export const ServerGameService = {
       attackerIds,
       isAlliance,
       timestamp: Date.now(),
-      skipDefense
+      skipDefense: effectiveSkipDefense
     });
 
     return gameState;
