@@ -2,7 +2,7 @@ import { Card, GameState, PlayerState, CardEffect } from '../types/game';
 import { AtomicEffectExecutor } from '../services/AtomicEffectExecutor';
 
 const card: Card = {
-  id: '10402021',
+  id: '10403021',
   fullName: '龙翼看板娘[小婷]',
   specialName: '小婷',
   type: 'UNIT',

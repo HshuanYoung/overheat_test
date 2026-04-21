@@ -7,6 +7,126 @@ const getErosionCount = (player: PlayerState) => {
   return front + back;
 };
 
+const getSwapTargets = (playerState: PlayerState, sourceCard: Card) => {
+  const fieldSpecialNames = new Set(
+    playerState.unitZone.filter((u): u is Card => !!u && !!u.specialName).map(u => u.specialName)
+  );
+  const itemSpecialNames = new Set(
+    playerState.itemZone.filter((i): i is Card => !!i && !!i.specialName).map(i => i.specialName)
+  );
+
+  return playerState.erosionFront.filter((c): c is Card =>
+    !!c &&
+    c.displayState === 'FRONT_UPRIGHT' &&
+    c.type === 'UNIT' &&
+    c.faction === '冒险家公会' &&
+    c.specialName !== sourceCard.specialName &&
+    (!c.specialName || (!fieldSpecialNames.has(c.specialName) && !itemSpecialNames.has(c.specialName)))
+  );
+};
+
+const activateEffect: CardEffect = {
+  id: 'freya_ranger_activate',
+  type: 'ACTIVATE',
+  limitCount: 1,
+  limitNameType: true,
+  triggerLocation: ['UNIT'],
+  description: '【启动】【同名回合一次】侵蚀区处于3-7张且在你的回合，支付1费，将这个单位正面表示置入侵蚀前区。之后选择你侵蚀前区一张「芙蕾雅」以外的「冒险家公会」单位卡，将其放置进入单位区。',
+  condition: (_gameState, playerState, instance) => {
+    if (!playerState.isTurn || instance.cardlocation !== 'UNIT') return false;
+
+    const erosionCount = getErosionCount(playerState);
+    if (erosionCount < 3 || erosionCount > 7) return false;
+
+    return true;
+  },
+  execute: async (card, gameState, playerState) => {
+    gameState.pendingQuery = {
+      id: Math.random().toString(36).substring(7),
+      type: 'SELECT_PAYMENT',
+      playerUid: playerState.uid,
+      options: [],
+      title: `支付 [${card.fullName}] 的费用`,
+      description: '请支付1点费用以发动效果。',
+      minSelections: 1,
+      maxSelections: 1,
+      callbackKey: 'EFFECT_RESOLVE',
+      paymentCost: 1,
+      paymentColor: card.color,
+      context: {
+        sourceCardId: card.gamecardId,
+        effectIndex: 0,
+        step: 1
+      }
+    };
+    gameState.logs.push(`[${card.fullName}] 等待 ${playerState.displayName} 支付 1 点费用...`);
+  },
+  onQueryResolve: async (card, gameState, playerState, selections, context) => {
+    const step = context?.step || 1;
+    const sourcePlayer = gameState.players[playerState.uid];
+
+    if (step === 1) {
+      gameState.logs.push(`[${card.fullName}] 费用支付成功。`);
+
+      await AtomicEffectExecutor.execute(gameState, playerState.uid, {
+        type: 'MOVE_FROM_FIELD',
+        destinationZone: 'EROSION_FRONT',
+        targetFilter: { gamecardId: card.gamecardId }
+      }, card);
+
+      const movedSelf = sourcePlayer.erosionFront.find(c => c?.gamecardId === card.gamecardId);
+      if (movedSelf) {
+        movedSelf.displayState = 'FRONT_UPRIGHT';
+      }
+
+      const validTargets = getSwapTargets(sourcePlayer, card);
+      if (validTargets.length === 0) {
+        gameState.logs.push(`[${card.fullName}] 已正面进入侵蚀前区，但当前没有可放置到单位区的合法目标。`);
+        return;
+      }
+
+      gameState.pendingQuery = {
+        id: Math.random().toString(36).substring(7),
+        type: 'SELECT_CARD',
+        playerUid: playerState.uid,
+        options: AtomicEffectExecutor.enrichQueryOptions(
+          gameState,
+          playerState.uid,
+          validTargets.map(u => ({ card: u, source: 'EROSION_FRONT' as any }))
+        ),
+        title: '选择侵蚀卡进入战场',
+        description: '请选择一张侵蚀前区正面表示的「冒险家公会」单位（非芙蕾雅），其将进入战场。',
+        minSelections: 1,
+        maxSelections: 1,
+        callbackKey: 'EFFECT_RESOLVE',
+        context: {
+          sourceCardId: card.gamecardId,
+          effectIndex: 0,
+          step: 2
+        }
+      };
+    } else if (step === 2) {
+      const targetId = selections[0];
+      const targetCard = sourcePlayer.erosionFront.find(c => c?.gamecardId === targetId);
+
+      if (targetCard) {
+        targetCard.isExhausted = false;
+        targetCard.displayState = 'FRONT_UPRIGHT';
+
+        await AtomicEffectExecutor.execute(gameState, playerState.uid, {
+          type: 'MOVE_FROM_EROSION',
+          destinationZone: 'UNIT',
+          targetFilter: { gamecardId: targetId }
+        }, card);
+
+        gameState.logs.push(`[${card.fullName}] 效果生效：${targetCard.fullName} 从侵蚀区进入了战场。`);
+      } else {
+        gameState.logs.push(`[${card.fullName}] 结算时目标已不合法，效果失败。`);
+      }
+    }
+  }
+};
+
 const card: Card = {
   id: '10403032',
   fullName: '破阵游侠【芙蕾雅】',
@@ -28,132 +148,7 @@ const card: Card = {
   canAttack: true,
   feijingMark: false,
   canResetCount: 0,
-  effects: [
-    {
-      id: 'freya_ranger_activate',
-      type: 'ACTIVATE',
-      limitCount: 1,
-      limitNameType: true,
-      triggerLocation: ['UNIT'],
-      description: '【启】〔同名回合1次〕：侵蚀区处于3-7且在你的回合，支付1点费用，将这个单位以正面表示置入侵蚀区：选择你侵蚀区正面一张「芙蕾雅」以外的「冒险家公会」单位卡，将其纵置摆放进入单位区。',
-      condition: (gameState, playerState, instance) => {
-        // 1. During player's turn
-        if (!playerState.isTurn) return false;
-
-        // 2. Erosion count 3-7
-        const erosionCount = getErosionCount(playerState);
-        if (erosionCount < 3 || erosionCount > 7) return false;
-
-        // 3. Valid target exists in erosionFront
-        const fieldSpecialNames = new Set(playerState.unitZone.filter(u => u && u.specialName).map(u => u!.specialName));
-        const itemSpecialNames = new Set(playerState.itemZone.filter(i => i && i.specialName).map(i => i!.specialName));
-
-        const hasValidTarget = playerState.erosionFront.some(c =>
-          c !== null &&
-          c.displayState === 'FRONT_UPRIGHT' &&
-          c.type === 'UNIT' &&
-          c.faction === '冒险家公会' &&
-          c.specialName !== instance.specialName &&
-          (!c.specialName || (!fieldSpecialNames.has(c.specialName) && !itemSpecialNames.has(c.specialName)))
-        );
-
-        return hasValidTarget;
-      },
-      execute: async (card, gameState, playerState) => {
-        // Step 1: Request 1 fee payment
-        gameState.pendingQuery = {
-          id: Math.random().toString(36).substring(7),
-          type: 'SELECT_PAYMENT',
-          playerUid: playerState.uid,
-          options: [],
-          title: `支付 [${card.fullName}] 的费用`,
-          description: `请支付 1 点费用以发动效果。`,
-          minSelections: 1,
-          maxSelections: 1,
-          callbackKey: 'EFFECT_RESOLVE',
-          paymentCost: 1,
-          paymentColor: card.color,
-          context: {
-            sourceCardId: card.gamecardId,
-            effectIndex: 0,
-            step: 1
-          }
-        };
-        gameState.logs.push(`[破阵游侠【芙蕾雅】] 等待 ${playerState.displayName} 支付 1 点费用...`);
-      },
-      onQueryResolve: async (card, gameState, playerState, selections, context) => {
-        const step = context?.step || 1;
-        const sourcePlayer = gameState.players[playerState.uid];
-
-        if (step === 1) {
-          // Step 2: Payment successful, move self to erosion front
-          gameState.logs.push(`[破阵游侠【芙蕾雅】] 费用支付成功。`);
-
-          const fieldSpecialNames = new Set(playerState.unitZone.filter(u => u && u.specialName).map(u => u!.specialName));
-          const itemSpecialNames = new Set(playerState.itemZone.filter(i => i && i.specialName).map(i => i!.specialName));
-
-          const validTargets = sourcePlayer.erosionFront.filter(c =>
-            c !== null &&
-            c.displayState === 'FRONT_UPRIGHT' &&
-            c.type === 'UNIT' &&
-            c.faction === '冒险家公会' &&
-            !c.fullName.includes('芙蕾雅') &&
-            (!c.specialName || (!fieldSpecialNames.has(c.specialName) && !itemSpecialNames.has(c.specialName)))
-          ) as Card[];
-
-          if (validTargets.length === 0) {
-            gameState.logs.push(`[破阵游侠【芙蕾雅】] 侵蚀区中没有符合条件的目标单位，效果失败。`);
-            return;
-          }
-
-          // Move self to erosion front
-          await AtomicEffectExecutor.execute(gameState, playerState.uid, {
-            type: 'MOVE_FROM_FIELD',
-            destinationZone: 'EROSION_FRONT',
-            targetFilter: { gamecardId: card.gamecardId }
-          }, card);
-
-          card.displayState = 'FRONT_UPRIGHT';
-
-          gameState.pendingQuery = {
-            id: Math.random().toString(36).substring(7),
-            type: 'SELECT_CARD',
-            playerUid: playerState.uid,
-            options: AtomicEffectExecutor.enrichQueryOptions(gameState, playerState.uid, validTargets.map(u => ({ card: u, source: 'EROSION_FRONT' as any }))),
-            title: '选择侵蚀卡进入战场',
-            description: '请选择一张侵蚀区正面的「冒险家公会」单位（非芙蕾雅）。其将进入战场。',
-            minSelections: 1,
-            maxSelections: 1,
-            callbackKey: 'EFFECT_RESOLVE',
-            context: {
-              sourceCardId: card.gamecardId,
-              effectIndex: 0,
-              step: 2
-            }
-          };
-        } else if (step === 2) {
-          // Step 3: Move target to unit zone
-          const targetId = selections[0];
-          const targetCard = sourcePlayer.erosionFront.find(c => c?.gamecardId === targetId);
-
-          if (targetCard) {
-            targetCard.isExhausted = false;
-            targetCard.displayState = 'FRONT_UPRIGHT';
-
-            await AtomicEffectExecutor.execute(gameState, playerState.uid, {
-              type: 'MOVE_FROM_EROSION',
-              destinationZone: 'UNIT',
-              targetFilter: { gamecardId: targetId }
-            }, card);
-
-            gameState.logs.push(`[破阵游侠【芙蕾雅】] 效果生效：${targetCard.fullName} 从侵蚀区进入了战场。`);
-          } else {
-            gameState.logs.push(`[破阵游侠【芙蕾雅】] 结算时目标已不合法，效果失败。`);
-          }
-        }
-      }
-    }
-  ],
+  effects: [activateEffect],
   rarity: 'C',
   availableRarities: ['C'],
   uniqueId: null as any,

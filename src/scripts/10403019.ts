@@ -76,11 +76,9 @@ const activate_10403019_swap: CardEffect = {
   erosionTotalLimit: [3, 7],
   condition: (_gameState: GameState, playerState: PlayerState, instance: Card) => {
     if (!playerState.isTurn || instance.cardlocation !== 'UNIT') return false;
-
     const erosionCount = getErosionCount(playerState);
     if (erosionCount < 3 || erosionCount > 7) return false;
-
-    return getSwapTargets(playerState, instance).length > 0;
+    return true;
   },
   execute: async (instance: Card, gameState: GameState, playerState: PlayerState) => {
     gameState.pendingQuery = {
@@ -114,12 +112,6 @@ const activate_10403019_swap: CardEffect = {
 
       gameState.logs.push(`[${instance.fullName}] 费用支付成功。`);
 
-      const validTargets = getSwapTargets(playerState, instance);
-      if (validTargets.length === 0) {
-        gameState.logs.push(`[${instance.fullName}] 当前没有可放置到单位区的合法「冒险家公会」单位，效果失败。`);
-        return;
-      }
-
       await AtomicEffectExecutor.execute(gameState, playerState.uid, {
         type: 'MOVE_FROM_FIELD',
         targetFilter: { gamecardId: instance.gamecardId },
@@ -129,6 +121,12 @@ const activate_10403019_swap: CardEffect = {
       const movedSelf = playerState.erosionFront.find(c => c?.gamecardId === instance.gamecardId);
       if (movedSelf) {
         movedSelf.displayState = 'FRONT_UPRIGHT';
+      }
+
+      const validTargets = getSwapTargets(playerState, instance);
+      if (validTargets.length === 0) {
+        gameState.logs.push(`[${instance.fullName}] 已正面进入侵蚀前区，但当前没有可放置到单位区的合法目标。`);
+        return;
       }
 
       gameState.pendingQuery = {
