@@ -89,7 +89,7 @@ export default function App() {
       void import('./components/Matchmaking');
       void import('./components/FriendMatch');
       void import('./components/PracticeSetup');
-      void prefetchCardCatalog();
+      void prefetchCardCatalog({ includeEffects: false });
     };
 
     const idleWindow = window as Window & {

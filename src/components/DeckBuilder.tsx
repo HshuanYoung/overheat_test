@@ -47,7 +47,7 @@ export const DeckBuilder: React.FC = () => {
     cards: cardLibrary,
     getCardByReference,
     loading: cardsLoading
-  } = useCardCatalog();
+  } = useCardCatalog({ includeEffects: false });
 
   const CRYSTAL_VALUES: Record<string, { decompose: number, produce: number }> = {
     C: { decompose: 1, produce: 5 },
@@ -378,8 +378,7 @@ export const DeckBuilder: React.FC = () => {
   const filteredCards = useMemo(() => cardLibrary.filter(c => {
     // Text search
     const matchesSearch = c.fullName.includes(deferredSearchTerm) ||
-      (c.specialName && c.specialName.includes(deferredSearchTerm)) ||
-      c.effects?.some(e => e.description.includes(deferredSearchTerm));
+      (c.specialName && c.specialName.includes(deferredSearchTerm));
     if (!matchesSearch) return false;
 
     // Filters

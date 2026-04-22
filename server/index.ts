@@ -1133,9 +1133,9 @@ function pickRandom<T>(arr: T[]): T {
     return arr[Math.floor(Math.random() * arr.length)];
 }
 
-let CLIENT_CARD_CATALOG_CACHE: Card[] | null = null;
+const CLIENT_CARD_CATALOG_CACHE = new Map<string, Card[]>();
 
-function serializeCatalogCard(card: Card): Card {
+function serializeCatalogCard(card: Card, includeEffects: boolean): Card {
     return {
         id: card.id,
         uniqueId: card.uniqueId,
@@ -1151,11 +1151,13 @@ function serializeCatalogCard(card: Card): Card {
         godMark: !!card.godMark,
         displayState: 'FRONT_UPRIGHT',
         feijingMark: !!card.feijingMark,
-        effects: card.effects?.map(effect => ({
-            type: effect.type,
-            description: effect.description,
-            content: effect.content
-        })),
+        effects: includeEffects
+            ? card.effects?.map(effect => ({
+                type: effect.type,
+                description: effect.description,
+                content: effect.content
+            }))
+            : undefined,
         imageUrl: card.imageUrl,
         fullImageUrl: card.fullImageUrl,
         rarity: card.rarity,
@@ -1169,18 +1171,24 @@ function serializeCatalogCard(card: Card): Card {
     };
 }
 
-function getClientCardCatalog() {
-    if (!CLIENT_CARD_CATALOG_CACHE) {
-        CLIENT_CARD_CATALOG_CACHE = getLiveCardVariations().map(serializeCatalogCard);
+function getClientCardCatalog(includeEffects: boolean) {
+    const cacheKey = includeEffects ? 'with-effects' : 'no-effects';
+
+    if (!CLIENT_CARD_CATALOG_CACHE.has(cacheKey)) {
+        CLIENT_CARD_CATALOG_CACHE.set(
+            cacheKey,
+            getLiveCardVariations().map(card => serializeCatalogCard(card, includeEffects))
+        );
     }
 
-    return CLIENT_CARD_CATALOG_CACHE;
+    return CLIENT_CARD_CATALOG_CACHE.get(cacheKey)!;
 }
 
-app.get('/api/cards/meta', async (_req, res): Promise<void> => {
+app.get('/api/cards/meta', async (req, res): Promise<void> => {
     try {
+        const includeEffects = req.query.includeEffects === '1';
         res.setHeader('Cache-Control', 'public, max-age=300');
-        res.json({ cards: getClientCardCatalog() });
+        res.json({ cards: getClientCardCatalog(includeEffects) });
     } catch (err) {
         console.error('[CardsMeta] Failed to build card catalog:', err);
         res.status(500).json({ error: 'Failed to load card catalog' });

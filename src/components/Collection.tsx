@@ -16,7 +16,7 @@ const RARITY_BADGE: Record<string, string> = {
 
 
 type CollectionTab = 'DECKS' | 'CARDS' | 'BACKS' | 'RAY_CARDS';
-const INITIAL_VISIBLE_CARD_COUNT = 72;
+const INITIAL_VISIBLE_CARD_COUNT = 48;
 
 export const Collection: React.FC = () => {
   const navigate = useNavigate();
@@ -45,7 +45,7 @@ export const Collection: React.FC = () => {
     cards: cardLibrary,
     getCardByReference,
     loading: cardsLoading
-  } = useCardCatalog();
+  } = useCardCatalog({ includeEffects: false });
 
   const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || '';
   const token = localStorage.getItem('token');

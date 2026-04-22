@@ -4,7 +4,7 @@ import { ShoppingBag, Coins, Sparkles, ArrowLeft, Loader2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn, getCardImageUrl } from '../lib/utils';
 import { Card } from '../types/game';
-import { useCardCatalog } from '../hooks/useCardCatalog';
+import { prefetchCardCatalog, useCardCatalog } from '../hooks/useCardCatalog';
 
 const RARITY_COLORS: Record<string, string> = {
   C: 'border-zinc-500 shadow-zinc-500/20',
@@ -37,7 +37,10 @@ export const Store: React.FC = () => {
   const [pityInfo, setPityInfo] = useState({ packsSinceSR: 0, packsSinceUR: 0, totalPacks: 0 });
   const [selectedBasicCount, setSelectedBasicCount] = useState<number | null>(null);
   const [selectedPrizeCount, setSelectedPrizeCount] = useState<number | null>(null);
-  const { getCardByReference } = useCardCatalog();
+  const { getCardByReference } = useCardCatalog({
+    includeEffects: false,
+    enabled: showResult || allDrawnPacks.length > 0
+  });
 
   const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || '';
   const token = localStorage.getItem('token');
@@ -75,6 +78,12 @@ export const Store: React.FC = () => {
       });
       const data = await res.json();
       if (data.error) { alert(data.error); setBuying(null); return; }
+
+      try {
+        await prefetchCardCatalog({ includeEffects: false });
+      } catch (catalogError) {
+        console.error('Failed to preload store card catalog:', catalogError);
+      }
 
       setCoins(data.newCoins);
       setCardCrystals(data.newCardCrystals);
