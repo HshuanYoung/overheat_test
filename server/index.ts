@@ -1133,6 +1133,60 @@ function pickRandom<T>(arr: T[]): T {
     return arr[Math.floor(Math.random() * arr.length)];
 }
 
+let CLIENT_CARD_CATALOG_CACHE: Card[] | null = null;
+
+function serializeCatalogCard(card: Card): Card {
+    return {
+        id: card.id,
+        uniqueId: card.uniqueId,
+        gamecardId: '',
+        fullName: card.fullName,
+        specialName: card.specialName,
+        type: card.type,
+        color: card.color,
+        colorReq: { ...(card.colorReq || {}) },
+        acValue: card.acValue,
+        power: card.power,
+        damage: card.damage,
+        godMark: !!card.godMark,
+        displayState: 'FRONT_UPRIGHT',
+        feijingMark: !!card.feijingMark,
+        effects: card.effects?.map(effect => ({
+            type: effect.type,
+            description: effect.description,
+            content: effect.content
+        })),
+        imageUrl: card.imageUrl,
+        fullImageUrl: card.fullImageUrl,
+        rarity: card.rarity,
+        availableRarities: card.availableRarities,
+        cardPackage: card.cardPackage,
+        faction: card.faction,
+        isrush: !!card.isrush,
+        isAnnihilation: !!card.isAnnihilation,
+        isShenyi: !!card.isShenyi,
+        isHeroic: !!card.isHeroic
+    };
+}
+
+function getClientCardCatalog() {
+    if (!CLIENT_CARD_CATALOG_CACHE) {
+        CLIENT_CARD_CATALOG_CACHE = getLiveCardVariations().map(serializeCatalogCard);
+    }
+
+    return CLIENT_CARD_CATALOG_CACHE;
+}
+
+app.get('/api/cards/meta', async (_req, res): Promise<void> => {
+    try {
+        res.setHeader('Cache-Control', 'public, max-age=300');
+        res.json({ cards: getClientCardCatalog() });
+    } catch (err) {
+        console.error('[CardsMeta] Failed to build card catalog:', err);
+        res.status(500).json({ error: 'Failed to load card catalog' });
+    }
+});
+
 app.post('/api/store/buy-pack', async (req, res): Promise<void> => {
     const authHeader = req.headers.authorization;
     if (!authHeader) { res.status(401).json({ error: 'Unauthorized' }); return; }

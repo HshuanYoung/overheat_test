@@ -3,13 +3,13 @@ import React, { useDeferredValue, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { Save, Trash2, Plus, Search, Loader2, Copy, Edit3, X, Sparkles, ArrowLeft, Shuffle, ListFilter, Zap, Shield } from 'lucide-react';
-import { CARD_LIBRARY, getCardByReference } from '../data/cards';
 import { FACTIONS } from '../data/factions';
 import { Card as CardType, Deck } from '../types/game';
 import { CardComponent } from './Card';
 import { cn, getCardImageUrl, getCardTypeLabel } from '../lib/utils';
 import { CARD_BACKS } from '../data/customization';
 import { TriggerLocation } from '../types/game';
+import { useCardCatalog } from '../hooks/useCardCatalog';
 
 const INITIAL_VISIBLE_CARD_COUNT = 48;
 
@@ -43,6 +43,11 @@ export const DeckBuilder: React.FC = () => {
   const [showDecksMobile, setShowDecksMobile] = useState(false);
   const [showLibrary, setShowLibrary] = useState(false); // Changed from showLibraryMobile
   const deferredSearchTerm = useDeferredValue(searchTerm.trim());
+  const {
+    cards: cardLibrary,
+    getCardByReference,
+    loading: cardsLoading
+  } = useCardCatalog();
 
   const CRYSTAL_VALUES: Record<string, { decompose: number, produce: number }> = {
     C: { decompose: 1, produce: 5 },
@@ -59,6 +64,25 @@ export const DeckBuilder: React.FC = () => {
     loadCollection();
     loadProfile();
   }, []);
+
+  useEffect(() => {
+    if (!cardLibrary.length || myDecks.length === 0) {
+      return;
+    }
+
+    const deckIdFromUrl = searchParams.get('id');
+    if (deckIdFromUrl) {
+      const targetDeck = myDecks.find(d => d.id === deckIdFromUrl);
+      if (targetDeck) {
+        loadDeckToEditor(targetDeck);
+      }
+      return;
+    }
+
+    if (!selectedDeckId) {
+      loadDeckToEditor(myDecks[0]);
+    }
+  }, [cardLibrary, myDecks, searchParams, selectedDeckId]);
 
   const loadCollection = async () => {
     if (!getAuthUser()) return;
@@ -155,14 +179,6 @@ export const DeckBuilder: React.FC = () => {
       const data = await res.json();
       const decks: Deck[] = data.decks || [];
       setMyDecks(decks);
-
-      const deckIdFromUrl = searchParams.get('id');
-      if (deckIdFromUrl) {
-        const targetDeck = decks.find(d => d.id === deckIdFromUrl);
-        if (targetDeck) loadDeckToEditor(targetDeck);
-      } else if (decks.length > 0 && !selectedDeckId) {
-        loadDeckToEditor(decks[0]);
-      }
     } catch (e) {
       console.error('Failed to load decks:', e);
     }
@@ -359,7 +375,7 @@ export const DeckBuilder: React.FC = () => {
     setDeck(shuffled);
   };
 
-  const filteredCards = useMemo(() => CARD_LIBRARY.filter(c => {
+  const filteredCards = useMemo(() => cardLibrary.filter(c => {
     // Text search
     const matchesSearch = c.fullName.includes(deferredSearchTerm) ||
       (c.specialName && c.specialName.includes(deferredSearchTerm)) ||
@@ -380,7 +396,7 @@ export const DeckBuilder: React.FC = () => {
     if (filters.ownership === 'NOT_OWNED' && isOwned) return false;
 
     return true;
-  }), [collection, deferredSearchTerm, filters]);
+  }), [cardLibrary, collection, deferredSearchTerm, filters]);
 
   const visibleCards = useMemo(
     () => filteredCards.slice(0, visibleCardCount),

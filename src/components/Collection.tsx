@@ -4,10 +4,10 @@ import { ArrowLeft, Search, Loader2, Filter, Layout, CreditCard, Image as ImageI
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn, getCardImageUrl } from '../lib/utils';
 import { CARD_BACKS, RAY_CARDS } from '../data/customization';
-import { CARD_LIBRARY, getCardByReference } from '../data/cards';
 import { FACTIONS } from '../data/factions';
 import { Card, Deck } from '../types/game';
 import { CardComponent } from './Card';
+import { useCardCatalog } from '../hooks/useCardCatalog';
 
 const RARITY_BADGE: Record<string, string> = {
   C: 'bg-zinc-700 text-zinc-300', U: 'bg-emerald-900 text-emerald-300', R: 'bg-blue-900 text-blue-300',
@@ -41,6 +41,11 @@ export const Collection: React.FC = () => {
     ac: '', damage: '', power: '', faction: 'ALL', ownership: 'ALL'
   });
   const deferredSearchTerm = useDeferredValue(searchTerm.trim());
+  const {
+    cards: cardLibrary,
+    getCardByReference,
+    loading: cardsLoading
+  } = useCardCatalog();
 
   const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || '';
   const token = localStorage.getItem('token');
@@ -188,7 +193,7 @@ export const Collection: React.FC = () => {
 
   const ownedCardCount = useMemo(() => Object.keys(collection).length, [collection]);
 
-  const filteredCards = useMemo(() => CARD_LIBRARY.filter(card => {
+  const filteredCards = useMemo(() => cardLibrary.filter(card => {
     if (deferredSearchTerm && !card.fullName.includes(deferredSearchTerm) && !(card.specialName && card.specialName.includes(deferredSearchTerm))) return false;
     if (filterRarity && card.rarity !== filterRarity) return false;
     if (filterColor && card.color !== filterColor) return false;
@@ -200,7 +205,7 @@ export const Collection: React.FC = () => {
     if (filters.ownership === 'OWNED' && !isOwned) return false;
     if (filters.ownership === 'NOT_OWNED' && isOwned) return false;
     return true;
-  }), [collection, deferredSearchTerm, filterColor, filterRarity, filters]);
+  }), [cardLibrary, collection, deferredSearchTerm, filterColor, filterRarity, filters]);
 
   const visibleCards = useMemo(
     () => filteredCards.slice(0, visibleCardCount),
@@ -284,6 +289,12 @@ export const Collection: React.FC = () => {
 
           {activeTab === 'CARDS' && (
             <motion.div key="cards" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}>
+              {cardsLoading ? (
+                <div className="flex min-h-[320px] items-center justify-center">
+                  <Loader2 className="w-8 h-8 animate-spin text-red-600" />
+                </div>
+              ) : (
+                <>
               {/* Filters */}
               <div className="flex flex-col md:flex-row gap-4 mb-8">
                 <div className="flex gap-4 flex-wrap w-full md:w-auto md:flex-1">
@@ -411,6 +422,8 @@ export const Collection: React.FC = () => {
                     加载更多卡牌 ({visibleCards.length}/{filteredCards.length})
                   </button>
                 </div>
+              )}
+                </>
               )}
             </motion.div>
           )}

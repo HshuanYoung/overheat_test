@@ -10,6 +10,7 @@ import { motion } from 'framer-motion';
 import { socket, getAuthUser, setAuthUser, setAuthToken, getAuthToken } from './socket';
 import { TopBar } from './components/TopBar';
 import { Home } from './components/Home';
+import { prefetchCardCatalog } from './hooks/useCardCatalog';
 
 const Matchmaking = lazy(() => import('./components/Matchmaking').then(module => ({ default: module.Matchmaking })));
 const BattleField = lazy(() => import('./components/BattleField').then(module => ({ default: module.BattleField })));
@@ -88,6 +89,7 @@ export default function App() {
       void import('./components/Matchmaking');
       void import('./components/FriendMatch');
       void import('./components/PracticeSetup');
+      void prefetchCardCatalog();
     };
 
     const idleWindow = window as Window & {

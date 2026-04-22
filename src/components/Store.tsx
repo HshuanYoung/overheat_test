@@ -3,8 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { ShoppingBag, Coins, Sparkles, ArrowLeft, Loader2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn, getCardImageUrl } from '../lib/utils';
-import { getCardByReference } from '../data/cards';
 import { Card } from '../types/game';
+import { useCardCatalog } from '../hooks/useCardCatalog';
 
 const RARITY_COLORS: Record<string, string> = {
   C: 'border-zinc-500 shadow-zinc-500/20',
@@ -37,6 +37,7 @@ export const Store: React.FC = () => {
   const [pityInfo, setPityInfo] = useState({ packsSinceSR: 0, packsSinceUR: 0, totalPacks: 0 });
   const [selectedBasicCount, setSelectedBasicCount] = useState<number | null>(null);
   const [selectedPrizeCount, setSelectedPrizeCount] = useState<number | null>(null);
+  const { getCardByReference } = useCardCatalog();
 
   const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || '';
   const token = localStorage.getItem('token');
