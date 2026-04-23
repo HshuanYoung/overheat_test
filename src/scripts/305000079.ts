@@ -1,18 +1,47 @@
-import { Card } from '../types/game';
+import { Card, CardEffect, GameEvent } from '../types/game';
+import { AtomicEffectExecutor } from '../services/AtomicEffectExecutor';
+import { canPutItemOntoBattlefield, createSelectCardQuery } from './_bt03YellowUtils';
 
-/**
- * Auto-generated from Card.xlsx + Card2.xlsx.
- * Source CardID: 305000079
- * Card2 Row: 257
- * Card Row: 613
- * Source CardNo: BT03-Y15
- * Package: BT03(U)
- * ID Source: card-xlsx
- * Keywords: N/A
- * Card Detail:
- * 【诱】:这张卡由于你的卡的效果而被破坏并送入墓地时，选择你的卡组中的1张《幻想舞台的礼帽》，将其放置到战场上。
- * TODO: confirm ID / godMark / rarity variants and implement effects.
- */
+const effect_305000079_trigger: CardEffect = {
+  id: '305000079_trigger',
+  type: 'TRIGGER',
+  triggerLocation: ['GRAVE'],
+  triggerEvent: 'CARD_DESTROYED_EFFECT',
+  isMandatory: true,
+  description: 'When this card is destroyed by your card effect and sent to the grave, choose a 幻想舞台的礼帽 from your deck and put it onto the battlefield.',
+  condition: (_gameState, playerState, instance, event?: GameEvent) =>
+    instance.cardlocation === 'GRAVE' &&
+    event?.type === 'CARD_DESTROYED_EFFECT' &&
+    event.targetCardId === instance.gamecardId &&
+    event.data?.sourcePlayerId === playerState.uid,
+  execute: async (instance, gameState, playerState) => {
+    const candidates = playerState.deck.filter(card =>
+      card.id === '305000079' &&
+      canPutItemOntoBattlefield(playerState, card)
+    );
+    if (candidates.length === 0) return;
+
+    createSelectCardQuery(
+      gameState,
+      playerState.uid,
+      candidates,
+      'Choose A Hat',
+      'Choose 1 幻想舞台的礼帽 from your deck.',
+      1,
+      1,
+      { sourceCardId: instance.gamecardId, effectId: '305000079_trigger' },
+      () => 'DECK'
+    );
+  },
+  onQueryResolve: async (instance, gameState, playerState, selections) => {
+    await AtomicEffectExecutor.execute(gameState, playerState.uid, {
+      type: 'MOVE_FROM_DECK',
+      targetFilter: { gamecardId: selections[0] },
+      destinationZone: 'ITEM'
+    }, instance);
+  }
+};
+
 const card: Card = {
   id: '305000079',
   fullName: '幻想舞台的礼帽',
@@ -27,7 +56,7 @@ const card: Card = {
   displayState: 'FRONT_UPRIGHT',
   feijingMark: false,
   canResetCount: 0,
-  effects: [],
+  effects: [effect_305000079_trigger],
   rarity: 'U',
   availableRarities: ['U'],
   cardPackage: 'BT03',

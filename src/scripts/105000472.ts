@@ -1,19 +1,35 @@
-import { Card } from '../types/game';
+import { Card, CardEffect, GameEvent } from '../types/game';
+import { AtomicEffectExecutor } from '../services/AtomicEffectExecutor';
+import { canPutUnitOntoBattlefield } from './_bt03YellowUtils';
 
-/**
- * Auto-generated from Card.xlsx + Card2.xlsx.
- * Source CardID: 105000472
- * Card2 Row: 248
- * Card Row: 604
- * Source CardNo: BT03-Y06
- * Package: BT03(U)
- * ID Source: card-xlsx
- * Keywords: N/A
- * Card Detail:
- * 【永】:你的卡组中的这张卡也视作神蚀卡。（不计入构筑限制）
- * 【诱】:这张卡从卡组顶被公开时，你可以将你的卡组顶的这张卡放置到战场上。
- * TODO: confirm ID / godMark / rarity variants and implement effects.
- */
+const effect_105000472_virtual_godmark: CardEffect = {
+  id: '105000472_virtual_godmark',
+  type: 'CONTINUOUS',
+  description: 'In your deck, this card is also treated as a god-mark card.'
+};
+
+const effect_105000472_reveal: CardEffect = {
+  id: '105000472_reveal',
+  type: 'TRIGGER',
+  triggerLocation: ['DECK'],
+  triggerEvent: 'REVEAL_DECK',
+  description: 'When this card is revealed from the top of your deck, you may put it onto the battlefield.',
+  condition: (_gameState, playerState, instance, event?: GameEvent) =>
+    instance.cardlocation === 'DECK' &&
+    event?.type === 'REVEAL_DECK' &&
+    event.playerUid === playerState.uid &&
+    Array.isArray(event.data?.cards) &&
+    event.data.cards.some((card: Card) => card.gamecardId === instance.gamecardId),
+  execute: async (instance, gameState, playerState) => {
+    if (!canPutUnitOntoBattlefield(playerState, instance)) return;
+    await AtomicEffectExecutor.execute(gameState, playerState.uid, {
+      type: 'MOVE_FROM_DECK',
+      targetFilter: { gamecardId: instance.gamecardId },
+      destinationZone: 'UNIT'
+    }, instance);
+  }
+};
+
 const card: Card = {
   id: '105000472',
   fullName: '暗影马魔偶',
@@ -29,13 +45,15 @@ const card: Card = {
   damage: 2,
   baseDamage: 2,
   godMark: false,
+  baseGodMark: false,
   displayState: 'FRONT_UPRIGHT',
   isExhausted: false,
   isrush: false,
+  baseIsrush: false,
   canAttack: true,
   feijingMark: false,
   canResetCount: 0,
-  effects: [],
+  effects: [effect_105000472_virtual_godmark, effect_105000472_reveal],
   rarity: 'U',
   availableRarities: ['U'],
   cardPackage: 'BT03',

@@ -1,18 +1,51 @@
-import { Card } from '../types/game';
+import { Card, CardEffect, GameEvent } from '../types/game';
+import { AtomicEffectExecutor } from '../services/AtomicEffectExecutor';
+import { createSelectCardQuery, getOpponentUid } from './_bt02YellowUtils';
 
-/**
- * Auto-generated from Card.xlsx + Card2.xlsx.
- * Source CardID: 105120165
- * Card2 Row: 163
- * Card Row: 163
- * Source CardNo: BT02-Y06
- * Package: BT02(C),ST04(TD)
- * ID Source: card-xlsx
- * Keywords: N/A
- * Card Detail:
- * 【诱】〖同名1回合1次〗:这个单位由于卡名含有《炼金》的卡的效果从卡组进入战场时，选择对手的1个单位，直到下一次对手的回合结束时为止，获得“【永】:这个单位在可以宣言攻击时，你必须进入战斗阶段并选择这个单位宣言攻击。（优先于你在主要阶段中的其他行动）”的能力。
- * TODO: confirm ID / godMark / rarity variants and implement effects.
- */
+const effect_105120165_forced_attack: CardEffect = {
+  id: '105120165_forced_attack',
+  type: 'TRIGGER',
+  triggerLocation: ['UNIT'],
+  triggerEvent: 'CARD_ENTERED_ZONE',
+  limitCount: 1,
+  limitNameType: true,
+  description: 'If this unit enters from deck by an alchemy effect, choose an opponent unit. Until the end of that player next turn, it must attack when able.',
+  condition: (_gameState, _playerState, instance, event?: GameEvent) =>
+    instance.cardlocation === 'UNIT' &&
+    event?.type === 'CARD_ENTERED_ZONE' &&
+    event.sourceCardId === instance.gamecardId &&
+    event.data?.zone === 'UNIT' &&
+    (instance as any).data?.enteredFromDeckByAlchemyTurn !== undefined &&
+    (instance as any).data?.lastMovedFromZone === 'DECK' &&
+    (instance as any).data?.lastMovedToZone === 'UNIT',
+  execute: async (instance, gameState, playerState) => {
+    const opponent = gameState.players[getOpponentUid(gameState, playerState.uid)];
+    const targets = opponent.unitZone.filter((card): card is Card => !!card);
+    if (targets.length === 0) return;
+
+    createSelectCardQuery(
+      gameState,
+      playerState.uid,
+      targets,
+      'Choose An Opponent Unit',
+      'Choose 1 opponent unit that will be forced to attack next turn.',
+      1,
+      1,
+      { sourceCardId: instance.gamecardId, effectId: '105120165_forced_attack' }
+    );
+  },
+  onQueryResolve: async (instance, gameState, _playerState, selections) => {
+    const target = AtomicEffectExecutor.findCardById(gameState, selections[0]);
+    if (!target) return;
+
+    (target as any).data = {
+      ...((target as any).data || {}),
+      forcedAttackTurn: gameState.turnCount + 1,
+      forcedAttackSourceName: instance.fullName
+    };
+  }
+};
+
 const card: Card = {
   id: '105120165',
   fullName: '炼金兽 丽人花',
@@ -34,7 +67,7 @@ const card: Card = {
   canAttack: true,
   feijingMark: false,
   canResetCount: 0,
-  effects: [],
+  effects: [effect_105120165_forced_attack],
   rarity: 'C',
   availableRarities: ['C'],
   cardPackage: 'BT02,ST04',

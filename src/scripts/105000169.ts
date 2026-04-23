@@ -1,18 +1,67 @@
-import { Card } from '../types/game';
+import { Card, CardEffect, GameEvent } from '../types/game';
+import { AtomicEffectExecutor } from '../services/AtomicEffectExecutor';
+import { createSelectCardQuery, getOpponentUid } from './_bt02YellowUtils';
 
-/**
- * Auto-generated from Card.xlsx + Card2.xlsx.
- * Source CardID: 105000169
- * Card2 Row: 167
- * Card Row: 167
- * Source CardNo: BT02-Y10
- * Package: BT02(C)
- * ID Source: card-xlsx
- * Keywords: N/A
- * Card Detail:
- * 【诱】:[〖+1:黄〗]这个单位被战斗破坏时，你可以选择1名对手，那名对手选择他自己的1张手牌舍弃。
- * TODO: confirm ID / godMark / rarity variants and implement effects.
- */
+const effect_105000169_trigger: CardEffect = {
+  id: '105000169_trigger',
+  type: 'TRIGGER',
+  triggerLocation: ['UNIT'],
+  triggerEvent: 'CARD_DESTROYED_BATTLE',
+  limitCount: 1,
+  limitNameType: true,
+  description: 'When this unit is destroyed by battle, you may pay 1 with a yellow requirement. If you do, the opponent discards 1 hand card of their choice.',
+  condition: (gameState, playerState, instance, event?: GameEvent) => {
+    if (event?.type !== 'CARD_DESTROYED_BATTLE' || event.targetCardId !== instance.gamecardId) return false;
+    const yellowUnits = playerState.unitZone.filter(card => card && card.color === 'YELLOW').length;
+    const opponent = gameState.players[getOpponentUid(gameState, playerState.uid)];
+    return yellowUnits >= 1 && opponent.hand.length > 0;
+  },
+  cost: async (gameState, playerState, instance) => {
+    gameState.pendingQuery = {
+      id: Math.random().toString(36).substring(7),
+      type: 'SELECT_PAYMENT',
+      playerUid: playerState.uid,
+      options: [],
+      title: 'Pay Cost',
+      description: 'Pay 1 cost to resolve this trigger.',
+      minSelections: 1,
+      maxSelections: 1,
+      callbackKey: 'ACTIVATE_COST_RESOLVE',
+      paymentCost: 1,
+      paymentColor: 'YELLOW',
+      context: {
+        sourceCardId: instance.gamecardId,
+        effectIndex: 0
+      }
+    };
+    return true;
+  },
+  execute: async (instance, gameState, playerState) => {
+    const opponentUid = getOpponentUid(gameState, playerState.uid);
+    const opponent = gameState.players[opponentUid];
+    if (opponent.hand.length === 0) return;
+
+    createSelectCardQuery(
+      gameState,
+      opponentUid,
+      [...opponent.hand],
+      'Choose A Card To Discard',
+      'Choose 1 hand card to discard.',
+      1,
+      1,
+      { sourceCardId: instance.gamecardId, effectId: '105000169_trigger', targetUid: opponentUid },
+      () => 'HAND'
+    );
+  },
+  onQueryResolve: async (instance, gameState, _playerState, selections, context) => {
+    if (!context?.targetUid) return;
+    await AtomicEffectExecutor.execute(gameState, context.targetUid, {
+      type: 'DISCARD_CARD',
+      targetFilter: { gamecardId: selections[0] }
+    }, instance);
+  }
+};
+
 const card: Card = {
   id: '105000169',
   fullName: '乞讨的少女',
@@ -34,7 +83,7 @@ const card: Card = {
   canAttack: true,
   feijingMark: false,
   canResetCount: 0,
-  effects: [],
+  effects: [effect_105000169_trigger],
   rarity: 'C',
   availableRarities: ['C'],
   cardPackage: 'BT02',

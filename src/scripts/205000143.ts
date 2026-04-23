@@ -1,18 +1,69 @@
-import { Card } from '../types/game';
+import { Card, CardEffect } from '../types/game';
+import { AtomicEffectExecutor } from '../services/AtomicEffectExecutor';
+import { canPutUnitOntoBattlefield, createSelectCardQuery, moveCard } from './_bt03YellowUtils';
 
-/**
- * Auto-generated from Card.xlsx + Card2.xlsx.
- * Source CardID: 205000143
- * Card2 Row: 255
- * Card Row: 611
- * Source CardNo: BT03-Y13
- * Package: BT03(R)
- * ID Source: card-xlsx
- * Keywords: N/A
- * Card Detail:
- * 只能在你的主要阶段中使用。选择你的战场上的1个单位，将其送入墓地。之后，选择你的卡组中的1张ACCESS值比那个单位的ACCESS值多1的非神蚀单位卡，将其放置到战场上。
- * TODO: confirm ID / godMark / rarity variants and implement effects.
- */
+const effect_205000143_activate: CardEffect = {
+  id: '205000143_activate',
+  type: 'ACTIVATE',
+  triggerLocation: ['PLAY'],
+  description: 'Main phase only. Send 1 of your units to grave, then put a non-god unit from your deck onto the battlefield with AC 1 greater.',
+  condition: (gameState, playerState) =>
+    gameState.phase === 'MAIN' &&
+    playerState.unitZone.some(unit => !!unit) &&
+    playerState.deck.some(card => card.type === 'UNIT' && !card.godMark),
+  execute: async (instance, gameState, playerState) => {
+    const targets = playerState.unitZone.filter((unit): unit is Card => !!unit);
+    createSelectCardQuery(
+      gameState,
+      playerState.uid,
+      targets,
+      'Choose A Unit',
+      'Choose 1 of your units to send to the grave.',
+      1,
+      1,
+      { sourceCardId: instance.gamecardId, effectId: '205000143_activate', step: 'SEND_UNIT' }
+    );
+  },
+  onQueryResolve: async (instance, gameState, playerState, selections, context) => {
+    if (context.step === 'SEND_UNIT') {
+      const target = AtomicEffectExecutor.findCardById(gameState, selections[0]);
+      if (!target) return;
+
+      const targetAc = (target.baseAcValue ?? target.acValue) + 1;
+      moveCard(gameState, playerState.uid, target, 'GRAVE', instance);
+
+      const candidates = playerState.deck.filter(card =>
+        card.type === 'UNIT' &&
+        !card.godMark &&
+        (card.baseAcValue ?? card.acValue) === targetAc &&
+        canPutUnitOntoBattlefield(playerState, card)
+      );
+      if (candidates.length === 0) return;
+
+      createSelectCardQuery(
+        gameState,
+        playerState.uid,
+        candidates,
+        'Choose A Unit',
+        'Choose 1 non-god unit from your deck.',
+        1,
+        1,
+        { sourceCardId: instance.gamecardId, effectId: '205000143_activate', step: 'PUT_UNIT' },
+        () => 'DECK'
+      );
+      return;
+    }
+
+    if (context.step !== 'PUT_UNIT') return;
+
+    await AtomicEffectExecutor.execute(gameState, playerState.uid, {
+      type: 'MOVE_FROM_DECK',
+      targetFilter: { gamecardId: selections[0] },
+      destinationZone: 'UNIT'
+    }, instance);
+  }
+};
+
 const card: Card = {
   id: '205000143',
   fullName: '简易炼金炉',
@@ -27,7 +78,7 @@ const card: Card = {
   displayState: 'FRONT_UPRIGHT',
   feijingMark: false,
   canResetCount: 0,
-  effects: [],
+  effects: [effect_205000143_activate],
   rarity: 'R',
   availableRarities: ['R'],
   cardPackage: 'BT03',

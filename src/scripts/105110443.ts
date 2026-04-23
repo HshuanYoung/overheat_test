@@ -1,18 +1,16 @@
-import { Card } from '../types/game';
+import { Card, CardEffect } from '../types/game';
+import { isBattlingGodMarkUnit } from './_bt04YellowUtils';
 
-/**
- * Auto-generated from Card.xlsx + Card2.xlsx.
- * Source CardID: 105110443
- * Card2 Row: 323
- * Card Row: 562
- * Source CardNo: BT04-Y02
- * Package: BT04(C)
- * ID Source: card-xlsx
- * Keywords: N/A
- * Card Detail:
- * 【永】：这个单位与神蚀单位进行战斗时，这次战斗中，这个单位〖力量+2000〗。
- * TODO: confirm ID / godMark / rarity variants and implement effects.
- */
+const effect_105110443_continuous: CardEffect = {
+  id: '105110443_continuous',
+  type: 'CONTINUOUS',
+  description: 'When this unit battles a god-mark unit, it gets +2000 power during that battle.',
+  applyContinuous: (gameState, instance) => {
+    if (!isBattlingGodMarkUnit(gameState, instance)) return;
+    instance.power = (instance.power || 0) + 2000;
+  }
+};
+
 const card: Card = {
   id: '105110443',
   fullName: '铁甲钢兵',
@@ -31,10 +29,11 @@ const card: Card = {
   displayState: 'FRONT_UPRIGHT',
   isExhausted: false,
   isrush: false,
+  baseIsrush: false,
   canAttack: true,
   feijingMark: false,
   canResetCount: 0,
-  effects: [],
+  effects: [effect_105110443_continuous],
   rarity: 'C',
   availableRarities: ['C'],
   cardPackage: 'BT04',

@@ -1,18 +1,24 @@
-import { Card } from '../types/game';
+import { Card, CardEffect } from '../types/game';
 
-/**
- * Auto-generated from Card.xlsx + Card2.xlsx.
- * Source CardID: 105120164
- * Card2 Row: 162
- * Card Row: 162
- * Source CardNo: BT02-Y05
- * Package: BT02(U),ST04(TD)
- * ID Source: card-xlsx
- * Keywords: N/A
- * Card Detail:
- * 【永】:由于卡名含有《炼金》的卡的效果从卡组进入战场的这个单位变为〖伤害2〗〖力量3500〗并获得【速攻】【歼灭】。
- * TODO: confirm ID / godMark / rarity variants and implement effects.
- */
+const effect_105120164_alchemy_buff: CardEffect = {
+  id: '105120164_alchemy_buff',
+  type: 'CONTINUOUS',
+  description: 'If this unit entered from deck by an alchemy effect, it becomes 3500 power / 2 damage and gains Rush and Annihilation.',
+  applyContinuous: (_gameState, instance) => {
+    if (
+      (instance as any).data?.enteredFromDeckByAlchemyTurn === undefined ||
+      (instance as any).data?.lastMovedFromZone !== 'DECK' ||
+      (instance as any).data?.lastMovedToZone !== 'UNIT'
+    ) {
+      return;
+    }
+    instance.power = 3500;
+    instance.damage = 2;
+    instance.isrush = true;
+    instance.isAnnihilation = true;
+  }
+};
+
 const card: Card = {
   id: '105120164',
   fullName: '炼金兽 银刃狼',
@@ -30,12 +36,14 @@ const card: Card = {
   godMark: false,
   displayState: 'FRONT_UPRIGHT',
   isExhausted: false,
-  isrush: true,
-  isAnnihilation: true,
+  isrush: false,
+  baseIsrush: false,
+  isAnnihilation: false,
+  baseAnnihilation: false,
   canAttack: true,
   feijingMark: false,
   canResetCount: 0,
-  effects: [],
+  effects: [effect_105120164_alchemy_buff],
   rarity: 'U',
   availableRarities: ['U'],
   cardPackage: 'BT02,ST04',

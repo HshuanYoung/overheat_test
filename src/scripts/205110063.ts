@@ -1,19 +1,41 @@
-import { Card } from '../types/game';
+import { Card, CardEffect } from '../types/game';
+import { AtomicEffectExecutor } from '../services/AtomicEffectExecutor';
+import { createSelectCardQuery, isValkyrieUnit } from './_bt02YellowUtils';
 
-/**
- * Auto-generated from Card.xlsx + Card2.xlsx.
- * Source CardID: 205110063
- * Card2 Row: 170
- * Card Row: 170
- * Source CardNo: BT02-Y13
- * Package: BT02(R)
- * ID Source: card-xlsx
- * Keywords: N/A
- * Card Detail:
- * 选择你的卡组中的1张 「瓦尔基里」单位卡，将其放置到战场上。
- * 你的战场上每有1张道具卡，手牌中的这张卡的ACCESS值便减少1。（最低降到〖0:黄黄〗）
- * TODO: confirm ID / godMark / rarity variants and implement effects.
- */
+const effect_205110063_activate: CardEffect = {
+  id: '205110063_activate',
+  type: 'ACTIVATE',
+  triggerLocation: ['PLAY'],
+  description: 'Choose 1 Valkyrie unit from your deck and put it onto the battlefield.',
+  condition: (_gameState, playerState) => playerState.unitZone.some(card => card === null) && playerState.deck.some(isValkyrieUnit),
+  execute: async (instance, gameState, playerState) => {
+    const candidates = playerState.deck.filter(card =>
+      isValkyrieUnit(card) &&
+      (!card.specialName || !playerState.unitZone.some(unit => unit?.specialName === card.specialName))
+    );
+    if (candidates.length === 0) return;
+
+    createSelectCardQuery(
+      gameState,
+      playerState.uid,
+      candidates,
+      'Choose A Valkyrie',
+      'Choose 1 Valkyrie unit from your deck.',
+      1,
+      1,
+      { sourceCardId: instance.gamecardId, effectId: '205110063_activate' },
+      () => 'DECK'
+    );
+  },
+  onQueryResolve: async (instance, gameState, playerState, selections) => {
+    await AtomicEffectExecutor.execute(gameState, playerState.uid, {
+      type: 'MOVE_FROM_DECK',
+      targetFilter: { gamecardId: selections[0] },
+      destinationZone: 'UNIT'
+    }, instance);
+  }
+};
+
 const card: Card = {
   id: '205110063',
   fullName: '瓦尔基里计划',
@@ -28,7 +50,7 @@ const card: Card = {
   displayState: 'FRONT_UPRIGHT',
   feijingMark: false,
   canResetCount: 0,
-  effects: [],
+  effects: [effect_205110063_activate],
   rarity: 'R',
   availableRarities: ['R'],
   cardPackage: 'BT02',

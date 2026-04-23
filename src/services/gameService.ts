@@ -4,7 +4,7 @@
  */
 
 import { socket } from '../socket';
-import { GameState, Card, CardEffect, TriggerLocation, GameEvent } from '../types/game';
+import { GameState, Card, CardEffect, TriggerLocation, GameEvent, PlayerState } from '../types/game';
 
 const isFullEffectSilencedThisTurn = (gameState: GameState | null, card: Card) =>
   !!gameState && (card as any).data?.fullEffectSilencedTurn === gameState.turnCount;
@@ -18,17 +18,41 @@ const canUse204000145AsPaymentSubstitute = (paymentCard: Card | undefined, cardC
   cost > 0 &&
   cost <= 3;
 
-/**
- * GameService (Frontend Proxy)
- * 
- * This service acts as a proxy to the server. 
- * Rule logic is handled by ServerGameService on the backend.
- */
-export const GameService = {
-  // --- Socket Proxy Actions ---
+const canUse205000136AsPaymentSubstitute = (paymentCard: Card | undefined, cardColor?: string, cost?: number, playingCardId?: string) =>
+  !!paymentCard &&
+  paymentCard.id === '205000136' &&
+  paymentCard.gamecardId !== playingCardId &&
+  cardColor === 'YELLOW' &&
+  !!cost &&
+  cost > 0 &&
+  cost <= 3;
 
+const getEffectivePlayCost = (player: PlayerState, card: Card) => {
+  const baseCost = card.acValue || 0;
+  if (card.id === '205110063') {
+    const itemCount = player.itemZone.filter(c => c !== null).length;
+    return Math.max(0, baseCost - itemCount);
+  }
+  return baseCost;
+};
+
+const hasGlobalDisableAllActivated = (gameState: GameState | null) => {
+  if (!gameState) return false;
+  return Object.values(gameState.players).some(player =>
+    [...player.unitZone, ...player.itemZone, ...player.erosionFront]
+      .filter((card): card is Card => !!card)
+      .some(card =>
+        card.effects?.some(effect =>
+          effect.type === 'CONTINUOUS' &&
+          effect.content === 'DISABLE_ALL_ACTIVATED' &&
+          (!effect.condition || effect.condition(gameState, player, card))
+        )
+      )
+  );
+};
+
+export const GameService = {
   async advancePhase(gameId: string, action?: any) {
-    console.log(gameId);
     socket.emit('gameAction', { gameId, action: 'END_PHASE', payload: action });
   },
 
@@ -64,7 +88,6 @@ export const GameService = {
     socket.emit('gameAction', { gameId, action: 'RESOLVE_DAMAGE' });
   },
 
-
   async handleErosionChoice(gameId: string, playerId: string, choice: 'A' | 'B' | 'C', selectedCardId?: string) {
     socket.emit('gameAction', { gameId, action: 'EROSION_CHOICE', payload: { choice, selectedCardId } });
   },
@@ -89,129 +112,118 @@ export const GameService = {
   },
 
   async destroyUnit(gameState: GameState, playerId: string, gamecardId: string, isEffect: boolean = false, sourcePlayerId?: string, skipSubstitution: boolean = false) {
-    // This is a stub for shared code (AtomicEffectExecutor).
-    // On the server, this will be replaced by the real implementation from ServerGameService.
-    // On the client, we emit a socket event.
     if (typeof window !== 'undefined') {
-       socket.emit('gameAction', { gameId: (gameState as any).gameId, action: 'DESTROY_UNIT', payload: { gamecardId, isEffect, sourcePlayerId, skipSubstitution } });
+      socket.emit('gameAction', {
+        gameId: (gameState as any).gameId,
+        action: 'DESTROY_UNIT',
+        payload: { gamecardId, isEffect, sourcePlayerId, skipSubstitution }
+      });
     }
   },
 
-  // --- Local UI Utilities ---
-  canPlayCard(gameState: GameState | null, player: any, card: Card): { canPlay: boolean; reason?: string } {
-    if (!player || !card) return { canPlay: false, reason: '未找到玩家或卡牌' };
+  canPlayCard(gameState: GameState | null, player: PlayerState, card: Card): { canPlay: boolean; reason?: string } {
+    if (!player || !card) return { canPlay: false, reason: 'Missing player or card' };
 
-    // 0. Faction Lock Check
     if (player.factionLock && card.faction !== player.factionLock) {
-      return { canPlay: false, reason: `受到阵营锁定限制：只能打出 [${player.factionLock}] 阵营的卡牌` };
+      return { canPlay: false, reason: `Faction locked to [${player.factionLock}]` };
     }
 
-    // 1. Zone Checks
     if (card.type === 'UNIT') {
-      if (!player.unitZone.some((c: any) => c === null)) {
-        return { canPlay: false, reason: '单位区已满' };
+      if (!player.unitZone.some(cardInZone => cardInZone === null)) {
+        return { canPlay: false, reason: 'Unit zone is full' };
       }
-      if (card.specialName && player.unitZone.some((c: any) => c?.specialName === card.specialName)) {
-        return { canPlay: false, reason: '场上已存在同名的唯一单位' };
+      if (card.specialName && player.unitZone.some(cardInZone => cardInZone?.specialName === card.specialName)) {
+        return { canPlay: false, reason: 'A unit with the same special name already exists' };
       }
-      
-      // Godmark Limit Check
+
       if (card.godMark) {
-        const fieldEffects = player.unitZone
-          .filter((u: any) => u !== null)
-          .flatMap((u: any) => u.effects || []);
-        
-        const fieldLimitEffect = fieldEffects.find((e: any) => e.type === 'CONTINUOUS' && e.limitGodmarkCount !== undefined);
-        const selfLimitEffect = card.effects?.find((e: any) => e.type === 'CONTINUOUS' && e.limitGodmarkCount !== undefined);
-        
+        const fieldEffects = player.unitZone.filter(cardInZone => cardInZone !== null).flatMap(cardInZone => cardInZone?.effects || []);
+        const fieldLimitEffect = fieldEffects.find(effect => effect.type === 'CONTINUOUS' && effect.limitGodmarkCount !== undefined);
+        const selfLimitEffect = card.effects?.find(effect => effect.type === 'CONTINUOUS' && effect.limitGodmarkCount !== undefined);
         const effectiveLimit = fieldLimitEffect?.limitGodmarkCount ?? selfLimitEffect?.limitGodmarkCount;
-        
+
         if (effectiveLimit !== undefined) {
-          const currentGodmarkCount = player.unitZone.filter((u: any) => u && u.godMark).length;
+          const currentGodmarkCount = player.unitZone.filter(cardInZone => cardInZone && cardInZone.godMark).length;
           if (currentGodmarkCount >= effectiveLimit) {
-            return { canPlay: false, reason: `已达到女神个体限制 (上限: ${effectiveLimit})` };
+            return { canPlay: false, reason: `God-mark limit reached (${effectiveLimit})` };
           }
         }
       }
     } else if (card.type === 'ITEM') {
-      if (card.specialName && player.itemZone.some((c: any) => c?.specialName === card.specialName)) {
-        return { canPlay: false, reason: '场上已存在同名的唯一物品' };
+      if (card.specialName && player.itemZone.some(cardInZone => cardInZone?.specialName === card.specialName)) {
+        return { canPlay: false, reason: 'An item with the same special name already exists' };
       }
     }
 
-    // 2. Color Requirements
     const availableColors: Record<string, number> = { RED: 0, WHITE: 0, YELLOW: 0, BLUE: 0, GREEN: 0, NONE: 0 };
     let omniColorCount = 0;
 
-    const checkOmni = (c: any) => {
-      if (!c) return false;
-      const isTargetId = String(c.id) === '105000481';
-      const hasOmniEffect = c.effects && c.effects.some((e: any) => e.id === '105000481_omni');
-      return isTargetId || hasOmniEffect;
+    const checkOmni = (target: Card | null) => {
+      if (!target) return false;
+      const isTargetId = String(target.id) === '105000481';
+      const hasOmniEffect = target.effects?.some(effect => effect.id === '105000481_omni');
+      return isTargetId || !!hasOmniEffect;
     };
 
-    player.unitZone.forEach((c: any) => {
-      if (!c) return;
-      if (checkOmni(c)) {
+    player.unitZone.forEach(cardInZone => {
+      if (!cardInZone) return;
+      if (checkOmni(cardInZone)) {
         omniColorCount++;
-      } else if (c.color !== 'NONE') {
-        availableColors[c.color] = (availableColors[c.color] || 0) + 1;
+      } else if (cardInZone.color !== 'NONE') {
+        availableColors[cardInZone.color] = (availableColors[cardInZone.color] || 0) + 1;
       }
     });
 
     let totalDeficit = 0;
     for (const [color, reqCount] of Object.entries(card.colorReq || {})) {
-      const deficit = Math.max(0, (reqCount as number) - (availableColors[color] || 0));
-      totalDeficit += deficit;
+      totalDeficit += Math.max(0, (reqCount as number) - (availableColors[color] || 0));
     }
 
     if (totalDeficit > omniColorCount) {
-      return { canPlay: false, reason: `不满足颜色需求 (缺少: ${totalDeficit})` };
+      return { canPlay: false, reason: `Color requirement not met (missing ${totalDeficit})` };
     }
 
-    // 3. Cost Check (AC Value)
-    const cost = card.acValue || 0;
+    const cost = getEffectivePlayCost(player, card);
     if (cost < 0) {
       const absCost = Math.abs(cost);
-      const faceUpFrontCount = player.erosionFront.filter((c: any) => c !== null && c.displayState === 'FRONT_UPRIGHT').length;
+      const faceUpFrontCount = player.erosionFront.filter(cardInZone => cardInZone !== null && cardInZone.displayState === 'FRONT_UPRIGHT').length;
       if (faceUpFrontCount < absCost) {
-        return { canPlay: false, reason: `侵蚀区正面卡牌不足 (需要: ${absCost})` };
+        return { canPlay: false, reason: `Need ${absCost} face-up erosion cards` };
       }
     } else if (cost > 0) {
       let remainingCost = cost;
-      const has204000145Substitute = player.hand.some((c: any) =>
-        canUse204000145AsPaymentSubstitute(c, card.color, cost, card.gamecardId)
+      const hasSpecialSubstitute = player.hand.some(cardInHand =>
+        canUse204000145AsPaymentSubstitute(cardInHand, card.color, cost, card.gamecardId) ||
+        canUse205000136AsPaymentSubstitute(cardInHand, card.color, cost, card.gamecardId)
       );
-      if (has204000145Substitute) {
+      if (hasSpecialSubstitute) {
         remainingCost = 0;
       }
-      const hasFeijing = player.hand.some((c: any) =>
-        c.gamecardId !== card.gamecardId &&
-        c.feijingMark &&
-        c.color === card.color
+
+      const hasFeijing = player.hand.some(cardInHand =>
+        cardInHand.gamecardId !== card.gamecardId &&
+        cardInHand.feijingMark &&
+        cardInHand.color === card.color
       );
       if (remainingCost > 0 && hasFeijing) {
         remainingCost = Math.max(0, remainingCost - 3);
       }
-      const readyUnitsCount = player.unitZone.filter((c: any) => c !== null && !c.isExhausted).length;
+
+      const readyUnitsCount = player.unitZone.filter(cardInZone => cardInZone !== null && !cardInZone.isExhausted).length;
       remainingCost = Math.max(0, remainingCost - readyUnitsCount);
 
       if (remainingCost > 0) {
-        const totalErosionCount = player.erosionFront.filter((c: any) => c !== null).length +
-          player.erosionBack.filter((c: any) => c !== null).length;
+        const totalErosionCount = player.erosionFront.filter(cardInZone => cardInZone !== null).length +
+          player.erosionBack.filter(cardInZone => cardInZone !== null).length;
         if (totalErosionCount + remainingCost >= 10) {
-          return { canPlay: false, reason: '卡组剩余卡牌不足以承担侵蚀代价' };
+          return { canPlay: false, reason: 'Not enough erosion space to pay the remaining cost' };
         }
       }
     }
 
-    // 4. Special Effect Limits & Reqs
-    const playEffect = card.effects?.find(e => e.type === 'ACTIVATE' || e.type === 'TRIGGER' || e.type === 'ALWAYS');
+    const playEffect = card.effects?.find(effect => effect.type === 'ACTIVATE' || effect.type === 'TRIGGER' || effect.type === 'ALWAYS');
     if (playEffect) {
-      const isStory = card.type === 'STORY';
-      const isAlways = playEffect.type === 'ALWAYS';
-      const shouldValidate = isStory || isAlways;
-
+      const shouldValidate = card.type === 'STORY' || playEffect.type === 'ALWAYS';
       if (shouldValidate) {
         const result = GameService.checkEffectLimitsAndReqs(gameState, player.uid, card, playEffect, card.cardlocation as TriggerLocation);
         if (!result.valid) {
@@ -223,82 +235,84 @@ export const GameService = {
     return { canPlay: true };
   },
 
-
   checkEffectLimitsAndReqs(gameState: GameState | null, playerUid: string, card: Card, effect: CardEffect, triggerLocation: TriggerLocation, event?: GameEvent): { valid: boolean; reason?: string } {
     if (!gameState || !gameState.players) return { valid: true };
     const player = gameState.players[playerUid];
-    if (!player) return { valid: false, reason: '未找到玩家数据' };
+    const cardData = (card as any).data || {};
+    const pseudoGoddessActive = cardData.pseudoGoddessTenPlusTurn === gameState.turnCount;
+    const activatedEffectsDisabled = cardData.pseudoGoddessDisableActivatedTurn === gameState.turnCount;
+    const globalDisableAllActivated = hasGlobalDisableAllActivated(gameState);
+    const effectivePlayer = pseudoGoddessActive && player ? { ...player, isGoddessMode: true } : player;
+    if (!player) return { valid: false, reason: 'Player data not found' };
 
-    // 1. Trigger Location
-    if (effect.triggerLocation && triggerLocation) {
-      if (!effect.triggerLocation.includes(triggerLocation)) {
-        return { valid: false, reason: '发动位置不符合效果要求' };
-      }
+    if (effect.triggerLocation && triggerLocation && !effect.triggerLocation.includes(triggerLocation)) {
+      return { valid: false, reason: 'Invalid trigger location' };
     }
 
-    // 2. Limits
     if (effect.limitCount) {
       const usageMap = gameState.effectUsage || {};
       let key = '';
       if (effect.limitGlobal) {
-        if (effect.limitNameType) {
-          key = `game_${playerUid}_name_${card.id}_${effect.id}`;
-        } else {
-          key = `game_${playerUid}_instance_${card.gamecardId}_${effect.id}`;
-        }
+        key = effect.limitNameType
+          ? `game_${playerUid}_name_${card.id}_${effect.id}`
+          : `game_${playerUid}_instance_${card.gamecardId}_${effect.id}`;
       } else {
-        if (effect.limitNameType) {
-          key = `turn_${gameState.turnCount}_${playerUid}_name_${card.id}_${effect.id}`;
-        } else {
-          key = `turn_${gameState.turnCount}_${playerUid}_instance_${card.gamecardId}_${effect.id}`;
-        }
+        key = effect.limitNameType
+          ? `turn_${gameState.turnCount}_${playerUid}_name_${card.id}_${effect.id}`
+          : `turn_${gameState.turnCount}_${playerUid}_instance_${card.gamecardId}_${effect.id}`;
       }
-
-      const currentUsage = usageMap[key] || 0;
-      if (currentUsage >= effect.limitCount) {
-        return { valid: false, reason: '已达到该效果的发动次数限制' };
+      if ((usageMap[key] || 0) >= effect.limitCount) {
+        return { valid: false, reason: 'Effect usage limit reached' };
       }
     }
 
-    // 3. Erosion Limits
     if (effect.erosionFrontLimit) {
-      const frontCount = player.erosionFront.filter(c => c !== null).length;
+      const frontCount = player.erosionFront.filter(cardInZone => cardInZone !== null).length;
       if (frontCount < effect.erosionFrontLimit[0] || frontCount > effect.erosionFrontLimit[1]) {
-        return { valid: false, reason: '侵蚀区正面卡牌数量不满足条件' };
+        return { valid: false, reason: 'Front erosion count requirement not met' };
       }
     }
     if (effect.erosionBackLimit) {
-      const backCount = player.erosionBack.filter(c => c !== null).length;
+      const backCount = player.erosionBack.filter(cardInZone => cardInZone !== null).length;
       if (backCount < effect.erosionBackLimit[0] || backCount > effect.erosionBackLimit[1]) {
-        return { valid: false, reason: '侵蚀区背面卡牌数量不满足条件' };
+        return { valid: false, reason: 'Back erosion count requirement not met' };
       }
     }
     if (effect.erosionTotalLimit) {
-      const totalCount = player.erosionFront.filter(c => c !== null).length + player.erosionBack.filter(c => c !== null).length;
-      if (totalCount < effect.erosionTotalLimit[0] || totalCount > effect.erosionTotalLimit[1]) {
-        return { valid: false, reason: '侵蚀区卡牌总数不满足条件' };
+      const totalCount = player.erosionFront.filter(cardInZone => cardInZone !== null).length +
+        player.erosionBack.filter(cardInZone => cardInZone !== null).length;
+      const ignoresTenPlusLimit = pseudoGoddessActive && effect.erosionTotalLimit[0] >= 10;
+      if (!ignoresTenPlusLimit && (totalCount < effect.erosionTotalLimit[0] || totalCount > effect.erosionTotalLimit[1])) {
+        return { valid: false, reason: 'Total erosion count requirement not met' };
       }
     }
 
     if (isFullEffectSilencedThisTurn(gameState, card)) {
-      return { valid: false, reason: '该卡牌本回合失去所有效果' };
+      return { valid: false, reason: 'This card loses all effects this turn' };
     }
 
-    // 4. Condition Check
     if (effect.condition) {
       try {
-        if (!effect.condition(gameState, player, card, event)) {
-          return { valid: false, reason: '不满足发动条件' };
+        if (!effect.condition(gameState, effectivePlayer as PlayerState, card, event)) {
+          return { valid: false, reason: 'Condition not met' };
         }
-      } catch (e) {
-        return { valid: false, reason: '不满足发动条件' };
+      } catch {
+        return { valid: false, reason: 'Condition not met' };
       }
+    }
+
+    if (activatedEffectsDisabled && (effect.type === 'ACTIVATE' || effect.type === 'ACTIVATED')) {
+      return { valid: false, reason: 'This card loses activated abilities this turn' };
+    }
+
+    if (globalDisableAllActivated && (effect.type === 'ACTIVATE' || effect.type === 'ACTIVATED')) {
+      return { valid: false, reason: 'All activated abilities are currently disabled' };
     }
 
     return { valid: true };
   },
 
-  recordEffectUsage(game: GameState | null, playerUid: string, card: Card, effect: CardEffect) {
-    // Persistent usage recorded on server
+  recordEffectUsage(_game: GameState | null, _playerUid: string, _card: Card, _effect: CardEffect) {
+    // Persistent usage is recorded on the server.
   }
 };

@@ -401,8 +401,19 @@ export const BattleField: React.FC = () => {
     paymentCost > 0 &&
     paymentCost <= 3;
 
+  const canUse205000136AsPaymentSubstitute = (card: Card, paymentColor?: string, paymentCost?: number, excludeCardId?: string) =>
+    card.id === '205000136' &&
+    card.gamecardId !== excludeCardId &&
+    paymentColor === 'YELLOW' &&
+    !!paymentCost &&
+    paymentCost > 0 &&
+    paymentCost <= 3;
+
   const getHandPaymentValue = (card: Card, paymentColor?: string, paymentCost?: number, excludeCardId?: string) => {
-    if (canUse204000145AsPaymentSubstitute(card, paymentColor, paymentCost, excludeCardId)) {
+    if (
+      canUse204000145AsPaymentSubstitute(card, paymentColor, paymentCost, excludeCardId) ||
+      canUse205000136AsPaymentSubstitute(card, paymentColor, paymentCost, excludeCardId)
+    ) {
       return paymentCost || 0;
     }
     if (card.feijingMark && (card.color === paymentColor || !paymentColor || paymentColor === 'NONE')) {

@@ -1,19 +1,105 @@
-import { Card } from '../types/game';
+import { Card, CardEffect, GameEvent } from '../types/game';
+import { AtomicEffectExecutor } from '../services/AtomicEffectExecutor';
+import { EventEngine } from '../services/EventEngine';
+import { createSelectCardQuery, getTopDeckCards, isAlchemyCard, isNonGodAccessLe3UnitOrItem, moveCardsToBottom } from './_bt02YellowUtils';
 
-/**
- * Auto-generated from Card.xlsx + Card2.xlsx.
- * Source CardID: 105120168
- * Card2 Row: 166
- * Card Row: 166
- * Source CardNo: BT02-Y09
- * Package: BT02(SR,ESR,OHR)
- * ID Source: card-xlsx
- * Keywords: N/A
- * Card Detail:
- * 【诱】:这个单位进入战场时，选择你的墓地中的2张 「艾尔蒙特」以外的卡名含有《炼金》的卡，将其放置到卡组底。之后，抽1张卡。
- * 【启，A3-5】〖1回合1次〗:[舍弃1张手牌]这个能力只能在你的主要阶段中发动。公开你的卡组顶的1张卡。若那张卡是ACCESS值+3以下的非神蚀单位卡或非神蚀道具卡，将其放置到战场上。
- * TODO: confirm ID / godMark / rarity variants and implement effects.
- */
+const effect_105120168_enter: CardEffect = {
+  id: '105120168_enter',
+  type: 'TRIGGER',
+  triggerLocation: ['UNIT'],
+  triggerEvent: 'CARD_ENTERED_ZONE',
+  isMandatory: true,
+  description: 'When this unit enters the battlefield, put up to 2 alchemy cards other than Elmont from your grave on the bottom of your deck, then draw 1.',
+  condition: (_gameState, _playerState, instance, event?: GameEvent) =>
+    instance.cardlocation === 'UNIT' &&
+    event?.type === 'CARD_ENTERED_ZONE' &&
+    event.sourceCardId === instance.gamecardId &&
+    event.data?.zone === 'UNIT',
+  execute: async (instance, gameState, playerState) => {
+    const candidates = playerState.grave.filter(card => isAlchemyCard(card) && card.specialName !== '艾尔蒙特');
+    if (candidates.length === 0) {
+      await AtomicEffectExecutor.execute(gameState, playerState.uid, { type: 'DRAW', value: 1 }, instance);
+      return;
+    }
+
+    createSelectCardQuery(
+      gameState,
+      playerState.uid,
+      candidates,
+      'Choose Grave Cards',
+      'Choose up to 2 alchemy cards from your grave to place on the bottom of your deck.',
+      0,
+      Math.min(2, candidates.length),
+      { sourceCardId: instance.gamecardId, effectId: '105120168_enter' }
+    );
+  },
+  onQueryResolve: async (instance, gameState, playerState, selections) => {
+    const cards = selections
+      .map(id => AtomicEffectExecutor.findCardById(gameState, id))
+      .filter((card): card is Card => !!card);
+    moveCardsToBottom(gameState, playerState.uid, cards, instance);
+    await AtomicEffectExecutor.execute(gameState, playerState.uid, { type: 'DRAW', value: 1 }, instance);
+  }
+};
+
+const effect_105120168_activate: CardEffect = {
+  id: '105120168_activate',
+  type: 'ACTIVATE',
+  triggerLocation: ['UNIT'],
+  limitCount: 1,
+  limitNameType: true,
+  erosionTotalLimit: [3, 5],
+  description: 'Main phase only. Discard 1 hand card, reveal the top card of your deck, and if it is a non-god unit or item with AC 3 or less, put it onto the battlefield.',
+  condition: (gameState, playerState) => gameState.phase === 'MAIN' && playerState.hand.length > 0,
+  execute: async (instance, gameState, playerState) => {
+    createSelectCardQuery(
+      gameState,
+      playerState.uid,
+      [...playerState.hand],
+      'Discard A Card',
+      'Discard 1 hand card.',
+      1,
+      1,
+      { sourceCardId: instance.gamecardId, effectId: '105120168_activate', step: 'DISCARD' },
+      () => 'HAND'
+    );
+  },
+  onQueryResolve: async (instance, gameState, playerState, selections, context) => {
+    if (context.step !== 'DISCARD') return;
+
+    await AtomicEffectExecutor.execute(gameState, playerState.uid, {
+      type: 'DISCARD_CARD',
+      targetFilter: { gamecardId: selections[0] }
+    }, instance);
+
+    const topCard = getTopDeckCards(playerState, 1)[0];
+    if (!topCard) return;
+
+    EventEngine.dispatchEvent(gameState, {
+      type: 'REVEAL_DECK',
+      playerUid: playerState.uid,
+      data: { cards: [topCard] }
+    });
+
+    if (!isNonGodAccessLe3UnitOrItem(topCard)) return;
+
+    if (topCard.type === 'UNIT') {
+      if (!playerState.unitZone.some(card => card === null)) return;
+      if (topCard.specialName && playerState.unitZone.some(card => card?.specialName === topCard.specialName)) return;
+    }
+
+    if (topCard.type === 'ITEM') {
+      if (topCard.specialName && playerState.itemZone.some(card => card?.specialName === topCard.specialName)) return;
+    }
+
+    await AtomicEffectExecutor.execute(gameState, playerState.uid, {
+      type: 'MOVE_FROM_DECK',
+      targetFilter: { gamecardId: topCard.gamecardId },
+      destinationZone: topCard.type === 'UNIT' ? 'UNIT' : 'ITEM'
+    }, instance);
+  }
+};
+
 const card: Card = {
   id: '105120168',
   fullName: '炼金骑士「艾尔蒙特」',
@@ -35,7 +121,7 @@ const card: Card = {
   canAttack: true,
   feijingMark: false,
   canResetCount: 0,
-  effects: [],
+  effects: [effect_105120168_enter, effect_105120168_activate],
   rarity: 'SR',
   availableRarities: ['SR', 'SER', 'UR'],
   cardPackage: 'BT02',

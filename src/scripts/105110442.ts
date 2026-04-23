@@ -1,19 +1,64 @@
-import { Card } from '../types/game';
+import { Card, CardEffect, GameEvent } from '../types/game';
+import { AtomicEffectExecutor } from '../services/AtomicEffectExecutor';
+import { countItemTypes, createChoiceQuery, createSelectCardQuery, getOnlyGodMarkUnit, getTopDeckCards } from './_bt03YellowUtils';
+import { wasPlayedFromHand } from './_bt04YellowUtils';
 
-/**
- * Auto-generated from Card.xlsx + Card2.xlsx.
- * Source CardID: 105110442
- * Card2 Row: 322
- * Card Row: 561
- * Source CardNo: BT04-Y01
- * Package: BT04(SR)
- * ID Source: card-xlsx
- * Keywords: N/A
- * Card Detail:
- * 【永】：若你的战场上仅有1个神蚀单位，且那个单位的ACCESS值在+5以上，那个单位〖伤害+1〗〖力量+500〗。
- * 【诱】：这个单位从手牌进入战场时，若你的战场上仅有1个神蚀单位，查看你的卡组顶的3张卡。你从中选择1张卡，将其公开后，加入手牌。将其余的卡按原样放回，将你的卡组洗切。
- * TODO: confirm ID / godMark / rarity variants and implement effects.
- */
+const effect_105110442_continuous: CardEffect = {
+  id: '105110442_continuous',
+  type: 'CONTINUOUS',
+  description: 'If you control only 1 god-mark unit and its AC is 5 or more, that unit gets +1 damage and +500 power.',
+  applyContinuous: (_gameState, instance) => {
+    const ownerUid = AtomicEffectExecutor.findCardOwnerKey(_gameState, instance.gamecardId);
+    if (!ownerUid) return;
+    const loneGodmark = getOnlyGodMarkUnit(_gameState.players[ownerUid]);
+    if (!loneGodmark) return;
+    if ((loneGodmark.baseAcValue ?? loneGodmark.acValue) < 5) return;
+
+    loneGodmark.power = (loneGodmark.power || 0) + 500;
+    loneGodmark.damage = (loneGodmark.damage || 0) + 1;
+  }
+};
+
+const effect_105110442_enter: CardEffect = {
+  id: '105110442_enter',
+  type: 'TRIGGER',
+  triggerLocation: ['UNIT'],
+  triggerEvent: 'CARD_ENTERED_ZONE',
+  isMandatory: true,
+  description: 'When this unit enters the battlefield from hand, if you control only 1 god-mark unit, look at the top 3 cards of your deck and add 1 to your hand, then shuffle.',
+  condition: (_gameState, playerState, instance, event?: GameEvent) =>
+    instance.cardlocation === 'UNIT' &&
+    event?.type === 'CARD_ENTERED_ZONE' &&
+    event.sourceCardId === instance.gamecardId &&
+    event.data?.zone === 'UNIT' &&
+    wasPlayedFromHand(instance) &&
+    getOnlyGodMarkUnit(playerState)?.gamecardId === instance.gamecardId,
+  execute: async (instance, gameState, playerState) => {
+    const topCards = getTopDeckCards(playerState, 3);
+    if (topCards.length === 0) return;
+
+    createSelectCardQuery(
+      gameState,
+      playerState.uid,
+      topCards,
+      'Choose A Card',
+      'Choose 1 of the top 3 cards of your deck to add to your hand.',
+      1,
+      1,
+      { sourceCardId: instance.gamecardId, effectId: '105110442_enter' },
+      () => 'DECK'
+    );
+  },
+  onQueryResolve: async (instance, gameState, playerState, selections) => {
+    await AtomicEffectExecutor.execute(gameState, playerState.uid, {
+      type: 'MOVE_FROM_DECK',
+      targetFilter: { gamecardId: selections[0] },
+      destinationZone: 'HAND'
+    }, instance);
+    await AtomicEffectExecutor.execute(gameState, playerState.uid, { type: 'SHUFFLE_DECK' }, instance);
+  }
+};
+
 const card: Card = {
   id: '105110442',
   fullName: '水晶占卜师「史黛拉」',
@@ -32,10 +77,11 @@ const card: Card = {
   displayState: 'FRONT_UPRIGHT',
   isExhausted: false,
   isrush: false,
+  baseIsrush: false,
   canAttack: true,
   feijingMark: false,
   canResetCount: 0,
-  effects: [],
+  effects: [effect_105110442_continuous, effect_105110442_enter],
   rarity: 'SR',
   availableRarities: ['SR'],
   cardPackage: 'BT04',

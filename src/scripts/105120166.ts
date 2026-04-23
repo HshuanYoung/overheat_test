@@ -1,18 +1,24 @@
-import { Card } from '../types/game';
+import { Card, CardEffect } from '../types/game';
 
-/**
- * Auto-generated from Card.xlsx + Card2.xlsx.
- * Source CardID: 105120166
- * Card2 Row: 164
- * Card Row: 164
- * Source CardNo: BT02-Y07
- * Package: BT02(R)
- * ID Source: card-xlsx
- * Keywords: N/A
- * Card Detail:
- * 【永】:由于卡名含有《炼金》的卡的效果从卡组进入战场的这个单位变为〖伤害3〗〖力量3500〗并获得【速攻】【英勇】。
- * TODO: confirm ID / godMark / rarity variants and implement effects.
- */
+const effect_105120166_alchemy_buff: CardEffect = {
+  id: '105120166_alchemy_buff',
+  type: 'CONTINUOUS',
+  description: 'If this unit entered from deck by an alchemy effect, it becomes 3500 power / 3 damage and gains Rush and Heroic.',
+  applyContinuous: (_gameState, instance) => {
+    if (
+      (instance as any).data?.enteredFromDeckByAlchemyTurn === undefined ||
+      (instance as any).data?.lastMovedFromZone !== 'DECK' ||
+      (instance as any).data?.lastMovedToZone !== 'UNIT'
+    ) {
+      return;
+    }
+    instance.power = 3500;
+    instance.damage = 3;
+    instance.isrush = true;
+    instance.isHeroic = true;
+  }
+};
+
 const card: Card = {
   id: '105120166',
   fullName: '炼金兽 翼蛇',
@@ -30,12 +36,14 @@ const card: Card = {
   godMark: false,
   displayState: 'FRONT_UPRIGHT',
   isExhausted: false,
-  isrush: true,
-  isHeroic: true,
+  isrush: false,
+  baseIsrush: false,
+  isHeroic: false,
+  baseHeroic: false,
   canAttack: true,
   feijingMark: false,
   canResetCount: 0,
-  effects: [],
+  effects: [effect_105120166_alchemy_buff],
   rarity: 'R',
   availableRarities: ['R'],
   cardPackage: 'BT02',

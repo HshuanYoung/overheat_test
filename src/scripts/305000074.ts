@@ -1,18 +1,50 @@
-import { Card } from '../types/game';
+import { Card, CardEffect } from '../types/game';
+import { createChoiceQuery, getOnlyGodMarkUnit, moveCard } from './_bt03YellowUtils';
+import { AtomicEffectExecutor } from '../services/AtomicEffectExecutor';
 
-/**
- * Auto-generated from Card.xlsx + Card2.xlsx.
- * Source CardID: 305000074
- * Card2 Row: 331
- * Card Row: 570
- * Source CardNo: BT04-Y10
- * Package: BT04(C)
- * ID Source: card-xlsx
- * Keywords: N/A
- * Card Detail:
- * 【诱】：对手的每个回合开始时，若你的战场上仅有一个神蚀单位，你可以查看对手的卡组顶的1张卡，将那张卡放置到卡组顶或卡组底。
- * TODO: confirm ID / godMark / rarity variants and implement effects.
- */
+const effect_305000074_trigger: CardEffect = {
+  id: '305000074_trigger',
+  type: 'TRIGGER',
+  triggerLocation: ['ITEM'],
+  triggerEvent: 'PHASE_CHANGED',
+  description: 'At the start of each opponent turn, if you control only 1 god-mark unit, you may look at the top card of the opponent deck and put it on top or bottom.',
+  condition: (gameState, playerState, instance, event) =>
+    instance.cardlocation === 'ITEM' &&
+    event?.type === 'PHASE_CHANGED' &&
+    event.data?.phase === 'START' &&
+    !playerState.isTurn &&
+    !!getOnlyGodMarkUnit(playerState),
+  execute: async (instance, gameState, playerState) => {
+    const opponentUid = gameState.playerIds.find(uid => uid !== playerState.uid)!;
+    const opponent = gameState.players[opponentUid];
+    const topCard = opponent.deck[opponent.deck.length - 1];
+    if (!topCard) return;
+
+    createChoiceQuery(
+      gameState,
+      playerState.uid,
+      'Deck Top Choice',
+      `Top card of opponent deck: ${topCard.fullName}`,
+      [
+        { id: 'TOP', label: 'Keep On Top' },
+        { id: 'BOTTOM', label: 'Put On Bottom' }
+      ],
+      {
+        sourceCardId: instance.gamecardId,
+        effectId: '305000074_trigger',
+        targetId: topCard.gamecardId,
+        opponentUid
+      }
+    );
+  },
+  onQueryResolve: async (instance, gameState, _playerState, selections, context) => {
+    if (selections[0] !== 'BOTTOM') return;
+    const target = AtomicEffectExecutor.findCardById(gameState, context.targetId);
+    if (!target) return;
+    moveCard(gameState, context.opponentUid, target, 'DECK', instance, { insertAtBottom: true });
+  }
+};
+
 const card: Card = {
   id: '305000074',
   fullName: '「神眼吊坠」',
@@ -27,7 +59,7 @@ const card: Card = {
   displayState: 'FRONT_UPRIGHT',
   feijingMark: false,
   canResetCount: 0,
-  effects: [],
+  effects: [effect_305000074_trigger],
   rarity: 'C',
   availableRarities: ['C'],
   cardPackage: 'BT04',

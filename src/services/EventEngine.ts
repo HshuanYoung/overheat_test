@@ -162,6 +162,12 @@ export class EventEngine {
       ];
       allCards.forEach(card => {
         if (card) {
+          delete (card as any).battleForbiddenByEffect;
+          delete (card as any).cannotBeAttackTargetByEffect;
+          delete (card as any).battleImmuneByEffect;
+          if ((card as any).data?.unaffectedByOpponentCardEffects !== undefined) {
+            delete (card as any).data.unaffectedByOpponentCardEffects;
+          }
           delete (card as any).__lockPowerToBaseSourceName;
           if (!card.baseColorReq) {
             card.baseColorReq = { ...(card.colorReq || {}) };
@@ -177,6 +183,7 @@ export class EventEngine {
           }
           if (card.baseGodMark !== undefined) card.godMark = card.baseGodMark;
           if (card.baseAcValue !== undefined) card.acValue = card.baseAcValue;
+          if (card.baseHeroic !== undefined) card.isHeroic = card.baseHeroic;
           card.canActivateEffect = card.baseCanActivateEffect !== undefined ? card.baseCanActivateEffect : true;
           if (card.temporaryCanActivateEffect !== undefined) {
             card.canActivateEffect = card.temporaryCanActivateEffect;

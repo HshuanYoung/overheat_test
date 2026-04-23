@@ -1,19 +1,54 @@
-import { Card } from '../types/game';
+import { Card, CardEffect } from '../types/game';
+import { AtomicEffectExecutor } from '../services/AtomicEffectExecutor';
+import { canPutUnitOntoBattlefield, createSelectCardQuery } from './_bt03YellowUtils';
 
-/**
- * Auto-generated from Card.xlsx + Card2.xlsx.
- * Source CardID: 205000136
- * Card2 Row: 329
- * Card Row: 568
- * Source CardNo: BT04-Y08
- * Package: BT04(C)
- * ID Source: card-xlsx
- * Keywords: N/A
- * Card Detail:
- * 【创痕1】（你的侵蚀区中的背面卡有1张以上时才有效）只能在你的主要阶段中使用。选择你的卡组中的1张单位卡，将其放置到战场上，给予你与那个单位ACCESS值相同的伤害。之后，这个回合结束。
- * 【你为ACCESS值+3以下的黄色卡支付使用费用时，你可以将手牌中的这张卡放逐作为这次费用的代替。】
- * TODO: confirm ID / godMark / rarity variants and implement effects.
- */
+const effect_205000136_substitute: CardEffect = {
+  id: '205000136_substitute',
+  type: 'CONTINUOUS',
+  description: 'You may banish this card from your hand as a payment substitute when paying for yellow cards with AC 3 or less.'
+};
+
+const effect_205000136_activate: CardEffect = {
+  id: '205000136_activate',
+  type: 'ACTIVATE',
+  triggerLocation: ['PLAY'],
+  erosionBackLimit: [1, 10],
+  description: 'Scratch 1. Main phase only. Put 1 unit from your deck onto the battlefield, deal yourself damage equal to its AC, then end this turn.',
+  condition: (gameState, playerState) =>
+    gameState.phase === 'MAIN' &&
+    playerState.deck.some(card => card.type === 'UNIT' && canPutUnitOntoBattlefield(playerState, card)),
+  execute: async (instance, gameState, playerState) => {
+    const candidates = playerState.deck.filter(card => card.type === 'UNIT' && canPutUnitOntoBattlefield(playerState, card));
+    createSelectCardQuery(
+      gameState,
+      playerState.uid,
+      candidates,
+      'Choose A Unit',
+      'Choose 1 unit from your deck to put onto the battlefield.',
+      1,
+      1,
+      { sourceCardId: instance.gamecardId, effectId: '205000136_activate' },
+      () => 'DECK'
+    );
+  },
+  onQueryResolve: async (instance, gameState, playerState, selections) => {
+    const target = AtomicEffectExecutor.findCardById(gameState, selections[0]);
+    if (!target) return;
+
+    const damage = target.baseAcValue ?? target.acValue;
+    await AtomicEffectExecutor.execute(gameState, playerState.uid, {
+      type: 'MOVE_FROM_DECK',
+      targetFilter: { gamecardId: target.gamecardId },
+      destinationZone: 'UNIT'
+    }, instance);
+    await AtomicEffectExecutor.execute(gameState, playerState.uid, {
+      type: 'DEAL_EFFECT_DAMAGE_SELF',
+      value: damage
+    }, instance);
+    (playerState as any).forceEndTurnRequested = gameState.turnCount;
+  }
+};
+
 const card: Card = {
   id: '205000136',
   fullName: '神灵的炼金',
@@ -28,7 +63,7 @@ const card: Card = {
   displayState: 'FRONT_UPRIGHT',
   feijingMark: false,
   canResetCount: 0,
-  effects: [],
+  effects: [effect_205000136_substitute, effect_205000136_activate],
   rarity: 'C',
   availableRarities: ['C'],
   cardPackage: 'BT04',

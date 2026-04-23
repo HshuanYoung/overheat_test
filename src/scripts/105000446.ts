@@ -1,19 +1,36 @@
-import { Card } from '../types/game';
+import { Card, CardEffect, GameEvent } from '../types/game';
+import { AtomicEffectExecutor } from '../services/AtomicEffectExecutor';
+import { canPutUnitOntoBattlefield } from './_bt03YellowUtils';
 
-/**
- * Auto-generated from Card.xlsx + Card2.xlsx.
- * Source CardID: 105000446
- * Card2 Row: 326
- * Card Row: 565
- * Source CardNo: BT04-Y05
- * Package: BT04(SR)
- * ID Source: card-xlsx
- * Keywords: N/A
- * Card Detail:
- * 【永】：由于你的卡名含有《魔偶》的卡的效果而被公开的卡均视为神蚀卡。
- * 【诱】：这张卡由于你的卡名含有《魔偶》的卡的效果从卡组顶被公开时，你可以将你的卡组顶的这张卡放置到战场上。
- * TODO: confirm ID / godMark / rarity variants and implement effects.
- */
+const effect_105000446_continuous: CardEffect = {
+  id: '105000446_continuous',
+  type: 'CONTINUOUS',
+  description: 'Cards revealed by effects of your cards whose names contain 《魔偶》 are treated as god-mark cards.'
+};
+
+const effect_105000446_trigger: CardEffect = {
+  id: '105000446_trigger',
+  type: 'TRIGGER',
+  triggerLocation: ['DECK'],
+  triggerEvent: 'REVEAL_DECK',
+  description: 'When this card is revealed from the top of your deck by an effect of your card whose name contains 《魔偶》, you may put it onto the battlefield.',
+  condition: (_gameState, playerState, instance, event?: GameEvent) =>
+    instance.cardlocation === 'DECK' &&
+    event?.type === 'REVEAL_DECK' &&
+    event.playerUid === playerState.uid &&
+    event.data?.sourceCardName?.includes('魔偶') &&
+    Array.isArray(event.data?.cards) &&
+    event.data.cards.some((card: Card) => card.gamecardId === instance.gamecardId) &&
+    canPutUnitOntoBattlefield(playerState, instance),
+  execute: async (instance, gameState, playerState) => {
+    await AtomicEffectExecutor.execute(gameState, playerState.uid, {
+      type: 'MOVE_FROM_DECK',
+      targetFilter: { gamecardId: instance.gamecardId },
+      destinationZone: 'UNIT'
+    }, instance);
+  }
+};
+
 const card: Card = {
   id: '105000446',
   fullName: '天才魔偶师「优」',
@@ -32,10 +49,11 @@ const card: Card = {
   displayState: 'FRONT_UPRIGHT',
   isExhausted: false,
   isrush: false,
+  baseIsrush: false,
   canAttack: true,
   feijingMark: false,
   canResetCount: 0,
-  effects: [],
+  effects: [effect_105000446_continuous, effect_105000446_trigger],
   rarity: 'SR',
   availableRarities: ['SR'],
   cardPackage: 'BT04',

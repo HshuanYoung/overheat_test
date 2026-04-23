@@ -1,19 +1,31 @@
-import { Card } from '../types/game';
+import { Card, CardEffect } from '../types/game';
 
-/**
- * Auto-generated from Card.xlsx + Card2.xlsx.
- * Source CardID: 105110160
- * Card2 Row: 158
- * Card Row: 158
- * Source CardNo: BT02-Y01
- * Package: BT02(R)
- * ID Source: card-xlsx
- * Keywords: N/A
- * Card Detail:
- * 【永】:所有的卡失去所有〖A〗能力。
- * 【永】:若对手处于女神化状态，这个单位不会被破坏，也不会受到对手的所有卡的效果影响。
- * TODO: confirm ID / godMark / rarity variants and implement effects.
- */
+const effect_105110160_disable_all_activated: CardEffect = {
+  id: '105110160_disable_all_activated',
+  type: 'CONTINUOUS',
+  content: 'DISABLE_ALL_ACTIVATED',
+  description: 'All cards lose activated abilities while this unit is active.'
+};
+
+const effect_105110160_self_protection: CardEffect = {
+  id: '105110160_self_protection',
+  type: 'CONTINUOUS',
+  description: 'If the opponent is in goddess mode, this unit cannot be destroyed and is unaffected by opponent card effects.',
+  applyContinuous: (gameState, instance) => {
+    const ownerUid = Object.keys(gameState.players).find(uid =>
+      gameState.players[uid].unitZone.some(card => card?.gamecardId === instance.gamecardId)
+    );
+    const opponentUid = Object.keys(gameState.players).find(uid => uid !== ownerUid);
+    const active = !!opponentUid && !!gameState.players[opponentUid]?.isGoddessMode;
+
+    (instance as any).data = {
+      ...((instance as any).data || {}),
+      indestructibleIfOpponentGoddess: active,
+      immuneToOpponentEffectsIfOpponentGoddess: active
+    };
+  }
+};
+
 const card: Card = {
   id: '105110160',
   fullName: '狂妄的科学论者「玛特」',
@@ -35,7 +47,7 @@ const card: Card = {
   canAttack: true,
   feijingMark: false,
   canResetCount: 0,
-  effects: [],
+  effects: [effect_105110160_disable_all_activated, effect_105110160_self_protection],
   rarity: 'R',
   availableRarities: ['R'],
   cardPackage: 'BT02',

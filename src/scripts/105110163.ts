@@ -1,18 +1,28 @@
-import { Card } from '../types/game';
+import { Card, CardEffect, GameEvent } from '../types/game';
+import { AtomicEffectExecutor } from '../services/AtomicEffectExecutor';
 
-/**
- * Auto-generated from Card.xlsx + Card2.xlsx.
- * Source CardID: 105110163
- * Card2 Row: 161
- * Card Row: 161
- * Source CardNo: BT02-Y04
- * Package: BT02(U)
- * ID Source: card-xlsx
- * Keywords: N/A
- * Card Detail:
- * 【诱】:玩家使用故事卡时，给予那张故事卡的控制者2点伤害。
- * TODO: confirm ID / godMark / rarity variants and implement effects.
- */
+const effect_105110163_story_ping: CardEffect = {
+  id: '105110163_story_ping',
+  type: 'TRIGGER',
+  triggerLocation: ['UNIT'],
+  triggerEvent: 'CARD_PLAYED',
+  isGlobal: true,
+  isMandatory: true,
+  description: 'Whenever a player uses a story card, deal 1 damage to that story card controller.',
+  condition: (_gameState, _playerState, instance, event?: GameEvent) =>
+    instance.cardlocation === 'UNIT' &&
+    event?.type === 'CARD_PLAYED' &&
+    event.sourceCard?.type === 'STORY' &&
+    !!event.playerUid,
+  execute: async (instance, gameState, _playerState, event?: GameEvent) => {
+    if (!event?.playerUid) return;
+    await AtomicEffectExecutor.execute(gameState, event.playerUid, {
+      type: 'DEAL_EFFECT_DAMAGE_SELF',
+      value: 1
+    }, instance);
+  }
+};
+
 const card: Card = {
   id: '105110163',
   fullName: '魔法否定论者',
@@ -34,7 +44,7 @@ const card: Card = {
   canAttack: true,
   feijingMark: false,
   canResetCount: 0,
-  effects: [],
+  effects: [effect_105110163_story_ping],
   rarity: 'U',
   availableRarities: ['U'],
   cardPackage: 'BT02',

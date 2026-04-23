@@ -355,7 +355,7 @@ export class AtomicEffectExecutor {
   private static applyStatChange(gameState: GameState, effect: AtomicEffect, stat: 'power' | 'damage' | 'acValue' | 'godMark', sourceCard?: Card, querySelections?: string[]) {
     const targets = this.findTargets(gameState, effect.targetFilter, sourceCard, querySelections);
     targets.forEach(card => {
-      if (this.shouldSkipEffect(gameState, card)) return;
+      if (this.shouldSkipEffect(gameState, card, sourceCard)) return;
 
       if (effect.value !== undefined) {
         if (!card.temporaryBuffSources) card.temporaryBuffSources = {};
@@ -482,7 +482,7 @@ export class AtomicEffectExecutor {
     const finalTargets = effect.targetCount ? targets.slice(0, effect.targetCount) : targets;
 
     for (const card of finalTargets) {
-      if (this.shouldSkipEffect(gameState, card)) continue;
+      if (this.shouldSkipEffect(gameState, card, sourceCard)) continue;
 
       // Find which player owns the card
       for (const pUid of Object.keys(gameState.players)) {
@@ -538,7 +538,7 @@ export class AtomicEffectExecutor {
     const finalTargets = count !== undefined ? processedTargets.slice(0, count) : processedTargets;
 
     finalTargets.forEach(card => {
-      if (this.shouldSkipEffect(gameState, card)) return;
+      if (this.shouldSkipEffect(gameState, card, sourceCard)) return;
 
       // Find current zone and OWNER
       const currentZone = card.cardlocation as TriggerLocation;
@@ -574,7 +574,7 @@ export class AtomicEffectExecutor {
     const allTargetCardIds = targets.map(card => card.gamecardId);
 
     targets.forEach(card => {
-      if (this.shouldSkipEffect(gameState, card)) return;
+      if (this.shouldSkipEffect(gameState, card, sourceCard)) return;
 
       card.isExhausted = direction === 'HORIZONTAL';
       EventEngine.dispatchEvent(gameState, {
@@ -621,7 +621,7 @@ export class AtomicEffectExecutor {
   private static setCanResetCount(gameState: GameState, effect: AtomicEffect, sourceCard?: Card, querySelections?: string[]) {
     const targets = this.findTargets(gameState, effect.targetFilter, sourceCard, querySelections);
     targets.forEach(card => {
-      if (this.shouldSkipEffect(gameState, card)) return;
+      if (this.shouldSkipEffect(gameState, card, sourceCard)) return;
 
       card.canResetCount = effect.value || 0;
       const ownerUid = this.findCardOwnerKey(gameState, card.gamecardId) || '';
@@ -633,7 +633,7 @@ export class AtomicEffectExecutor {
   private static negateEffect(gameState: GameState, effect: AtomicEffect, sourceCard?: Card, querySelections?: string[]) {
     const targets = this.findTargets(gameState, effect.targetFilter, sourceCard, querySelections);
     targets.forEach(card => {
-      if (this.shouldSkipEffect(gameState, card)) return;
+      if (this.shouldSkipEffect(gameState, card, sourceCard)) return;
 
       // logic to negate card effects
       const ownerUid = this.findCardOwnerKey(gameState, card.gamecardId) || '';
@@ -683,7 +683,6 @@ export class AtomicEffectExecutor {
     if (isOmni && ['UNIT', 'EROSION_FRONT'].includes(card.cardlocation as string)) {
       return true;
     }
-
     return false;
   }
 
@@ -773,7 +772,7 @@ export class AtomicEffectExecutor {
     toZone: TriggerLocation,
     cardId: string,
     isEffect?: boolean,
-    options?: { faceDown?: boolean; effectSourcePlayerUid?: string; effectSourceCardId?: string }
+    options?: { faceDown?: boolean; insertAtBottom?: boolean; effectSourcePlayerUid?: string; effectSourceCardId?: string }
   ) {
     const sourcePlayer = gameState.players[playerUid];
     const targetPlayer = gameState.players[toPlayerUid];
@@ -916,7 +915,11 @@ export class AtomicEffectExecutor {
       if (emptyIdx !== -1) toArray[emptyIdx] = card;
       else toArray.push(card);
     } else {
-      toArray.push(card);
+      if (options?.insertAtBottom) {
+        toArray.unshift(card);
+      } else {
+        toArray.push(card);
+      }
     }
 
     // Specific Events based on movement
@@ -1037,13 +1040,38 @@ export class AtomicEffectExecutor {
     });
   }
 
-  private static shouldSkipEffect(gameState: GameState, card: Card): boolean {
+  private static shouldSkipEffect(gameState: GameState, card: Card, sourceCard?: Card): boolean {
     if (card && card.nextEffectProtection) {
       card.nextEffectProtection = false;
       const ownerUid = this.findCardOwnerKey(gameState, card.gamecardId) || '';
       const identity = ownerUid ? getCardIdentity(gameState, ownerUid, card) : `[${card.fullName}]`;
       gameState.logs.push(`${identity} 的护盾生效，抵消了本次效果！`);
       return true;
+    }
+
+    if (card && sourceCard && (card as any).data?.immuneToOpponentEffectsIfOpponentGoddess) {
+      const targetOwnerUid = this.findCardOwnerKey(gameState, card.gamecardId);
+      const sourceOwnerUid = this.findCardOwnerKey(gameState, sourceCard.gamecardId);
+      if (
+        targetOwnerUid &&
+        sourceOwnerUid &&
+        targetOwnerUid !== sourceOwnerUid &&
+        gameState.players[sourceOwnerUid]?.isGoddessMode
+      ) {
+        const identity = getCardIdentity(gameState, targetOwnerUid, card);
+        gameState.logs.push(`${identity} is unaffected by opponent card effects right now.`);
+        return true;
+      }
+    }
+
+    if (card && sourceCard && (card as any).data?.unaffectedByOpponentCardEffects) {
+      const targetOwnerUid = this.findCardOwnerKey(gameState, card.gamecardId);
+      const sourceOwnerUid = this.findCardOwnerKey(gameState, sourceCard.gamecardId);
+      if (targetOwnerUid && sourceOwnerUid && targetOwnerUid !== sourceOwnerUid) {
+        const identity = getCardIdentity(gameState, targetOwnerUid, card);
+        gameState.logs.push(`${identity} is unaffected by opponent card effects right now.`);
+        return true;
+      }
     }
     return false;
   }
@@ -1054,7 +1082,7 @@ export class AtomicEffectExecutor {
     const duration = effect.turnDuration ?? 0;
 
     targets.forEach(card => {
-      if (this.shouldSkipEffect(gameState, card)) return;
+      if (this.shouldSkipEffect(gameState, card, sourceCard)) return;
       if (!card.temporaryBuffSources) card.temporaryBuffSources = {};
       const sourceName = sourceCard ? sourceCard.fullName : '效果';
 

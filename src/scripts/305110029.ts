@@ -1,18 +1,50 @@
-import { Card } from '../types/game';
+import { Card, CardEffect } from '../types/game';
+import { AtomicEffectExecutor } from '../services/AtomicEffectExecutor';
+import { createSelectCardQuery } from './_bt02YellowUtils';
 
-/**
- * Auto-generated from Card.xlsx + Card2.xlsx.
- * Source CardID: 305110029
- * Card2 Row: 173
- * Card Row: 173
- * Source CardNo: BT02-Y16
- * Package: BT02(C),ST04(TD)
- * ID Source: card-xlsx
- * Keywords: N/A
- * Card Detail:
- * 【启】:[〖横置〗]选择战场上的1个单位，本回合中〖伤害-1〗〖力量-500〗。
- * TODO: confirm ID / godMark / rarity variants and implement effects.
- */
+const effect_305110029_activate: CardEffect = {
+  id: '305110029_activate',
+  type: 'ACTIVATE',
+  triggerLocation: ['ITEM'],
+  description: 'Exhaust this item. Choose 1 unit on the battlefield. It gets +1 damage and +500 power this turn.',
+  condition: (_gameState, _playerState, instance) => !instance.isExhausted,
+  execute: async (instance, gameState, playerState) => {
+    await AtomicEffectExecutor.execute(gameState, playerState.uid, {
+      type: 'ROTATE_HORIZONTAL',
+      targetFilter: { gamecardId: instance.gamecardId }
+    }, instance);
+
+    const units = Object.values(gameState.players).flatMap(player => player.unitZone.filter((card): card is Card => !!card));
+    if (units.length === 0) return;
+
+    createSelectCardQuery(
+      gameState,
+      playerState.uid,
+      units,
+      'Choose A Unit',
+      'Choose 1 unit on the battlefield.',
+      1,
+      1,
+      { sourceCardId: instance.gamecardId, effectId: '305110029_activate' }
+    );
+  },
+  onQueryResolve: async (instance, gameState, playerState, selections) => {
+    const targetId = selections[0];
+    await AtomicEffectExecutor.execute(gameState, playerState.uid, {
+      type: 'CHANGE_DAMAGE',
+      value: 1,
+      turnDuration: 1,
+      targetFilter: { gamecardId: targetId }
+    }, instance);
+    await AtomicEffectExecutor.execute(gameState, playerState.uid, {
+      type: 'CHANGE_POWER',
+      value: 500,
+      turnDuration: 1,
+      targetFilter: { gamecardId: targetId }
+    }, instance);
+  }
+};
+
 const card: Card = {
   id: '305110029',
   fullName: '小型自动炮台',
@@ -27,7 +59,7 @@ const card: Card = {
   displayState: 'FRONT_UPRIGHT',
   feijingMark: false,
   canResetCount: 0,
-  effects: [],
+  effects: [effect_305110029_activate],
   rarity: 'C',
   availableRarities: ['C'],
   cardPackage: 'BT02,ST04',

@@ -1,18 +1,18 @@
-import { Card } from '../types/game';
+import { Card, CardEffect } from '../types/game';
+import { isBattlingGodMarkUnit } from './_bt04YellowUtils';
 
-/**
- * Auto-generated from Card.xlsx + Card2.xlsx.
- * Source CardID: 105110444
- * Card2 Row: 324
- * Card Row: 563
- * Source CardNo: BT04-Y03
- * Package: BT04(R)
- * ID Source: card-xlsx
- * Keywords: N/A
- * Card Detail:
- * 【永】：这个单位与神蚀单位进行战斗时，这次战斗中，这个单位不会被破坏，〖伤害+3〗并获得【歼灭】。
- * TODO: confirm ID / godMark / rarity variants and implement effects.
- */
+const effect_105110444_continuous: CardEffect = {
+  id: '105110444_continuous',
+  type: 'CONTINUOUS',
+  description: 'When this unit battles a god-mark unit, it is not destroyed by battle, becomes damage 3, and gains Annihilation during that battle.',
+  applyContinuous: (gameState, instance) => {
+    if (!isBattlingGodMarkUnit(gameState, instance)) return;
+    instance.damage = 3;
+    instance.isAnnihilation = true;
+    (instance as any).battleImmuneByEffect = true;
+  }
+};
+
 const card: Card = {
   id: '105110444',
   fullName: '钢兵的巨人',
@@ -31,11 +31,13 @@ const card: Card = {
   displayState: 'FRONT_UPRIGHT',
   isExhausted: false,
   isrush: false,
-  isAnnihilation: true,
+  baseIsrush: false,
+  isAnnihilation: false,
+  baseAnnihilation: false,
   canAttack: true,
   feijingMark: false,
   canResetCount: 0,
-  effects: [],
+  effects: [effect_105110444_continuous],
   rarity: 'R',
   availableRarities: ['R'],
   cardPackage: 'BT04',

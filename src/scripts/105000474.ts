@@ -1,18 +1,50 @@
-import { Card } from '../types/game';
+import { Card, CardEffect, GameEvent } from '../types/game';
+import { AtomicEffectExecutor } from '../services/AtomicEffectExecutor';
+import { createChoiceQuery, getOpponentUid, isVirtualGodMarkReveal, shuffleAndRevealTopCards } from './_bt03YellowUtils';
 
-/**
- * Auto-generated from Card.xlsx + Card2.xlsx.
- * Source CardID: 105000474
- * Card2 Row: 250
- * Card Row: 606
- * Source CardNo: BT03-Y08
- * Package: BT03(C)
- * ID Source: card-xlsx
- * Keywords: N/A
- * Card Detail:
- * 【诱】〖1回合1次〗:这个单位进入战场时，将你的卡组洗切，公开你的卡组顶的1张卡。若那张卡是神蚀卡，选择1名玩家，随机选择那名玩家的1张手牌舍弃。
- * TODO: confirm ID / godMark / rarity variants and implement effects.
- */
+const effect_105000474_enter: CardEffect = {
+  id: '105000474_enter',
+  type: 'TRIGGER',
+  triggerLocation: ['UNIT'],
+  triggerEvent: 'CARD_ENTERED_ZONE',
+  limitCount: 1,
+  limitNameType: true,
+  isMandatory: true,
+  description: 'When this unit enters the battlefield, shuffle your deck and reveal the top card. If it is a god-mark card, choose a player and discard a random card from that player hand.',
+  condition: (_gameState, _playerState, instance, event?: GameEvent) =>
+    instance.cardlocation === 'UNIT' &&
+    event?.type === 'CARD_ENTERED_ZONE' &&
+    event.sourceCardId === instance.gamecardId &&
+    event.data?.zone === 'UNIT',
+  execute: async (instance, gameState, playerState) => {
+    const revealedCard = (await shuffleAndRevealTopCards(gameState, playerState.uid, 1, instance))[0];
+    if (!isVirtualGodMarkReveal(gameState, revealedCard)) return;
+
+    createChoiceQuery(
+      gameState,
+      playerState.uid,
+      'Choose A Player',
+      'Choose a player to discard a random hand card.',
+      [
+        { id: playerState.uid, label: 'Yourself' },
+        { id: getOpponentUid(gameState, playerState.uid), label: 'Opponent' }
+      ],
+      { sourceCardId: instance.gamecardId, effectId: '105000474_enter' }
+    );
+  },
+  onQueryResolve: async (instance, gameState, _playerState, selections) => {
+    const chosenUid = selections[0];
+    const chosenPlayer = gameState.players[chosenUid];
+    if (!chosenPlayer || chosenPlayer.hand.length === 0) return;
+
+    const randomCard = chosenPlayer.hand[Math.floor(Math.random() * chosenPlayer.hand.length)];
+    await AtomicEffectExecutor.execute(gameState, chosenUid, {
+      type: 'DISCARD_CARD',
+      targetFilter: { gamecardId: randomCard.gamecardId }
+    }, instance);
+  }
+};
+
 const card: Card = {
   id: '105000474',
   fullName: '猫耳魔偶',
@@ -31,10 +63,11 @@ const card: Card = {
   displayState: 'FRONT_UPRIGHT',
   isExhausted: false,
   isrush: false,
+  baseIsrush: false,
   canAttack: true,
   feijingMark: false,
   canResetCount: 0,
-  effects: [],
+  effects: [effect_105000474_enter],
   rarity: 'C',
   availableRarities: ['C'],
   cardPackage: 'BT03',

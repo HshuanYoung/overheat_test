@@ -1,21 +1,74 @@
-import { Card } from '../types/game';
+import { Card, CardEffect } from '../types/game';
+import { AtomicEffectExecutor } from '../services/AtomicEffectExecutor';
+import { canPutUnitOntoBattlefield, createSelectCardQuery, getOnlyGodMarkUnit, moveCard } from './_bt03YellowUtils';
 
-/**
- * Auto-generated from Card.xlsx + Card2.xlsx.
- * Source CardID: 205000135
- * Card2 Row: 328
- * Card Row: 567
- * Source CardNo: BT04-Y07
- * Package: BT04(R)
- * ID Source: card-xlsx
- * Keywords: N/A
- * Card Detail:
- * 〖同名1回合1次〗若你的战场上只有1个神蚀单位，选择你的1个具有指定名的神蚀单位，将其返回持有者的卡组，选择你卡组中的1张与那个单位指定名相同、卡名不同的单位卡，将其放置到战场上。
- * TODO: confirm ID / godMark / rarity variants and implement effects.
- */
+const effect_205000135_activate: CardEffect = {
+  id: '205000135_activate',
+  type: 'ACTIVATE',
+  triggerLocation: ['PLAY'],
+  limitCount: 1,
+  limitNameType: true,
+  description: 'If you control only 1 god-mark unit, return 1 of your named god-mark units to the deck, then put a different unit with the same special name from your deck onto the battlefield.',
+  condition: (_gameState, playerState) => {
+    const loneGodmark = getOnlyGodMarkUnit(playerState);
+    if (!loneGodmark?.specialName) return false;
+    return playerState.deck.some(card =>
+      card.type === 'UNIT' &&
+      card.specialName === loneGodmark.specialName &&
+      card.fullName !== loneGodmark.fullName &&
+      canPutUnitOntoBattlefield(playerState, card)
+    );
+  },
+  execute: async (instance, gameState, playerState) => {
+    const loneGodmark = getOnlyGodMarkUnit(playerState);
+    if (!loneGodmark?.specialName) return;
+
+    createSelectCardQuery(
+      gameState,
+      playerState.uid,
+      [loneGodmark],
+      'Choose Your Unit',
+      'Choose the named god-mark unit to return to your deck.',
+      1,
+      1,
+      { sourceCardId: instance.gamecardId, effectId: '205000135_activate', step: 'RETURN_UNIT' }
+    );
+  },
+  onQueryResolve: async (instance, gameState, playerState, selections, context) => {
+    if (context.step !== 'RETURN_UNIT') return;
+
+    const target = AtomicEffectExecutor.findCardById(gameState, selections[0]);
+    if (!target?.specialName) return;
+    const specialName = target.specialName;
+    const fullName = target.fullName;
+
+    moveCard(gameState, playerState.uid, target, 'DECK', instance);
+
+    const candidates = playerState.deck.filter(card =>
+      card.type === 'UNIT' &&
+      card.specialName === specialName &&
+      card.fullName !== fullName &&
+      canPutUnitOntoBattlefield(playerState, card)
+    );
+    if (candidates.length === 0) return;
+
+    createSelectCardQuery(
+      gameState,
+      playerState.uid,
+      candidates,
+      'Choose A Unit',
+      'Choose 1 unit with the same special name but a different card name.',
+      1,
+      1,
+      { sourceCardId: instance.gamecardId, effectId: '205000135_activate', step: 'PUT_UNIT' },
+      () => 'DECK'
+    );
+  }
+};
+
 const card: Card = {
   id: '205000135',
-  fullName: '怪盗登场？！',
+  fullName: '怪盗登场！！',
   specialName: '',
   type: 'STORY',
   color: 'YELLOW',
@@ -27,7 +80,49 @@ const card: Card = {
   displayState: 'FRONT_UPRIGHT',
   feijingMark: false,
   canResetCount: 0,
-  effects: [],
+  effects: [
+    {
+      ...effect_205000135_activate,
+      onQueryResolve: async (instance, gameState, playerState, selections, context) => {
+        if (context.step === 'RETURN_UNIT') {
+          const target = AtomicEffectExecutor.findCardById(gameState, selections[0]);
+          if (!target?.specialName) return;
+          const specialName = target.specialName;
+          const fullName = target.fullName;
+
+          moveCard(gameState, playerState.uid, target, 'DECK', instance);
+
+          const candidates = playerState.deck.filter(card =>
+            card.type === 'UNIT' &&
+            card.specialName === specialName &&
+            card.fullName !== fullName &&
+            canPutUnitOntoBattlefield(playerState, card)
+          );
+          if (candidates.length === 0) return;
+
+          createSelectCardQuery(
+            gameState,
+            playerState.uid,
+            candidates,
+            'Choose A Unit',
+            'Choose 1 unit with the same special name but a different card name.',
+            1,
+            1,
+            { sourceCardId: instance.gamecardId, effectId: '205000135_activate', step: 'PUT_UNIT' },
+            () => 'DECK'
+          );
+          return;
+        }
+
+        if (context.step !== 'PUT_UNIT') return;
+        await AtomicEffectExecutor.execute(gameState, playerState.uid, {
+          type: 'MOVE_FROM_DECK',
+          targetFilter: { gamecardId: selections[0] },
+          destinationZone: 'UNIT'
+        }, instance);
+      }
+    }
+  ],
   rarity: 'R',
   availableRarities: ['R'],
   cardPackage: 'BT04',

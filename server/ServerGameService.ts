@@ -11,11 +11,60 @@ export const ServerGameService = {
     return (card as any).data?.fullEffectSilencedTurn === gameState.turnCount;
   },
 
+  getEffectivePlayCost(player: PlayerState, card: Card) {
+    const baseCost = card.acValue || 0;
+    if (card.id === '205110063') {
+      const itemCount = player.itemZone.filter(c => c !== null).length;
+      return Math.max(0, baseCost - itemCount);
+    }
+    return baseCost;
+  },
+
+  hasGlobalDisableAllActivated(gameState: GameState) {
+    return Object.values(gameState.players).some(player =>
+      [...player.unitZone, ...player.itemZone, ...player.erosionFront]
+        .filter((card): card is Card => !!card)
+        .some(card =>
+          card.effects?.some(effect =>
+            effect.type === 'CONTINUOUS' &&
+            effect.content === 'DISABLE_ALL_ACTIVATED' &&
+            (!effect.condition || effect.condition(gameState, player, card))
+          )
+        )
+    );
+  },
+
+  getForcedAttackUnit(gameState: GameState, playerId: string) {
+    const player = gameState.players[playerId];
+    if (!player) return undefined;
+
+    return player.unitZone.find((unit): unit is Card => {
+      if (!unit) return false;
+      const forcedAttackTurn = (unit as any).data?.forcedAttackTurn;
+      if (forcedAttackTurn !== gameState.turnCount) return false;
+      if (unit.isExhausted || unit.canAttack === false) return false;
+
+      const isRush = !!unit.isrush;
+      const wasPlayedThisTurn = unit.playedTurn === gameState.turnCount;
+      return isRush || !wasPlayedThisTurn;
+    });
+  },
+
   canUse204000145AsPaymentSubstitute(paymentCard: Card | undefined, cardColor?: string, cost?: number, playingCardId?: string) {
     return !!paymentCard &&
       paymentCard.id === '204000145' &&
       paymentCard.gamecardId !== playingCardId &&
       cardColor === 'BLUE' &&
+      !!cost &&
+      cost > 0 &&
+      cost <= 3;
+  },
+
+  canUse205000136AsPaymentSubstitute(paymentCard: Card | undefined, cardColor?: string, cost?: number, playingCardId?: string) {
+    return !!paymentCard &&
+      paymentCard.id === '205000136' &&
+      paymentCard.gamecardId !== playingCardId &&
+      cardColor === 'YELLOW' &&
       !!cost &&
       cost > 0 &&
       cost <= 3;
@@ -288,6 +337,11 @@ export const ServerGameService = {
 
   checkEffectLimitsAndReqs(gameState: GameState, playerUid: string, card: Card, effect: CardEffect, triggerLocation?: TriggerLocation, event?: GameEvent): { valid: boolean; reason?: string } {
     const player = gameState.players[playerUid];
+    const cardData = (card as any).data || {};
+    const pseudoGoddessActive = cardData.pseudoGoddessTenPlusTurn === gameState.turnCount;
+    const activatedEffectsDisabled = cardData.pseudoGoddessDisableActivatedTurn === gameState.turnCount;
+    const globalDisableAllActivated = ServerGameService.hasGlobalDisableAllActivated(gameState);
+    const effectivePlayer = pseudoGoddessActive ? { ...player, isGoddessMode: true } : player;
     if (!player) return { valid: false, reason: '未找到玩家信息' };
 
     // 1. Trigger Location
@@ -336,7 +390,8 @@ export const ServerGameService = {
     }
     if (effect.erosionTotalLimit) {
       const totalCount = player.erosionFront.filter(c => c !== null).length + player.erosionBack.filter(c => c !== null).length;
-      if (totalCount < effect.erosionTotalLimit[0] || totalCount > effect.erosionTotalLimit[1]) {
+      const ignoresTenPlusLimit = pseudoGoddessActive && effect.erosionTotalLimit[0] >= 10;
+      if (!ignoresTenPlusLimit && (totalCount < effect.erosionTotalLimit[0] || totalCount > effect.erosionTotalLimit[1])) {
         return { valid: false, reason: '侵蚀区卡牌总数不满足条件' };
       }
     }
@@ -349,7 +404,7 @@ export const ServerGameService = {
     if (effect.condition) {
       const isStoryResolution = gameState.phase === 'COUNTERING' && triggerLocation === 'PLAY' && card.type === 'STORY';
       
-      if (!effect.condition(gameState, player, card, event)) {
+      if (!effect.condition(gameState, effectivePlayer as PlayerState, card, event)) {
         if (!isStoryResolution) {
           return { valid: false, reason: '不满足发动条件' };
         }
@@ -366,6 +421,12 @@ export const ServerGameService = {
     }
     if (card.silencedEffectIds && card.silencedEffectIds.includes(effect.id)) {
       return { valid: false, reason: '该效果已被封印' };
+    }
+    if (activatedEffectsDisabled && (effect.type === 'ACTIVATE' || effect.type === 'ACTIVATED')) {
+      return { valid: false, reason: '该卡本回合失去所有【启】能力' };
+    }
+    if (globalDisableAllActivated && (effect.type === 'ACTIVATE' || effect.type === 'ACTIVATED')) {
+      return { valid: false, reason: '当前有持续效果使所有卡失去【启】能力' };
     }
 
     // 7. Faction-lock Check
@@ -452,6 +513,16 @@ export const ServerGameService = {
 
     if (!card) return false;
 
+    if (!(card as any).data) {
+      (card as any).data = {};
+    }
+    (card as any).data.lastMovedFromZone = sourceZone;
+    (card as any).data.lastMovedToZone = targetZone;
+    if (options?.isEffect) {
+      (card as any).data.lastMovedByEffectTurn = gameState.turnCount;
+      (card as any).data.lastMoveEffectSourceCardId = options.effectSourceCardId;
+    }
+
     if ((targetZone === 'HAND' || targetZone === 'DECK') && sourceZone !== 'HAND' && sourceZone !== 'DECK') {
       ServerGameService.refreshCardAsNewInstance(card);
     }
@@ -484,6 +555,28 @@ export const ServerGameService = {
       ServerGameService.readyCard(card);
       // Mark as played this turn to handle summon sickness/triggers correctly
       card.playedTurn = gameState.turnCount;
+    }
+
+    if (
+      options?.isEffect &&
+      sourceZone === 'DECK' &&
+      targetZone === 'UNIT' &&
+      options.effectSourceCardId
+    ) {
+      const sourceCard = ServerGameService.findCardById(gameState, options.effectSourceCardId);
+      if (sourceCard?.fullName?.includes('炼金')) {
+        (card as any).data.enteredFromDeckByAlchemyTurn = gameState.turnCount;
+        (card as any).data.enteredFromDeckByAlchemySourceCardId = sourceCard.gamecardId;
+      }
+    }
+
+    if (
+      options?.isEffect &&
+      targetZone === 'GRAVE' &&
+      (sourceZone === 'UNIT' || sourceZone === 'ITEM')
+    ) {
+      (card as any).data.sentToGraveFromFieldByEffectTurn = gameState.turnCount;
+      (card as any).data.sentToGraveFromFieldByEffectSourceCardId = options.effectSourceCardId;
     }
 
     let targetArray: any[] = [];
@@ -605,7 +698,7 @@ export const ServerGameService = {
 
 
     // 4. Cost Check (AC Value)
-    const cost = card.acValue || 0;
+    const cost = ServerGameService.getEffectivePlayCost(player, card);
     if (cost < 0) {
       const absCost = Math.abs(cost);
       const faceUpFrontCount = player.erosionFront.filter(c => c !== null && c.displayState === 'FRONT_UPRIGHT').length;
@@ -614,10 +707,11 @@ export const ServerGameService = {
       }
     } else if (cost > 0) {
       let remainingCost = cost;
-      const has204000145Substitute = player.hand.some(c =>
-        ServerGameService.canUse204000145AsPaymentSubstitute(c, card.color, cost, card.gamecardId)
+      const hasSpecialSubstitute = player.hand.some(c =>
+        ServerGameService.canUse204000145AsPaymentSubstitute(c, card.color, cost, card.gamecardId) ||
+        ServerGameService.canUse205000136AsPaymentSubstitute(c, card.color, cost, card.gamecardId)
       );
-      if (has204000145Substitute) {
+      if (hasSpecialSubstitute) {
         remainingCost = 0;
       }
 
@@ -702,10 +796,13 @@ export const ServerGameService = {
         }
         feijingCard = player.hand.find(c =>
           c.gamecardId === paymentSelection.feijingCardId &&
-          (c.feijingMark || c.id === '204000145')
+          (c.feijingMark || c.id === '204000145' || c.id === '205000136')
         );
         if (feijingCard) {
-          if (ServerGameService.canUse204000145AsPaymentSubstitute(feijingCard, cardColor, cost, playingCardId)) {
+          if (
+            ServerGameService.canUse204000145AsPaymentSubstitute(feijingCard, cardColor, cost, playingCardId) ||
+            ServerGameService.canUse205000136AsPaymentSubstitute(feijingCard, cardColor, cost, playingCardId)
+          ) {
             remainingCost = 0;
             use204000145Replacement = true;
           } else if (cardColor && feijingCard.color !== cardColor) {
@@ -841,6 +938,11 @@ export const ServerGameService = {
       throw new Error('当前阶段不能从手牌主动打出该卡');
     }
 
+    const forcedAttackUnit = ServerGameService.getForcedAttackUnit(gameState, playerId);
+    if (gameState.phase === 'MAIN' && forcedAttackUnit) {
+      throw new Error(`必须先用 [${forcedAttackUnit.fullName}] 宣告攻击`);
+    }
+
     (card as any).__playSnapshot = {
       isGoddessMode: !!player.isGoddessMode
     };
@@ -850,7 +952,7 @@ export const ServerGameService = {
       throw new Error('对抗阶段只能打出故事卡');
     }
 
-    const cost = card.acValue;
+    const cost = ServerGameService.getEffectivePlayCost(player, card);
     const paymentResult = ServerGameService.payCost(gameState, playerId, cost, paymentSelection, card.color, cardId);
     if (!paymentResult.success) throw new Error(paymentResult.reason);
 
@@ -931,6 +1033,11 @@ export const ServerGameService = {
       ['MAIN', 'BATTLE_DECLARATION', 'BATTLE_FREE'].includes(gameState.phase);
     if (!isOwnSharedPhase && !isCounteringTurn) {
       throw new Error('当前阶段不能自由发动该起动效果');
+    }
+
+    const forcedAttackUnit = ServerGameService.getForcedAttackUnit(gameState, playerId);
+    if (gameState.phase === 'MAIN' && forcedAttackUnit) {
+      throw new Error(`必须先用 [${forcedAttackUnit.fullName}] 宣告攻击`);
     }
 
     // RULE 2: During countering phase, only ACTIVATE/ACTIVATED effects can be used
@@ -1238,6 +1345,19 @@ export const ServerGameService = {
     }
 
     await ServerGameService.checkTriggeredEffects(gameState, onUpdate);
+
+    const currentPlayerId = gameState.playerIds[gameState.currentTurnPlayer];
+    const currentPlayer = gameState.players[currentPlayerId];
+    if (
+      currentPlayer &&
+      !gameState.pendingQuery &&
+      (currentPlayer as any).forceEndTurnRequested === gameState.turnCount &&
+      currentPlayer.isTurn
+    ) {
+      delete (currentPlayer as any).forceEndTurnRequested;
+      await ServerGameService.executeEndPhase(gameState, currentPlayer);
+      return;
+    }
 
     ServerGameService.normalizeForcedGuardBattleState(gameState);
     EventEngine.recalculateContinuousEffects(gameState);
@@ -1703,13 +1823,20 @@ export const ServerGameService = {
       throw new Error('单体攻击必须选择一个单位');
     }
 
+    const forcedAttackUnit = ServerGameService.getForcedAttackUnit(gameState, playerId);
+    if (forcedAttackUnit) {
+      if (isAlliance || attackerIds.length !== 1 || attackerIds[0] !== forcedAttackUnit.gamecardId) {
+        throw new Error(`本次必须由 [${forcedAttackUnit.fullName}] 单独宣告攻击`);
+      }
+    }
+
     // Cocola's marked target prompt
     if (player.markedUnitAttackTarget && !targetId) {
       const opponentId = gameState.playerIds.find(id => id !== playerId)!;
       const opponent = gameState.players[opponentId];
       const targetUnit = opponent.unitZone.find(u => u && u.gamecardId === player.markedUnitAttackTarget);
 
-      if (targetUnit) {
+      if (targetUnit && !(targetUnit as any).cannotBeAttackTargetByEffect) {
         gameState.pendingQuery = {
           id: Math.random().toString(36).substring(7),
           type: 'SELECT_CHOICE',
@@ -1741,6 +1868,15 @@ export const ServerGameService = {
       if (!unit) throw new Error('Attacker not found in unit zone');
       if (unit.isExhausted) throw new Error('Attacker is already exhausted');
       if (unit.canAttack === false) throw new Error(`单位 [${unit.fullName}] 无法攻击`);
+      if ((unit as any).battleForbiddenByEffect) throw new Error(`单位 [${unit.fullName}] 由于效果不能参与战斗`);
+
+      if (targetId) {
+        const opponentId = gameState.playerIds.find(id => id !== playerId)!;
+        const targetUnit = gameState.players[opponentId]?.unitZone.find(c => c?.gamecardId === targetId);
+        if (targetUnit && (targetUnit as any).cannotBeAttackTargetByEffect) {
+          throw new Error(`单位 [${targetUnit.fullName}] 由于效果不能成为攻击对象`);
+        }
+      }
 
       // Interpretation: entering "allied territory" makes them participants in an alliance
       if (isAlliance) {
@@ -1813,6 +1949,7 @@ export const ServerGameService = {
       const unit = player.unitZone.find(c => c?.gamecardId === defenderId);
       if (!unit) throw new Error('Defender not found in unit zone');
       if (unit.isExhausted) throw new Error('Defender is already exhausted');
+      if ((unit as any).battleForbiddenByEffect) throw new Error(`单位 [${unit.fullName}] 由于效果不能参与战斗`);
 
       const lockedTargetId = gameState.battleState.defenseLockedToTargetId;
       if (lockedTargetId && defenderId !== lockedTargetId) {
@@ -1822,6 +1959,10 @@ export const ServerGameService = {
       const minPower = gameState.battleState.defensePowerRestriction || 0;
       if (minPower > 0 && (unit.power || 0) < minPower) {
         throw new Error(`无法防御：对方的效果使得力量值低于 ${minPower} 的单位不能进行防御`);
+      }
+      const maxPower = gameState.battleState.defenseMaxPowerRestriction;
+      if (maxPower !== undefined && (unit.power || 0) >= maxPower) {
+        throw new Error(`无法防御：对方的效果使得力量值 ${maxPower} 以上的单位不能进行防御`);
       }
 
       ServerGameService.exhaustCard(unit);
@@ -2125,7 +2266,7 @@ export const ServerGameService = {
 
     for (let i = 0; i < finalAmount; i++) {
       let card = player.deck.pop()!;
-      let loopDestination = finalDestination;
+      let loopDestination: TriggerLocation = finalDestination;
 
       // Check for movement substitution (e.g. 104010484) - Only if not already forced to Grave by Goddess mode
       if (loopDestination === 'EROSION_FRONT' && card.effects) {
@@ -2136,6 +2277,34 @@ export const ServerGameService = {
               loopDestination = effect.movementReplacementDestination;
               break;
             }
+          }
+        }
+      }
+
+      if (loopDestination === 'EROSION_FRONT') {
+        const replacementSources = [
+          ...player.unitZone,
+          ...player.itemZone,
+          ...player.erosionFront
+        ].filter((sourceCard): sourceCard is Card => !!sourceCard);
+
+        for (const sourceCard of replacementSources) {
+          for (const effect of sourceCard.effects || []) {
+            if (
+              effect.type === 'CONTINUOUS' &&
+              effect.content === 'REPLACE_DAMAGE_TO_EROSION' &&
+              effect.movementReplacementDestination
+            ) {
+              if (!effect.condition || effect.condition(gameState, player, sourceCard)) {
+                gameState.logs.push(`[替换效果] [${sourceCard.fullName}] 将伤害导致的侵蚀改为进入 ${effect.movementReplacementDestination}`);
+                loopDestination = effect.movementReplacementDestination;
+                break;
+              }
+            }
+          }
+
+          if (loopDestination !== 'EROSION_FRONT') {
+            break;
           }
         }
       }
@@ -2158,6 +2327,10 @@ export const ServerGameService = {
         card.cardlocation = 'GRAVE';
         card.displayState = 'FRONT_UPRIGHT';
         player.grave.push(card);
+      } else if (loopDestination === 'EXILE') {
+        card.cardlocation = 'EXILE';
+        card.displayState = 'FRONT_UPRIGHT';
+        player.exile.push(card);
       }
 
       // Check for goddess mode transformation
@@ -2231,6 +2404,53 @@ export const ServerGameService = {
 
     if (!isEffect && (unit as any).data?.combatImmuneUntilOwnNextTurnStartUid === playerId) {
       gameState.logs.push(`[${unit.fullName}] 不会被战斗破坏，本次破坏无效。`);
+      return false;
+    }
+
+    if (!isEffect && (unit as any).battleImmuneByEffect) {
+      gameState.logs.push(`[${unit.fullName}] 因效果不会被战斗破坏。`);
+      return false;
+    }
+
+    const opponentUid = gameState.playerIds.find(id => id !== playerId);
+    if (
+      (unit as any).data?.indestructibleIfOpponentGoddess &&
+      opponentUid &&
+      gameState.players[opponentUid]?.isGoddessMode
+    ) {
+      gameState.logs.push(`[${unit.fullName}] 因对手处于女神化状态而不会被破坏。`);
+      return false;
+    }
+
+    if (
+      isEffect &&
+      sourcePlayerId &&
+      sourcePlayerId !== playerId &&
+      gameState.players[sourcePlayerId]?.isGoddessMode &&
+      (unit as any).data?.immuneToOpponentEffectsIfOpponentGoddess
+    ) {
+      gameState.logs.push(`[${unit.fullName}] 因对手处于女神化状态而不受对手卡牌效果影响。`);
+      return false;
+    }
+
+    if (
+      isEffect &&
+      sourcePlayerId &&
+      sourcePlayerId !== playerId &&
+      (unit as any).data?.unaffectedByOpponentCardEffects
+    ) {
+      gameState.logs.push(`[${unit.fullName}] 不受对手的卡牌效果影响。`);
+      return false;
+    }
+
+    if ((unit as any).data?.returnToHandOnDestroyTurn === gameState.turnCount) {
+      ServerGameService.moveCard(gameState, playerId, zone, playerId, 'HAND', gamecardId, {
+        isEffect: true,
+        effectSourcePlayerUid: (unit as any).data?.returnToHandOnDestroySourcePlayerUid || playerId,
+        effectSourceCardId: (unit as any).data?.returnToHandOnDestroySourceCardId
+      });
+      gameState.logs.push(`[替换效果] ${unit.fullName} 本回合被破坏时改为返回手牌。`);
+      await ServerGameService.checkTriggeredEffects(gameState);
       return false;
     }
 
@@ -2340,6 +2560,14 @@ export const ServerGameService = {
       const currentPlayerId = gameState.playerIds[gameState.currentTurnPlayer];
       const currentPlayer = gameState.players[currentPlayerId];
 
+      if ((currentPlayer as any).loseAtEndOfTurn === gameState.turnCount) {
+        gameState.gameStatus = 2;
+        gameState.winReason = 'LOSE_AT_END_OF_TURN';
+        gameState.winnerId = gameState.playerIds.find(id => id !== currentPlayerId);
+        gameState.logs.push(`[游戏结束] ${currentPlayer.displayName} 因回合结束时的效果判负。`);
+        return;
+      }
+
       gameState.currentTurnPlayer = gameState.currentTurnPlayer === 0 ? 1 : 0;
       gameState.turnCount += 1;
       gameState.phase = 'START';
@@ -2402,6 +2630,10 @@ export const ServerGameService = {
           if ((card as any).data?.combatImmuneUntilOwnNextTurnStartUid === nextPlayerId) {
             delete (card as any).data.combatImmuneUntilOwnNextTurnStartUid;
             delete (card as any).data.combatImmuneSourceName;
+          }
+          if ((card as any).data?.forcedAttackTurn !== undefined && (card as any).data.forcedAttackTurn < gameState.turnCount) {
+            delete (card as any).data.forcedAttackTurn;
+            delete (card as any).data.forcedAttackSourceName;
           }
         });
 
@@ -2700,6 +2932,10 @@ export const ServerGameService = {
         // Handled by handleErosionChoice
         break;
       case 'MAIN':
+        if ((action === 'DECLARE_END' || action === 'DISCARD') && ServerGameService.getForcedAttackUnit(gameState, actingPlayerId)) {
+          const forcedAttackUnit = ServerGameService.getForcedAttackUnit(gameState, actingPlayerId)!;
+          throw new Error(`必须先用 [${forcedAttackUnit.fullName}] 宣告攻击`);
+        }
         if (action === 'DECLARE_BATTLE' || action === 'BATTLE_DECLARATION') {
           if (gameState.turnCount === 1) {
             throw new Error('先手玩家第一回合不能进入战斗阶段');
@@ -2872,11 +3108,21 @@ export const ServerGameService = {
     });
 
     player.timeRemaining = (gameState.turnTimerLimit ? gameState.turnTimerLimit * 1000 : GAME_TIMEOUTS.MAIN_PHASE_TOTAL);
+    const shouldSkipOwnStartReady = (card: Card | null) =>
+      !!card && !!card.effects?.some(effect =>
+        effect.type === 'CONTINUOUS' &&
+        effect.content === 'SKIP_OWN_START_READY' &&
+        (!effect.condition || effect.condition(gameState, player, card))
+      );
+
     const unitsToReset = player.unitZone.filter(card =>
       card && card.isExhausted && (card.canResetCount === 0 || card.canResetCount === undefined)
     );
     const itemsToReset = player.itemZone.filter(card =>
-      card && card.isExhausted && (card.canResetCount === 0 || card.canResetCount === undefined)
+      card &&
+      card.isExhausted &&
+      (card.canResetCount === 0 || card.canResetCount === undefined) &&
+      !shouldSkipOwnStartReady(card)
     );
 
     // Check if any unit/item has a freeze counter that needs aging
@@ -2901,7 +3147,9 @@ export const ServerGameService = {
         }
       });
       player.itemZone.forEach(card => {
-        if (card && (card.canResetCount === 0 || card.canResetCount === undefined)) {
+        if (card && shouldSkipOwnStartReady(card)) {
+          return;
+        } else if (card && (card.canResetCount === 0 || card.canResetCount === undefined)) {
           ServerGameService.readyCard(card);
         } else if (card && card.canResetCount !== undefined && card.canResetCount > 0) {
           card.canResetCount -= 1;
@@ -3436,10 +3684,15 @@ export const ServerGameService = {
         const botErosionCount = bot.erosionFront.filter(Boolean).length + bot.erosionBack.filter(Boolean).length;
 
         const lockedTargetId = gameState.battleState?.defenseLockedToTargetId;
+        const minPower = gameState.battleState?.defensePowerRestriction || 0;
+        const maxPower = gameState.battleState?.defenseMaxPowerRestriction;
         const availableDefenders = bot.unitZone.filter(c =>
           c &&
           !c.isExhausted &&
-          (!lockedTargetId || c.gamecardId === lockedTargetId)
+          !(c as any).battleForbiddenByEffect &&
+          (!lockedTargetId || c.gamecardId === lockedTargetId) &&
+          (c.power || 0) >= minPower &&
+          (maxPower === undefined || (c.power || 0) < maxPower)
         );
 
         // 1. Find best "Winner" (Power > Attacker)
@@ -3493,6 +3746,12 @@ export const ServerGameService = {
 
     // Main Phase Logic
     if (gameState.phase === 'MAIN') {
+      const forcedAttackUnit = ServerGameService.getForcedAttackUnit(gameState, 'BOT_PLAYER');
+      if (forcedAttackUnit) {
+        await ServerGameService.advancePhase(gameState, 'DECLARE_BATTLE');
+        return;
+      }
+
       // Sequentially play all possible cards from hand
       for (const card of bot.hand) {
         const canPlay = ServerGameService.canPlayCard(gameState, bot, card);
@@ -3530,7 +3789,8 @@ export const ServerGameService = {
 
     // Battle Declaration Phase
     if (gameState.phase === 'BATTLE_DECLARATION' && bot.isTurn) {
-      const attacker = bot.unitZone.find(c => {
+      const forcedAttackUnit = ServerGameService.getForcedAttackUnit(gameState, 'BOT_PLAYER');
+      const attacker = forcedAttackUnit || bot.unitZone.find(c => {
         if (!c || c.isExhausted || c.canAttack === false) return false;
         if ((c.damage || 0) < 1) return false; // Rule 2: Robots will not attack with units having damage < 1
         const isRush = !!c.isrush;

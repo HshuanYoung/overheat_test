@@ -1,18 +1,40 @@
-import { Card } from '../types/game';
+import { Card, CardEffect } from '../types/game';
+import { AtomicEffectExecutor } from '../services/AtomicEffectExecutor';
+import { createSelectCardQuery, getBattlefieldCards } from './_bt03YellowUtils';
 
-/**
- * Auto-generated from Card.xlsx + Card2.xlsx.
- * Source CardID: 105120468
- * Card2 Row: 244
- * Card Row: 600
- * Source CardNo: BT03-Y02
- * Package: BT03(R)
- * ID Source: card-xlsx
- * Keywords: N/A
- * Card Detail:
- * 【启】〖1游戏1次〗:这个单位是从卡组进入战场的话，才可以发动这个能力。选择战场上的1张卡，将其放逐。
- * TODO: confirm ID / godMark / rarity variants and implement effects.
- */
+const effect_105120468_activate: CardEffect = {
+  id: '105120468_activate',
+  type: 'ACTIVATE',
+  triggerLocation: ['UNIT'],
+  limitCount: 1,
+  limitGlobal: true,
+  limitNameType: true,
+  description: 'Once per game, if this unit entered the battlefield from the deck, banish 1 card on the battlefield.',
+  condition: (gameState, _playerState, instance) =>
+    instance.cardlocation === 'UNIT' &&
+    (instance as any).data?.lastMovedFromZone === 'DECK' &&
+    (instance as any).data?.lastMovedToZone === 'UNIT' &&
+    getBattlefieldCards(gameState).length > 0,
+  execute: async (instance, gameState, playerState) => {
+    createSelectCardQuery(
+      gameState,
+      playerState.uid,
+      getBattlefieldCards(gameState),
+      'Choose A Card',
+      'Choose 1 battlefield card to banish.',
+      1,
+      1,
+      { sourceCardId: instance.gamecardId, effectId: '105120468_activate' }
+    );
+  },
+  onQueryResolve: async (instance, gameState, playerState, selections) => {
+    await AtomicEffectExecutor.execute(gameState, playerState.uid, {
+      type: 'BANISH_CARD',
+      targetFilter: { gamecardId: selections[0], onField: true }
+    }, instance);
+  }
+};
+
 const card: Card = {
   id: '105120468',
   fullName: '炼金猎杀者「暗影」',
@@ -31,10 +53,11 @@ const card: Card = {
   displayState: 'FRONT_UPRIGHT',
   isExhausted: false,
   isrush: false,
+  baseIsrush: false,
   canAttack: true,
   feijingMark: false,
   canResetCount: 0,
-  effects: [],
+  effects: [effect_105120468_activate],
   rarity: 'R',
   availableRarities: ['R'],
   cardPackage: 'BT03',

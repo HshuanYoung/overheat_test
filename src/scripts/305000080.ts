@@ -1,24 +1,91 @@
-import { Card } from '../types/game';
+import { Card, CardEffect } from '../types/game';
+import { AtomicEffectExecutor } from '../services/AtomicEffectExecutor';
+import { createChoiceQuery, createSelectCardQuery, findUnitOnBattlefield, moveCard, revealDeckCards, universalEquipEffect } from './_bt03YellowUtils';
 
-/**
- * Auto-generated from Card.xlsx + Card2.xlsx.
- * Source CardID: 305000080
- * Card2 Row: 258
- * Card Row: 614
- * Source CardNo: BT03-Y16
- * Package: BT03(C)
- * ID Source: card-xlsx
- * Keywords: N/A
- * Card Detail:
- * 【装备】（〖1回合1次〗你的主要阶段中，你可以选择你的1个单位装备这张卡，或者解除这张卡的装备状态。）
- * 【永】:装备单位获得“【启】:[〖横置〗]公开你的卡组顶的1张卡。你可以将那张卡加入手牌，并将1张手牌放置到卡组底。若没有加入手牌，将公开的卡按原样放回。”的能力。
- * TODO: confirm ID / godMark / rarity variants and implement effects.
- */
+const effect_305000080_activate: CardEffect = {
+  id: '305000080_activate',
+  type: 'ACTIVATE',
+  triggerLocation: ['ITEM'],
+  description: 'Exhaust the equipped unit: reveal the top card of your deck. You may add it to your hand, then put 1 hand card on the bottom of your deck.',
+  condition: (gameState, playerState, instance) => {
+    const target = findUnitOnBattlefield(gameState, instance.equipTargetId);
+    return instance.cardlocation === 'ITEM' && !!target && !target.isExhausted && playerState.deck.length > 0;
+  },
+  execute: async (instance, gameState, playerState) => {
+    const target = findUnitOnBattlefield(gameState, instance.equipTargetId);
+    if (!target) {
+      instance.equipTargetId = undefined;
+      return;
+    }
+
+    await AtomicEffectExecutor.execute(gameState, playerState.uid, {
+      type: 'ROTATE_HORIZONTAL',
+      targetFilter: { gamecardId: target.gamecardId }
+    }, instance);
+
+    const topCard = revealDeckCards(gameState, playerState.uid, 1)[0];
+    if (!topCard) return;
+
+    createChoiceQuery(
+      gameState,
+      playerState.uid,
+      'Add The Revealed Card?',
+      `Reveal ${topCard.fullName}. You may add it to your hand.`,
+      [
+        { id: 'YES', label: 'Add To Hand' },
+        { id: 'NO', label: 'Leave It There' }
+      ],
+      {
+        sourceCardId: instance.gamecardId,
+        effectId: '305000080_activate',
+        step: 'CHOOSE_ADD',
+        revealedCardId: topCard.gamecardId
+      }
+    );
+  },
+  onQueryResolve: async (instance, gameState, playerState, selections, context) => {
+    if (context.step === 'CHOOSE_ADD') {
+      if (selections[0] !== 'YES') return;
+
+      await AtomicEffectExecutor.execute(gameState, playerState.uid, {
+        type: 'MOVE_FROM_DECK',
+        targetFilter: { gamecardId: context.revealedCardId },
+        destinationZone: 'HAND'
+      }, instance);
+
+      createSelectCardQuery(
+        gameState,
+        playerState.uid,
+        [...playerState.hand],
+        'Choose A Hand Card',
+        'Choose 1 hand card to place on the bottom of your deck.',
+        1,
+        1,
+        {
+          sourceCardId: instance.gamecardId,
+          effectId: '305000080_activate',
+          step: 'PUT_TO_BOTTOM'
+        },
+        () => 'HAND'
+      );
+      return;
+    }
+
+    if (context.step !== 'PUT_TO_BOTTOM') return;
+
+    const chosenCard = AtomicEffectExecutor.findCardById(gameState, selections[0]);
+    if (!chosenCard) return;
+
+    moveCard(gameState, playerState.uid, chosenCard, 'DECK', instance, { insertAtBottom: true });
+  }
+};
+
 const card: Card = {
   id: '305000080',
   fullName: '索美琳童话集',
   specialName: '',
   type: 'ITEM',
+  isEquip: true,
   color: 'YELLOW',
   gamecardId: null as any,
   colorReq: { YELLOW: 1 },
@@ -28,7 +95,7 @@ const card: Card = {
   displayState: 'FRONT_UPRIGHT',
   feijingMark: false,
   canResetCount: 0,
-  effects: [],
+  effects: [universalEquipEffect, effect_305000080_activate],
   rarity: 'C',
   availableRarities: ['C'],
   cardPackage: 'BT03',

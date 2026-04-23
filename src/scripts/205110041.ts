@@ -1,18 +1,34 @@
-import { Card } from '../types/game';
+import { Card, CardEffect } from '../types/game';
+import { EventEngine } from '../services/EventEngine';
 
-/**
- * Auto-generated from Card.xlsx + Card2.xlsx.
- * Source CardID: 205110041
- * Card2 Row: 85
- * Card Row: 85
- * Source CardNo: BT01-Y13
- * Package: BT01(U)
- * ID Source: card-xlsx
- * Keywords: N/A
- * Card Detail:
- * 只能在你的单位参与的战斗中使用。中断那次战斗。（直接进入战斗结束步骤）
- * TODO: confirm ID / godMark / rarity variants and implement effects.
- */
+const effect_205110041_activate: CardEffect = {
+  id: '205110041_activate',
+  type: 'ACTIVATE',
+  triggerLocation: ['HAND', 'PLAY'],
+  description: 'Interrupt the current battle if one of your units is participating.',
+  condition: (gameState, playerState) => {
+    if (!gameState.battleState) return false;
+
+    const attackers = gameState.battleState.attackers || [];
+    const defenderId = gameState.battleState.defender;
+
+    return (
+      attackers.some(id => playerState.unitZone.some(unit => unit?.gamecardId === id)) ||
+      playerState.unitZone.some(unit => unit?.gamecardId === defenderId)
+    );
+  },
+  execute: async (instance, gameState) => {
+    gameState.phase = 'BATTLE_END';
+    gameState.battleState = undefined;
+    gameState.previousPhase = undefined;
+    gameState.logs.push(`[${instance.id}] interrupted the current battle.`);
+    EventEngine.dispatchEvent(gameState, {
+      type: 'PHASE_CHANGED',
+      data: { phase: 'BATTLE_END', reason: 'BATTLE_INTERRUPTED' }
+    });
+  }
+};
+
 const card: Card = {
   id: '205110041',
   fullName: '逃脱',
@@ -27,7 +43,7 @@ const card: Card = {
   displayState: 'FRONT_UPRIGHT',
   feijingMark: false,
   canResetCount: 0,
-  effects: [],
+  effects: [effect_205110041_activate],
   rarity: 'U',
   availableRarities: ['U'],
   cardPackage: 'BT01',

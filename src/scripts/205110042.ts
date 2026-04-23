@@ -1,18 +1,38 @@
-import { Card } from '../types/game';
+import { Card, CardEffect } from '../types/game';
+import { AtomicEffectExecutor } from '../services/AtomicEffectExecutor';
 
-/**
- * Auto-generated from Card.xlsx + Card2.xlsx.
- * Source CardID: 205110042
- * Card2 Row: 86
- * Card Row: 86
- * Source CardNo: BT01-Y14
- * Package: BT01(R)
- * ID Source: card-xlsx
- * Keywords: N/A
- * Card Detail:
- * 〖同名1回合1次〗只能在你的主要阶段中使用。所有玩家舍弃他自己的所有手牌，并抽与舍弃的手牌数量相同的卡。
- * TODO: confirm ID / godMark / rarity variants and implement effects.
- */
+const effect_205110042_activate: CardEffect = {
+  id: '205110042_activate',
+  type: 'ACTIVATE',
+  limitCount: 1,
+  limitNameType: true,
+  triggerLocation: ['HAND', 'PLAY'],
+  description: 'Main phase only. Each player discards all cards in hand, then draws the same amount.',
+  condition: (gameState, playerState) => gameState.phase === 'MAIN' && playerState.isTurn,
+  execute: async (instance, gameState) => {
+    for (const player of Object.values(gameState.players)) {
+      const discardIds = player.hand.map(card => card.gamecardId);
+      const drawCount = discardIds.length;
+
+      for (const cardId of discardIds) {
+        await AtomicEffectExecutor.execute(gameState, player.uid, {
+          type: 'DISCARD_CARD',
+          targetFilter: { gamecardId: cardId }
+        }, instance);
+      }
+
+      if (drawCount > 0) {
+        await AtomicEffectExecutor.execute(gameState, player.uid, {
+          type: 'DRAW',
+          value: drawCount
+        }, instance);
+      }
+
+      gameState.logs.push(`[${instance.id}] made ${player.displayName} discard ${drawCount} cards and redraw the same amount.`);
+    }
+  }
+};
+
 const card: Card = {
   id: '205110042',
   fullName: '重新准备',
@@ -27,7 +47,7 @@ const card: Card = {
   displayState: 'FRONT_UPRIGHT',
   feijingMark: false,
   canResetCount: 0,
-  effects: [],
+  effects: [effect_205110042_activate],
   rarity: 'R',
   availableRarities: ['R'],
   cardPackage: 'BT01',

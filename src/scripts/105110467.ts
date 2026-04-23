@@ -1,18 +1,93 @@
-import { Card } from '../types/game';
+import { Card, CardEffect, GameEvent } from '../types/game';
+import { AtomicEffectExecutor } from '../services/AtomicEffectExecutor';
+import { createChoiceQuery, createSelectCardQuery, getBattlefieldUnits, isVirtualGodMarkReveal, shuffleAndRevealTopCards } from './_bt03YellowUtils';
 
-/**
- * Auto-generated from Card.xlsx + Card2.xlsx.
- * Source CardID: 105110467
- * Card2 Row: 243
- * Card Row: 599
- * Source CardNo: BT03-Y01
- * Package: BT03(SR,ESR,OHR)
- * ID Source: card-xlsx
- * Keywords: N/A
- * Card Detail:
- * 【诱】〖1回合1次〗:这个单位宣言攻击时，将你的卡组洗切，公开你的卡组顶的1张卡。若那张卡是单位卡，选择战场上的这个单位以外的1个单位，将其〖横置〗或〖重置〗；若不是，这次战斗中，对手不能用〖力量3000〗以上的单位宣言防御。之后，若那张卡是神蚀卡，将这个单位〖重置〗。将公开的卡按原样放回。
- * TODO: confirm ID / godMark / rarity variants and implement effects.
- */
+const readySelfIfNeeded = (instance: Card, gameState: any, revealedCardId?: string) => {
+  const revealedCard = revealedCardId ? AtomicEffectExecutor.findCardById(gameState, revealedCardId) : undefined;
+  if (!isVirtualGodMarkReveal(gameState, revealedCard)) return;
+  instance.isExhausted = false;
+};
+
+const effect_105110467_attack: CardEffect = {
+  id: '105110467_attack',
+  type: 'TRIGGER',
+  triggerLocation: ['UNIT'],
+  triggerEvent: 'CARD_ATTACK_DECLARED',
+  limitCount: 1,
+  limitNameType: true,
+  isMandatory: true,
+  description: 'When this unit attacks, shuffle your deck and reveal the top card. Resolve its result, then if it is a god-mark card, ready this unit.',
+  condition: (_gameState, _playerState, instance, event?: GameEvent) =>
+    instance.cardlocation === 'UNIT' &&
+    event?.type === 'CARD_ATTACK_DECLARED' &&
+    Array.isArray(event.data?.attackerIds) &&
+    event.data.attackerIds.includes(instance.gamecardId),
+  execute: async (instance, gameState, playerState) => {
+    const revealedCard = (await shuffleAndRevealTopCards(gameState, playerState.uid, 1, instance))[0];
+    if (!revealedCard) return;
+
+    if (revealedCard.type !== 'UNIT') {
+      const current = gameState.battleState?.defenseMaxPowerRestriction;
+      gameState.battleState!.defenseMaxPowerRestriction = current === undefined ? 3000 : Math.min(current, 3000);
+      readySelfIfNeeded(instance, gameState, revealedCard.gamecardId);
+      return;
+    }
+
+    const targets = getBattlefieldUnits(gameState).filter(unit => unit.gamecardId !== instance.gamecardId);
+    if (targets.length === 0) {
+      readySelfIfNeeded(instance, gameState, revealedCard.gamecardId);
+      return;
+    }
+
+    createSelectCardQuery(
+      gameState,
+      playerState.uid,
+      targets,
+      'Choose A Unit',
+      'Choose another unit on the battlefield.',
+      1,
+      1,
+      {
+        sourceCardId: instance.gamecardId,
+        effectId: '105110467_attack',
+        step: 'SELECT_TARGET',
+        revealedCardId: revealedCard.gamecardId
+      }
+    );
+  },
+  onQueryResolve: async (instance, gameState, _playerState, selections, context) => {
+    if (context.step === 'SELECT_TARGET') {
+      createChoiceQuery(
+        gameState,
+        _playerState.uid,
+        'Choose Rotation',
+        'Rotate the chosen unit horizontally or vertically.',
+        [
+          { id: 'HORIZONTAL', label: 'Rotate Horizontal' },
+          { id: 'VERTICAL', label: 'Rotate Vertical' }
+        ],
+        {
+          sourceCardId: instance.gamecardId,
+          effectId: '105110467_attack',
+          step: 'ROTATE_TARGET',
+          targetId: selections[0],
+          revealedCardId: context.revealedCardId
+        }
+      );
+      return;
+    }
+
+    if (context.step !== 'ROTATE_TARGET') return;
+
+    await AtomicEffectExecutor.execute(gameState, _playerState.uid, {
+      type: selections[0] === 'HORIZONTAL' ? 'ROTATE_HORIZONTAL' : 'ROTATE_VERTICAL',
+      targetFilter: { gamecardId: context.targetId }
+    }, instance);
+
+    readySelfIfNeeded(instance, gameState, context.revealedCardId);
+  }
+};
+
 const card: Card = {
   id: '105110467',
   fullName: '魔偶姬「斯蒂芬妮」',
@@ -31,10 +106,11 @@ const card: Card = {
   displayState: 'FRONT_UPRIGHT',
   isExhausted: false,
   isrush: false,
+  baseIsrush: false,
   canAttack: true,
   feijingMark: false,
   canResetCount: 0,
-  effects: [],
+  effects: [effect_105110467_attack],
   rarity: 'SR',
   availableRarities: ['SR', 'SER', 'UR'],
   cardPackage: 'BT03',

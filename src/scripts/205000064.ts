@@ -1,18 +1,79 @@
-import { Card } from '../types/game';
+import { Card, CardEffect } from '../types/game';
+import { AtomicEffectExecutor } from '../services/AtomicEffectExecutor';
+import { EventEngine } from '../services/EventEngine';
+import { createSelectCardQuery, getTopDeckCards, isAlchemyCard } from './_bt02YellowUtils';
 
-/**
- * Auto-generated from Card.xlsx + Card2.xlsx.
- * Source CardID: 205000064
- * Card2 Row: 171
- * Card Row: 171
- * Source CardNo: BT02-Y14
- * Package: BT02(R)
- * ID Source: card-xlsx
- * Keywords: N/A
- * Card Detail:
- * 公开你的卡组顶的3张卡，你从中选择1张非神蚀单位卡，将其放置到战场上，那个单位获得【速攻】，将其余的卡以任意顺序放置到卡组顶。回合结束时，若那个单位不是卡名含有《炼金》单位，将其放逐。
- * TODO: confirm ID / godMark / rarity variants and implement effects.
- */
+const effect_205000064_activate: CardEffect = {
+  id: '205000064_activate',
+  type: 'ACTIVATE',
+  triggerLocation: ['PLAY'],
+  description: 'Reveal the top 3 cards of your deck. Choose a non-god unit from among them, put it onto the battlefield, and it gains Rush. At end of turn, if it is not an alchemy unit, banish it.',
+  execute: async (instance, gameState, playerState) => {
+    const revealed = getTopDeckCards(playerState, 3);
+    const candidates = revealed.filter(card =>
+      card.type === 'UNIT' &&
+      !card.godMark &&
+      (!card.specialName || !playerState.unitZone.some(unit => unit?.specialName === card.specialName))
+    );
+
+    if (candidates.length === 0 || !playerState.unitZone.some(card => card === null)) return;
+
+    createSelectCardQuery(
+      gameState,
+      playerState.uid,
+      candidates,
+      'Choose A Unit',
+      'Choose 1 non-god unit from the top 3 cards of your deck.',
+      1,
+      1,
+      { sourceCardId: instance.gamecardId, effectId: '205000064_activate' },
+      () => 'DECK'
+    );
+  },
+  onQueryResolve: async (instance, gameState, playerState, selections) => {
+    const targetId = selections[0];
+    await AtomicEffectExecutor.execute(gameState, playerState.uid, {
+      type: 'MOVE_FROM_DECK',
+      targetFilter: { gamecardId: targetId },
+      destinationZone: 'UNIT'
+    }, instance);
+
+    const moved = AtomicEffectExecutor.findCardById(gameState, targetId);
+    if (!moved) return;
+
+    moved.temporaryRush = true;
+    moved.temporaryBuffSources = {
+      ...(moved.temporaryBuffSources || {}),
+      rush: instance.fullName
+    };
+
+    (instance as any).data = {
+      ...((instance as any).data || {}),
+      delayedBanishTargetId: moved.gamecardId,
+      delayedBanishTurn: gameState.turnCount
+    };
+
+    EventEngine.recalculateContinuousEffects(gameState);
+  },
+  resolve: async (instance, gameState, playerState) => {
+    if ((instance as any).data?.delayedBanishTurn !== gameState.turnCount) return;
+
+    const targetId = (instance as any).data?.delayedBanishTargetId;
+    if (!targetId) return;
+
+    const target = AtomicEffectExecutor.findCardById(gameState, targetId);
+    if (!target || target.cardlocation !== 'UNIT' || isAlchemyCard(target)) return;
+
+    const ownerUid = AtomicEffectExecutor.findCardOwnerKey(gameState, target.gamecardId);
+    if (!ownerUid) return;
+
+    AtomicEffectExecutor.moveCard(gameState, ownerUid, 'UNIT', ownerUid, 'EXILE', target.gamecardId, true, {
+      effectSourcePlayerUid: playerState.uid,
+      effectSourceCardId: instance.gamecardId
+    });
+  }
+};
+
 const card: Card = {
   id: '205000064',
   fullName: '禁忌炼金',
@@ -27,7 +88,7 @@ const card: Card = {
   displayState: 'FRONT_UPRIGHT',
   feijingMark: false,
   canResetCount: 0,
-  effects: [],
+  effects: [effect_205000064_activate],
   rarity: 'R',
   availableRarities: ['R'],
   cardPackage: 'BT02',

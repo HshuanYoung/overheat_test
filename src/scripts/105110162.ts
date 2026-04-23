@@ -1,18 +1,44 @@
-import { Card } from '../types/game';
+import { Card, CardEffect, GameEvent } from '../types/game';
+import { AtomicEffectExecutor } from '../services/AtomicEffectExecutor';
+import { createSelectCardQuery, isNonGodAccessLe3Item } from './_bt02YellowUtils';
 
-/**
- * Auto-generated from Card.xlsx + Card2.xlsx.
- * Source CardID: 105110162
- * Card2 Row: 160
- * Card Row: 160
- * Source CardNo: BT02-Y03
- * Package: BT02(C)
- * ID Source: card-xlsx
- * Keywords: N/A
- * Card Detail:
- * 〖10+〗【诱】〖1回合1次〗:你进入女神化状态时，你可以选择你的卡组中的1张ACCESS值+3以下的非神蚀道具卡，将其放置到战场上。
- * TODO: confirm ID / godMark / rarity variants and implement effects.
- */
+const effect_105110162_goddess_trigger: CardEffect = {
+  id: '105110162_goddess_trigger',
+  type: 'TRIGGER',
+  triggerLocation: ['UNIT'],
+  triggerEvent: 'GODDESS_TRANSFORMATION',
+  limitCount: 1,
+  limitNameType: true,
+  description: 'When you enter goddess mode, choose a non-god item with AC 3 or less from your deck and put it onto the battlefield.',
+  condition: (_gameState, playerState, instance, event?: GameEvent) =>
+    instance.cardlocation === 'UNIT' &&
+    event?.type === 'GODDESS_TRANSFORMATION' &&
+    event.playerUid === playerState.uid,
+  execute: async (instance, gameState, playerState) => {
+    const candidates = playerState.deck.filter(isNonGodAccessLe3Item);
+    if (candidates.length === 0) return;
+
+    createSelectCardQuery(
+      gameState,
+      playerState.uid,
+      candidates,
+      'Choose An Item',
+      'Choose 1 non-god item with AC 3 or less from your deck.',
+      1,
+      1,
+      { sourceCardId: instance.gamecardId, effectId: '105110162_goddess_trigger' },
+      () => 'DECK'
+    );
+  },
+  onQueryResolve: async (instance, gameState, playerState, selections) => {
+    await AtomicEffectExecutor.execute(gameState, playerState.uid, {
+      type: 'MOVE_FROM_DECK',
+      targetFilter: { gamecardId: selections[0] },
+      destinationZone: 'ITEM'
+    }, instance);
+  }
+};
+
 const card: Card = {
   id: '105110162',
   fullName: '菲晶发明家',
@@ -34,7 +60,7 @@ const card: Card = {
   canAttack: true,
   feijingMark: false,
   canResetCount: 0,
-  effects: [],
+  effects: [effect_105110162_goddess_trigger],
   rarity: 'C',
   availableRarities: ['C'],
   cardPackage: 'BT02',

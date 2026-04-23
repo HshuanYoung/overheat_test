@@ -1,18 +1,86 @@
-import { Card } from '../types/game';
+import { Card, CardEffect } from '../types/game';
+import { AtomicEffectExecutor } from '../services/AtomicEffectExecutor';
+import { createSelectCardQuery, isVirtualGodMarkReveal, shuffleAndRevealTopCards } from './_bt03YellowUtils';
+import { getOpponentBattlefieldNonGodCards } from './_bt04YellowUtils';
 
-/**
- * Auto-generated from Card.xlsx + Card2.xlsx.
- * Source CardID: 205000134
- * Card2 Row: 327
- * Card Row: 566
- * Source CardNo: BT04-Y06
- * Package: BT04(C)
- * ID Source: card-xlsx
- * Keywords: N/A
- * Card Detail:
- * 将你的卡组洗切。公开你的卡组顶1张卡。若那张卡是单位卡，选择对手的战场上1张非神蚀卡，将其，横置。若那张卡是神蚀卡，选择对手的战场上1张非神蚀卡，将其返回持有者的手牌。
- * TODO: confirm ID / godMark / rarity variants and implement effects.
- */
+const effect_205000134_activate: CardEffect = {
+  id: '205000134_activate',
+  type: 'ACTIVATE',
+  triggerLocation: ['PLAY'],
+  description: 'Shuffle your deck and reveal the top card. If it is a unit, exhaust an opponent non-god battlefield card. If it is a god-mark card, return an opponent non-god battlefield card to hand.',
+  execute: async (instance, gameState, playerState) => {
+    const revealedCard = (await shuffleAndRevealTopCards(gameState, playerState.uid, 1, instance))[0];
+    if (!revealedCard) return;
+
+    const canRotate = revealedCard.type === 'UNIT';
+    const canBounce = isVirtualGodMarkReveal(gameState, revealedCard);
+    if (!canRotate && !canBounce) return;
+
+    const targets = getOpponentBattlefieldNonGodCards(gameState, playerState.uid);
+    if (targets.length === 0) return;
+
+    if (canRotate) {
+      createSelectCardQuery(
+        gameState,
+        playerState.uid,
+        targets,
+        'Choose A Card',
+        'Choose 1 opponent non-god card to exhaust.',
+        1,
+        1,
+        {
+          sourceCardId: instance.gamecardId,
+          effectId: '205000134_activate',
+          step: 'ROTATE',
+          doBounce: canBounce
+        }
+      );
+      return;
+    }
+
+    createSelectCardQuery(
+      gameState,
+      playerState.uid,
+      targets,
+      'Choose A Card',
+      'Choose 1 opponent non-god card to return to hand.',
+      1,
+      1,
+      { sourceCardId: instance.gamecardId, effectId: '205000134_activate', step: 'BOUNCE' }
+    );
+  },
+  onQueryResolve: async (instance, gameState, playerState, selections, context) => {
+    if (context.step === 'ROTATE') {
+      await AtomicEffectExecutor.execute(gameState, playerState.uid, {
+        type: 'ROTATE_HORIZONTAL',
+        targetFilter: { gamecardId: selections[0], onField: true }
+      }, instance);
+
+      if (!context.doBounce) return;
+      const targets = getOpponentBattlefieldNonGodCards(gameState, playerState.uid);
+      if (targets.length === 0) return;
+      createSelectCardQuery(
+        gameState,
+        playerState.uid,
+        targets,
+        'Choose A Card',
+        'Choose 1 opponent non-god card to return to hand.',
+        1,
+        1,
+        { sourceCardId: instance.gamecardId, effectId: '205000134_activate', step: 'BOUNCE' }
+      );
+      return;
+    }
+
+    if (context.step !== 'BOUNCE') return;
+    await AtomicEffectExecutor.execute(gameState, playerState.uid, {
+      type: 'MOVE_FROM_FIELD',
+      targetFilter: { gamecardId: selections[0], onField: true },
+      destinationZone: 'HAND'
+    }, instance);
+  }
+};
+
 const card: Card = {
   id: '205000134',
   fullName: '魔偶姬的人偶术',
@@ -27,7 +95,7 @@ const card: Card = {
   displayState: 'FRONT_UPRIGHT',
   feijingMark: false,
   canResetCount: 0,
-  effects: [],
+  effects: [effect_205000134_activate],
   rarity: 'C',
   availableRarities: ['C'],
   cardPackage: 'BT04',

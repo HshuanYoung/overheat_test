@@ -1,19 +1,58 @@
-import { Card } from '../types/game';
+import { Card, CardEffect } from '../types/game';
+import { AtomicEffectExecutor } from '../services/AtomicEffectExecutor';
+import { createSelectCardQuery, hasTruthUnit, revealDeckCards } from './_bt03YellowUtils';
 
-/**
- * Auto-generated from Card.xlsx + Card2.xlsx.
- * Source CardID: 205000142
- * Card2 Row: 254
- * Card Row: 610
- * Source CardNo: BT03-Y12
- * Package: BT03(R,ESR)
- * ID Source: card-xlsx
- * Keywords: N/A
- * Card Detail:
- * 【创痕2】（你的侵蚀区中的背面卡有2张以上时才有效）公开你的卡组顶的7张卡。你从中选择1张卡，将其加入手牌。将公开的其余的卡按原样放回，将你的卡组洗切。
- * 若你的战场上有「真理」单位，不公开你的卡组顶，从你的卡组中选择1张卡，将其加入手牌，将你的卡组洗切。
- * TODO: confirm ID / godMark / rarity variants and implement effects.
- */
+const effect_205000142_activate: CardEffect = {
+  id: '205000142_activate',
+  type: 'ACTIVATE',
+  triggerLocation: ['PLAY'],
+  erosionBackLimit: [2, 10],
+  description: 'Scratch 2. Add 1 card from the top 7 cards of your deck to your hand. If you control Truth, search any 1 card instead. Then shuffle your deck.',
+  execute: async (instance, gameState, playerState) => {
+    if (hasTruthUnit(playerState)) {
+      if (playerState.deck.length === 0) return;
+      createSelectCardQuery(
+        gameState,
+        playerState.uid,
+        [...playerState.deck],
+        'Choose A Card',
+        'Choose 1 card from your deck to add to your hand.',
+        1,
+        1,
+        { sourceCardId: instance.gamecardId, effectId: '205000142_activate', step: 'SEARCH_ANY' },
+        () => 'DECK'
+      );
+      return;
+    }
+
+    const revealed = revealDeckCards(gameState, playerState.uid, 7);
+    if (revealed.length === 0) return;
+
+    createSelectCardQuery(
+      gameState,
+      playerState.uid,
+      revealed,
+      'Choose A Card',
+      'Choose 1 of the revealed cards to add to your hand.',
+      1,
+      1,
+      { sourceCardId: instance.gamecardId, effectId: '205000142_activate', step: 'REVEAL_TOP' },
+      () => 'DECK'
+    );
+  },
+  onQueryResolve: async (instance, gameState, playerState, selections, context) => {
+    await AtomicEffectExecutor.execute(gameState, playerState.uid, {
+      type: 'MOVE_FROM_DECK',
+      targetFilter: { gamecardId: selections[0] },
+      destinationZone: 'HAND'
+    }, instance);
+
+    await AtomicEffectExecutor.execute(gameState, playerState.uid, {
+      type: 'SHUFFLE_DECK'
+    }, instance);
+  }
+};
+
 const card: Card = {
   id: '205000142',
   fullName: '世界目录',
@@ -28,7 +67,7 @@ const card: Card = {
   displayState: 'FRONT_UPRIGHT',
   feijingMark: false,
   canResetCount: 0,
-  effects: [],
+  effects: [effect_205000142_activate],
   rarity: 'R',
   availableRarities: ['R', 'SER'],
   cardPackage: 'BT03',

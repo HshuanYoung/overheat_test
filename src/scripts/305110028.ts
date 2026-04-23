@@ -1,18 +1,26 @@
-import { Card } from '../types/game';
+import { Card, CardEffect } from '../types/game';
+import { AtomicEffectExecutor } from '../services/AtomicEffectExecutor';
 
-/**
- * Auto-generated from Card.xlsx + Card2.xlsx.
- * Source CardID: 305110028
- * Card2 Row: 172
- * Card Row: 172
- * Source CardNo: BT02-Y15
- * Package: BT02(U)
- * ID Source: card-xlsx
- * Keywords: N/A
- * Card Detail:
- * 【诱】〖同名1回合1次〗:回合结束时，若你的墓地中的这张卡是在本回合中由于卡的效果而从你的战场上送入到墓地，将你的墓地中的这张卡放置到战场上。
- * TODO: confirm ID / godMark / rarity variants and implement effects.
- */
+const effect_305110028_revive: CardEffect = {
+  id: '305110028_revive',
+  type: 'TRIGGER',
+  triggerLocation: ['GRAVE'],
+  triggerEvent: 'TURN_END' as any,
+  limitCount: 1,
+  limitNameType: true,
+  isMandatory: true,
+  description: 'At end of turn, if this card is in your grave and it was sent there from your battlefield by a card effect this turn, put it back onto the battlefield.',
+  condition: (gameState, _playerState, instance) =>
+    instance.cardlocation === 'GRAVE' &&
+    (instance as any).data?.sentToGraveFromFieldByEffectTurn === gameState.turnCount,
+  execute: async (instance, gameState, playerState) => {
+    AtomicEffectExecutor.moveCard(gameState, playerState.uid, 'GRAVE', playerState.uid, 'ITEM', instance.gamecardId, true, {
+      effectSourcePlayerUid: playerState.uid,
+      effectSourceCardId: instance.gamecardId
+    });
+  }
+};
+
 const card: Card = {
   id: '305110028',
   fullName: '「记忆塑偶」',
@@ -27,7 +35,7 @@ const card: Card = {
   displayState: 'FRONT_UPRIGHT',
   feijingMark: false,
   canResetCount: 0,
-  effects: [],
+  effects: [effect_305110028_revive],
   rarity: 'U',
   availableRarities: ['U'],
   cardPackage: 'BT02',

@@ -375,6 +375,7 @@ export interface GameState {
     isAlliance: boolean;
     askConfront?: 'ASKING_OPPONENT' | 'ASKING_TURN_PLAYER';
     defensePowerRestriction?: number;
+    defenseMaxPowerRestriction?: number;
     resolvedUnitIds?: string[];
     forcedGuardTargetId?: string;
     forcedGuardLogged?: boolean;

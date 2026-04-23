@@ -1,24 +1,36 @@
-import { Card } from '../types/game';
+import { Card, CardEffect } from '../types/game';
+import { findUnitOnBattlefield, universalEquipEffect } from './_bt03YellowUtils';
 
-/**
- * Auto-generated from Card.xlsx + Card2.xlsx.
- * Source CardID: 305000081
- * Card2 Row: 259
- * Card Row: 615
- * Source CardNo: BT03-Y17
- * Package: BT03(C)
- * ID Source: card-xlsx
- * Keywords: N/A
- * Card Detail:
- * 【装备】（〖1回合1次〗你的主要阶段中，你可以选择你的1个单位装备这张卡，或者解除这张卡的装备状态。）
- * 【永】:装备单位不能参与战斗，也不能成为攻击对象或单位卡的能力的效果对象。
- * TODO: confirm ID / godMark / rarity variants and implement effects.
- */
+const effect_305000081_continuous: CardEffect = {
+  id: '305000081_continuous',
+  type: 'CONTINUOUS',
+  description: 'The equipped unit cannot participate in battle, cannot become an attack target, and cannot become the target of unit-card abilities.',
+  applyContinuous: (gameState, instance) => {
+    const target = findUnitOnBattlefield(gameState, instance.equipTargetId);
+    if (!target) {
+      instance.equipTargetId = undefined;
+      return;
+    }
+
+    target.canAttack = false;
+    target.isImmuneToUnitEffects = true;
+    (target as any).battleForbiddenByEffect = true;
+    (target as any).cannotBeAttackTargetByEffect = true;
+
+    if (!target.influencingEffects) target.influencingEffects = [];
+    target.influencingEffects.push({
+      sourceCardName: instance.fullName,
+      description: 'Cannot participate in battle, cannot be attack target, and ignores unit-card targeting.'
+    });
+  }
+};
+
 const card: Card = {
   id: '305000081',
   fullName: '秘影斗篷',
   specialName: '',
   type: 'ITEM',
+  isEquip: true,
   color: 'YELLOW',
   gamecardId: null as any,
   colorReq: { YELLOW: 1 },
@@ -28,7 +40,7 @@ const card: Card = {
   displayState: 'FRONT_UPRIGHT',
   feijingMark: false,
   canResetCount: 0,
-  effects: [],
+  effects: [universalEquipEffect, effect_305000081_continuous],
   rarity: 'C',
   availableRarities: ['C'],
   cardPackage: 'BT03',
