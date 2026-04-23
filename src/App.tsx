@@ -11,6 +11,7 @@ import { socket, getAuthUser, setAuthUser, setAuthToken, getAuthToken } from './
 import { TopBar } from './components/TopBar';
 import { Home } from './components/Home';
 import { prefetchCardCatalog } from './hooks/useCardCatalog';
+import { LoadingOverlay } from './components/LoadingOverlay';
 
 const Matchmaking = lazy(() => import('./components/Matchmaking').then(module => ({ default: module.Matchmaking })));
 const BattleField = lazy(() => import('./components/BattleField').then(module => ({ default: module.BattleField })));
@@ -23,13 +24,10 @@ const PracticeSetup = lazy(() => import('./components/PracticeSetup').then(modul
 const FriendMatch = lazy(() => import('./components/FriendMatch').then(module => ({ default: module.FriendMatch })));
 
 const PageFallback = () => (
-  <div className="h-full min-h-screen bg-black flex items-center justify-center">
-    <motion.div
-      animate={{ rotate: 360 }}
-      transition={{ duration: 1.4, repeat: Infinity, ease: 'linear' }}
-      className="w-10 h-10 border-4 border-red-600 border-t-transparent rounded-full"
-    />
-  </div>
+  <LoadingOverlay
+    title="界面加载中"
+    description="正在打开目标页面，资源马上就绪..."
+  />
 );
 
 export default function App() {

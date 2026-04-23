@@ -2,7 +2,7 @@ import { getAuthUser } from '../socket';
 import React, { useDeferredValue, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
-import { Save, Trash2, Plus, Search, Loader2, Copy, Edit3, X, Sparkles, ArrowLeft, Shuffle, ListFilter, Zap, Shield } from 'lucide-react';
+import { Save, Trash2, Plus, Search, Loader2, Copy, Edit3, X, Sparkles, ArrowLeft, Shuffle, ListFilter, Zap, Shield, Check } from 'lucide-react';
 import { FACTIONS } from '../data/factions';
 import { Card as CardType, Deck } from '../types/game';
 import { CardComponent } from './Card';
@@ -10,6 +10,7 @@ import { cn, getCardImageUrl, getCardTypeLabel } from '../lib/utils';
 import { CARD_BACKS } from '../data/customization';
 import { TriggerLocation } from '../types/game';
 import { useCardCatalog } from '../hooks/useCardCatalog';
+import { LoadingOverlay } from './LoadingOverlay';
 
 const INITIAL_VISIBLE_CARD_COUNT = 48;
 
@@ -30,6 +31,7 @@ export const DeckBuilder: React.FC = () => {
   const [cardCrystals, setCardCrystals] = useState(0);
   const [favoriteBackId, setFavoriteBackId] = useState('default');
   const [actionLoading, setActionLoading] = useState(false);
+  const [addSuccessToast, setAddSuccessToast] = useState<{ cardName: string; count: number } | null>(null);
   const [visibleCardCount, setVisibleCardCount] = useState(INITIAL_VISIBLE_CARD_COUNT);
   const [filters, setFilters] = useState({
     ac: '',
@@ -305,6 +307,10 @@ export const DeckBuilder: React.FC = () => {
       }
 
       setDeck([...deck, card]);
+      setAddSuccessToast({
+        cardName: card.fullName,
+        count: count + 1
+      });
     } else if (count >= 4) {
       alert('同名卡牌在卡组中不能超过4张！');
     } else if (deck.length >= 50) {
@@ -345,6 +351,18 @@ export const DeckBuilder: React.FC = () => {
   useEffect(() => {
     setVisibleCardCount(INITIAL_VISIBLE_CARD_COUNT);
   }, [deferredSearchTerm, filters]);
+
+  useEffect(() => {
+    if (!addSuccessToast) {
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      setAddSuccessToast(null);
+    }, 1400);
+
+    return () => window.clearTimeout(timer);
+  }, [addSuccessToast]);
 
   const favoriteBackUrl = useMemo(
     () => CARD_BACKS.find(back => back.id === favoriteBackId)?.url,
@@ -402,8 +420,45 @@ export const DeckBuilder: React.FC = () => {
     [filteredCards, visibleCardCount]
   );
 
+  const loadingOverlayTitle = saving ? '保存卡组中' : '处理中';
+  const loadingOverlayDescription = saving
+    ? '正在同步你的卡组配置，请稍候...'
+    : '正在处理当前卡牌操作，请稍候...';
+
   return (
     <div className="flex h-[calc(100vh-64px)] mt-16 overflow-hidden bg-zinc-950 relative">
+      <LoadingOverlay
+        open={saving || actionLoading}
+        title={loadingOverlayTitle}
+        description={loadingOverlayDescription}
+      />
+
+      <AnimatePresence>
+        {addSuccessToast && (
+          <motion.div
+            initial={{ opacity: 0, y: -18, scale: 0.96 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -12, scale: 0.98 }}
+            transition={{ type: 'spring', stiffness: 260, damping: 20 }}
+            className="fixed left-1/2 top-24 z-[145] w-[calc(100%-2rem)] max-w-md -translate-x-1/2"
+          >
+            <div className="rounded-2xl border border-emerald-400/20 bg-zinc-950/95 px-4 py-3 shadow-[0_20px_60px_rgba(0,0,0,0.45)] backdrop-blur-md">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-500/12 text-emerald-400">
+                  <Check className="h-5 w-5" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-black italic text-white">已加入卡组</p>
+                  <p className="truncate text-xs text-zinc-400">
+                    {addSuccessToast.cardName} 已加入，当前 {addSuccessToast.count} / 4
+                  </p>
+                </div>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Left: My Decks */}
       <div className={cn(
         "absolute lg:relative z-40 w-72 h-full border-r border-zinc-800 flex flex-col bg-zinc-900 shadow-2xl lg:shadow-none transition-transform duration-300",
