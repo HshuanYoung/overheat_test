@@ -80,6 +80,7 @@ const effect_105120168_activate: CardEffect = {
       playerUid: playerState.uid,
       data: { cards: [topCard] }
     });
+    gameState.logs.push(`[${instance.fullName}] 揭开了卡组顶的 [${topCard.fullName}]。`);
 
     if (!isNonGodAccessLe3UnitOrItem(topCard)) return;
 

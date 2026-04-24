@@ -854,6 +854,16 @@ export class AtomicEffectExecutor {
 
     if (!card) return;
 
+    if (!(card as any).data) {
+      (card as any).data = {};
+    }
+    (card as any).data.lastMovedFromZone = fromZone;
+    (card as any).data.lastMovedToZone = toZone;
+    if (isEffect) {
+      (card as any).data.lastMovedByEffectTurn = gameState.turnCount;
+      (card as any).data.lastMoveEffectSourceCardId = options?.effectSourceCardId;
+    }
+
     const shouldRefreshAsNewInstance =
       (toZone === 'HAND' || toZone === 'DECK') &&
       fromZone !== 'HAND' &&
@@ -947,6 +957,19 @@ export class AtomicEffectExecutor {
     } else if (toZone === 'GRAVE') {
       card.displayState = 'FRONT_UPRIGHT';
       card.isExhausted = false;
+    }
+
+    if (
+      isEffect &&
+      fromZone === 'DECK' &&
+      toZone === 'UNIT' &&
+      options?.effectSourceCardId
+    ) {
+      const sourceCard = this.findCardById(gameState, options.effectSourceCardId);
+      if (sourceCard?.fullName?.includes('炼金')) {
+        (card as any).data.enteredFromDeckByAlchemyTurn = gameState.turnCount;
+        (card as any).data.enteredFromDeckByAlchemySourceCardId = sourceCard.gamecardId;
+      }
     }
 
     card.cardlocation = toZone;

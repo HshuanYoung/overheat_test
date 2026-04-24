@@ -23,6 +23,14 @@ const effect_105110160_self_protection: CardEffect = {
       indestructibleIfOpponentGoddess: active,
       immuneToOpponentEffectsIfOpponentGoddess: active
     };
+
+    if (active) {
+      instance.influencingEffects = instance.influencingEffects || [];
+      instance.influencingEffects.push({
+        sourceCardName: instance.fullName,
+        description: '对手女神化：不会被破坏 / 不受对手卡牌效果影响'
+      });
+    }
   }
 };
 
