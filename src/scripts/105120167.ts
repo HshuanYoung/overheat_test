@@ -1,7 +1,7 @@
 import { Card, CardEffect } from '../types/game';
 import { AtomicEffectExecutor } from '../services/AtomicEffectExecutor';
 import { EventEngine } from '../services/EventEngine';
-import { createSelectCardQuery, isAlchemyCard, moveCardsToBottom } from './_bt02YellowUtils';
+import { canPutCardOntoBattlefieldByEffect, createSelectCardQuery, isAlchemyCard, moveCardsToBottom } from './_bt02YellowUtils';
 
 const effect_105120167_activate: CardEffect = {
   id: '105120167_activate',
@@ -49,7 +49,11 @@ const effect_105120167_activate: CardEffect = {
         }
       }
 
-      const candidates = playerState.deck.filter(card => card.type === 'UNIT' && isAlchemyCard(card));
+      const candidates = playerState.deck.filter(card =>
+        card.type === 'UNIT' &&
+        isAlchemyCard(card) &&
+        canPutCardOntoBattlefieldByEffect(playerState, card)
+      );
       if (candidates.length === 0) return;
 
       createSelectCardQuery(

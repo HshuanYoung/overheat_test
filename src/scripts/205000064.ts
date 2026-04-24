@@ -6,7 +6,7 @@ import { createSelectCardQuery, getTopDeckCards, isAlchemyCard } from './_bt02Ye
 const effect_205000064_activate: CardEffect = {
   id: '205000064_activate',
   type: 'ACTIVATE',
-  triggerLocation: ['PLAY'],
+  triggerLocation: ['HAND', 'PLAY'],
   description: 'Reveal the top 3 cards of your deck. Choose a non-god unit from among them, put it onto the battlefield, and it gains Rush. At end of turn, if it is not an alchemy unit, banish it.',
   execute: async (instance, gameState, playerState) => {
     const revealed = getTopDeckCards(playerState, 3);

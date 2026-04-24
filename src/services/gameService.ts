@@ -273,7 +273,8 @@ export const GameService = {
     if (playEffect) {
       const shouldValidate = card.type === 'STORY' || playEffect.type === 'ALWAYS';
       if (shouldValidate) {
-        const result = GameService.checkEffectLimitsAndReqs(gameState, player.uid, card, playEffect, card.cardlocation as TriggerLocation);
+        const validationLocation = card.type === 'STORY' ? 'PLAY' : (card.cardlocation as TriggerLocation);
+        const result = GameService.checkEffectLimitsAndReqs(gameState, player.uid, card, playEffect, validationLocation);
         if (!result.valid) {
           return { canPlay: false, reason: result.reason };
         }

@@ -771,7 +771,8 @@ export const ServerGameService = {
 
       if (shouldValidate) {
         // Use the comprehensive engine check to validate limits, conditions, and erosion counts
-        const result = ServerGameService.checkEffectLimitsAndReqs(gameState, player.uid, card, playEffect, card.cardlocation as TriggerLocation);
+        const validationLocation = card.type === 'STORY' ? 'PLAY' : (card.cardlocation as TriggerLocation);
+        const result = ServerGameService.checkEffectLimitsAndReqs(gameState, player.uid, card, playEffect, validationLocation);
         if (!result.valid) {
           return { canPlay: false, reason: result.reason || '不满足发动条件' };
         }

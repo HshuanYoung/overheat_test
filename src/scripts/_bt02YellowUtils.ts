@@ -82,3 +82,42 @@ export const isNonGodAccessLe3UnitOrItem = (card: Card) =>
   !card.godMark &&
   (card.type === 'UNIT' || card.type === 'ITEM') &&
   (card.acValue || 0) <= 3;
+
+export const canPutCardOntoBattlefieldByEffect = (playerState: PlayerState, card: Card) => {
+  if (playerState.factionLock && card.faction !== playerState.factionLock) {
+    return false;
+  }
+
+  if (card.type === 'UNIT') {
+    if (!playerState.unitZone.some(slot => slot === null)) {
+      return false;
+    }
+    if (card.specialName && playerState.unitZone.some(unit => unit?.specialName === card.specialName)) {
+      return false;
+    }
+
+    if (card.godMark) {
+      const fieldEffects = playerState.unitZone
+        .filter((unit): unit is Card => !!unit)
+        .flatMap(unit => unit.effects || []);
+      const fieldLimitEffect = fieldEffects.find(effect => effect.type === 'CONTINUOUS' && effect.limitGodmarkCount !== undefined);
+      const selfLimitEffect = card.effects?.find(effect => effect.type === 'CONTINUOUS' && effect.limitGodmarkCount !== undefined);
+      const effectiveLimit = fieldLimitEffect?.limitGodmarkCount ?? selfLimitEffect?.limitGodmarkCount;
+
+      if (effectiveLimit !== undefined) {
+        const currentGodmarkCount = playerState.unitZone.filter(unit => unit && unit.godMark).length;
+        if (currentGodmarkCount >= effectiveLimit) {
+          return false;
+        }
+      }
+    }
+  }
+
+  if (card.type === 'ITEM') {
+    if (card.specialName && playerState.itemZone.some(item => item?.specialName === card.specialName)) {
+      return false;
+    }
+  }
+
+  return true;
+};

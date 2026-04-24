@@ -1,7 +1,7 @@
 import { Card, CardEffect, GameEvent } from '../types/game';
 import { AtomicEffectExecutor } from '../services/AtomicEffectExecutor';
 import { EventEngine } from '../services/EventEngine';
-import { createSelectCardQuery, getTopDeckCards, isAlchemyCard, isNonGodAccessLe3UnitOrItem, moveCardsToBottom } from './_bt02YellowUtils';
+import { canPutCardOntoBattlefieldByEffect, createSelectCardQuery, getTopDeckCards, isAlchemyCard, isNonGodAccessLe3UnitOrItem, moveCardsToBottom } from './_bt02YellowUtils';
 
 const effect_105120168_enter: CardEffect = {
   id: '105120168_enter',
@@ -10,26 +10,23 @@ const effect_105120168_enter: CardEffect = {
   triggerEvent: 'CARD_ENTERED_ZONE',
   isMandatory: true,
   description: 'When this unit enters the battlefield, put up to 2 alchemy cards other than Elmont from your grave on the bottom of your deck, then draw 1.',
-  condition: (_gameState, _playerState, instance, event?: GameEvent) =>
+  condition: (_gameState, playerState, instance, event?: GameEvent) =>
     instance.cardlocation === 'UNIT' &&
     event?.type === 'CARD_ENTERED_ZONE' &&
     event.sourceCardId === instance.gamecardId &&
-    event.data?.zone === 'UNIT',
+    event.data?.zone === 'UNIT' &&
+    playerState.grave.filter(card => isAlchemyCard(card) && card.specialName !== '艾尔蒙特').length >= 2,
   execute: async (instance, gameState, playerState) => {
     const candidates = playerState.grave.filter(card => isAlchemyCard(card) && card.specialName !== '艾尔蒙特');
-    if (candidates.length === 0) {
-      await AtomicEffectExecutor.execute(gameState, playerState.uid, { type: 'DRAW', value: 1 }, instance);
-      return;
-    }
 
     createSelectCardQuery(
       gameState,
       playerState.uid,
       candidates,
       'Choose Grave Cards',
-      'Choose up to 2 alchemy cards from your grave to place on the bottom of your deck.',
-      0,
-      Math.min(2, candidates.length),
+      'Choose 2 alchemy cards from your grave to place on the bottom of your deck.',
+      2,
+      2,
       { sourceCardId: instance.gamecardId, effectId: '105120168_enter' }
     );
   },
@@ -83,15 +80,7 @@ const effect_105120168_activate: CardEffect = {
     gameState.logs.push(`[${instance.fullName}] 揭开了卡组顶的 [${topCard.fullName}]。`);
 
     if (!isNonGodAccessLe3UnitOrItem(topCard)) return;
-
-    if (topCard.type === 'UNIT') {
-      if (!playerState.unitZone.some(card => card === null)) return;
-      if (topCard.specialName && playerState.unitZone.some(card => card?.specialName === topCard.specialName)) return;
-    }
-
-    if (topCard.type === 'ITEM') {
-      if (topCard.specialName && playerState.itemZone.some(card => card?.specialName === topCard.specialName)) return;
-    }
+    if (!canPutCardOntoBattlefieldByEffect(playerState, topCard)) return;
 
     await AtomicEffectExecutor.execute(gameState, playerState.uid, {
       type: 'MOVE_FROM_DECK',
