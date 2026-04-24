@@ -56,6 +56,7 @@ const effect_104030125_trigger: CardEffect = {
 const effect_104030125_activate: CardEffect = {
   id: 'cocola_summon_cocoa',
   type: 'ACTIVATE',
+  erosionTotalLimit: [10, 20],
   description: '【启】在女神化状态下，每回合此卡名限一次，选择侵蚀区正面的一张卡转为背面：从手牌、卡组或墓地中选择一张“可可亚”单位卡放置在战场上。',
   limitCount: 1,
   limitNameType: true,

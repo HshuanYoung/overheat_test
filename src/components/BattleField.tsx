@@ -2768,6 +2768,8 @@ export const BattleField: React.FC = () => {
                   <span className="text-white font-black italic uppercase tracking-widest text-sm">
                     {game.winReason === 'SURRENDER' && game.winnerId === myUid
                       ? '对方投降'
+                      : game.winReason === 'CARD_EFFECT_SPECIAL_WIN'
+                        ? `由于${game.winSourceCardName || '卡牌效果'}的效果`
                       : (winReasonMap[game.winReason || ''] || game.winReason || '未知原因')}
                   </span>
                 </div>
@@ -3064,6 +3066,7 @@ const winReasonMap: Record<string, string> = {
   'DECK_OUT_EFFECT_DAMAGE': '受到效果伤害时卡组卡牌不足',
   'DECK_OUT_COST': '支付费用时卡组卡牌不足',
   'EROSION_BACK_FULL': '侵蚀区背面卡牌达到10张',
-  'SURRENDER': '投降'
+  'SURRENDER': '投降',
+  'CARD_EFFECT_SPECIAL_WIN': '由于卡牌效果'
 };
 

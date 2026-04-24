@@ -1,10 +1,10 @@
 import { Card, CardEffect } from '../types/game';
 
-const effect_105110160_disable_all_activated: CardEffect = {
-  id: '105110160_disable_all_activated',
+const effect_105110160_disable_erosion_requirement_effects: CardEffect = {
+  id: '105110160_disable_erosion_requirement_effects',
   type: 'CONTINUOUS',
-  content: 'DISABLE_ALL_ACTIVATED',
-  description: 'All cards lose activated abilities while this unit is active.'
+  content: 'DISABLE_EROSION_REQUIREMENT_EFFECTS',
+  description: 'All cards lose abilities with erosion-count requirements while this unit is active.'
 };
 
 const effect_105110160_self_protection: CardEffect = {
@@ -47,7 +47,7 @@ const card: Card = {
   canAttack: true,
   feijingMark: false,
   canResetCount: 0,
-  effects: [effect_105110160_disable_all_activated, effect_105110160_self_protection],
+  effects: [effect_105110160_disable_erosion_requirement_effects, effect_105110160_self_protection],
   rarity: 'R',
   availableRarities: ['R'],
   cardPackage: 'BT02',

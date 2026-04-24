@@ -91,7 +91,7 @@ const card: Card = {
   effects: [effect_105110161_activate],
   rarity: 'U',
   availableRarities: ['U'],
-  cardPackage: 'BT02,ST04',
+  cardPackage: 'BT02',
   uniqueId: null as any,
 };
 

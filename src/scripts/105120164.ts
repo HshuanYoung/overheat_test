@@ -16,6 +16,11 @@ const effect_105120164_alchemy_buff: CardEffect = {
     instance.damage = 2;
     instance.isrush = true;
     instance.isAnnihilation = true;
+    instance.influencingEffects = instance.influencingEffects || [];
+    instance.influencingEffects.push({
+      sourceCardName: instance.fullName,
+      description: '炼金登场：力量变为3500，伤害变为2，获得【速攻】【歼灭】'
+    });
   }
 };
 
@@ -46,7 +51,7 @@ const card: Card = {
   effects: [effect_105120164_alchemy_buff],
   rarity: 'U',
   availableRarities: ['U'],
-  cardPackage: 'BT02,ST04',
+  cardPackage: 'BT02',
   uniqueId: null as any,
 };
 

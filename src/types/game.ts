@@ -366,6 +366,7 @@ export interface GameState {
   gameStatus: 1 | 2; // 1: Normal, 2: Interrupted
   winReason?: string;
   winnerId?: string;
+  winSourceCardName?: string;
   logs: string[];
   players: {
     [uid: string]: PlayerState;

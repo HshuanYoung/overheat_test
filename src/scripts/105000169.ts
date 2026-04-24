@@ -13,8 +13,7 @@ const effect_105000169_trigger: CardEffect = {
   condition: (gameState, playerState, instance, event?: GameEvent) => {
     if (event?.type !== 'CARD_DESTROYED_BATTLE' || event.targetCardId !== instance.gamecardId) return false;
     const yellowUnits = playerState.unitZone.filter(card => card && card.color === 'YELLOW').length;
-    const opponent = gameState.players[getOpponentUid(gameState, playerState.uid)];
-    return yellowUnits >= 1 && opponent.hand.length > 0;
+    return yellowUnits >= 1;
   },
   cost: async (gameState, playerState, instance) => {
     gameState.pendingQuery = {
@@ -28,7 +27,6 @@ const effect_105000169_trigger: CardEffect = {
       maxSelections: 1,
       callbackKey: 'ACTIVATE_COST_RESOLVE',
       paymentCost: 1,
-      paymentColor: 'YELLOW',
       context: {
         sourceCardId: instance.gamecardId,
         effectIndex: 0

@@ -62,6 +62,7 @@ const effect_104020068_trigger: CardEffect = {
 const effect_104020068_activate: CardEffect = {
   id: 'aketi_goddess_bounce',
   type: 'ACTIVATE',
+  erosionTotalLimit: [10, 20],
   description: '【启】在女神化状态下，每场比赛一次。选择侵蚀区域最前方的两张卡牌转为背面：选择场上最多两张单位或道具卡牌返回持有者手牌。之后，对自己造成2点效果伤害。',
   limitCount: 1,
   limitGlobal: true,

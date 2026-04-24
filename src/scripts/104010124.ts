@@ -187,6 +187,7 @@ const card: Card = {
       triggerLocation: ['UNIT'],
       limitCount: 1,
       limitGlobal: true,
+      erosionTotalLimit: [10, 20],
       description: '【启】【女神化】[一局一次] 侵蚀区背面<9且正面>=2。选择侵蚀区中两张正面向上的卡牌，将其翻至背面。将战场上所有单位返回持有者手牌。',
       condition: (gameState, playerState) => {
         const frontCount = playerState.erosionFront.filter(c => c !== null).length;

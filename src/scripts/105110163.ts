@@ -8,7 +8,7 @@ const effect_105110163_story_ping: CardEffect = {
   triggerEvent: 'CARD_PLAYED',
   isGlobal: true,
   isMandatory: true,
-  description: 'Whenever a player uses a story card, deal 1 damage to that story card controller.',
+  description: 'Whenever a player uses a story card, deal 2 damage to that story card controller.',
   condition: (_gameState, _playerState, instance, event?: GameEvent) =>
     instance.cardlocation === 'UNIT' &&
     event?.type === 'CARD_PLAYED' &&
@@ -18,7 +18,7 @@ const effect_105110163_story_ping: CardEffect = {
     if (!event?.playerUid) return;
     await AtomicEffectExecutor.execute(gameState, event.playerUid, {
       type: 'DEAL_EFFECT_DAMAGE_SELF',
-      value: 1
+      value: 2
     }, instance);
   }
 };

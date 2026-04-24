@@ -14,6 +14,9 @@ const isPseudoGoddessActiveForCard = (gameState: GameState | null, card?: Card |
 
 const isTenPlusEffect = (effect: CardEffect) => !!effect.erosionTotalLimit && effect.erosionTotalLimit[0] >= 10;
 
+const effectHasErosionRequirement = (effect: CardEffect) =>
+  !!effect.erosionFrontLimit || !!effect.erosionBackLimit || !!effect.erosionTotalLimit;
+
 const getEffectivePlayerForCard = (gameState: GameState | null, player: PlayerState | undefined, card?: Card | null) => {
   if (!player) return player;
   return isPseudoGoddessActiveForCard(gameState, card) ? { ...player, isGoddessMode: true } : player;
@@ -61,6 +64,21 @@ const hasGlobalDisableAllActivated = (gameState: GameState | null) => {
   );
 };
 
+const hasGlobalDisableErosionRequirementEffects = (gameState: GameState | null) => {
+  if (!gameState) return false;
+  return Object.values(gameState.players).some(player =>
+    [...player.unitZone, ...player.itemZone, ...player.erosionFront]
+      .filter((card): card is Card => !!card)
+      .some(card =>
+        card.effects?.some(effect =>
+          effect.type === 'CONTINUOUS' &&
+          effect.content === 'DISABLE_EROSION_REQUIREMENT_EFFECTS' &&
+          (!effect.condition || effect.condition(gameState, player, card))
+        )
+      )
+  );
+};
+
 export const GameService = {
   isPseudoGoddessActiveForCard(gameState: GameState | null, card?: Card | null) {
     return isPseudoGoddessActiveForCard(gameState, card);
@@ -68,6 +86,14 @@ export const GameService = {
 
   isTenPlusEffect(effect: CardEffect) {
     return isTenPlusEffect(effect);
+  },
+
+  effectHasErosionRequirement(effect: CardEffect) {
+    return effectHasErosionRequirement(effect);
+  },
+
+  hasGlobalDisableErosionRequirementEffects(gameState: GameState | null) {
+    return hasGlobalDisableErosionRequirementEffects(gameState);
   },
 
   getEffectivePlayerForCard(gameState: GameState | null, player: PlayerState | undefined, card?: Card | null) {
@@ -263,6 +289,7 @@ export const GameService = {
     const pseudoGoddessActive = isPseudoGoddessActiveForCard(gameState, card);
     const activatedEffectsDisabled = (card as any).data?.pseudoGoddessDisableActivatedTurn === gameState.turnCount;
     const globalDisableAllActivated = hasGlobalDisableAllActivated(gameState);
+    const globalDisableErosionRequirementEffects = hasGlobalDisableErosionRequirementEffects(gameState);
     const effectivePlayer = getEffectivePlayerForCard(gameState, player, card);
     if (!player) return { valid: false, reason: 'Player data not found' };
 
@@ -328,6 +355,10 @@ export const GameService = {
 
     if (globalDisableAllActivated && (effect.type === 'ACTIVATE' || effect.type === 'ACTIVATED')) {
       return { valid: false, reason: 'All activated abilities are currently disabled' };
+    }
+
+    if (globalDisableErosionRequirementEffects && effectHasErosionRequirement(effect)) {
+      return { valid: false, reason: 'Abilities with erosion-count requirements are currently disabled' };
     }
 
     return { valid: true };

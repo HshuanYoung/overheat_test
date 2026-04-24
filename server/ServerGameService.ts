@@ -34,6 +34,24 @@ export const ServerGameService = {
     );
   },
 
+  effectHasErosionRequirement(effect: CardEffect) {
+    return !!effect.erosionFrontLimit || !!effect.erosionBackLimit || !!effect.erosionTotalLimit;
+  },
+
+  hasGlobalDisableErosionRequirementEffects(gameState: GameState) {
+    return Object.values(gameState.players).some(player =>
+      [...player.unitZone, ...player.itemZone, ...player.erosionFront]
+        .filter((card): card is Card => !!card)
+        .some(card =>
+          card.effects?.some(effect =>
+            effect.type === 'CONTINUOUS' &&
+            effect.content === 'DISABLE_EROSION_REQUIREMENT_EFFECTS' &&
+            (!effect.condition || effect.condition(gameState, player, card))
+          )
+        )
+    );
+  },
+
   getForcedAttackUnit(gameState: GameState, playerId: string) {
     const player = gameState.players[playerId];
     if (!player) return undefined;
@@ -342,6 +360,7 @@ export const ServerGameService = {
     const pseudoGoddessActive = cardData.pseudoGoddessTenPlusTurn === gameState.turnCount;
     const activatedEffectsDisabled = cardData.pseudoGoddessDisableActivatedTurn === gameState.turnCount;
     const globalDisableAllActivated = ServerGameService.hasGlobalDisableAllActivated(gameState);
+    const globalDisableErosionRequirementEffects = ServerGameService.hasGlobalDisableErosionRequirementEffects(gameState);
     const effectivePlayer = pseudoGoddessActive ? { ...player, isGoddessMode: true } : player;
     if (!player) return { valid: false, reason: '未找到玩家信息' };
 
@@ -428,6 +447,9 @@ export const ServerGameService = {
     }
     if (globalDisableAllActivated && (effect.type === 'ACTIVATE' || effect.type === 'ACTIVATED')) {
       return { valid: false, reason: '当前有持续效果使所有卡失去【启】能力' };
+    }
+    if (globalDisableErosionRequirementEffects && ServerGameService.effectHasErosionRequirement(effect)) {
+      return { valid: false, reason: '当前有持续效果使所有带侵蚀区数量要求的能力失效' };
     }
 
     // 7. Faction-lock Check
@@ -2611,9 +2633,10 @@ export const ServerGameService = {
 
       if ((currentPlayer as any).loseAtEndOfTurn === gameState.turnCount) {
         gameState.gameStatus = 2;
-        gameState.winReason = 'LOSE_AT_END_OF_TURN';
+        gameState.winReason = 'CARD_EFFECT_SPECIAL_WIN';
         gameState.winnerId = gameState.playerIds.find(id => id !== currentPlayerId);
-        gameState.logs.push(`[游戏结束] ${currentPlayer.displayName} 因回合结束时的效果判负。`);
+        gameState.winSourceCardName = (currentPlayer as any).loseAtEndOfTurnSourceName || '卡牌效果';
+        gameState.logs.push(`[游戏结束] ${currentPlayer.displayName} 因 [${gameState.winSourceCardName}] 的效果在回合结束时判负。`);
         return;
       }
 
@@ -2683,6 +2706,11 @@ export const ServerGameService = {
           if ((card as any).data?.forcedAttackTurn !== undefined && (card as any).data.forcedAttackTurn < gameState.turnCount) {
             delete (card as any).data.forcedAttackTurn;
             delete (card as any).data.forcedAttackSourceName;
+          }
+          if ((card as any).data?.forbiddenAlchemyBanishTurn !== undefined && (card as any).data.forbiddenAlchemyBanishTurn < gameState.turnCount) {
+            delete (card as any).data.forbiddenAlchemyBanishTurn;
+            delete (card as any).data.forbiddenAlchemySourceName;
+            delete (card as any).data.forbiddenAlchemyWillExileAtEndOfTurn;
           }
         });
 

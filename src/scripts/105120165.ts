@@ -1,5 +1,6 @@
 import { Card, CardEffect, GameEvent } from '../types/game';
 import { AtomicEffectExecutor } from '../services/AtomicEffectExecutor';
+import { EventEngine } from '../services/EventEngine';
 import { createSelectCardQuery, getOpponentUid } from './_bt02YellowUtils';
 
 const effect_105120165_forced_attack: CardEffect = {
@@ -43,6 +44,7 @@ const effect_105120165_forced_attack: CardEffect = {
       forcedAttackTurn: gameState.turnCount + 1,
       forcedAttackSourceName: instance.fullName
     };
+    EventEngine.recalculateContinuousEffects(gameState);
   }
 };
 
@@ -70,7 +72,7 @@ const card: Card = {
   effects: [effect_105120165_forced_attack],
   rarity: 'C',
   availableRarities: ['C'],
-  cardPackage: 'BT02,ST04',
+  cardPackage: 'BT02',
   uniqueId: null as any,
 };
 

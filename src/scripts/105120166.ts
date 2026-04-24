@@ -16,6 +16,11 @@ const effect_105120166_alchemy_buff: CardEffect = {
     instance.damage = 3;
     instance.isrush = true;
     instance.isHeroic = true;
+    instance.influencingEffects = instance.influencingEffects || [];
+    instance.influencingEffects.push({
+      sourceCardName: instance.fullName,
+      description: '炼金登场：力量变为3500，伤害变为3，获得【速攻】【英勇】'
+    });
   }
 };
 

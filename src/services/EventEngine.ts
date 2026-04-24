@@ -147,6 +147,8 @@ export class EventEngine {
   }
 
   static recalculateContinuousEffects(gameState: GameState) {
+    const globalDisableErosionRequirementEffects = GameService.hasGlobalDisableErosionRequirementEffects(gameState);
+
     // 0. Update Goddess Mode status based on erosion count
     Object.values(gameState.players).forEach(player => {
       const totalErosion = player.erosionFront.filter(c => c !== null).length + 
@@ -196,6 +198,7 @@ export class EventEngine {
           if (card.basePower !== undefined) card.power = card.basePower + (card.temporaryPowerBuff || 0);
           if (card.baseDamage !== undefined) card.damage = card.baseDamage + (card.temporaryDamageBuff || 0);
           if (card.baseIsrush !== undefined) card.isrush = card.baseIsrush || !!card.temporaryRush;
+          if (card.baseAnnihilation !== undefined) card.isAnnihilation = card.baseAnnihilation;
           if (card.baseCanAttack !== undefined) card.canAttack = card.baseCanAttack;
           if (card.temporaryCanAttackAny !== undefined && card.temporaryCanAttackAny) {
             // "Full Attack" logic: potentially update some property that battle system checks
@@ -263,6 +266,22 @@ export class EventEngine {
           if ((card as any).data?.clearMirrorActiveTurn === gameState.turnCount) {
             card.influencingEffects.push({ sourceCardName: '明镜止水', description: '已明镜止水' });
           }
+          const forcedAttackTurn = (card as any).data?.forcedAttackTurn;
+          if (forcedAttackTurn !== undefined) {
+            card.influencingEffects.push({
+              sourceCardName: (card as any).data?.forcedAttackSourceName || '效果',
+              description: forcedAttackTurn <= gameState.turnCount ? '本回合必须攻击（若可以）' : '下个回合必须攻击（若可以）'
+            });
+          }
+          const forbiddenAlchemySourceName = (card as any).data?.forbiddenAlchemySourceName;
+          if (card.cardlocation === 'UNIT' && forbiddenAlchemySourceName) {
+            card.influencingEffects.push({
+              sourceCardName: forbiddenAlchemySourceName,
+              description: (card as any).data?.forbiddenAlchemyWillExileAtEndOfTurn
+                ? '回合结束时放逐'
+                : '回合结束时不会被放逐'
+            });
+          }
         }
       });
       player.effectDamageModifier = 0;
@@ -300,6 +319,9 @@ export class EventEngine {
             return;
           }
           card.effects.forEach(effect => {
+            if (globalDisableErosionRequirementEffects && GameService.effectHasErosionRequirement(effect)) {
+              return;
+            }
             if (effect.applyContinuous) {
               effect.applyContinuous(gameState, card);
             }

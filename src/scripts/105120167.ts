@@ -83,12 +83,14 @@ const effect_105120167_last_resort: CardEffect = {
   limitCount: 1,
   limitGlobal: true,
   limitNameType: true,
+  erosionTotalLimit: [10, 20],
   description: 'Goddess mode only. Put all cards in your grave on the bottom of your deck. You lose the game at end of turn.',
   condition: (_gameState, playerState) => !!playerState.isGoddessMode,
   execute: async (instance, gameState, playerState) => {
     const graveCards = [...playerState.grave];
     moveCardsToBottom(gameState, playerState.uid, graveCards, instance);
     (playerState as any).loseAtEndOfTurn = gameState.turnCount;
+    (playerState as any).loseAtEndOfTurnSourceName = instance.fullName;
     EventEngine.recalculateContinuousEffects(gameState);
   }
 };

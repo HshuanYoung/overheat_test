@@ -46,6 +46,12 @@ const effect_205000064_activate: CardEffect = {
       ...(moved.temporaryBuffSources || {}),
       rush: instance.fullName
     };
+    (moved as any).data = {
+      ...((moved as any).data || {}),
+      forbiddenAlchemySourceName: instance.fullName,
+      forbiddenAlchemyBanishTurn: gameState.turnCount,
+      forbiddenAlchemyWillExileAtEndOfTurn: !isAlchemyCard(moved)
+    };
 
     (instance as any).data = {
       ...((instance as any).data || {}),
@@ -62,6 +68,12 @@ const effect_205000064_activate: CardEffect = {
     if (!targetId) return;
 
     const target = AtomicEffectExecutor.findCardById(gameState, targetId);
+    if (target) {
+      (target as any).data = {
+        ...((target as any).data || {}),
+        forbiddenAlchemyWillExileAtEndOfTurn: false
+      };
+    }
     if (!target || target.cardlocation !== 'UNIT' || isAlchemyCard(target)) return;
 
     const ownerUid = AtomicEffectExecutor.findCardOwnerKey(gameState, target.gamecardId);
@@ -71,6 +83,7 @@ const effect_205000064_activate: CardEffect = {
       effectSourcePlayerUid: playerState.uid,
       effectSourceCardId: instance.gamecardId
     });
+    gameState.logs.push(`[${instance.fullName}] 在回合结束时放逐了 [${target.fullName}]。`);
   }
 };
 
