@@ -35,7 +35,9 @@ export const ServerGameService = {
   },
 
   effectHasErosionRequirement(effect: CardEffect) {
-    return !!effect.erosionFrontLimit || !!effect.erosionBackLimit || !!effect.erosionTotalLimit;
+    return !!effect.erosionFrontLimit ||
+      !!effect.erosionBackLimit ||
+      !!effect.erosionTotalLimit;
   },
 
   hasGlobalDisableErosionRequirementEffects(gameState: GameState) {

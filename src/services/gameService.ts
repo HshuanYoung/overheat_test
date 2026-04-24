@@ -15,7 +15,9 @@ const isPseudoGoddessActiveForCard = (gameState: GameState | null, card?: Card |
 const isTenPlusEffect = (effect: CardEffect) => !!effect.erosionTotalLimit && effect.erosionTotalLimit[0] >= 10;
 
 const effectHasErosionRequirement = (effect: CardEffect) =>
-  !!effect.erosionFrontLimit || !!effect.erosionBackLimit || !!effect.erosionTotalLimit;
+  !!effect.erosionFrontLimit ||
+  !!effect.erosionBackLimit ||
+  !!effect.erosionTotalLimit;
 
 const getEffectivePlayerForCard = (gameState: GameState | null, player: PlayerState | undefined, card?: Card | null) => {
   if (!player) return player;

@@ -319,7 +319,9 @@ export class EventEngine {
             return;
           }
           card.effects.forEach(effect => {
-            if (globalDisableErosionRequirementEffects && GameService.effectHasErosionRequirement(effect)) {
+            const cardLoc = card.cardlocation as TriggerLocation;
+            const checkResult = GameService.checkEffectLimitsAndReqs(gameState, player.uid, card, effect, cardLoc);
+            if (!checkResult.valid) {
               return;
             }
             if (effect.applyContinuous) {

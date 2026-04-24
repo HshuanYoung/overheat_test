@@ -73,8 +73,6 @@ const applyContinuousBonus = (gameState: GameState, card: Card) => {
   const target = findCardInUnitZone(gameState, card.equipTargetId);
 
   if (target) {
-    // 1. Basic Stat Boost: +1 Damage / +1000 Power
-    // This part should always apply as long as equipped, regardless of erosion count
     target.power = (target.power || 0) + 1000;
     target.damage = (target.damage || 0) + 1;
 
@@ -83,37 +81,39 @@ const applyContinuousBonus = (gameState: GameState, card: Card) => {
       sourceCardName: card.fullName,
       description: '力量+1000，伤害+1'
     });
-
-    // 2. Defense Restriction (Conditional on 5-7 Erosion)
-    const playerUid = Object.keys(gameState.players).find(uid =>
-      gameState.players[uid].itemZone.some(c => c?.gamecardId === card.gamecardId)
-    );
-    if (!playerUid) return;
-
-    const player = gameState.players[playerUid];
-    const battleState = gameState.battleState;
-    if (battleState && Array.isArray(battleState.attackers) && card.equipTargetId && battleState.attackers.includes(card.equipTargetId)) {
-      const erosionCount = getErosionCount(player);
-      if (erosionCount >= 5 && erosionCount <= 7) {
-        // Alliance Exception: if in coalition, and other units can be defended, this effect is ineffective.
-        if (!battleState.isAlliance) {
-          // Set restriction: Opponent cannot defend with units power < 2500
-          const currentRestriction = battleState.defensePowerRestriction || 0;
-          battleState.defensePowerRestriction = Math.max(currentRestriction, 2500);
-
-          target.influencingEffects.push({
-            sourceCardName: card.fullName,
-            description: '对方不能使用力量值低于 2500 的单位防御此攻击'
-          });
-        }
-      }
-    }
   } else {
-    // Release equipment if target is gone
-    if (card.equipTargetId) {
-      console.log(`[Scadi] Target ${card.equipTargetId} not found in unit zone, releasing equipment`);
-      card.equipTargetId = undefined;
-    }
+      if (card.equipTargetId) {
+        console.log(`[Scadi] Target ${card.equipTargetId} not found in unit zone, releasing equipment`);
+        card.equipTargetId = undefined;
+      }
+  }
+};
+
+const applyDefenseRestriction = (gameState: GameState, card: Card) => {
+  const target = findCardInUnitZone(gameState, card.equipTargetId);
+  if (!target) return;
+
+  const playerUid = Object.keys(gameState.players).find(uid =>
+    gameState.players[uid].itemZone.some(c => c?.gamecardId === card.gamecardId)
+  );
+  if (!playerUid) return;
+
+  const battleState = gameState.battleState;
+  if (
+    battleState &&
+    Array.isArray(battleState.attackers) &&
+    card.equipTargetId &&
+    battleState.attackers.includes(card.equipTargetId) &&
+    !battleState.isAlliance
+  ) {
+    const currentRestriction = battleState.defensePowerRestriction || 0;
+    battleState.defensePowerRestriction = Math.max(currentRestriction, 2500);
+
+    target.influencingEffects = target.influencingEffects || [];
+    target.influencingEffects.push({
+      sourceCardName: card.fullName,
+      description: '对方不能使用力量值低于 2500 的单位防御此攻击'
+    });
   }
 };
 
@@ -137,8 +137,15 @@ const card: Card = {
     {
       id: 'continuous_bonus',
       type: 'CONTINUOUS',
-      description: '装备此卡的单位：伤害+1，力量+1000。侵蚀区处于5-7时，对手不能用力量值低于2500的单位防御此攻击（联军时，若联军其他单位可被防御则失效）。',
+      description: '装备此卡的单位：伤害+1，力量+1000。',
       applyContinuous: applyContinuousBonus
+    },
+    {
+      id: 'continuous_defense_restriction',
+      type: 'CONTINUOUS',
+      erosionTotalLimit: [5, 7],
+      description: '侵蚀区处于5-7时，对手不能用力量值低于2500的单位防御装备此卡单位的攻击（联军时，若联军其他单位可被防御则失效）。',
+      applyContinuous: applyDefenseRestriction
     }
   ],
   rarity: 'R',

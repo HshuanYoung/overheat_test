@@ -6,11 +6,10 @@ const activate_104000128_1: CardEffect = {
   type: 'ACTIVATE',
   limitCount: 1,
   triggerLocation: ['UNIT'],
+  erosionTotalLimit: [4, 6],
   description: '【启】〔回合1次〕：侵蚀区存在4-6张卡牌时，抽1张卡，然后选择1张手牌舍弃。',
   condition: (gameState, playerState) => {
-    const erosionCount = playerState.erosionFront.filter(c => c !== null).length +
-      playerState.erosionBack.filter(c => c !== null).length;
-    return erosionCount >= 4 && erosionCount <= 6;
+    return true;
   },
   execute: async (card, gameState, playerState) => {
     // 1. Draw 1

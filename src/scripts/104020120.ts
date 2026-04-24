@@ -7,7 +7,7 @@ const trigger_104020120: CardEffect = {
   description: '【诱发】[一回合一次] 当你进入女神化状态时，可以发动：选择对方单位区的一位单位横置。在接下来的对手回合开始时，该单位不能被纵置。',
   triggerLocation: ['UNIT'],
   triggerEvent: 'GODDESS_TRANSFORMATION',
-  erosionTotalLimit: [10, 20],
+  erosionTotalLimit: [10, 10],
   isMandatory: false,
   limitCount: 1,
   condition: (gameState: GameState, playerState: PlayerState, instance: Card, event?: GameEvent) => {

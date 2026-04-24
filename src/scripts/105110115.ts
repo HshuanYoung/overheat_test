@@ -1,6 +1,7 @@
 import { Card, CardEffect } from '../types/game';
 import { AtomicEffectExecutor } from '../services/AtomicEffectExecutor';
 import { EventEngine } from '../services/EventEngine';
+import { GameService } from '../services/gameService';
 import { canPutItemOntoBattlefield, canPutUnitOntoBattlefield, createChoiceQuery, createSelectCardQuery, revealDeckCards } from './_bt03YellowUtils';
 import { moveCard } from './_bt02YellowUtils';
 
@@ -117,12 +118,18 @@ const canUseRevealedCard = (gameState: any, playerState: any, card: Card) => {
   }
 
   const effect = card.effects?.find(e => e.type === 'ALWAYS' || e.type === 'ACTIVATE' || e.type === 'ACTIVATED');
-  if (effect?.condition) {
-    try {
-      if (!effect.condition(gameState, playerState, card)) return false;
-    } catch {
-      return false;
-    }
+  if (effect) {
+    const validationLocation = effect.triggerLocation?.includes('PLAY')
+      ? 'PLAY'
+      : effect.triggerLocation?.[0] || 'PLAY';
+    const result = GameService.checkEffectLimitsAndReqs(
+      gameState,
+      playerState.uid,
+      card,
+      effect,
+      validationLocation
+    );
+    if (!result.valid) return false;
   }
   return true;
 };
@@ -316,13 +323,12 @@ const effect_105110115_reveal_use_top: CardEffect = {
   type: 'ACTIVATE',
   triggerLocation: ['UNIT'],
   limitCount: 1,
+  erosionTotalLimit: [3, 5],
   description: '侵蚀区数量3-5时，每回合一次，公开卡组顶的1张卡。若符合使用条件，你可以立刻支付ACCESS值来使用那张卡。否则，将其按原样放回。',
   condition: (gameState, playerState, instance) =>
     playerState.isTurn &&
     gameState.phase === 'MAIN' &&
     instance.cardlocation === 'UNIT' &&
-    getErosionTotal(playerState) >= 3 &&
-    getErosionTotal(playerState) <= 5 &&
     playerState.deck.length > 0,
   execute: async (instance, gameState, playerState) => {
     const revealed = revealDeckCards(gameState, playerState.uid, 1, instance)[0];

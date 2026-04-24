@@ -62,14 +62,12 @@ const effect_104020068_trigger: CardEffect = {
 const effect_104020068_activate: CardEffect = {
   id: 'aketi_goddess_bounce',
   type: 'ACTIVATE',
-  erosionTotalLimit: [10, 20],
-  description: '【启】在女神化状态下，每场比赛一次。选择侵蚀区域最前方的两张卡牌转为背面：选择场上最多两张单位或道具卡牌返回持有者手牌。之后，对自己造成2点效果伤害。',
+  erosionTotalLimit: [10, 10],
+  erosionFrontLimit: [2, 10],
+  description: '【启】在女神化状态下，每场比赛一次。选择侵蚀区域两张卡牌转为背面：选择场上最多两张单位或道具卡牌返回持有者手牌。之后，对自己造成2点效果伤害。',
   limitCount: 1,
   limitGlobal: true,
   limitNameType: true,
-  condition: (gameState: GameState, playerState: PlayerState) => {
-    return !!playerState.isGoddessMode && playerState.erosionFront.filter(c => c !== null).length >= 2;
-  },
   execute: async (instance: Card, gameState: GameState, playerState: PlayerState) => {
     // 1. Cost: Select 2 from Erosion Front
     const frontCards = playerState.erosionFront.filter(c => c !== null) as Card[];
@@ -79,7 +77,7 @@ const effect_104020068_activate: CardEffect = {
       playerUid: playerState.uid,
       options: AtomicEffectExecutor.enrichQueryOptions(gameState, playerState.uid, frontCards.map(c => ({ card: c, source: 'EROSION_FRONT' }))),
       title: '支付发动代价',
-      description: '选择侵蚀区域最前方的两张卡牌转为背面。',
+      description: '选择侵蚀区域两张卡牌转为背面。',
       minSelections: 2,
       maxSelections: 2,
       callbackKey: 'EFFECT_RESOLVE',

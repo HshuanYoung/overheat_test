@@ -20,13 +20,10 @@ const card: Card = {
       id: 'failed_transaction_activate',
       type: 'ACTIVATE',
       triggerLocation: ['HAND', 'PLAY'],
+      erosionBackLimit: [2, 10],
       description: '【对付】：若你的侵蚀区背面卡牌在2张及以上，对抗对手打出道具卡或道具的效果发动，将其无效。若是对打出的道具卡发动，则将其送入其持有者的墓地。',
       condition: (gameState, playerState) => {
-        // 1. Back erosion requirement
-        const backCount = playerState.erosionBack.filter(c => c !== null).length;
-        if (backCount < 2) return false;
-
-        // 2. Must be in countering phase opposing an opponent's item declaration
+        // Must be in countering phase opposing an opponent's item declaration
         if (gameState.phase !== 'COUNTERING') return false;
 
         const topItem = gameState.counterStack[gameState.counterStack.length - 1];

@@ -137,10 +137,10 @@ const activate_104020066_2: CardEffect = {
   triggerLocation: ['UNIT'],
   limitCount: 1,
   limitNameType: true,
+  erosionTotalLimit: [4, 6],
   condition: (gameState: GameState, playerState: PlayerState, instance: Card) => {
     if (instance.isExhausted) return false;
-    const totalErosion = playerState.erosionFront.filter(c => c !== null).length + playerState.erosionBack.filter(c => c !== null).length;
-    return totalErosion >= 4 && totalErosion <= 6;
+    return true;
   },
   cost: async (gameState: GameState, playerState: PlayerState, instance: Card) => {
     instance.isExhausted = true;

@@ -31,13 +31,10 @@ const activateEffect: CardEffect = {
   limitCount: 1,
   limitNameType: true,
   triggerLocation: ['UNIT'],
+  erosionTotalLimit: [3, 7],
   description: '【启动】【同名回合一次】侵蚀区处于3-7张且在你的回合，支付1费，将这个单位正面表示置入侵蚀前区。之后选择你侵蚀前区一张「芙蕾雅」以外的「冒险家公会」单位卡，将其放置进入单位区。',
   condition: (_gameState, playerState, instance) => {
     if (!playerState.isTurn || instance.cardlocation !== 'UNIT') return false;
-
-    const erosionCount = getErosionCount(playerState);
-    if (erosionCount < 3 || erosionCount > 7) return false;
-
     return true;
   },
   execute: async (card, gameState, playerState) => {

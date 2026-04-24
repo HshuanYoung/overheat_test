@@ -107,6 +107,7 @@ const effect_105110108_activate: CardEffect = {
 const effect_105110108_continuous: CardEffect = {
   id: '105110108_continuous',
   type: 'CONTINUOUS',
+  erosionTotalLimit: [3, 5],
   description: '侵蚀区数量3-5：这个单位+1/+500。',
   applyContinuous: (gameState, instance) => {
     const ownerUid = AtomicEffectExecutor.findCardOwnerKey(gameState, instance.gamecardId);

@@ -60,16 +60,13 @@ const trigger_104010174_damage: CardEffect = {
   type: 'TRIGGER',
   triggerEvent: 'COMBAT_DAMAGE_CAUSED',
   triggerLocation: ['UNIT'],
+  erosionTotalLimit: [1, 4],
   description: '【诱发】【名称一回合一次】当我方侵蚀区为1-4张且此卡对对手造成战斗伤害时，你可以选择发动：选择我方场上一张单位和对方场上一张横置单位返回持有者手牌。',
   isMandatory: false,
   limitCount: 1,
   limitNameType: true,
   isGlobal: true,
   condition: (gameState: GameState, playerState: PlayerState, instance: Card, event?: GameEvent) => {
-    const erosionCount =
-      playerState.erosionFront.filter(c => c !== null).length +
-      playerState.erosionBack.filter(c => c !== null).length;
-    if (erosionCount < 1 || erosionCount > 4) return false;
     if (event?.type !== 'COMBAT_DAMAGE_CAUSED' || event.playerUid === playerState.uid) return false;
 
     const isAttacking = gameState.battleState?.attackers.includes(instance.gamecardId);

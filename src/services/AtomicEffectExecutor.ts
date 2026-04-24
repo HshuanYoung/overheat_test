@@ -445,7 +445,14 @@ export class AtomicEffectExecutor {
             effect.movementReplacementDestination &&
             effect.content !== 'REPLACE_DAMAGE_TO_EROSION'
           ) {
-            if (!effect.condition || effect.condition(gameState, player, card)) {
+            const checkResult = GameService.checkEffectLimitsAndReqs(
+              gameState,
+              player.uid,
+              card,
+              effect,
+              card.cardlocation as TriggerLocation
+            );
+            if (checkResult.valid) {
               gameState.logs.push(`[替换效果] ${card.fullName} 的移动目的地从 EROSION_FRONT 被替换为 ${effect.movementReplacementDestination}`);
               loopDestination = effect.movementReplacementDestination;
               break;
@@ -468,7 +475,14 @@ export class AtomicEffectExecutor {
               effect.content === 'REPLACE_DAMAGE_TO_EROSION' &&
               effect.movementReplacementDestination
             ) {
-              if (!effect.condition || effect.condition(gameState, owner, sourceCard)) {
+              const checkResult = GameService.checkEffectLimitsAndReqs(
+                gameState,
+                owner.uid,
+                sourceCard,
+                effect,
+                sourceCard.cardlocation as TriggerLocation
+              );
+              if (checkResult.valid) {
                 gameState.logs.push(`[替换效果] [${sourceCard.fullName}] 将伤害导致的侵蚀改为进入 ${effect.movementReplacementDestination}`);
                 loopDestination = effect.movementReplacementDestination;
                 break;
@@ -938,7 +952,14 @@ export class AtomicEffectExecutor {
             effect.content !== 'REPLACE_DAMAGE_TO_EROSION'
           ) {
             const player = gameState.players[toPlayerUid];
-            if (!effect.condition || effect.condition(gameState, player, card)) {
+            const checkResult = GameService.checkEffectLimitsAndReqs(
+              gameState,
+              player.uid,
+              card,
+              effect,
+              card.cardlocation as TriggerLocation
+            );
+            if (checkResult.valid) {
               gameState.logs.push(`[替换效果] ${card.fullName} 的移动目的地从 ${toZone} 被替换为 ${effect.movementReplacementDestination}`);
               toZone = effect.movementReplacementDestination;
               break;

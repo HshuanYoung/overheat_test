@@ -1,12 +1,6 @@
 import { Card, GameState, PlayerState, CardEffect, GameEvent } from '../types/game';
 import { AtomicEffectExecutor } from '../services/AtomicEffectExecutor';
 
-const getErosionCount = (player: PlayerState) => {
-  const front = player.erosionFront.filter(c => c !== null).length;
-  const back = player.erosionBack.filter(c => c !== null).length;
-  return front + back;
-};
-
 const getSwapTargets = (playerState: PlayerState, sourceCard: Card) => {
   const fieldSpecialNames = new Set(
     playerState.unitZone.filter((u): u is Card => !!u && !!u.specialName).map(u => u.specialName)
@@ -75,10 +69,7 @@ const activate_104030453_swap: CardEffect = {
   triggerLocation: ['UNIT'],
   erosionTotalLimit: [3, 7],
   condition: (_gameState: GameState, playerState: PlayerState, instance: Card) => {
-    if (!playerState.isTurn || instance.cardlocation !== 'UNIT') return false;
-    const erosionCount = getErosionCount(playerState);
-    if (erosionCount < 3 || erosionCount > 7) return false;
-    return true;
+    return playerState.isTurn && instance.cardlocation === 'UNIT';
   },
   execute: async (instance: Card, gameState: GameState, playerState: PlayerState) => {
     gameState.pendingQuery = {

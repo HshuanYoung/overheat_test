@@ -1,5 +1,6 @@
 import { Card, CardEffect, GameState, PlayerState, GameEvent } from '../types/game';
 import { AtomicEffectExecutor } from '../services/AtomicEffectExecutor';
+import { GameService } from '../services/gameService';
 
 const getSongyueEffect = (card: Card): CardEffect | undefined => {
   return card.effects?.find(effect =>
@@ -78,12 +79,18 @@ const card: Card = {
           }
 
           const activateEffect = getSongyueEffect(c);
-          if (activateEffect && activateEffect.condition) {
-            try {
-              if (!activateEffect.condition(gameState, playerState, c)) return false;
-            } catch (e) {
-              return false;
-            }
+          if (activateEffect) {
+            const validationLocation = activateEffect.triggerLocation?.includes('PLAY')
+              ? 'PLAY'
+              : activateEffect.triggerLocation?.[0] || 'PLAY';
+            const result = GameService.checkEffectLimitsAndReqs(
+              gameState,
+              playerState.uid,
+              c,
+              activateEffect,
+              validationLocation
+            );
+            if (!result.valid) return false;
           }
 
           return true;
@@ -187,13 +194,9 @@ const card: Card = {
       triggerLocation: ['UNIT'],
       limitCount: 1,
       limitGlobal: true,
-      erosionTotalLimit: [10, 20],
+      erosionTotalLimit: [10, 10],
+      erosionFrontLimit: [2, 10],
       description: '【启】【女神化】[一局一次] 侵蚀区背面<9且正面>=2。选择侵蚀区中两张正面向上的卡牌，将其翻至背面。将战场上所有单位返回持有者手牌。',
-      condition: (gameState, playerState) => {
-        const frontCount = playerState.erosionFront.filter(c => c !== null).length;
-        const backCount = playerState.erosionBack.filter(c => c !== null).length;
-        return !!playerState.isGoddessMode && backCount < 9 && frontCount >= 2;
-      },
       cost: async (gameState, playerState, card) => {
         const frontCards = playerState.erosionFront.filter(c => c !== null) as Card[];
         gameState.pendingQuery = {

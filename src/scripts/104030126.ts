@@ -64,12 +64,13 @@ const effect_104030126_kill_trigger: CardEffect = {
 const effect_104030126_activate: CardEffect = {
   id: 'cocoa_summon_cocola',
   type: 'ACTIVATE',
-  erosionTotalLimit: [10, 20],
+  erosionTotalLimit: [10, 10],
+  erosionFrontLimit: [1, 10],
   description: '【启】在女神化状态下，每回合此卡名限一次，选择侵蚀区正面的一张卡转为背面：从手牌、卡组或墓地中选择一张“可可拉”单位卡放置在战场上。',
   limitCount: 1,
   limitNameType: true,
   condition: (gameState: GameState, playerState: PlayerState) => {
-    return !!playerState.isGoddessMode && !hasExistingCocolaOnField(playerState);
+    return !hasExistingCocolaOnField(playerState);
   },
   execute: async (instance: Card, gameState: GameState, playerState: PlayerState) => {
     const frontCards = playerState.erosionFront.filter(c => c && c.displayState === 'FRONT_UPRIGHT') as Card[];

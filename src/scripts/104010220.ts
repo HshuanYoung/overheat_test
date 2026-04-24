@@ -47,16 +47,12 @@ const effect_104010220_hand: CardEffect = {
   id: 'seii_to_erosion',
   type: 'ACTIVATE',
   triggerLocation: ['HAND'],
+  erosionTotalLimit: [1, 4],
   description: '【启】侵蚀区域在1-4张时，每回合一次。在你的主要阶段，此卡在手牌中：将此卡放置在侵蚀区域正面，并从卡组抽一张牌。',
   limitCount: 1,
   limitNameType: true,
   condition: (gameState: GameState, playerState: PlayerState) => {
     if (!playerState.isTurn || gameState.phase !== 'MAIN') return false;
-
-    // Check total erosion count 1-4
-    const totalErosion = playerState.erosionFront.filter(c => c !== null).length +
-      playerState.erosionBack.filter(c => c !== null).length;
-    if (totalErosion < 1 || totalErosion > 4) return false;
 
     // Check erosion front space (usually 10 total limit rule applies to checkEffectLimitsAndReqs, here we check array space)
     const emptyIdx = playerState.erosionFront.findIndex(s => s === null);

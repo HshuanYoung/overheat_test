@@ -1,5 +1,13 @@
 import { Card, GameState, PlayerState, CardEffect, TriggerLocation, GameEvent } from '../types/game';
 import { AtomicEffectExecutor } from '../services/AtomicEffectExecutor';
+import { GameService } from '../services/gameService';
+
+const effect_104000178_skip_draw_requirement: CardEffect = {
+  id: 'vaer_entry_skip_draw_requirement',
+  type: 'TRIGGER',
+  description: '侵蚀区域背面卡牌在2张或以上时，选择一名玩家将其下一次抽卡阶段跳过。',
+  erosionBackLimit: [2, 10]
+};
 
 const effect_104000178_trigger: CardEffect = {
   id: 'vaer_entry_trigger',
@@ -15,7 +23,6 @@ const effect_104000178_trigger: CardEffect = {
   },
   execute: async (instance: Card, gameState: GameState, playerState: PlayerState) => {
     // 1. Select player to draw 2
-    const players = Object.values(gameState.players);
     gameState.pendingQuery = {
       id: Math.random().toString(36).substring(7),
       type: 'SELECT_CARD', // Reusing select player logic via PLAYER_SELF/OPPONENT IDs
@@ -46,8 +53,14 @@ const effect_104000178_trigger: CardEffect = {
       gameState.logs.push(`[${instance.fullName}] 的效果使玩家抽了两张卡。`);
 
       // 2. Conditional: Skip Draw Phase
-      const backCount = playerState.erosionBack.filter(c => c !== null).length;
-      if (backCount >= 2) {
+      const skipDrawCheck = GameService.checkEffectLimitsAndReqs(
+        gameState,
+        playerState.uid,
+        instance,
+        effect_104000178_skip_draw_requirement,
+        'UNIT'
+      );
+      if (skipDrawCheck.valid) {
         // Query again for skip target
         gameState.pendingQuery = {
           id: Math.random().toString(36).substring(7),

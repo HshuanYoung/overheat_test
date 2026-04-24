@@ -30,6 +30,7 @@ const effect_105110114_goddess_mark: CardEffect = {
   triggerLocation: ['UNIT'],
   triggerEvent: 'GODDESS_TRANSFORMATION',
   isMandatory: true,
+  erosionTotalLimit: [10, 10],
   description: '如果在本回合中你进入女神化状态，将这个单位标记为在回合结束时送入墓地。',
   condition: (_gameState, playerState, instance, event?: GameEvent) =>
     instance.cardlocation === 'UNIT' &&
@@ -63,6 +64,7 @@ const effect_105110114_end: CardEffect = {
 const effect_105110114_ten_plus: CardEffect = {
   id: '105110114_ten_plus',
   type: 'CONTINUOUS',
+  erosionTotalLimit: [10, 10],
   description: '10+: This unit gets +2 damage and +1500 power.',
   applyContinuous: (gameState, instance) => {
     const ownerUid = AtomicEffectExecutor.findCardOwnerKey(gameState, instance.gamecardId);

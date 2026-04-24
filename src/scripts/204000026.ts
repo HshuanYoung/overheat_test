@@ -4,12 +4,10 @@ const effect_204000026_counter: CardEffect = {
   id: 'gensou_swallow_counter',
   type: 'ACTIVATE',
   triggerLocation: ['HAND', 'PLAY'],
+  erosionBackLimit: [2, 10],
   description: '【启】手牌中：若我侵蚀区域背面卡牌在2张或以上，对手使用故事卡时：使该故事卡发动无效并送入墓地。',
   condition: (gameState: GameState, playerState: PlayerState) => {
     if (gameState.phase !== 'COUNTERING') return false;
-
-    const backCount = playerState.erosionBack.filter(c => c !== null).length;
-    if (backCount < 2) return false;
 
     const opponentId = gameState.playerIds.find(id => id !== playerState.uid)!;
     return gameState.counterStack.some(item =>

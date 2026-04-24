@@ -108,15 +108,12 @@ const goddessTriggerEffect: CardEffect = {
   id: 'goddess_trigger',
   type: 'TRIGGER',
   triggerEvent: 'GODDESS_TRANSFORMATION' as any,
+  erosionTotalLimit: [5, 7],
   description: '【诱发】：当侵蚀区为5-7时，若装备单位的攻击导致对手进入神化状态。若对手侵蚀区正面卡为1，则将其翻为背面；若为2张以上，则选择其中2张翻为背面。',
   triggerLocation: ['ITEM'],
   isMandatory: true,
   condition: (gameState, playerState, card, event) => {
     if (!event || event.type !== 'GODDESS_TRANSFORMATION') return false;
-
-    // 1. Check erosion count (5-7)
-    const count = getErosionCount(playerState);
-    if (count < 5 || count > 7) return false;
 
     // 2. Check if the transformed player is the opponent
     const opponentUid = Object.keys(gameState.players).find(uid => uid !== playerState.uid);

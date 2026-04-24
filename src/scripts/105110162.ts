@@ -9,6 +9,7 @@ const effect_105110162_goddess_trigger: CardEffect = {
   triggerEvent: 'GODDESS_TRANSFORMATION',
   limitCount: 1,
   limitNameType: true,
+  erosionTotalLimit: [10, 10],
   description: 'When you enter goddess mode, choose a non-god item with AC 3 or less from your deck and put it onto the battlefield.',
   condition: (_gameState, playerState, instance, event?: GameEvent) =>
     instance.cardlocation === 'UNIT' &&

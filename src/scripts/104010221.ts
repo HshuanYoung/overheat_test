@@ -63,11 +63,8 @@ const activation_104010221_2: CardEffect = {
   type: 'ACTIVATE',
   description: '【启动】[手牌] 侵蚀区存在1-4张卡牌时，我方场上有2个蓝色单位，支付0费用，弃掉1张名称中包含「剑仙」的卡牌：将此卡从手牌纵向放置在战场上。',
   triggerLocation: ['HAND'],
+  erosionTotalLimit: [1, 4],
   condition: (gameState: GameState, playerState: PlayerState, instance: Card) => {
-    // 1-4 cards in erosion zone
-    const erosionCount = [...playerState.erosionFront, ...playerState.erosionBack].filter(c => c !== null).length;
-    if (erosionCount < 1 || erosionCount > 4) return false;
-
     // EXACTLY 2 blue units on field
     const blueUnitsCount = playerState.unitZone.filter(u => u && AtomicEffectExecutor.matchesColor(u, 'BLUE') && u.type === 'UNIT').length;
     if (blueUnitsCount < 2) return false;
