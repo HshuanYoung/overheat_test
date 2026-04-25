@@ -92,7 +92,8 @@ const effect_105120167_last_resort: CardEffect = {
   execute: async (instance, gameState, playerState) => {
     const graveCards = [...playerState.grave];
     moveCardsToBottom(gameState, playerState.uid, graveCards, instance);
-    (playerState as any).loseAtEndOfTurn = gameState.turnCount;
+    (playerState as any).loseAtEndOfTurn = playerState.isTurn ? gameState.turnCount : gameState.turnCount + 1;
+    (playerState as any).loseAtEndOfTurnPlayerUid = playerState.uid;
     (playerState as any).loseAtEndOfTurnSourceName = instance.fullName;
     EventEngine.recalculateContinuousEffects(gameState);
   }

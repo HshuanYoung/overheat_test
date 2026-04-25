@@ -136,6 +136,7 @@ const trigger_104010174_damage: CardEffect = {
     if (context.step === 2) {
       const myTargetId = context.myTargetId;
       const oppTargetId = selections[0];
+      const oppOwnerUid = AtomicEffectExecutor.findCardOwnerKey(gameState, oppTargetId);
 
       await AtomicEffectExecutor.execute(gameState, playerState.uid, {
         type: 'MOVE_FROM_FIELD',
@@ -143,7 +144,12 @@ const trigger_104010174_damage: CardEffect = {
         destinationZone: 'HAND'
       }, instance);
 
-      await AtomicEffectExecutor.execute(gameState, playerState.uid, {
+      if (!oppOwnerUid) {
+        gameState.logs.push(`[${instance.fullName}] 结算时未找到对手目标的持有者，对手单位未返回手牌。`);
+        return;
+      }
+
+      await AtomicEffectExecutor.execute(gameState, oppOwnerUid, {
         type: 'MOVE_FROM_FIELD',
         targetFilter: { gamecardId: oppTargetId },
         destinationZone: 'HAND'

@@ -120,6 +120,12 @@ export default function App() {
     return () => window.clearInterval(timer);
   }, [sendCodeCooldown]);
 
+  useEffect(() => {
+    const handleOpenRulebook = () => setIsRulebookOpen(true);
+    window.addEventListener('open-rulebook', handleOpenRulebook);
+    return () => window.removeEventListener('open-rulebook', handleOpenRulebook);
+  }, []);
+
   const handleAuthSuccess = (token: string, authUser: any) => {
     setAuthToken(token);
     setAuthUser(authUser);

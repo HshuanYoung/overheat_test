@@ -196,6 +196,7 @@ const PlayerHalf: React.FC<{
   setViewingZone?: (zone: { title: string, cards: Card[], type: string, erosionBackIds?: string[], isOpponentZone?: boolean } | null) => void;
 }> = ({ player, isOpponent, onCardClick, onPreviewCard, onPlayCard, paymentSelection, pendingPlayCard, selectedAttackers, selectedDefender, game, allianceInitiator, cardBackUrl, viewingZone, setViewingZone }) => {
   if (!player) return null;
+  const unitZoneOffsetClass = "md:translate-x-20 lg:translate-x-28";
   const getMobileErosionCount = (playerState: PlayerState): number | string => {
     const frontCount = playerState.erosionFront?.filter(Boolean).length || 0;
     const backCount = playerState.erosionBack?.filter(Boolean).length || 0;
@@ -354,7 +355,7 @@ const PlayerHalf: React.FC<{
             </div>
 
             {/* Opponent Unit Zone */}
-            <div className="grid grid-cols-3 md:grid-cols-6 gap-1 md:gap-2 items-center relative z-10 px-1 md:px-0 md:translate-y-[80px]">
+            <div className={cn("grid grid-cols-3 md:grid-cols-6 gap-1 md:gap-2 items-center relative z-10 px-1 md:px-0 md:translate-y-[80px]", unitZoneOffsetClass)}>
               {Array.from({ length: 6 }).map((_, i) => {
                 const unit = player.unitZone?.[i];
                 return (
@@ -375,7 +376,7 @@ const PlayerHalf: React.FC<{
         ) : (
           <>
             {/* Player Unit Zone */}
-            <div className="grid grid-cols-3 md:grid-cols-6 gap-1 md:gap-2 items-center relative z-10 px-1 md:px-0">
+            <div className={cn("grid grid-cols-3 md:grid-cols-6 gap-1 md:gap-2 items-center relative z-10 px-1 md:px-0", unitZoneOffsetClass)}>
               {Array.from({ length: 6 }).map((_, i) => {
                 const unit = player.unitZone?.[i];
                 return (
@@ -552,23 +553,6 @@ export const PlayField: React.FC<PlayFieldProps> = ({ player, opponent, game, on
       {/* Background Overlay */}
       <div className="absolute inset-0 bg-gradient-to-b from-red-500/5 via-transparent to-blue-500/5 pointer-events-none" />
 
-      {/* Personalized Timer Display (Desktop Only) */}
-      <div className="hidden md:flex absolute top-4 right-4 z-50 items-center gap-3">
-        <div className={cn(
-          "bg-black/60 backdrop-blur-md border px-4 py-2 rounded-xl flex items-center gap-3 shadow-2xl transition-all",
-          (timer || 0) < 30 ? "border-red-500/50 animate-pulse" : "border-[#f27d26]/30"
-        )}>
-          <div className="flex flex-col">
-            <span className="text-[8px] text-zinc-500 uppercase font-black leading-none mb-1">我的剩余时间</span>
-            <span className={cn(
-              "text-xl font-black tabular-nums leading-none",
-              (timer || 0) < 30 ? "text-red-500" : "text-white"
-            )}>
-              {Math.floor((timer || 0) / 60)}:{String((timer || 0) % 60).padStart(2, '0')}
-            </span>
-          </div>
-        </div>
-      </div>
 
       {/* Opponent Half */}
       <div className="flex-1 min-h-0">

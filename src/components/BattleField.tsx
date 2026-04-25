@@ -12,7 +12,7 @@ import { CardComponent } from './Card';
 import { PlayField } from './PlayField';
 import { Rulebook } from './Rulebook';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Flag, Trophy, Frown, Home, Sword, Shield, Zap, LogOut, BookOpen, Send, Loader2, Trash2, X, Play, Search, ChevronRight, ShieldCheck, Layers, Sparkles, Flame } from 'lucide-react';
+import { Flag, Trophy, Frown, Home, Sword, Shield, Zap, LogOut, BookOpen, Send, Loader2, Trash2, X, Play, Search, ChevronRight, ShieldCheck, Layers, Sparkles, Flame, AlertTriangle } from 'lucide-react';
 import { cn, getCardColorLabel, getCardImageUrl, getCardIdentity, getCardTypeLabel, getLocationLabel, getPhaseLabel } from '../lib/utils';
 import { KeywordBadges } from './KeywordBadges';
 
@@ -36,6 +36,14 @@ const getActionTypeLabel = (type?: string | null) => {
   if (!type) return '处理中';
   return ACTION_TYPE_LABELS[type] || type.replace(/_/g, ' ');
 };
+
+type CombatStrategy = 'automatic' | 'full-on' | 'full-off';
+
+const COMBAT_STRATEGY_OPTIONS: { value: CombatStrategy; label: string }[] = [
+  { value: 'automatic', label: 'Automatic' },
+  { value: 'full-on', label: 'Full On' },
+  { value: 'full-off', label: 'Full Off' }
+];
 
 export const BattleField: React.FC = () => {
   const { gameId } = useParams<{ gameId: string }>();
@@ -65,8 +73,13 @@ export const BattleField: React.FC = () => {
   const [favoriteBackId, setFavoriteBackId] = useState<string>('default');
   const [showFullLogs, setShowFullLogs] = useState(false);
   const [viewingZone, setViewingZone] = useState<{ title: string, cards: Card[], type: string, erosionBackIds?: string[], isOpponentZone?: boolean } | null>(null);
-
+  const [isHomeMenuOpen, setIsHomeMenuOpen] = useState(false);
+  const [showSurrenderConfirm, setShowSurrenderConfirm] = useState(false);
   const [timer, setTimer] = useState<number>(30);
+  const [combatStrategy, setCombatStrategy] = useState<CombatStrategy>(() => {
+    const saved = localStorage.getItem('combatStrategy') as CombatStrategy | null;
+    return COMBAT_STRATEGY_OPTIONS.some(option => option.value === saved) ? saved! : 'automatic';
+  });
   const [cardMenu, setCardMenu] = useState<{
     card: Card;
     zone: string;
@@ -130,6 +143,20 @@ export const BattleField: React.FC = () => {
       return () => clearTimeout(timer);
     }
   }, [lastError]);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setIsHomeMenuOpen(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem('combatStrategy', combatStrategy);
+  }, [combatStrategy]);
 
   // Fetch User Customization
   useEffect(() => {
@@ -1244,157 +1271,7 @@ export const BattleField: React.FC = () => {
 
       {/* Main Arena */}
       <div className="flex-1 relative flex flex-col overflow-hidden bg-[#050505]">
-        {/* Top Bar: Phase & Turn */}
-        <div className={cn(
-          "h-auto md:h-16 flex flex-col md:flex-row items-center justify-between px-2 md:px-6 py-1 md:py-0 bg-black/40 border-b border-white/5 backdrop-blur-md relative z-[1100] gap-1 md:gap-2 transition-all duration-300",
-          (previewCard || viewingZone || isRulebookOpen) && "opacity-0 pointer-events-none",
-          isRulebookOpen && "hidden"
-        )}>
-          <div className="flex items-center gap-2 md:gap-8 w-full md:w-auto justify-between md:justify-start">
-            {/* Round Display */}
-            <div className="flex flex-col items-center md:items-start min-w-[40px]">
-              <span className="text-[7px] md:text-[10px] text-white/40 font-black tracking-[0.1em] md:tracking-[0.2em] hidden md:block">回合</span>
-              <span className="text-xl md:text-2xl font-black italic text-[#f27d26] leading-none">
-                {game.turnCount}
-              </span>
-            </div>
 
-            <div className="h-8 w-px bg-white/10" />
-
-            {/* Turn Indicator Icon */}
-            <div className="flex items-center gap-2 md:hidden">
-              <div className={cn(
-                "w-10 h-10 rounded-xl flex items-center justify-center border-2 transition-all",
-                game.playerIds[game.currentTurnPlayer] === myUid
-                  ? "bg-red-500/20 border-red-500 shadow-[0_0_15px_rgba(239,68,68,0.5)] scale-110"
-                  : "bg-blue-500/20 border-blue-500 shadow-[0_0_15px_rgba(59,130,246,0.3)] opacity-60"
-              )}>
-                {game.playerIds[game.currentTurnPlayer] === myUid
-                  ? <Sword className="w-6 h-6 text-red-500" />
-                  : <Shield className="w-6 h-6 text-blue-500" />
-                }
-              </div>
-            </div>
-
-            <div className="h-8 w-px bg-white/10 md:block hidden" />
-
-            {/* Phase & Timer Column */}
-            <div className="flex flex-1 md:flex-none flex-col relative group">
-              <div
-                className={cn(
-                  "flex flex-col cursor-pointer hover:bg-white/5 px-2 md:px-4 py-0.5 md:py-1 rounded transition-all border border-transparent",
-                  showPhaseMenu && "bg-white/10 border-white/20 shadow-[0_0_15px_rgba(255,255,255,0.1)]"
-                )}
-                onClick={() => {
-                  const isMyTurn = game.playerIds[game.currentTurnPlayer] === myUid;
-                  if (isMyTurn && ['MAIN', 'BATTLE_DECLARATION', 'BATTLE_FREE'].includes(game.phase)) {
-                    setShowPhaseMenu(!showPhaseMenu);
-                  } else if (!isMyTurn && game.phase === 'DEFENSE_DECLARATION') {
-                    setShowPhaseMenu(!showPhaseMenu);
-                  }
-                }}
-              >
-                <div className="flex items-center justify-between md:justify-start gap-2 md:gap-3">
-                  <div className="flex flex-col">
-                    <span className="text-[8px] md:text-[10px] text-white/40 uppercase font-black tracking-widest flex items-center gap-1 md:gap-2">
-                      <span className="hidden md:inline">阶段</span>
-                      {['MULLIGAN', 'EROSION', 'COUNTERING', 'DEFENSE_DECLARATION', 'BATTLE_FREE'].includes(game.phase) && (
-                        <span className="inline-block w-1.5 h-1.5 md:w-2 md:h-2 rounded-full animate-pulse bg-orange-500" />
-                      )}
-                    </span>
-                    <span className="text-sm md:text-xl font-black italic text-white uppercase tracking-wider flex items-center gap-2 md:gap-3 truncate max-w-[120px] md:max-w-none">
-                      {game.phase === 'BATTLE_DECLARATION' && <Sword className="w-4 h-4 md:w-6 md:h-6 text-red-500" />}
-                      {game.phase === 'COUNTERING'
-                        ? `${getPhaseLabel(game.previousPhase)}|对抗`
-                        : getPhaseLabel(game.phase)}
-                    </span>
-                  </div>
-
-                  {/* Visual Timer Stacked Inside on Mobile */}
-                  <div className="md:hidden flex flex-col items-end">
-                    <span className="text-[7px] text-white/40 font-black">时间</span>
-                    <span className={cn(
-                      "text-sm font-black tabular-nums",
-                      timer < 30 ? "text-red-500 animate-pulse" : "text-[#f27d26]"
-                    )}>
-                      {timer}秒
-                    </span>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* GAMELOG Button */}
-            <motion.button
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-              onClick={() => setShowFullLogs(true)}
-              className="px-3 md:px-5 py-1.5 md:py-2 bg-zinc-800/80 border border-white/10 rounded-full flex items-center gap-2 group hover:bg-[#f27d26]/20 transition-all ml-auto md:ml-0"
-            >
-              <Send className="w-2.5 h-2.5 md:w-3.5 md:h-3.5 text-[#f27d26]" />
-              <span className="text-[8px] md:text-[11px] font-black text-white/90 uppercase tracking-[0.2em] italic group-hover:text-white">
-                战斗记录
-              </span>
-            </motion.button>
-
-            {/* Compact Stats Indicator (Desktop) */}
-            <div className="hidden md:flex items-center gap-4">
-              {/* My Stats */}
-              <div className="flex items-center gap-2 bg-blue-600/10 border border-blue-500/20 px-3 py-1 rounded-xl">
-                <div className="flex flex-col items-center">
-                  <span className="text-[7px] text-zinc-500 uppercase font-black">牌库</span>
-                  <span className="text-sm font-black text-blue-400">{me.deck.length}</span>
-                </div>
-                <div className="w-px h-6 bg-white/5" />
-                <div className="flex flex-col items-center">
-                  <span className="text-[7px] text-zinc-500 uppercase font-black">墓地</span>
-                  <span className="text-sm font-black text-zinc-300">{me.grave.length}</span>
-                </div>
-                <div className="w-px h-6 bg-white/5" />
-                <div className="flex flex-col items-center">
-                  <span className="text-[7px] text-zinc-500 uppercase font-black">放逐</span>
-                  <span className="text-sm font-black text-purple-400">{me.exile.length}</span>
-                </div>
-              </div>
-
-              <div className="w-px h-8 bg-white/10" />
-
-              {/* Opponent Stats */}
-              <div className="flex items-center gap-2 bg-red-600/10 border border-red-500/20 px-3 py-1 rounded-xl">
-                <div className="flex flex-col items-center">
-                  <span className="text-[7px] text-zinc-500 uppercase font-black">牌库</span>
-                  <span className="text-sm font-black text-red-500">{opponent?.deck.length || 0}</span>
-                </div>
-                <div className="w-px h-6 bg-white/5" />
-                <div className="flex flex-col items-center">
-                  <span className="text-[7px] text-zinc-500 uppercase font-black">墓地</span>
-                  <span className="text-sm font-black text-zinc-300">{opponent?.grave.length || 0}</span>
-                </div>
-                <div className="w-px h-6 bg-white/5" />
-                <div className="flex flex-col items-center">
-                  <span className="text-[7px] text-zinc-500 uppercase font-black">放逐</span>
-                  <span className="text-sm font-black text-purple-400">{opponent?.exile.length || 0}</span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Desktop Turn Indicator */}
-          <div className={cn(
-            "hidden md:flex items-center gap-2 md:gap-3 px-3 md:px-6 py-1.5 md:py-2 rounded-xl text-[10px] md:text-sm font-black uppercase italic tracking-[0.1em] md:tracking-[0.2em] shadow-2xl border border-white/10",
-            game.playerIds[game.currentTurnPlayer] === myUid
-              ? "bg-[#f27d26] text-black animate-pulse"
-              : "bg-zinc-800 text-white/50"
-          )}>
-            <div className="w-4 h-4 md:w-6 md:h-6 rounded-full overflow-hidden border border-white/20">
-              {game.playerIds[game.currentTurnPlayer] === myUid
-                ? <img src={authUser?.photoURL || 'assets/icons/myself.JPG'} className="w-full h-full object-cover" />
-                : <img src="assets/icons/opponent.JPG" className="w-full h-full object-cover" />
-              }
-            </div>
-            {game.playerIds[game.currentTurnPlayer] === myUid ? "你的回合" : "对手回合"}
-          </div>
-        </div>
 
 
         <div className="flex-1 flex flex-col min-h-0 relative">
@@ -1422,6 +1299,226 @@ export const BattleField: React.FC = () => {
                   setViewingZone={setViewingZone}
                 />
               )}
+
+              {/* Central Match Information Overlay */}
+              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 pointer-events-none flex flex-col items-center justify-center gap-2">
+                <div className="pointer-events-auto bg-black/60 backdrop-blur-md border border-[#f27d26]/30 px-4 py-3 rounded-2xl flex flex-wrap items-center justify-center gap-3 md:gap-5 shadow-2xl transition-all">
+                  
+                  {/* Home Menu Toggle */}
+                  <button
+                    onClick={() => setIsHomeMenuOpen(!isHomeMenuOpen)}
+                    aria-label={isHomeMenuOpen ? '关闭主页菜单' : '打开主页菜单'}
+                    aria-expanded={isHomeMenuOpen}
+                    className="p-2 bg-zinc-900/80 rounded-xl border border-white/10 text-zinc-400 hover:text-white hover:border-white/30 hover:bg-zinc-800/90 transition-all"
+                  >
+                    <Home className="w-5 h-5" />
+                  </button>
+
+                  <div className="hidden md:block w-px h-8 bg-white/10" />
+
+                  {/* Round */}
+                  <div className="flex flex-col items-center">
+                    <span className="text-[10px] text-zinc-500 uppercase font-black leading-none mb-1">回合</span>
+                    <span className="text-xl font-black italic text-[#f27d26] leading-none">
+                      {game.turnCount}
+                    </span>
+                  </div>
+
+                  <div className="hidden md:block w-px h-8 bg-white/10" />
+
+                  {/* Turn Indicator */}
+                  <div className="flex flex-col items-center gap-1">
+                    <div className={cn(
+                      "w-6 h-6 rounded-full flex items-center justify-center border transition-all",
+                      game.playerIds[game.currentTurnPlayer] === myUid
+                        ? "bg-red-500/20 border-red-500 shadow-[0_0_10px_rgba(239,68,68,0.5)]"
+                        : "bg-blue-500/20 border-blue-500 shadow-[0_0_10px_rgba(59,130,246,0.3)] opacity-60"
+                    )}>
+                      {game.playerIds[game.currentTurnPlayer] === myUid
+                        ? <Sword className="w-4 h-4 text-red-500" />
+                        : <Shield className="w-4 h-4 text-blue-500" />
+                      }
+                    </div>
+                  </div>
+
+                  <div className="hidden md:block w-px h-8 bg-white/10" />
+
+                  {/* Phase Button */}
+                  <button
+                    className={cn(
+                      "flex flex-col items-center px-4 py-1 rounded-xl transition-all border border-transparent",
+                      showPhaseMenu ? "bg-white/10 border-white/20" : "hover:bg-white/5"
+                    )}
+                    onClick={() => {
+                      const isMyTurn = game.playerIds[game.currentTurnPlayer] === myUid;
+                      if (isMyTurn && ['MAIN', 'BATTLE_DECLARATION', 'BATTLE_FREE'].includes(game.phase)) {
+                        setShowPhaseMenu(!showPhaseMenu);
+                      } else if (!isMyTurn && game.phase === 'DEFENSE_DECLARATION') {
+                        setShowPhaseMenu(!showPhaseMenu);
+                      }
+                    }}
+                  >
+                    <span className="text-[10px] text-zinc-500 uppercase font-black flex items-center gap-1">
+                      当前阶段
+                      {['MULLIGAN', 'EROSION', 'COUNTERING', 'DEFENSE_DECLARATION', 'BATTLE_FREE'].includes(game.phase) && (
+                        <span className="w-1.5 h-1.5 rounded-full animate-pulse bg-orange-500" />
+                      )}
+                    </span>
+                    <span className="text-sm font-black italic text-white uppercase truncate">
+                      {game.phase === 'BATTLE_DECLARATION' && <Sword className="w-3 h-3 text-red-500 inline mr-1" />}
+                      {game.phase === 'COUNTERING'
+                        ? `${getPhaseLabel(game.previousPhase)}|对抗`
+                        : getPhaseLabel(game.phase)}
+                    </span>
+                  </button>
+
+                  <div className="hidden md:block w-px h-8 bg-white/10" />
+
+                  {/* Combat Strategy */}
+                  <div className="flex flex-col items-center gap-1">
+                    <span className="text-[10px] text-zinc-500 uppercase font-black leading-none">战斗策略</span>
+                    <div className="flex rounded-xl border border-white/10 bg-black/35 p-0.5">
+                      {COMBAT_STRATEGY_OPTIONS.map(option => (
+                        <button
+                          key={option.value}
+                          type="button"
+                          onClick={() => setCombatStrategy(option.value)}
+                          className={cn(
+                            "px-2 py-1 text-[10px] font-black uppercase tracking-tight rounded-lg transition-all",
+                            combatStrategy === option.value
+                              ? "bg-[#f27d26] text-black shadow-[0_0_14px_rgba(242,125,38,0.35)]"
+                              : "text-zinc-400 hover:bg-white/10 hover:text-white"
+                          )}
+                        >
+                          {option.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="hidden md:block w-px h-8 bg-white/10" />
+
+                  {/* Remaining Time */}
+                  <div className="flex flex-col items-center">
+                    <span className="text-[10px] text-zinc-500 uppercase font-black leading-none mb-1">剩余时间</span>
+                    <span className={cn(
+                      "text-xl font-black tabular-nums leading-none",
+                      (timer || 0) < 30 ? "text-red-500 animate-pulse" : "text-white"
+                    )}>
+                      {Math.floor((timer || 0) / 60)}:{String((timer || 0) % 60).padStart(2, '0')}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Home Menu Popup */}
+                <AnimatePresence>
+                  {isHomeMenuOpen && (
+                    <motion.div
+                      initial={{ opacity: 0, y: -10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -10 }}
+                      className="pointer-events-auto absolute top-full mt-4 bg-zinc-900/95 backdrop-blur-xl border border-white/10 rounded-2xl shadow-2xl p-2 flex flex-col gap-1 w-48"
+                    >
+                      <button
+                        onClick={() => {
+                          navigate('/');
+                          setIsHomeMenuOpen(false);
+                        }}
+                        className="flex items-center gap-3 text-zinc-200 px-4 py-3 hover:bg-white/10 hover:text-white hover:translate-x-1 rounded-xl transition-all font-bold text-sm tracking-widest text-left"
+                      >
+                        <Home className="w-4 h-4 text-[#f27d26]" />
+                        返回主页
+                      </button>
+                      <button
+                        onClick={() => setIsHomeMenuOpen(false)}
+                        className="flex items-center gap-3 text-zinc-200 px-4 py-3 hover:bg-white/10 hover:text-white hover:translate-x-1 rounded-xl transition-all font-bold text-sm tracking-widest text-left"
+                      >
+                        返回游戏
+                      </button>
+                      <button
+                        onClick={() => {
+                          window.dispatchEvent(new CustomEvent('open-rulebook'));
+                          setIsHomeMenuOpen(false);
+                        }}
+                        className="flex items-center gap-3 text-zinc-200 px-4 py-3 hover:bg-white/10 hover:text-white hover:translate-x-1 rounded-xl transition-all font-bold text-sm tracking-widest text-left"
+                      >
+                        简易规则书
+                      </button>
+                      <button
+                        onClick={() => {
+                          setShowFullLogs(true);
+                          setIsHomeMenuOpen(false);
+                        }}
+                        className="flex items-center gap-3 text-zinc-200 px-4 py-3 hover:bg-white/10 hover:text-white hover:translate-x-1 rounded-xl transition-all font-bold text-sm tracking-widest text-left"
+                      >
+                        对战日志
+                      </button>
+                      
+                      <div className="h-px w-full bg-white/5 my-1" />
+                      
+                      <button
+                        onClick={() => {
+                          setShowSurrenderConfirm(true);
+                          setIsHomeMenuOpen(false);
+                        }}
+                        className="flex items-center gap-3 text-red-400 px-4 py-3 hover:bg-red-500/10 hover:text-red-300 hover:translate-x-1 rounded-xl transition-all font-bold text-sm tracking-widest text-left"
+                      >
+                        投降
+                      </button>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+
+              {/* Surrender Confirmation Modal */}
+              <AnimatePresence>
+                {showSurrenderConfirm && (
+                  <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4 pointer-events-auto">
+                    <motion.div
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      exit={{ opacity: 0 }}
+                      onClick={() => setShowSurrenderConfirm(false)}
+                      className="absolute inset-0 bg-black/80 backdrop-blur-md"
+                    />
+                    <motion.div
+                      initial={{ scale: 0.9, opacity: 0, y: 20 }}
+                      animate={{ scale: 1, opacity: 1, y: 0 }}
+                      exit={{ scale: 0.9, opacity: 0, y: 20 }}
+                      className="relative w-full max-w-sm bg-zinc-900 border border-red-500/30 rounded-3xl p-8 overflow-hidden flex flex-col items-center"
+                    >
+                      <div className="absolute top-0 right-0 p-4 opacity-5 pointer-events-none">
+                        <Flag className="w-32 h-32 rotate-12" />
+                      </div>
+                      <div className="w-16 h-16 rounded-full bg-red-500/10 border border-red-500/20 flex items-center justify-center mb-6">
+                        <AlertTriangle className="w-8 h-8 text-red-500" />
+                      </div>
+                      <h3 className="text-2xl font-black italic uppercase tracking-tighter text-white mb-2">确定要投降吗？</h3>
+                      <p className="text-zinc-400 text-sm leading-relaxed text-center mb-6">
+                        投降后将直接判定为负且无法撤回。<br />你确定要退出当前的战斗吗？
+                      </p>
+                      <div className="flex flex-col w-full gap-3">
+                        <button
+                          onClick={() => {
+                            window.dispatchEvent(new CustomEvent('game:surrender'));
+                            setShowSurrenderConfirm(false);
+                          }}
+                          className="w-full py-3 bg-red-600 hover:bg-red-500 text-white font-black italic uppercase tracking-widest rounded-xl transition-all shadow-lg"
+                        >
+                          确认投降
+                        </button>
+                        <button
+                          onClick={() => setShowSurrenderConfirm(false)}
+                          className="w-full py-3 bg-transparent border border-white/10 hover:border-white/20 text-white/50 hover:text-white font-bold uppercase tracking-widest rounded-xl transition-all"
+                        >
+                          继续战斗
+                        </button>
+                      </div>
+                    </motion.div>
+                  </div>
+                )}
+              </AnimatePresence>
+
             </div>
           </div>
         </div>
@@ -2258,7 +2355,7 @@ export const BattleField: React.FC = () => {
               </div>
 
               {normalizedPendingQueryType === 'SELECT_CARD' ? (
-                <div className="grid w-full max-w-[23rem] grid-cols-2 gap-3 p-2 md:flex md:max-w-full md:gap-6 md:overflow-x-auto md:overflow-y-hidden md:p-6 custom-scrollbar">
+                <div className="grid w-full max-w-[23rem] grid-cols-2 gap-3 p-2 md:flex md:max-w-full md:gap-6 md:overflow-x-auto md:overflow-y-hidden md:px-10 md:py-8 custom-scrollbar">
                   {pendingQueryOptions.filter(option => !!option?.card).map((option, i) => {
                     const optionCard = option.card!;
                     const optionId = optionCard.gamecardId || option.id || `${i}`;

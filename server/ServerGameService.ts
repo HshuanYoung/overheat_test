@@ -2655,27 +2655,6 @@ export const ServerGameService = {
       const currentPlayerId = gameState.playerIds[gameState.currentTurnPlayer];
       const currentPlayer = gameState.players[currentPlayerId];
 
-      if ((currentPlayer as any).loseAtEndOfTurn === gameState.turnCount) {
-        gameState.gameStatus = 2;
-        gameState.winReason = 'CARD_EFFECT_SPECIAL_WIN';
-        gameState.winnerId = gameState.playerIds.find(id => id !== currentPlayerId);
-        gameState.winSourceCardName = (currentPlayer as any).loseAtEndOfTurnSourceName || '卡牌效果';
-        gameState.logs.push(`[游戏结束] ${currentPlayer.displayName} 因 [${gameState.winSourceCardName}] 的效果在回合结束时判负。`);
-        return;
-      }
-
-      gameState.currentTurnPlayer = gameState.currentTurnPlayer === 0 ? 1 : 0;
-      gameState.turnCount += 1;
-      gameState.phase = 'START';
-      gameState.phaseTimerStart = Date.now();
-      const nextPlayerId = gameState.playerIds[gameState.currentTurnPlayer];
-      const nextPlayer = gameState.players[nextPlayerId];
-
-      currentPlayer.isTurn = false;
-      nextPlayer.isTurn = true;
-
-      gameState.logs.push(`--- 鍥炲悎 ${gameState.turnCount}: ${nextPlayer.displayName} ---`);
-
       // 1. Process pending resolutions (End-of-Turn Effects)
       if (gameState.pendingResolutions && gameState.pendingResolutions.length > 0) {
         const resolutions = [...gameState.pendingResolutions];
@@ -2701,6 +2680,32 @@ export const ServerGameService = {
           }
         }
       }
+
+      EventEngine.recalculateContinuousEffects(gameState);
+
+      if (
+        (currentPlayer as any).loseAtEndOfTurn === gameState.turnCount &&
+        (((currentPlayer as any).loseAtEndOfTurnPlayerUid || currentPlayerId) === currentPlayerId)
+      ) {
+        gameState.gameStatus = 2;
+        gameState.winReason = 'CARD_EFFECT_SPECIAL_WIN';
+        gameState.winnerId = gameState.playerIds.find(id => id !== currentPlayerId);
+        gameState.winSourceCardName = (currentPlayer as any).loseAtEndOfTurnSourceName || '卡牌效果';
+        gameState.logs.push(`[游戏结束] ${currentPlayer.displayName} 因 [${gameState.winSourceCardName}] 的效果在回合结束时判负。`);
+        return;
+      }
+
+      gameState.currentTurnPlayer = gameState.currentTurnPlayer === 0 ? 1 : 0;
+      gameState.turnCount += 1;
+      gameState.phase = 'START';
+      gameState.phaseTimerStart = Date.now();
+      const nextPlayerId = gameState.playerIds[gameState.currentTurnPlayer];
+      const nextPlayer = gameState.players[nextPlayerId];
+
+      currentPlayer.isTurn = false;
+      nextPlayer.isTurn = true;
+
+      gameState.logs.push(`--- 鍥炲悎 ${gameState.turnCount}: ${nextPlayer.displayName} ---`);
 
       // 2. Perform global cleanup/flag reset
       Object.values(gameState.players).forEach(p => {
@@ -2759,6 +2764,12 @@ export const ServerGameService = {
             u.damage = u.baseDamage;
           }
         });
+
+        if ((p as any).loseAtEndOfTurn !== undefined && (p as any).loseAtEndOfTurn < gameState.turnCount) {
+          delete (p as any).loseAtEndOfTurn;
+          delete (p as any).loseAtEndOfTurnPlayerUid;
+          delete (p as any).loseAtEndOfTurnSourceName;
+        }
       });
 
       // 3. Recalculate stats after any moves during resolutions
