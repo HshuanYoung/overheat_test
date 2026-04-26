@@ -74,10 +74,10 @@ export const BattleField: React.FC = () => {
   const [isHomeMenuOpen, setIsHomeMenuOpen] = useState(false);
   const [showSurrenderConfirm, setShowSurrenderConfirm] = useState(false);
   const [timer, setTimer] = useState<number>(30);
-  const [combatStrategy, setCombatStrategy] = useState<CombatStrategy>(() => {
-    const saved = localStorage.getItem('combatStrategy') as CombatStrategy | null;
-    return COMBAT_STRATEGY_OPTIONS.some(option => option.value === saved) ? saved! : 'automatic';
-  });
+  // const [combatStrategy, setCombatStrategy] = useState<CombatStrategy>(() => {
+  //   const saved = localStorage.getItem('combatStrategy') as CombatStrategy | null;
+  //   return COMBAT_STRATEGY_OPTIONS.some(option => option.value === saved) ? saved! : 'automatic';
+  // });
   const [cardMenu, setCardMenu] = useState<{
     card: Card;
     zone: string;
@@ -152,9 +152,9 @@ export const BattleField: React.FC = () => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
-  useEffect(() => {
-    localStorage.setItem('combatStrategy', combatStrategy);
-  }, [combatStrategy]);
+  // useEffect(() => {
+  //   localStorage.setItem('combatStrategy', combatStrategy);
+  // }, [combatStrategy]);
 
   // Fetch User Customization
   useEffect(() => {
@@ -1330,195 +1330,6 @@ export const BattleField: React.FC = () => {
       {/* Main Arena */}
       <div className="flex-1 relative flex flex-col overflow-hidden bg-[#050505]">
         {/* Top Bar: Phase & Turn */}
-        <div className={cn(
-          "h-auto md:h-16 flex flex-col md:flex-row items-center justify-between px-2 md:px-6 py-1 md:py-0 bg-black/40 border-b border-white/5 backdrop-blur-md relative z-[1100] gap-1 md:gap-2 transition-all duration-300",
-          (previewCard || viewingZone || isRulebookOpen) && "opacity-0 pointer-events-none",
-          isRulebookOpen && "hidden"
-        )}>
-          <div className="flex items-center gap-2 md:gap-8 w-full md:w-auto justify-between md:justify-start">
-            {/* Round Display */}
-            <div className="flex flex-col items-center md:items-start min-w-[40px]">
-              <span className="text-[7px] md:text-[10px] text-white/40 font-black tracking-[0.1em] md:tracking-[0.2em] hidden md:block">回合</span>
-              <span className="text-xl md:text-2xl font-black italic text-[#f27d26] leading-none">
-                {game.turnCount}
-              </span>
-            </div>
-
-            <div className="h-8 w-px bg-white/10" />
-
-            {/* Turn Indicator Icon */}
-            <div className="flex items-center gap-2 md:hidden">
-              <div className={cn(
-                "w-10 h-10 rounded-xl flex items-center justify-center border-2 transition-all",
-                game.playerIds[game.currentTurnPlayer] === myUid
-                  ? "bg-red-500/20 border-red-500 shadow-[0_0_15px_rgba(239,68,68,0.5)] scale-110"
-                  : "bg-blue-500/20 border-blue-500 shadow-[0_0_15px_rgba(59,130,246,0.3)] opacity-60"
-              )}>
-                {game.playerIds[game.currentTurnPlayer] === myUid
-                  ? <Sword className="w-6 h-6 text-red-500" />
-                  : <Shield className="w-6 h-6 text-blue-500" />
-                }
-              </div>
-            </div>
-
-            <div className="h-8 w-px bg-white/10 md:block hidden" />
-
-            {/* Phase & Timer Column */}
-            <div className="flex flex-1 md:flex-none flex-col relative group">
-              <div
-                className={cn(
-                  "flex flex-col cursor-pointer hover:bg-white/5 px-2 md:px-4 py-0.5 md:py-1 rounded transition-all border border-transparent",
-                  showPhaseMenu && "bg-white/10 border-white/20 shadow-[0_0_15px_rgba(255,255,255,0.1)]"
-                )}
-                onClick={() => {
-                  const isMyTurn = game.playerIds[game.currentTurnPlayer] === myUid;
-                  if (isMyTurn && ['MAIN', 'BATTLE_DECLARATION', 'BATTLE_FREE'].includes(game.phase)) {
-                    setShowPhaseMenu(!showPhaseMenu);
-                  } else if (!isMyTurn && game.phase === 'DEFENSE_DECLARATION') {
-                    setShowPhaseMenu(!showPhaseMenu);
-                  }
-                }}
-              >
-                <div className="flex items-center justify-between md:justify-start gap-2 md:gap-3">
-                  <div className="flex flex-col">
-                    <span className="text-[8px] md:text-[10px] text-white/40 uppercase font-black tracking-widest flex items-center gap-1 md:gap-2">
-                      <span className="hidden md:inline">阶段</span>
-                      {['MULLIGAN', 'EROSION', 'COUNTERING', 'DEFENSE_DECLARATION', 'BATTLE_FREE'].includes(game.phase) && (
-                        <span className="inline-block w-1.5 h-1.5 md:w-2 md:h-2 rounded-full animate-pulse bg-orange-500" />
-                      )}
-                    </span>
-                    <span className="text-sm md:text-xl font-black italic text-white uppercase tracking-wider flex items-center gap-2 md:gap-3 truncate max-w-[120px] md:max-w-none">
-                      {game.phase === 'BATTLE_DECLARATION' && <Sword className="w-4 h-4 md:w-6 md:h-6 text-red-500" />}
-                      {game.phase === 'COUNTERING'
-                        ? `${getPhaseLabel(game.previousPhase)}|对抗`
-                        : getPhaseLabel(game.phase)}
-                    </span>
-                  </div>
-
-                  {/* Visual Timer Stacked Inside on Mobile */}
-                  <div className="md:hidden flex flex-col items-end">
-                    <span className="text-[7px] text-white/40 font-black">时间</span>
-                    <span className={cn(
-                      "text-sm font-black tabular-nums",
-                      timer < 30 ? "text-red-500 animate-pulse" : "text-[#f27d26]"
-                    )}>
-                      {timer}秒
-                    </span>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* GAMELOG Button */}
-            <motion.button
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-              onClick={() => setShowFullLogs(true)}
-              className="px-3 md:px-5 py-1.5 md:py-2 bg-zinc-800/80 border border-white/10 rounded-full flex items-center gap-2 group hover:bg-[#f27d26]/20 transition-all ml-auto md:ml-0"
-            >
-              <Send className="w-2.5 h-2.5 md:w-3.5 md:h-3.5 text-[#f27d26]" />
-              <span className="text-[8px] md:text-[11px] font-black text-white/90 uppercase tracking-[0.2em] italic group-hover:text-white">
-                战斗记录
-              </span>
-            </motion.button>
-
-            {/* Confrontation Strategy */}
-            <div className="hidden md:flex items-center rounded-full border border-white/10 bg-zinc-900/70 p-1">
-              {(['ON', 'AUTO', 'OFF'] as const).map(strategy => (
-                <button
-                  key={strategy}
-                  onClick={() => updateConfrontationStrategy(strategy)}
-                  className={cn(
-                    "px-3 py-1 text-[10px] font-black tracking-widest rounded-full transition-all",
-                    confrontationStrategy === strategy
-                      ? "bg-[#f27d26] text-black shadow-[0_0_14px_rgba(242,125,38,0.35)]"
-                      : "text-white/45 hover:text-white hover:bg-white/10"
-                  )}
-                  title={`对抗策略：${CONFRONTATION_STRATEGY_LABELS[strategy]}`}
-                >
-                  {CONFRONTATION_STRATEGY_LABELS[strategy]}
-                </button>
-              ))}
-            </div>
-
-            <div className="flex md:hidden items-center rounded-full border border-white/10 bg-zinc-900/70 p-0.5">
-              {(['ON', 'AUTO', 'OFF'] as const).map(strategy => (
-                <button
-                  key={strategy}
-                  onClick={() => updateConfrontationStrategy(strategy)}
-                  className={cn(
-                    "px-2 py-1 text-[8px] font-black rounded-full transition-all",
-                    confrontationStrategy === strategy
-                      ? "bg-[#f27d26] text-black"
-                      : "text-white/45"
-                  )}
-                  title={`对抗策略：${CONFRONTATION_STRATEGY_LABELS[strategy]}`}
-                >
-                  {CONFRONTATION_STRATEGY_LABELS[strategy]}
-                </button>
-              ))}
-            </div>
-
-            {/* Compact Stats Indicator (Desktop) */}
-            <div className="hidden md:flex items-center gap-4">
-              {/* My Stats */}
-              <div className="flex items-center gap-2 bg-blue-600/10 border border-blue-500/20 px-3 py-1 rounded-xl">
-                <div className="flex flex-col items-center">
-                  <span className="text-[7px] text-zinc-500 uppercase font-black">牌库</span>
-                  <span className="text-sm font-black text-blue-400">{me.deck.length}</span>
-                </div>
-                <div className="w-px h-6 bg-white/5" />
-                <div className="flex flex-col items-center">
-                  <span className="text-[7px] text-zinc-500 uppercase font-black">墓地</span>
-                  <span className="text-sm font-black text-zinc-300">{me.grave.length}</span>
-                </div>
-                <div className="w-px h-6 bg-white/5" />
-                <div className="flex flex-col items-center">
-                  <span className="text-[7px] text-zinc-500 uppercase font-black">放逐</span>
-                  <span className="text-sm font-black text-purple-400">{me.exile.length}</span>
-                </div>
-              </div>
-
-              <div className="w-px h-8 bg-white/10" />
-
-              {/* Opponent Stats */}
-              <div className="flex items-center gap-2 bg-red-600/10 border border-red-500/20 px-3 py-1 rounded-xl">
-                <div className="flex flex-col items-center">
-                  <span className="text-[7px] text-zinc-500 uppercase font-black">牌库</span>
-                  <span className="text-sm font-black text-red-500">{opponent?.deck.length || 0}</span>
-                </div>
-                <div className="w-px h-6 bg-white/5" />
-                <div className="flex flex-col items-center">
-                  <span className="text-[7px] text-zinc-500 uppercase font-black">墓地</span>
-                  <span className="text-sm font-black text-zinc-300">{opponent?.grave.length || 0}</span>
-                </div>
-                <div className="w-px h-6 bg-white/5" />
-                <div className="flex flex-col items-center">
-                  <span className="text-[7px] text-zinc-500 uppercase font-black">放逐</span>
-                  <span className="text-sm font-black text-purple-400">{opponent?.exile.length || 0}</span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Desktop Turn Indicator */}
-          <div className={cn(
-            "hidden md:flex items-center gap-2 md:gap-3 px-3 md:px-6 py-1.5 md:py-2 rounded-xl text-[10px] md:text-sm font-black uppercase italic tracking-[0.1em] md:tracking-[0.2em] shadow-2xl border border-white/10",
-            game.playerIds[game.currentTurnPlayer] === myUid
-              ? "bg-[#f27d26] text-black animate-pulse"
-              : "bg-zinc-800 text-white/50"
-          )}>
-            <div className="w-4 h-4 md:w-6 md:h-6 rounded-full overflow-hidden border border-white/20">
-              {game.playerIds[game.currentTurnPlayer] === myUid
-                ? <img src={authUser?.photoURL || 'assets/icons/myself.JPG'} className="w-full h-full object-cover" />
-                : <img src="assets/icons/opponent.JPG" className="w-full h-full object-cover" />
-              }
-            </div>
-            {game.playerIds[game.currentTurnPlayer] === myUid ? "你的回合" : "对手回合"}
-          </div>
-        </div>
-
-
         <div className="flex-1 flex flex-col min-h-0 relative">
           {/* Playground Area */}
           <div className="flex-1 flex items-center justify-center p-0 md:p-4 bg-[radial-gradient(circle_at_center,_rgba(242,125,38,0.03)_0%,_transparent_70%)] overflow-auto">
@@ -1543,6 +1354,25 @@ export const BattleField: React.FC = () => {
                   viewingZone={viewingZone}
                   setViewingZone={setViewingZone}
                   highlightedCardIds={highlightedCardIds}
+                  onShowLogs={() => setShowFullLogs(true)}
+                  onOpenRulebook={() => setIsRulebookOpen(true)}
+                  onSurrender={() => {
+                    if (window.confirm('确定要投降吗？')) {
+                      socket.emit('gameAction', { gameId, action: 'SURRENDER' });
+                    }
+                  }}
+                  onPhaseClick={() => {
+                    const isMyTurn = game.playerIds[game.currentTurnPlayer] === myUid;
+                    if (isMyTurn && ['MAIN', 'BATTLE_DECLARATION', 'BATTLE_FREE'].includes(game.phase)) {
+                      setShowPhaseMenu(!showPhaseMenu);
+                    } else if (!isMyTurn && game.phase === 'DEFENSE_DECLARATION') {
+                      setShowPhaseMenu(!showPhaseMenu);
+                    }
+                  }}
+                  confrontationStrategy={confrontationStrategy}
+                  onUpdateStrategy={updateConfrontationStrategy}
+                  showPhaseMenu={showPhaseMenu}
+                  isAnyPopupOpen={!!previewCard || !!viewingZone || isRulebookOpen || !!game.pendingQuery || game.phase === 'EROSION' || game.phase === 'DISCARD' || game.phase === 'END' || !!pendingPlayCard}
                 />
               )}
             </div>
@@ -2381,7 +2211,8 @@ export const BattleField: React.FC = () => {
               </div>
 
               {normalizedPendingQueryType === 'SELECT_CARD' ? (
-                <div className="grid w-full max-w-[23rem] grid-cols-2 gap-3 p-2 md:flex md:max-w-full md:gap-6 md:overflow-x-auto md:overflow-y-hidden md:px-10 md:py-8 custom-scrollbar">
+                <div className="grid w-full max-w-[23rem] grid-cols-2 gap-3 p-2 md:flex md:max-w-full md:gap-12 md:overflow-x-auto md:overflow-y-hidden md:px-32 md:py-16 custom-scrollbar scroll-smooth scroll-px-32">
+                  <div className="hidden md:block w-12 shrink-0" /> {/* Larger Spacer */}
                   {pendingQueryOptions.filter(option => !!option?.card).map((option, i) => {
                     const optionCard = option.card!;
                     const optionId = optionCard.gamecardId || option.id || `${i}`;
@@ -2493,6 +2324,7 @@ export const BattleField: React.FC = () => {
                       </div>
                     );
                   })}
+                  <div className="hidden md:block w-12 shrink-0" /> {/* Larger Spacer */}
                 </div>
               ) : normalizedPendingQueryType === 'SELECT_PAYMENT' ? (
                 /* Payment Selection for Query */

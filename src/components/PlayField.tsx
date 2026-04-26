@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Card, PlayerState, StackItem, GameState, GAME_TIMEOUTS } from '../types/game';
 import { CardComponent } from './Card';
 import { GameService } from '../services/gameService';
-import { Shield, Sword, Zap, Trash2, LogOut, Layers, AlertTriangle, Search, Play, X } from 'lucide-react';
+import { Shield, Sword, Zap, Trash2, Flag, BookOpen, Layers, AlertTriangle, Search, Play, X } from 'lucide-react';
 import { cn } from '../lib/utils';
 
 interface PlayFieldProps {
@@ -25,6 +25,14 @@ interface PlayFieldProps {
   viewingZone?: { title: string, cards: Card[], type: string, erosionBackIds?: string[], isOpponentZone?: boolean } | null;
   setViewingZone?: (zone: { title: string, cards: Card[], type: string, erosionBackIds?: string[], isOpponentZone?: boolean } | null) => void;
   highlightedCardIds?: Set<string>;
+  onShowLogs?: () => void;
+  onOpenRulebook?: () => void;
+  onSurrender?: () => void;
+  onPhaseClick?: () => void;
+  confrontationStrategy?: 'ON' | 'AUTO' | 'OFF';
+  onUpdateStrategy?: (strategy: 'ON' | 'AUTO' | 'OFF') => void;
+  showPhaseMenu?: boolean;
+  isAnyPopupOpen?: boolean;
 }
 
 const CardSlot: React.FC<{
@@ -146,8 +154,8 @@ const CardListModal: React.FC<{
             <X className="w-6 h-6 group-hover:rotate-90 transition-transform" />
           </button>
         </div>
-        <div className="flex-1 overflow-y-auto p-6 grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-4 custom-scrollbar">
-          {cards?.map((card, i) => {
+        <div className="flex-1 overflow-y-auto p-6 flex flex-wrap justify-center content-start gap-4 md:gap-6 custom-scrollbar">
+          {cards?.filter(c => c !== null && c !== undefined && Object.keys(c).length > 0).map((card, i) => {
             const isHiddenErosionBack = zoneType === 'erosion' && erosionBackIds.includes(card.gamecardId);
             const clickZone =
               zoneType === 'erosion'
@@ -157,7 +165,7 @@ const CardListModal: React.FC<{
             return (
               <div
                 key={i}
-                className="aspect-[3/4] cursor-pointer"
+                className="w-24 sm:w-32 md:w-36 aspect-[3/4] shrink-0 cursor-pointer"
                 onClick={(e) => {
                   if (onCardClick) {
                     onCardClick(card, clickZone, i, e);
@@ -176,7 +184,7 @@ const CardListModal: React.FC<{
               </div>
             );
           })}
-          {(cards?.length || 0) === 0 && <div className="col-span-full py-20 text-center opacity-20 italic">这里没有卡牌</div>}
+          {(cards?.filter(c => c !== null && c !== undefined && Object.keys(c).length > 0).length || 0) === 0 && <div className="w-full py-20 text-center opacity-20 italic">这里没有卡牌</div>}
         </div>
       </div>
     </div>
@@ -201,7 +209,7 @@ const PlayerHalf: React.FC<{
   highlightedCardIds?: Set<string>;
 }> = ({ player, isOpponent, onCardClick, onPreviewCard, onPlayCard, paymentSelection, pendingPlayCard, selectedAttackers, selectedDefender, game, allianceInitiator, cardBackUrl, viewingZone, setViewingZone, highlightedCardIds }) => {
   if (!player) return null;
-  const unitZoneOffsetClass = "md:translate-x-20 lg:translate-x-28";
+  const unitZoneOffsetClass = ""; // Removed horizontal offset to prevent blocking exile area
   const getMobileErosionCount = (playerState: PlayerState): number | string => {
     const frontCount = playerState.erosionFront?.filter(Boolean).length || 0;
     const backCount = playerState.erosionBack?.filter(Boolean).length || 0;
@@ -213,22 +221,9 @@ const PlayerHalf: React.FC<{
 
   return (
     <div className={cn(
-      "flex-1 md:grid md:grid-cols-[100px_1fr_100px] grid grid-cols-5 gap-0.5 md:gap-2 p-0.5 md:p-2 relative h-full min-h-0",
+      "flex-1 md:grid md:grid-cols-[100px_1fr_100px] grid grid-cols-5 gap-0.5 md:gap-2 p-0.5 md:p-2 relative h-full min-h-0 perspective-[1000px]",
       isOpponent ? "bg-red-500/5 items-start" : "bg-blue-500/5 items-end"
     )}>
-      <CardListModal
-        isOpen={!!viewingZone}
-        onClose={() => setViewingZone?.(null)}
-        title={viewingZone?.title || ''}
-        cards={viewingZone?.cards || []}
-        zoneType={viewingZone?.type || ''}
-        onPreviewCard={onPreviewCard}
-        onCardClick={onCardClick}
-        cardBackUrl={cardBackUrl}
-        erosionBackIds={viewingZone?.erosionBackIds}
-        isOpponentZone={viewingZone?.isOpponentZone}
-        highlightedCardIds={highlightedCardIds}
-      />
 
       {/* SIDEBAR 1: Left Columns */}
       <div className="flex flex-col gap-1 md:gap-4 h-full justify-center">
@@ -364,7 +359,7 @@ const PlayerHalf: React.FC<{
             </div>
 
             {/* Opponent Unit Zone */}
-            <div className={cn("grid grid-cols-3 md:grid-cols-6 gap-1 md:gap-2 items-center relative z-10 px-1 md:px-0 md:translate-y-[80px]", unitZoneOffsetClass)}>
+            <div className={cn("grid grid-cols-3 md:grid-cols-6 gap-1 md:gap-2 items-center relative z-10 px-1 md:px-0 md:translate-y-[60px] transition-transform duration-700", unitZoneOffsetClass)} style={{ transform: 'translateZ(-100px) rotateX(-5deg)' }}>
               {Array.from({ length: 6 }).map((_, i) => {
                 const unit = player.unitZone?.[i];
                 return (
@@ -386,7 +381,7 @@ const PlayerHalf: React.FC<{
         ) : (
           <>
             {/* Player Unit Zone */}
-            <div className={cn("grid grid-cols-3 md:grid-cols-6 gap-1 md:gap-2 items-center relative z-10 px-1 md:px-0", unitZoneOffsetClass)}>
+            <div className={cn("grid grid-cols-3 md:grid-cols-6 gap-1 md:gap-2 items-center relative z-10 px-1 md:px-0 md:-translate-y-[60px] transition-transform duration-700", unitZoneOffsetClass)} style={{ transform: 'translateZ(-100px) rotateX(5deg)' }}>
               {Array.from({ length: 6 }).map((_, i) => {
                 const unit = player.unitZone?.[i];
                 return (
@@ -407,7 +402,7 @@ const PlayerHalf: React.FC<{
             </div>
 
             {/* Player Erosion Zone (Desktop) */}
-            <div className="hidden md:grid grid-cols-10 gap-1 h-16 scale-90 origin-top mt-1 mb-10">
+            <div className="hidden md:grid grid-cols-10 gap-1 h-14 scale-90 origin-top mt-1 mb-2 -translate-y-[44px]" style={{ transform: 'translateZ(-50px) rotateX(2deg)' }}>
               {(() => {
                 const backCards = player.erosionBack?.filter(c => c !== null) || [];
                 const frontCards = player.erosionFront?.filter(c => c !== null) || [];
@@ -453,7 +448,7 @@ const PlayerHalf: React.FC<{
             </div>
 
             <div className="flex items-center justify-center px-1 md:px-0 mt-1 md:mt-2">
-              <div className="flex-1 h-14 md:h-48 flex items-center justify-center gap-0.5 overflow-visible bg-black/20 rounded-lg border border-white/5 relative">
+              <div className="flex-1 h-14 md:h-36 flex items-center justify-center gap-0.5 overflow-visible bg-black/20 rounded-lg border border-white/5 relative">
                 {player.hand?.map((card, i) => {
                   const total = player.hand.length;
                   const middle = (total - 1) / 2;
@@ -560,14 +555,33 @@ const PlayerHalf: React.FC<{
   );
 };
 
-export const PlayField: React.FC<PlayFieldProps> = ({ player, opponent, game, onCardClick, onPreviewCard, onPlayCard, paymentSelection, pendingPlayCard, stack, myUid, selectedAttackers, selectedDefender, allianceInitiator, timer, cardBackUrl, viewingZone, setViewingZone, highlightedCardIds }) => {
+export const PlayField: React.FC<PlayFieldProps> = ({
+  player, opponent, game, onCardClick, onPreviewCard, onPlayCard,
+  paymentSelection, pendingPlayCard, stack, myUid, selectedAttackers,
+  selectedDefender, allianceInitiator, timer, cardBackUrl, viewingZone,
+  setViewingZone, highlightedCardIds, onShowLogs, onOpenRulebook,
+  onSurrender, onPhaseClick, confrontationStrategy, onUpdateStrategy,
+  showPhaseMenu, isAnyPopupOpen
+}) => {
   if (!player || !opponent || !game) return null;
   return (
     <div className="relative w-full h-full max-w-full lg:max-w-7xl mx-auto bg-[#0a0a0a] border-y md:border-2 border-[#1a1a1a] md:rounded-xl shadow-2xl font-sans text-white select-none flex flex-col">
       {/* Background Overlay */}
       <div className="absolute inset-0 bg-gradient-to-b from-red-500/5 via-transparent to-blue-500/5 pointer-events-none" />
 
-
+      <CardListModal
+        isOpen={!!viewingZone}
+        onClose={() => setViewingZone?.(null)}
+        title={viewingZone?.title || ''}
+        cards={viewingZone?.cards || []}
+        zoneType={viewingZone?.type || ''}
+        onPreviewCard={onPreviewCard}
+        onCardClick={onCardClick}
+        cardBackUrl={cardBackUrl}
+        erosionBackIds={viewingZone?.erosionBackIds}
+        isOpponentZone={viewingZone?.isOpponentZone}
+        highlightedCardIds={highlightedCardIds}
+      />
       {/* Opponent Half */}
       <div className="flex-1 min-h-0">
         <PlayerHalf
@@ -589,7 +603,115 @@ export const PlayField: React.FC<PlayFieldProps> = ({ player, opponent, game, on
         />
       </div>
 
-      <div className="h-0.5 md:h-2 w-full bg-white/5 relative z-10" />
+      {/* Central Battle Info Panel */}
+      <div className={cn(
+        "relative h-20 w-full flex items-center justify-center z-[100] transition-all duration-300",
+        isAnyPopupOpen ? "opacity-0 pointer-events-none scale-95" : "opacity-100 scale-100"
+      )}>
+        <div className="absolute inset-0 bg-gradient-to-r from-transparent via-[#f27d26]/10 to-transparent border-y border-white/5" />
+
+        <div className="flex items-center gap-2 md:gap-4 bg-zinc-950/80 backdrop-blur-xl border border-white/10 px-4 py-2 rounded-[2rem] shadow-[0_20px_50px_rgba(0,0,0,0.5)]">
+          {/* Round & Surrender */}
+          <div className="flex items-center gap-4">
+            <button
+              onClick={onSurrender}
+              className="p-2.5 rounded-full bg-white/5 hover:bg-red-500/20 text-white/60 hover:text-red-500 transition-all border border-white/5 shadow-inner"
+              title="投降"
+            >
+              <Flag className="w-5 h-5" />
+            </button>
+            <div className="flex flex-col items-center">
+              {/* <span className="text-[10px] font-black text-white/30 uppercase tracking-widest">回合</span> */}
+              <span className="text-xl font-black italic text-[#f27d26]">{game.turnCount}</span>
+            </div>
+          </div>
+
+          <div className="w-px h-8 bg-white/10" />
+
+          {/* Turn Indicator & Timer */}
+          <div className="flex items-center gap-4">
+            <div className={cn(
+              "w-10 h-10 rounded-xl flex items-center justify-center border-2 transition-all shadow-lg",
+              game.playerIds[game.currentTurnPlayer] === myUid
+                ? "bg-red-500/20 border-red-500 shadow-red-500/20"
+                : "bg-blue-500/20 border-blue-500 shadow-blue-500/20"
+            )}>
+              {game.playerIds[game.currentTurnPlayer] === myUid ? <Sword className="w-6 h-6 text-red-500" /> : <Shield className="w-6 h-6 text-blue-500" />}
+            </div>
+
+            <div className="flex flex-col min-w-[60px]">
+              {/* <span className="text-[10px] font-black text-white/30 uppercase tracking-widest">倒计时</span> */}
+              <span className={cn(
+                "text-xl font-black tabular-nums italic",
+                (timer || 0) < 30 ? "text-red-500 animate-pulse" : "text-white"
+              )}>
+                {timer}s
+              </span>
+            </div>
+          </div>
+
+          <div className="w-px h-8 bg-white/10" />
+
+          {/* Phase transition */}
+          <div
+            className={cn(
+              "flex flex-col cursor-pointer hover:bg-white/5 px-4 py-1 rounded-xl transition-all border border-transparent",
+              showPhaseMenu && "bg-white/10 border-white/20 shadow-lg"
+            )}
+            onClick={onPhaseClick}
+          >
+            {/* <span className="text-[10px] font-black text-white/30 uppercase tracking-widest">当前阶段</span> */}
+            <span className="text-xl font-black italic text-white uppercase tracking-tight flex items-center gap-2">
+              {game.phase === 'COUNTERING' ? '对抗' :
+                game.phase === 'MAIN' ? '主要' :
+                  game.phase === 'BATTLE_DECLARATION' ? '战斗宣言' :
+                    game.phase === 'DEFENSE_DECLARATION' ? '防御宣言' :
+                      game.phase === 'BATTLE_FREE' ? '战斗自由' : game.phase}
+              <Zap className="w-4 h-4 text-[#f27d26] animate-pulse" />
+            </span>
+          </div>
+
+          <div className="w-px h-8 bg-white/10" />
+
+          {/* Combat Strategy & Logs */}
+          <div className="flex items-center gap-4">
+            <div className="flex items-center bg-black/40 p-1 rounded-full border border-white/5">
+              {(['ON', 'AUTO', 'OFF'] as const).map(strategy => (
+                <button
+                  key={strategy}
+                  onClick={() => onUpdateStrategy?.(strategy)}
+                  className={cn(
+                    "px-3 py-1 text-[10px] font-black tracking-widest rounded-full transition-all",
+                    confrontationStrategy === strategy
+                      ? "bg-[#f27d26] text-black shadow-lg"
+                      : "text-white/40 hover:text-white"
+                  )}
+                >
+                  {strategy}
+                </button>
+              ))}
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                onClick={onOpenRulebook}
+                className="p-2.5 rounded-full bg-white/5 hover:bg-white/10 text-white/60 hover:text-white transition-all border border-white/5 shadow-inner"
+                title="规则书"
+              >
+                <BookOpen className="w-5 h-5" />
+              </button>
+              <button
+                onClick={onShowLogs}
+                className="p-2.5 px-4 rounded-full bg-white/5 hover:bg-[#f27d26]/20 text-white/60 hover:text-[#f27d26] transition-all border border-white/5 shadow-inner flex items-center gap-1.5"
+                title="战斗日志"
+              >
+                <span className="text-[10px] font-black tracking-widest">LOG</span>
+                {/* <Layers className="w-4 h-4" /> */}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
 
       {/* Player Half */}
       <div className="flex-1 min-h-0">

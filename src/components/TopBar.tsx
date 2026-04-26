@@ -59,72 +59,102 @@ export const TopBar: React.FC<{ onOpenRulebook: () => void }> = ({ onOpenRuleboo
       <AnimatePresence>
         {isMenuOpen && (
           <motion.div
-            initial={{ opacity: 0, x: 50 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: 50 }}
-            transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-            className="fixed top-20 right-4 z-[49] w-64 bg-zinc-900/95 backdrop-blur-xl border border-white/10 rounded-2xl shadow-2xl p-4 overflow-hidden"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.3 }}
+            className="fixed inset-0 z-[100] bg-zinc-950/90 backdrop-blur-2xl flex items-center justify-center p-6"
           >
-            <div className="flex flex-col gap-2">
-              <Link
-                to="/deck-builder"
-                onClick={() => setIsMenuOpen(false)}
-                className="flex items-center gap-3 text-zinc-200 p-3 hover:bg-white/10 hover:text-white hover:translate-x-1 rounded-xl transition-all font-bold tracking-wider"
-              >
-                <LayoutGrid className="w-5 h-5 text-red-400" />
-                <span>我的卡组</span>
-              </Link>
-              
-              <button
-                onClick={() => {
-                  onOpenRulebook();
-                  setIsMenuOpen(false);
-                }}
-                className="flex items-center gap-3 text-zinc-200 p-3 hover:bg-white/10 hover:text-white hover:translate-x-1 rounded-xl transition-all font-bold tracking-wider text-left"
-              >
-                <BookOpen className="w-5 h-5 text-blue-400" />
-                <span>简易规则书</span>
-              </button>
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0, y: 20 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.9, opacity: 0, y: 20 }}
+              className="w-full max-w-2xl flex flex-col gap-8 relative"
+            >
+              <div className="absolute -top-32 -left-32 w-64 h-64 bg-red-600/10 blur-[120px] rounded-full" />
+              <div className="absolute -bottom-32 -right-32 w-64 h-64 bg-blue-600/10 blur-[120px] rounded-full" />
 
-              <Link
-                to="/profile"
-                onClick={() => setIsMenuOpen(false)}
-                className="flex items-center gap-3 text-zinc-200 p-3 hover:bg-white/10 hover:text-white hover:translate-x-1 rounded-xl transition-all font-bold tracking-wider"
-              >
-                <div className="w-6 h-6 rounded-full bg-red-600 flex items-center justify-center overflow-hidden border border-white/10 shrink-0">
-                  {user?.photoURL ? <img src={user.photoURL} className="w-full h-full object-cover" /> : <img src="assets/icons/myself.JPG" className="w-full h-full object-cover" />}
+              <div className="flex flex-col items-center gap-2 mb-8 relative z-10">
+                <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-red-600 to-red-500 flex items-center justify-center shadow-2xl mb-4">
+                  <Menu className="w-8 h-8 text-white" />
                 </div>
-                <span>个人信息</span>
-              </Link>
-
-              <div className="h-px w-full bg-white/5 my-2" />
-
-              <div className="flex items-center justify-between gap-3 text-zinc-200 p-3 bg-black/20 rounded-xl font-bold tracking-wider">
-                <div className="flex items-center gap-3">
-                  <Coins className="w-5 h-5 text-amber-400" />
-                  <span>我的金币</span>
-                </div>
-                <span className="text-amber-300 text-sm">{coins?.toLocaleString() ?? 0}</span>
+                <h2 className="text-4xl font-black italic text-white uppercase tracking-tighter">游戏菜单</h2>
+                <div className="h-1 w-24 bg-red-600" />
               </div>
 
-              <div className="flex items-center justify-between gap-3 text-zinc-200 p-3 bg-black/20 rounded-xl font-bold tracking-wider">
-                <div className="flex items-center gap-3">
-                  <Sparkles className="w-5 h-5 text-cyan-400" />
-                  <span>我的卡晶</span>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 relative z-10">
+                <Link
+                  to="/deck-builder"
+                  onClick={() => setIsMenuOpen(false)}
+                  className="group flex items-center gap-6 p-6 bg-white/5 hover:bg-white/10 rounded-[2.5rem] border border-white/5 hover:border-white/20 transition-all hover:-translate-y-1 shadow-xl"
+                >
+                  <div className="p-4 rounded-2xl bg-red-500/10 group-hover:bg-red-500 transition-colors">
+                    <LayoutGrid className="w-8 h-8 text-red-500 group-hover:text-white" />
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-black italic text-white uppercase tracking-tight">我的卡组</h3>
+                    <p className="text-zinc-500 text-xs font-bold uppercase tracking-widest mt-1">管理你的战斗套牌</p>
+                  </div>
+                </Link>
+
+                <button
+                  onClick={() => {
+                    onOpenRulebook();
+                    setIsMenuOpen(false);
+                  }}
+                  className="group flex items-center gap-6 p-6 bg-white/5 hover:bg-white/10 rounded-[2.5rem] border border-white/5 hover:border-white/20 transition-all hover:-translate-y-1 shadow-xl text-left"
+                >
+                  <div className="p-4 rounded-2xl bg-blue-500/10 group-hover:bg-blue-500 transition-colors">
+                    <BookOpen className="w-8 h-8 text-blue-500 group-hover:text-white" />
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-black italic text-white uppercase tracking-tight">简易规则书</h3>
+                    <p className="text-zinc-500 text-xs font-bold uppercase tracking-widest mt-1">查看游戏规则与机制</p>
+                  </div>
+                </button>
+
+                <Link
+                  to="/profile"
+                  onClick={() => setIsMenuOpen(false)}
+                  className="group flex items-center gap-6 p-6 bg-white/5 hover:bg-white/10 rounded-[2.5rem] border border-white/5 hover:border-white/20 transition-all hover:-translate-y-1 shadow-xl"
+                >
+                  <div className="w-16 h-16 rounded-2xl bg-zinc-800 flex items-center justify-center overflow-hidden border border-white/10 group-hover:border-red-500 transition-colors">
+                    {user?.photoURL ? <img src={user.photoURL} className="w-full h-full object-cover" /> : <img src="assets/icons/myself.JPG" className="w-full h-full object-cover" />}
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-black italic text-white uppercase tracking-tight">个人信息</h3>
+                    <p className="text-zinc-500 text-xs font-bold uppercase tracking-widest mt-1">查看你的战绩与资产</p>
+                  </div>
+                </Link>
+
+                <div className="grid grid-rows-2 gap-4">
+                  <div className="flex items-center justify-between px-8 bg-black/40 rounded-[2rem] border border-white/5 shadow-inner">
+                    <div className="flex items-center gap-4">
+                      <Coins className="w-5 h-5 text-amber-400" />
+                      <span className="text-xs font-black text-white/60 uppercase tracking-widest">金币</span>
+                    </div>
+                    <span className="text-xl font-black text-amber-400 italic">{coins?.toLocaleString() ?? 0}</span>
+                  </div>
+                  <div className="flex items-center justify-between px-8 bg-black/40 rounded-[2rem] border border-white/5 shadow-inner">
+                    <div className="flex items-center gap-4">
+                      <Sparkles className="w-5 h-5 text-cyan-400" />
+                      <span className="text-xs font-black text-white/60 uppercase tracking-widest">卡晶</span>
+                    </div>
+                    <span className="text-xl font-black text-cyan-400 italic">{crystals?.toLocaleString() ?? 0}</span>
+                  </div>
                 </div>
-                <span className="text-cyan-300 text-sm">{crystals?.toLocaleString() ?? 0}</span>
               </div>
 
-              <div className="h-px w-full bg-white/5 my-2" />
-
-              <button
-                onClick={() => setIsMenuOpen(false)}
-                className="flex items-center gap-3 text-zinc-400 p-3 hover:text-white hover:bg-white/10 hover:translate-x-1 rounded-xl transition-all font-bold tracking-wider text-left"
-              >
-                <Undo2 className="w-5 h-5" />
-                <span>返回</span>
-              </button>
-            </div>
+              <div className="flex justify-center mt-12">
+                <button
+                  onClick={() => setIsMenuOpen(false)}
+                  className="group px-12 py-5 bg-white text-black rounded-3xl font-black uppercase italic tracking-widest transition-all hover:bg-zinc-200 flex items-center gap-4 shadow-[0_20px_50px_rgba(255,255,255,0.1)]"
+                >
+                  <X className="w-6 h-6" />
+                  关闭菜单
+                </button>
+              </div>
+            </motion.div>
           </motion.div>
         )}
       </AnimatePresence>
