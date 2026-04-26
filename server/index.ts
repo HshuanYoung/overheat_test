@@ -143,6 +143,7 @@ async function handleBotMove(gameState: any, gameId: string) {
                     };
 
                     await ServerGameService.botMove(currentGameState, syncCallback);
+                    await ServerGameService.applyConfrontationStrategy(currentGameState, syncCallback);
 
                     await syncAndSaveState(gameId, currentGameState);
 
@@ -296,6 +297,9 @@ async function advancePhase(gameState: any, gameId: string, playerId?: string, s
     try {
         // console.log(`[Socket] advancePhase for game ${gameId}, action: ${action}, playerId: ${playerId}`);
         await ServerGameService.advancePhase(gameState, action, playerId, async (state) => {
+            await syncAndSaveState(gameId, state);
+        });
+        await ServerGameService.applyConfrontationStrategy(gameState, async (state) => {
             await syncAndSaveState(gameId, state);
         });
 
@@ -1472,7 +1476,8 @@ function createInitialPlayer(deckCards: Card[], displayName: string, isFirst: bo
         hasExhaustedThisTurn: [],
         isGoddessMode: false,
         isTurn: isFirst,
-        timeRemaining: turnTimerLimit ? turnTimerLimit * 1000 : 300000
+        timeRemaining: turnTimerLimit ? turnTimerLimit * 1000 : 300000,
+        confrontationStrategy: 'ON'
     };
 
 }
@@ -1684,9 +1689,7 @@ io.on('connection', (socket) => {
                     await ServerGameService.playCard(gameState, myUid, cardId, paymentSelection);
                 } else if (action === 'ATTACK') {
                     const { attackerIds, isAlliance } = payload;
-                    await ServerGameService.declareAttack(gameState, myUid, attackerIds, isAlliance, undefined, undefined, async (state) => {
-                        io.to(room.id).emit('game_update', state);
-                    });
+                    await ServerGameService.declareAttack(gameState, myUid, attackerIds, isAlliance, undefined, undefined, syncCallback);
                 } else if (action === 'DEFEND') {
                     const { defenderId } = payload;
                     await ServerGameService.declareDefense(gameState, myUid, defenderId);
@@ -1714,20 +1717,34 @@ io.on('connection', (socket) => {
                     await advancePhase(gameState, gameId, myUid, socket, action);
                 } else if (action === 'MOVE_CARD') {
                     const { fromZone, toPlayerId, toZone, cardId } = payload;
-                    await ServerGameService.moveCard(gameState, myUid, fromZone, toPlayerId, toZone, cardId, true);
+                    await ServerGameService.moveCard(gameState, myUid, fromZone, toPlayerId, toZone, cardId, { isEffect: true });
+                } else if (action === 'SET_CONFRONTATION_STRATEGY') {
+                    const strategy = payload?.strategy;
+                    if (strategy === 'ON' || strategy === 'AUTO' || strategy === 'OFF') {
+                        player.confrontationStrategy = strategy;
+                        gameState.logs.push(`[设置] ${player.displayName} 将对抗策略设为 ${strategy === 'ON' ? '全开' : strategy === 'AUTO' ? '自动' : '全关'}。`);
+                    }
                 } else if (action === 'END_PHASE') {
                     if (player.isTurn || gameState.phase === 'BATTLE_FREE' || gameState.phase === 'COUNTERING') {
                         await advancePhase(gameState, gameId, myUid, socket, payload);
                         await ServerGameService.checkTriggeredEffects(gameState);
+                        await ServerGameService.applyConfrontationStrategy(gameState, syncCallback);
+                        await syncAndSaveState(gameId, gameState);
+                        if (gameState.gameStatus !== 2) {
+                            triggerBotIfNeeded(gameState, gameId);
+                        }
                         return; // advancePhase already calls syncAndSaveState
                     }
                 } else if (action === 'SURRENDER') {
                     await ServerGameService.surrender(gameState, myUid);
                 }
 
+                await ServerGameService.applyConfrontationStrategy(gameState, syncCallback);
+
                 // Ensure any dangling triggers are checked before saving state (Skip if game is over)
                 if (gameState.gameStatus !== 2) {
                     await ServerGameService.checkTriggeredEffects(gameState);
+                    await ServerGameService.applyConfrontationStrategy(gameState, syncCallback);
                 }
 
                 // Final state sync and save

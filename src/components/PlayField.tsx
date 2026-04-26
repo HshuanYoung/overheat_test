@@ -24,6 +24,7 @@ interface PlayFieldProps {
   cardBackUrl?: string;
   viewingZone?: { title: string, cards: Card[], type: string, erosionBackIds?: string[], isOpponentZone?: boolean } | null;
   setViewingZone?: (zone: { title: string, cards: Card[], type: string, erosionBackIds?: string[], isOpponentZone?: boolean } | null) => void;
+  highlightedCardIds?: Set<string>;
 }
 
 const CardSlot: React.FC<{
@@ -45,7 +46,8 @@ const CardSlot: React.FC<{
   displayMode?: 'deck' | 'unit' | 'erosion_item' | 'none';
   slotLabel?: string;
   cardBackUrl?: string;
-}> = ({ card, label, onClick, onPreview, className, isFaceUp = true, isExhausted, isSelectedForPayment, isDeck, count = 0, showCount = true, isAttacking, isDefending, isOpponent, isAllianceInitiator, displayMode, slotLabel, cardBackUrl }) => {
+  isHighlighted?: boolean;
+}> = ({ card, label, onClick, onPreview, className, isFaceUp = true, isExhausted, isSelectedForPayment, isDeck, count = 0, showCount = true, isAttacking, isDefending, isOpponent, isAllianceInitiator, displayMode, slotLabel, cardBackUrl, isHighlighted }) => {
   // Dynamic height scaling for stack areas (Deck, Grave, Exile)
   const isStackArea = isDeck || label === '墓地' || label === '放逐';
   const numericCount = typeof count === 'number' ? count : 0;
@@ -86,7 +88,7 @@ const CardSlot: React.FC<{
             isExhausted && "opacity-80"
           )}>
             {isFaceUp ? (
-              <CardComponent card={card} className="border-0" isExhausted={isExhausted} statusBorder={isAttacking ? 'red' : isDefending ? 'blue' : undefined} displayMode={displayMode} cardBackUrl={cardBackUrl} />
+              <CardComponent card={card} className="border-0" isExhausted={isExhausted} statusBorder={isAttacking ? 'red' : isDefending ? 'blue' : undefined} displayMode={displayMode} cardBackUrl={cardBackUrl} isHighlighted={isHighlighted} />
             ) : (
               <CardComponent isBack className="border-0" isExhausted={isExhausted} cardBackUrl={cardBackUrl} />
             )}
@@ -132,7 +134,8 @@ const CardListModal: React.FC<{
   zoneType: string;
   erosionBackIds?: string[];
   isOpponentZone?: boolean;
-}> = ({ title, cards = [], isOpen, onClose, onPreviewCard, onCardClick, cardBackUrl, zoneType, erosionBackIds = [], isOpponentZone = false }) => {
+  highlightedCardIds?: Set<string>;
+}> = ({ title, cards = [], isOpen, onClose, onPreviewCard, onCardClick, cardBackUrl, zoneType, erosionBackIds = [], isOpponentZone = false, highlightedCardIds }) => {
   if (!isOpen) return null;
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-8 bg-black/80 backdrop-blur-sm" onClick={onClose}>
@@ -168,6 +171,7 @@ const CardListModal: React.FC<{
                   disableZoom
                   cardBackUrl={cardBackUrl}
                   isBack={isHiddenErosionBack}
+                  isHighlighted={!isHiddenErosionBack && highlightedCardIds?.has(card.gamecardId)}
                 />
               </div>
             );
@@ -194,7 +198,8 @@ const PlayerHalf: React.FC<{
   cardBackUrl?: string;
   viewingZone?: { title: string, cards: Card[], type: string, erosionBackIds?: string[], isOpponentZone?: boolean } | null;
   setViewingZone?: (zone: { title: string, cards: Card[], type: string, erosionBackIds?: string[], isOpponentZone?: boolean } | null) => void;
-}> = ({ player, isOpponent, onCardClick, onPreviewCard, onPlayCard, paymentSelection, pendingPlayCard, selectedAttackers, selectedDefender, game, allianceInitiator, cardBackUrl, viewingZone, setViewingZone }) => {
+  highlightedCardIds?: Set<string>;
+}> = ({ player, isOpponent, onCardClick, onPreviewCard, onPlayCard, paymentSelection, pendingPlayCard, selectedAttackers, selectedDefender, game, allianceInitiator, cardBackUrl, viewingZone, setViewingZone, highlightedCardIds }) => {
   if (!player) return null;
   const unitZoneOffsetClass = "md:translate-x-20 lg:translate-x-28";
   const getMobileErosionCount = (playerState: PlayerState): number | string => {
@@ -222,6 +227,7 @@ const PlayerHalf: React.FC<{
         cardBackUrl={cardBackUrl}
         erosionBackIds={viewingZone?.erosionBackIds}
         isOpponentZone={viewingZone?.isOpponentZone}
+        highlightedCardIds={highlightedCardIds}
       />
 
       {/* SIDEBAR 1: Left Columns */}
@@ -258,6 +264,7 @@ const PlayerHalf: React.FC<{
               onClick={() => setViewingZone?.({ title: '道具区', cards: player.itemZone?.filter(Boolean) as Card[], type: 'item' })}
               isFaceUp={true}
               isExhausted={!!(player.itemZone?.filter(Boolean).slice(-1)[0] as Card | undefined)?.isExhausted}
+              isHighlighted={highlightedCardIds?.has((player.itemZone?.filter(Boolean).slice(-1)[0] as Card | undefined)?.gamecardId || '')}
               displayMode="erosion_item"
             />
             <CardSlot
@@ -277,6 +284,7 @@ const PlayerHalf: React.FC<{
                 });
               }}
               isFaceUp={player.erosionFront?.some(c => c !== null)}
+              isHighlighted={highlightedCardIds?.has((player.erosionFront?.filter(Boolean).slice(-1)[0] || null)?.gamecardId || '')}
               displayMode="erosion_item"
             />
             <CardSlot
@@ -340,6 +348,7 @@ const PlayerHalf: React.FC<{
                             onClick={(e) => onCardClick?.(displayCard, displayCard.isFaceUp ? 'erosion_front' : 'erosion_back', i, e)}
                             isSelectedForPayment={displayCard.isFaceUp && paymentSelection?.erosionFrontIds?.includes(displayCard.gamecardId)}
                             className={displayCard.isFaceUp ? "border-red-600" : "border-red-900/50"}
+                            isHighlighted={displayCard.isFaceUp && highlightedCardIds?.has(displayCard.gamecardId)}
                             showCount={false} isOpponent={isOpponent} displayMode="erosion_item" slotLabel={num} cardBackUrl={cardBackUrl}
                           />
                         ) : (
@@ -367,6 +376,7 @@ const PlayerHalf: React.FC<{
                     isSelectedForPayment={unit ? paymentSelection?.exhaustIds.includes(unit.gamecardId) : false}
                     isAttacking={unit ? (selectedAttackers?.includes(unit.gamecardId) || game?.battleState?.attackers.includes(unit.gamecardId)) : false}
                     isDefending={unit ? (selectedDefender === unit.gamecardId || game?.battleState?.defender === unit.gamecardId) : false}
+                    isHighlighted={unit ? highlightedCardIds?.has(unit.gamecardId) : false}
                     showCount={false} isOpponent={isOpponent} displayMode="unit" slotLabel={`${6 - i}`} cardBackUrl={cardBackUrl}
                   />
                 );
@@ -389,6 +399,7 @@ const PlayerHalf: React.FC<{
                     isAttacking={unit ? (selectedAttackers?.includes(unit.gamecardId) || game?.battleState?.attackers.includes(unit.gamecardId)) : false}
                     isDefending={unit ? (selectedDefender === unit.gamecardId || game?.battleState?.defender === unit.gamecardId) : false}
                     isAllianceInitiator={unit && allianceInitiator === unit.gamecardId}
+                    isHighlighted={unit ? highlightedCardIds?.has(unit.gamecardId) : false}
                     showCount={false} displayMode="unit" slotLabel={`${i + 1}`} cardBackUrl={cardBackUrl}
                   />
                 );
@@ -422,6 +433,7 @@ const PlayerHalf: React.FC<{
                             }}
                             isSelectedForPayment={displayCard.isFaceUp && paymentSelection?.erosionFrontIds?.includes(displayCard.gamecardId)}
                             className={displayCard.isFaceUp ? "border-red-600" : "border-red-900/50"}
+                            isHighlighted={displayCard.isFaceUp && highlightedCardIds?.has(displayCard.gamecardId)}
                             showCount={false}
                             displayMode="erosion_item"
                             slotLabel={num}
@@ -462,6 +474,7 @@ const PlayerHalf: React.FC<{
                     >
                       <CardComponent
                         card={card} disableZoom displayMode="hand" cardBackUrl={cardBackUrl}
+                        isHighlighted={highlightedCardIds?.has(card.gamecardId)}
                         className={cn("shadow-2xl transition-all duration-300", isFeijingSelected && "shadow-[#f27d26]/60 ring-2 ring-[#f27d26]")}
                       />
                     </div>
@@ -514,6 +527,7 @@ const PlayerHalf: React.FC<{
               onClick={() => setViewingZone?.({ title: '敌方道具区', cards: player.itemZone?.filter(Boolean) as Card[], type: 'item' })}
               isFaceUp={true}
               isExhausted={!!(player.itemZone?.filter(Boolean).slice(-1)[0] as Card | undefined)?.isExhausted}
+              isHighlighted={highlightedCardIds?.has((player.itemZone?.filter(Boolean).slice(-1)[0] as Card | undefined)?.gamecardId || '')}
               isOpponent={isOpponent}
               displayMode="erosion_item"
             />
@@ -546,7 +560,7 @@ const PlayerHalf: React.FC<{
   );
 };
 
-export const PlayField: React.FC<PlayFieldProps> = ({ player, opponent, game, onCardClick, onPreviewCard, onPlayCard, paymentSelection, pendingPlayCard, stack, myUid, selectedAttackers, selectedDefender, allianceInitiator, timer, cardBackUrl, viewingZone, setViewingZone }) => {
+export const PlayField: React.FC<PlayFieldProps> = ({ player, opponent, game, onCardClick, onPreviewCard, onPlayCard, paymentSelection, pendingPlayCard, stack, myUid, selectedAttackers, selectedDefender, allianceInitiator, timer, cardBackUrl, viewingZone, setViewingZone, highlightedCardIds }) => {
   if (!player || !opponent || !game) return null;
   return (
     <div className="relative w-full h-full max-w-full lg:max-w-7xl mx-auto bg-[#0a0a0a] border-y md:border-2 border-[#1a1a1a] md:rounded-xl shadow-2xl font-sans text-white select-none flex flex-col">
@@ -571,6 +585,7 @@ export const PlayField: React.FC<PlayFieldProps> = ({ player, opponent, game, on
           cardBackUrl={cardBackUrl}
           viewingZone={viewingZone}
           setViewingZone={setViewingZone}
+          highlightedCardIds={highlightedCardIds}
         />
       </div>
 
@@ -591,6 +606,7 @@ export const PlayField: React.FC<PlayFieldProps> = ({ player, opponent, game, on
           cardBackUrl={cardBackUrl}
           viewingZone={viewingZone}
           setViewingZone={setViewingZone}
+          highlightedCardIds={highlightedCardIds}
         />
       </div>
 

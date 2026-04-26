@@ -810,6 +810,67 @@ export const ServerGameService = {
     return { canPlay: true };
   },
 
+  playerHasAvailableConfrontationAction(gameState: GameState, playerId: string): boolean {
+    const player = gameState.players[playerId];
+    if (!player || gameState.phase !== 'COUNTERING' || gameState.priorityPlayerId !== playerId) return false;
+
+    const hasPlayableStory = player.hand.some(card =>
+      card.type === 'STORY' &&
+      ServerGameService.canPlayCard(gameState, player, card).canPlay
+    );
+    if (hasPlayableStory) return true;
+
+    const activationZones: { cards: (Card | null)[]; location: TriggerLocation }[] = [
+      { cards: player.unitZone, location: 'UNIT' },
+      { cards: player.itemZone, location: 'ITEM' },
+      { cards: player.erosionFront, location: 'EROSION_FRONT' },
+      { cards: player.hand, location: 'HAND' }
+    ];
+
+    return activationZones.some(({ cards, location }) =>
+      cards.some(card => {
+        if (!card) return false;
+        if (card.type === 'STORY' && location === 'HAND') return false;
+
+        return !!card.effects?.some(effect =>
+          (effect.type === 'ACTIVATE' || effect.type === 'ACTIVATED') &&
+          ServerGameService.checkEffectLimitsAndReqs(gameState, playerId, card, effect, location).valid
+        );
+      })
+    );
+  },
+
+  async applyConfrontationStrategy(gameState: GameState, onUpdate?: (state: GameState) => Promise<void>) {
+    if (
+      gameState.phase !== 'COUNTERING' ||
+      !gameState.priorityPlayerId ||
+      gameState.pendingQuery ||
+      gameState.isResolvingStack ||
+      gameState.currentProcessingItem
+    ) {
+      return gameState;
+    }
+
+    const player = gameState.players[gameState.priorityPlayerId];
+    if (!player) return gameState;
+
+    const strategy = player.confrontationStrategy || 'ON';
+    if (strategy === 'ON') return gameState;
+
+    const hasAction = strategy === 'AUTO'
+      ? ServerGameService.playerHasAvailableConfrontationAction(gameState, player.uid)
+      : false;
+
+    if (strategy === 'AUTO' && hasAction) return gameState;
+
+    const strategyLabel = strategy === 'OFF' ? '全关' : '自动';
+    const reason = strategy === 'OFF' ? '跳过所有对抗请求' : '没有可用的对抗动作';
+    gameState.logs.push(`[对抗策略] ${player.displayName} 的策略为${strategyLabel}，${reason}，自动进入结算。`);
+
+    await ServerGameService.resolveCounterStack(gameState, onUpdate);
+    return gameState;
+  },
+
   payCost(gameState: GameState, playerId: string, cost: number, paymentSelection: { feijingCardId?: string, exhaustUnitIds?: string[], erosionFrontIds?: string[] }, cardColor?: string, playingCardId?: string): { success: boolean; reason?: string } {
     const player = gameState.players[playerId];
     if (cost === 0) return { success: true };
@@ -3544,6 +3605,7 @@ export const ServerGameService = {
       hasExhaustedThisTurn: [],
       isHandPublic: 0,
       timeRemaining: GAME_TIMEOUTS.MAIN_PHASE_TOTAL,
+      confrontationStrategy: 'ON',
     };
 
     // Initial Draw 4
@@ -3616,6 +3678,7 @@ export const ServerGameService = {
       hasExhaustedThisTurn: [],
       isHandPublic: 0,
       timeRemaining: GAME_TIMEOUTS.MAIN_PHASE_TOTAL,
+      confrontationStrategy: 'ON',
     };
 
     const botState: PlayerState = {
@@ -3636,6 +3699,7 @@ export const ServerGameService = {
       hasExhaustedThisTurn: [],
       isHandPublic: 0,
       timeRemaining: GAME_TIMEOUTS.MAIN_PHASE_TOTAL,
+      confrontationStrategy: 'ON',
     };
 
     // Initial Draw 4 for both
@@ -4009,6 +4073,7 @@ export const ServerGameService = {
       hasExhaustedThisTurn: [],
       isHandPublic: 0,
       timeRemaining: turnTimerLimit ? turnTimerLimit * 1000 : GAME_TIMEOUTS.MAIN_PHASE_TOTAL,
+      confrontationStrategy: 'ON',
     };
 
     const botState: PlayerState = {
@@ -4029,6 +4094,7 @@ export const ServerGameService = {
       hasExhaustedThisTurn: [],
       isHandPublic: 0,
       timeRemaining: turnTimerLimit ? turnTimerLimit * 1000 : GAME_TIMEOUTS.MAIN_PHASE_TOTAL,
+      confrontationStrategy: 'ON',
     };
 
     // Draw 4
@@ -4080,12 +4146,14 @@ export const ServerGameService = {
       isTurn: false, isFirst: false, mulliganDone: false, hasExhaustedThisTurn: [],
       isHandPublic: 0,
       timeRemaining: turnTimerLimit ? turnTimerLimit * 1000 : GAME_TIMEOUTS.MAIN_PHASE_TOTAL,
+      confrontationStrategy: 'ON',
     };
     const p2: PlayerState = {
       uid: uid2, displayName: 'Player 2', deck: init2, hand: [], grave: [], exile: [], itemZone: Array(6).fill(null), erosionFront: Array(10).fill(null), erosionBack: Array(10).fill(null), unitZone: Array(6).fill(null), playZone: [],
       isTurn: false, isFirst: false, mulliganDone: false, hasExhaustedThisTurn: [],
       isHandPublic: 0,
       timeRemaining: turnTimerLimit ? turnTimerLimit * 1000 : GAME_TIMEOUTS.MAIN_PHASE_TOTAL,
+      confrontationStrategy: 'ON',
     };
 
     for (let i = 0; i < 4; i++) {
