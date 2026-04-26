@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Card, PlayerState, StackItem, GameState, GAME_TIMEOUTS } from '../types/game';
 import { CardComponent } from './Card';
-import { GameService } from '../services/gameService';
+import { StandardPopup } from './StandardPopup';
 import { Shield, Sword, Zap, Trash2, Flag, BookOpen, Layers, AlertTriangle, Search, Play, X } from 'lucide-react';
 import { cn } from '../lib/utils';
 
@@ -33,6 +33,8 @@ interface PlayFieldProps {
   onUpdateStrategy?: (strategy: 'ON' | 'AUTO' | 'OFF') => void;
   showPhaseMenu?: boolean;
   isAnyPopupOpen?: boolean;
+  isPopupHidden?: boolean;
+  onExpand?: () => void;
 }
 
 const CardSlot: React.FC<{
@@ -131,65 +133,6 @@ const CardSlot: React.FC<{
   );
 };
 
-const CardListModal: React.FC<{
-  title: string;
-  cards: Card[];
-  isOpen: boolean;
-  onClose: () => void;
-  onPreviewCard?: (card: Card) => void;
-  onCardClick?: (card: Card, zone: string, index?: number, e?: React.MouseEvent) => void;
-  cardBackUrl?: string;
-  zoneType: string;
-  erosionBackIds?: string[];
-  isOpponentZone?: boolean;
-  highlightedCardIds?: Set<string>;
-}> = ({ title, cards = [], isOpen, onClose, onPreviewCard, onCardClick, cardBackUrl, zoneType, erosionBackIds = [], isOpponentZone = false, highlightedCardIds }) => {
-  if (!isOpen) return null;
-  return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-8 bg-black/80 backdrop-blur-sm" onClick={onClose}>
-      <div className="bg-zinc-900 border border-white/10 rounded-2xl w-full max-w-4xl max-h-[80vh] flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
-        <div className="p-4 border-bottom border-white/10 flex justify-between items-center">
-          <h3 className="text-lg font-bold uppercase tracking-widest text-[#f27d26]">{title} ({cards?.length || 0})</h3>
-          <button onClick={onClose} className="p-2 hover:bg-white/10 hover:text-red-500 rounded-full transition-all group">
-            <X className="w-6 h-6 group-hover:rotate-90 transition-transform" />
-          </button>
-        </div>
-        <div className="flex-1 overflow-y-auto p-6 flex flex-wrap justify-center content-start gap-4 md:gap-6 custom-scrollbar">
-          {cards?.filter(c => c !== null && c !== undefined && Object.keys(c).length > 0).map((card, i) => {
-            const isHiddenErosionBack = zoneType === 'erosion' && erosionBackIds.includes(card.gamecardId);
-            const clickZone =
-              zoneType === 'erosion'
-                ? (isHiddenErosionBack ? 'erosion_back' : 'erosion_front')
-                : zoneType;
-
-            return (
-              <div
-                key={i}
-                className="w-24 sm:w-32 md:w-36 aspect-[3/4] shrink-0 cursor-pointer"
-                onClick={(e) => {
-                  if (onCardClick) {
-                    onCardClick(card, clickZone, i, e);
-                  } else {
-                    onPreviewCard?.(card);
-                  }
-                }}
-              >
-                <CardComponent
-                  card={card}
-                  disableZoom
-                  cardBackUrl={cardBackUrl}
-                  isBack={isHiddenErosionBack}
-                  isHighlighted={!isHiddenErosionBack && highlightedCardIds?.has(card.gamecardId)}
-                />
-              </div>
-            );
-          })}
-          {(cards?.filter(c => c !== null && c !== undefined && Object.keys(c).length > 0).length || 0) === 0 && <div className="w-full py-20 text-center opacity-20 italic">这里没有卡牌</div>}
-        </div>
-      </div>
-    </div>
-  );
-};
 
 const PlayerHalf: React.FC<{
   player: PlayerState;
@@ -561,7 +504,7 @@ export const PlayField: React.FC<PlayFieldProps> = ({
   selectedDefender, allianceInitiator, timer, cardBackUrl, viewingZone,
   setViewingZone, highlightedCardIds, onShowLogs, onOpenRulebook,
   onSurrender, onPhaseClick, confrontationStrategy, onUpdateStrategy,
-  showPhaseMenu, isAnyPopupOpen
+  showPhaseMenu, isAnyPopupOpen, isPopupHidden, onExpand
 }) => {
   if (!player || !opponent || !game) return null;
   return (
@@ -569,18 +512,24 @@ export const PlayField: React.FC<PlayFieldProps> = ({
       {/* Background Overlay */}
       <div className="absolute inset-0 bg-gradient-to-b from-red-500/5 via-transparent to-blue-500/5 pointer-events-none" />
 
-      <CardListModal
+      <StandardPopup
         isOpen={!!viewingZone}
         onClose={() => setViewingZone?.(null)}
         title={viewingZone?.title || ''}
+        mode="card_display"
         cards={viewingZone?.cards || []}
-        zoneType={viewingZone?.type || ''}
-        onPreviewCard={onPreviewCard}
-        onCardClick={onCardClick}
+        onCardClick={(card, e) => {
+          if (onCardClick && viewingZone) {
+            const isHiddenErosionBack = viewingZone.type === 'erosion' && viewingZone.erosionBackIds?.includes(card.gamecardId);
+            const clickZone = viewingZone.type === 'erosion' ? (isHiddenErosionBack ? 'erosion_back' : 'erosion_front') : viewingZone.type;
+            const index = viewingZone.cards.findIndex(c => c.gamecardId === card.gamecardId);
+            onCardClick(card, clickZone, index, e);
+          } else {
+            onPreviewCard?.(card);
+          }
+        }}
         cardBackUrl={cardBackUrl}
-        erosionBackIds={viewingZone?.erosionBackIds}
-        isOpponentZone={viewingZone?.isOpponentZone}
-        highlightedCardIds={highlightedCardIds}
+        selectedIds={Array.from(highlightedCardIds || [])}
       />
       {/* Opponent Half */}
       <div className="flex-1 min-h-0">
@@ -606,7 +555,7 @@ export const PlayField: React.FC<PlayFieldProps> = ({
       {/* Central Battle Info Panel */}
       <div className={cn(
         "relative h-20 w-full flex items-center justify-center z-[100] transition-all duration-300",
-        isAnyPopupOpen ? "opacity-0 pointer-events-none scale-95" : "opacity-100 scale-100"
+        (isAnyPopupOpen && !isPopupHidden) ? "opacity-0 pointer-events-none scale-95" : "opacity-100 scale-100"
       )}>
         <div className="absolute inset-0 bg-gradient-to-r from-transparent via-[#f27d26]/10 to-transparent border-y border-white/5" />
 
@@ -693,6 +642,15 @@ export const PlayField: React.FC<PlayFieldProps> = ({
             </div>
 
             <div className="flex items-center gap-2">
+              {isPopupHidden && (
+                <button
+                  onClick={onExpand}
+                  className="p-2.5 px-4 rounded-full bg-[#f27d26] text-black font-black italic text-[10px] tracking-widest transition-all hover:scale-105 active:scale-95 shadow-[0_0_20px_rgba(242,125,38,0.4)] flex items-center gap-2"
+                >
+                  <Play className="w-4 h-4 fill-current" />
+                  展开窗口
+                </button>
+              )}
               <button
                 onClick={onOpenRulebook}
                 className="p-2.5 rounded-full bg-white/5 hover:bg-white/10 text-white/60 hover:text-white transition-all border border-white/5 shadow-inner"

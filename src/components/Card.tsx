@@ -97,7 +97,12 @@ const CardComponentImpl: React.FC<CardProps> = ({
   return (
     <motion.div
       layout
+      initial={false}
       animate={{ rotate: exhausted ? 90 : 0 }}
+      transition={{ 
+        rotate: { type: 'tween', duration: 0.15, ease: 'easeOut' },
+        layout: { type: 'spring', damping: 25, stiffness: 300 }
+      }}
       whileHover={{ scale: 1.02, y: -2 }}
       whileTap={{ scale: 0.98 }}
       onClick={handleCardClick}

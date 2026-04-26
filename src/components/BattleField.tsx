@@ -11,8 +11,9 @@ import { CARD_BACKS } from '../data/customization';
 import { CardComponent } from './Card';
 import { PlayField } from './PlayField';
 import { Rulebook } from './Rulebook';
-import { motion, AnimatePresence } from 'framer-motion';
-import { Flag, Trophy, Frown, Home, Sword, Shield, Zap, LogOut, BookOpen, Send, Loader2, Trash2, X, Play, Search, ChevronRight, ShieldCheck, Layers, Sparkles, Flame } from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
+import { StandardPopup } from './StandardPopup';
+import { Flag, Trophy, Frown, Home, Sword, Shield, Zap, LogOut, BookOpen, Send, Loader2, Trash2, X, Play, Search, ChevronRight, ShieldCheck, Layers, Sparkles, Flame, AlertTriangle } from 'lucide-react';
 import { cn, getCardColorLabel, getCardImageUrl, getCardIdentity, getCardTypeLabel, getLocationLabel, getPhaseLabel } from '../lib/utils';
 import { KeywordBadges } from './KeywordBadges';
 
@@ -100,12 +101,53 @@ export const BattleField: React.FC = () => {
     attacker1: Card;
     attacker2: Card;
   } | null>(null);
+  const [isSelectingDefender, setIsSelectingDefender] = useState(false);
+  const [isConfronting, setIsConfronting] = useState(false);
 
   const lastAutoResolveRef = useRef<string | null>(null);
   const gameRef = useRef<GameState | null>(null);
   const pendingPlayCardRef = useRef<Card | null>(null);
   const [interruptionNotice, setInterruptionNotice] = useState<string | null>(null);
   const [lastError, setLastError] = useState<string | null>(null);
+  const [isPopupHidden, setIsPopupHidden] = useState(false);
+  const lastStrategyUpdateRef = useRef<number>(0);
+
+
+
+  const me = useMemo(() => (game && myUid) ? game.players[myUid.toString()] : null, [game, myUid]);
+  const opponentUid = useMemo(() => (game && myUid) ? Object.keys(game.players).find(uid => uid.toString() !== myUid.toString()) : null, [game, myUid]);
+  const opponent = useMemo(() => (game && opponentUid) ? game.players[opponentUid] : null, [game, opponentUid]);
+  const confrontationStrategy = (me?.confrontationStrategy || 'ON') as 'ON' | 'AUTO' | 'OFF';
+  const [localStrategy, setLocalStrategy] = useState<'ON' | 'AUTO' | 'OFF'>(confrontationStrategy);
+
+  // Sync local strategy with server state when it arrives, but ignore if we just updated it locally
+  useEffect(() => {
+    if (me?.confrontationStrategy && Date.now() - lastStrategyUpdateRef.current > 2000) {
+      setLocalStrategy(me.confrontationStrategy);
+    }
+  }, [me?.confrontationStrategy]);
+
+
+  const canConfront = useMemo(() => {
+    if (!me || me.canActivateEffect === false) return false;
+    
+    // Check hand for Story cards
+    const hasStoryInHand = (me.hand || []).some(c => c && c.type === 'STORY');
+    
+    // Check field for activated effects that aren't silenced
+    const fieldCards = [...(me.unitZone || []), ...(me.itemZone || [])];
+    const hasUsableEffect = fieldCards.some(c => {
+      if (!c || !c.effects) return false;
+      const isSilenced = (me.silencedEffectIds || []).length > 0; // Simple check, or check per-id
+      return c.effects.some(e => e && (e.type === 'ACTIVATE' || e.type === 'ACTIVATED'));
+    });
+    
+    return hasStoryInHand || hasUsableEffect;
+  }, [me]);
+
+
+
+
   useEffect(() => { gameRef.current = game; }, [game]);
   useEffect(() => { pendingPlayCardRef.current = pendingPlayCard; }, [pendingPlayCard]);
   useEffect(() => {
@@ -199,6 +241,33 @@ export const BattleField: React.FC = () => {
     const interval = setInterval(updateTimer, 500);
     return () => clearInterval(interval);
   }, [gameId, myUid]);
+
+  useEffect(() => {
+    if (!game || !gameId) return;
+    
+    // OFF Strategy: Always auto-pass
+    // AUTO Strategy: Auto-pass ONLY if no cards/effects available
+    const shouldAutoPass = localStrategy === 'OFF' || (localStrategy === 'AUTO' && !canConfront);
+
+    if (shouldAutoPass) {
+      if (game.phase === 'COUNTERING' && game.priorityPlayerId === myUid && !game.isResolvingStack) {
+        handleResolve();
+      }
+      if (game.phase === 'BATTLE_FREE' && game.battleState?.askConfront && 
+         ((game.battleState.askConfront === 'ASKING_OPPONENT' && !me.isTurn) || 
+          (game.battleState.askConfront === 'ASKING_TURN_PLAYER' && me.isTurn))) {
+        GameService.advancePhase(gameId, 'DECLINE_CONFRONTATION');
+      }
+    }
+  }, [game?.phase, game?.priorityPlayerId, game?.battleState?.askConfront, localStrategy, canConfront]);
+
+  // Reset interaction states when phase or priority changes
+  useEffect(() => {
+    setIsConfronting(false);
+    setIsSelectingDefender(false);
+    setIsPopupHidden(false);
+  }, [game?.phase, game?.priorityPlayerId, game?.counterStack.length, game?.isResolvingStack]);
+
 
   useEffect(() => {
     const audio = new Audio('/assets/music_bg.wav');
@@ -400,9 +469,7 @@ export const BattleField: React.FC = () => {
 
   // const authUser = getAuthUser();
   // const myUid = authUser?.uid;
-  const me = useMemo(() => (game && myUid) ? game.players[myUid.toString()] : null, [game, myUid]);
-  const opponentUid = useMemo(() => (game && myUid) ? Object.keys(game.players).find(uid => uid.toString() !== myUid.toString()) : null, [game, myUid]);
-  const opponent = useMemo(() => (game && opponentUid) ? game.players[opponentUid] : null, [game, opponentUid]);
+
 
   const canUse204000145AsPaymentSubstitute = (card: Card, paymentColor?: string, paymentCost?: number, excludeCardId?: string) =>
     card.id === '204000145' &&
@@ -516,12 +583,16 @@ export const BattleField: React.FC = () => {
     return ids;
   }, [game, me, myUid]);
 
-  const confrontationStrategy = (me?.confrontationStrategy || 'ON') as 'ON' | 'AUTO' | 'OFF';
+
 
   const updateConfrontationStrategy = (strategy: 'ON' | 'AUTO' | 'OFF') => {
-    if (!gameId || confrontationStrategy === strategy) return;
+    if (!gameId || localStrategy === strategy) return;
+    setLocalStrategy(strategy);
+    lastStrategyUpdateRef.current = Date.now();
     GameService.setConfrontationStrategy(gameId, strategy);
   };
+
+
 
   if (!game || !myUid || !me) {
     return (
@@ -732,6 +803,15 @@ export const BattleField: React.FC = () => {
   const handleCardClick = (card: Card, zone: string, index?: number, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
 
+    // Guided Defense/Confrontation Selection - Just guides, menu handles completion
+    if (isSelectingDefender || isConfronting) {
+      if (zone === 'unit' || zone === 'hand' || zone === 'item' || zone === 'erosion_front') {
+        // Fall through to show action menu
+      } else {
+        return;
+      }
+    }
+
     // High-priority selection modes (multi-step actions)
     if (pendingPlayCard) {
       if (zone === 'unit') {
@@ -771,17 +851,16 @@ export const BattleField: React.FC = () => {
 
 
     // Default: Show Action Menu
-    if (e) {
-      const rect = e.currentTarget.getBoundingClientRect();
-      setCardMenu({
-        card,
-        zone,
-        index,
-        x: rect.left + rect.width / 2,
-        y: rect.top - 10
-      });
-    }
+    const rect = e?.currentTarget?.getBoundingClientRect();
+    setCardMenu({
+      card,
+      zone,
+      index,
+      x: rect ? (rect.left + rect.width / 2) : (window.innerWidth / 2),
+      y: rect ? (rect.top - 10) : (window.innerHeight / 2 - 100)
+    });
   };
+
 
 
   const activateAbility = async (card: Card, effect: CardEffect, effectIndex: number, triggerLocation?: TriggerLocation) => {
@@ -836,6 +915,8 @@ export const BattleField: React.FC = () => {
   const handleResolve = async () => {
     if (!gameId) return;
     try {
+      setIsSelectingDefender(false);
+      setIsConfronting(false);
       if (game.phase === 'COUNTERING') {
         await GameService.passConfrontation(gameId);
       } else {
@@ -1042,98 +1123,62 @@ export const BattleField: React.FC = () => {
       className="h-screen pt-16 bg-[#050505] flex flex-col overflow-hidden select-none font-sans relative safe-area-inset"
       onClick={() => setCardMenu(null)}
     >
-      {/* Erosion Phase Overlay */}
-      <AnimatePresence>
-        {game.phase === 'EROSION' && me.isTurn && me.erosionFront.some(c => c !== null && c.displayState === 'FRONT_UPRIGHT') && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[70] bg-black/90 backdrop-blur-md flex items-center justify-center p-8"
+      {/* Standardized Erosion Phase Popup */}
+      <StandardPopup
+        isOpen={game.phase === 'EROSION' && me.isTurn && me.erosionFront.some(c => c !== null && c.displayState === 'FRONT_UPRIGHT')}
+        title="侵蚀阶段"
+        description="选择如何处理正面朝上的侵蚀卡"
+        mode={erosionChoice === 'B' || erosionChoice === 'C' ? 'card_selection' : 'double_selection'}
+        confirmText="确认选择"
+        onSelectionComplete={handleConfirmErosion}
+        cards={me.erosionFront.filter(c => c !== null && c.displayState === 'FRONT_UPRIGHT').map(c => c!)}
+        selectedIds={selectedErosionCardId ? [selectedErosionCardId] : []}
+        maxSelections={1}
+        minSelections={(erosionChoice === 'B' || erosionChoice === 'C') ? 1 : 0}
+        onCardClick={(card) => setSelectedErosionCardId(card.gamecardId)}
+        cardBackUrl={cardBackUrl}
+        onHide={() => setIsPopupHidden(true)}
+        isHidden={isPopupHidden}
+      >
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-6 w-full mb-8">
+          <button
+            onClick={() => { setErosionChoice('A'); setSelectedErosionCardId(null); }}
+            className={cn(
+              "p-3 md:p-6 rounded-2xl border-2 transition-all flex flex-col items-center gap-1 md:gap-4 text-center",
+              erosionChoice === 'A' ? "border-[#f27d26] bg-[#f27d26]/10" : "border-white/10 bg-white/5 hover:bg-white/10"
+            )}
           >
-            <div className="max-w-4xl w-full flex flex-col items-center gap-4 md:gap-8 overflow-y-auto max-h-screen">
-              <div className="text-center">
-                <h2 className="text-xl md:text-4xl font-black italic text-[#f27d26] mb-1 md:mb-2 tracking-tighter">侵蚀阶段</h2>
-                <p className="text-zinc-400 tracking-[0.2em] md:tracking-[0.3em] text-[10px] md:text-sm">选择如何处理正面朝上的侵蚀卡</p>
-              </div>
+            <div className="w-8 h-8 md:w-12 md:h-12 rounded-full bg-zinc-800 flex items-center justify-center text-lg md:text-xl font-bold">A</div>
+            <div className="font-bold text-white text-sm md:text-base">全部送入墓地</div>
+            <div className="text-[10px] md:text-xs text-zinc-500">将侵蚀区所有正面卡送入墓地</div>
+          </button>
 
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-6 w-full">
-                <button
-                  onClick={() => setErosionChoice('A')}
-                  className={cn(
-                    "p-3 md:p-6 rounded-2xl border-2 transition-all flex flex-col items-center gap-1 md:gap-4 text-center",
-                    erosionChoice === 'A' ? "border-[#f27d26] bg-[#f27d26]/10" : "border-white/10 bg-white/5 hover:bg-white/10"
-                  )}
-                >
-                  <div className="w-8 h-8 md:w-12 md:h-12 rounded-full bg-zinc-800 flex items-center justify-center text-lg md:text-xl font-bold">A</div>
-                  <div className="font-bold text-white text-sm md:text-base">全部送入墓地</div>
-                  <div className="text-[10px] md:text-xs text-zinc-500">将侵蚀区所有正面卡送入墓地</div>
-                </button>
+          <button
+            onClick={() => setErosionChoice('B')}
+            className={cn(
+              "p-3 md:p-6 rounded-2xl border-2 transition-all flex flex-col items-center gap-1 md:gap-4 text-center",
+              erosionChoice === 'B' ? "border-[#f27d26] bg-[#f27d26]/10" : "border-white/10 bg-white/5 hover:bg-white/10"
+            )}
+          >
+            <div className="w-8 h-8 md:w-12 md:h-12 rounded-full bg-zinc-800 flex items-center justify-center text-lg md:text-xl font-bold">B</div>
+            <div className="font-bold text-white text-sm md:text-base">保留一张</div>
+            <div className="text-[10px] md:text-xs text-zinc-500">选择一张保留，其余送入墓地</div>
+          </button>
 
-                <button
-                  onClick={() => setErosionChoice('B')}
-                  className={cn(
-                    "p-3 md:p-6 rounded-2xl border-2 transition-all flex flex-col items-center gap-1 md:gap-4 text-center",
-                    erosionChoice === 'B' ? "border-[#f27d26] bg-[#f27d26]/10" : "border-white/10 bg-white/5 hover:bg-white/10"
-                  )}
-                >
-                  <div className="w-8 h-8 md:w-12 md:h-12 rounded-full bg-zinc-800 flex items-center justify-center text-lg md:text-xl font-bold">B</div>
-                  <div className="font-bold text-white text-sm md:text-base">保留一张</div>
-                  <div className="text-[10px] md:text-xs text-zinc-500">选择一张保留，其余送入墓地</div>
-                </button>
-
-                <button
-                  onClick={() => setErosionChoice('C')}
-                  className={cn(
-                    "p-3 md:p-6 rounded-2xl border-2 transition-all flex flex-col items-center gap-1 md:gap-4 text-center",
-                    erosionChoice === 'C' ? "border-[#f27d26] bg-[#f27d26]/10" : "border-white/10 bg-white/5 hover:bg-white/10"
-                  )}
-                >
-                  <div className="w-8 h-8 md:w-12 md:h-12 rounded-full bg-zinc-800 flex items-center justify-center text-lg md:text-xl font-bold">C</div>
-                  <div className="font-bold text-white text-sm md:text-base">加入手牌</div>
-                  <div className="text-[10px] md:text-xs text-zinc-500">选择一张加入手牌，其余送墓，并从牌库放置一张到侵蚀区背面</div>
-                </button>
-              </div>
-
-              {(erosionChoice === 'B' || erosionChoice === 'C') && (
-                <div className="flex flex-col items-center gap-4 animate-in fade-in slide-in-from-bottom-4">
-                  <p className="text-[#f27d26] font-bold tracking-widest text-sm">请点击下方卡牌进行选择</p>
-                  <div className="w-full max-h-[58vh] overflow-y-auto overflow-x-hidden custom-scrollbar px-2 md:max-h-none md:overflow-x-auto md:overflow-y-visible md:px-0">
-                    <div className="mx-auto grid w-full max-w-[23rem] grid-cols-2 gap-2.5 py-4 place-items-center md:mx-0 md:w-max md:max-w-none md:flex md:min-w-max md:items-stretch md:gap-4 md:px-6">
-                      {me.erosionFront.filter(c => c !== null && c.displayState === 'FRONT_UPRIGHT').map((card, i) => (
-                        <motion.div
-                          key={card!.gamecardId}
-                          whileHover={{ y: -10 }}
-                          onClick={() => setSelectedErosionCardId(card!.gamecardId)}
-                          className={cn(
-                            "w-full max-w-[10.8rem] shrink-0 cursor-pointer transition-all rounded-lg overflow-hidden border-2 md:w-48 md:max-w-none md:first:ml-2 md:last:mr-2 md:first:origin-left md:last:origin-right",
-                            selectedErosionCardId === card!.gamecardId ? "border-[#f27d26] scale-105 shadow-[0_0_20px_rgba(242,125,38,0.4)]" : "border-transparent opacity-60"
-                          )}
-                        >
-                          <div className="relative">
-                            <CardComponent card={card!} disableZoom={true} cardBackUrl={cardBackUrl} />
-                            <div className="absolute left-2 top-2 rounded-full bg-black/75 px-2 py-1 text-[10px] font-black text-white shadow-lg">
-                              侵蚀区 {i + 1}
-                            </div>
-                          </div>
-                        </motion.div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              <button
-                onClick={handleConfirmErosion}
-                disabled={!erosionChoice || ((erosionChoice === 'B' || erosionChoice === 'C') && !selectedErosionCardId)}
-                className="px-8 md:px-16 py-3 md:py-4 bg-[#f27d26] text-white font-black italic uppercase tracking-widest rounded-xl hover:bg-[#f27d26]/80 transition-all disabled:opacity-30 disabled:cursor-not-allowed shadow-xl shadow-[#f27d26]/20"
-              >
-                确认选择
-              </button>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+          <button
+            onClick={() => setErosionChoice('C')}
+            className={cn(
+              "p-3 md:p-6 rounded-2xl border-2 transition-all flex flex-col items-center gap-1 md:gap-4 text-center",
+              erosionChoice === 'C' ? "border-[#f27d26] bg-[#f27d26]/10" : "border-white/10 bg-white/5 hover:bg-white/10"
+            )}
+          >
+            <div className="w-8 h-8 md:w-12 md:h-12 rounded-full bg-zinc-800 flex items-center justify-center text-lg md:text-xl font-bold">C</div>
+            <div className="font-bold text-white text-sm md:text-base">加入手牌</div>
+            <div className="text-[10px] md:text-xs text-zinc-500">选择一张加入手牌，其余送墓，并从牌库放置一张到侵蚀区背面</div>
+          </button>
+        </div>
+      </StandardPopup>
 
       {/* Payment Selection Overlay */}
       <AnimatePresence>
@@ -1193,11 +1238,11 @@ export const BattleField: React.FC = () => {
                             手牌代替支付
                           </div>
                           <div className="grid grid-cols-2 gap-3 pb-2 justify-items-center">
-                            {getHandPaymentOptions(pendingPlayCard.color, pendingPlayCard.acValue, pendingPlayCard.gamecardId).map(card => {
+                            {getHandPaymentOptions(pendingPlayCard.color, pendingPlayCard.acValue, pendingPlayCard.gamecardId).map((card, i) => {
                               const isSelected = paymentSelection.useFeijing.includes(card.gamecardId);
                               return (
                                 <motion.div
-                                  key={card.gamecardId}
+                                  key={`${card.gamecardId}-${i}`}
                                   whileHover={{ y: -3 }}
                                   whileTap={{ scale: 0.95 }}
                                   onClick={() => togglePaymentFeijing(card.gamecardId)}
@@ -1227,11 +1272,11 @@ export const BattleField: React.FC = () => {
                             横置支付（费用 -1）
                           </div>
                           <div className="grid grid-cols-2 gap-3 pb-2 justify-items-center">
-                            {me.unitZone.filter(c => c && !c.isExhausted).map(card => {
+                            {me.unitZone.filter(c => c && !c.isExhausted).map((card, i) => {
                               const isSelected = paymentSelection.exhaustIds.includes(card!.gamecardId);
                               return (
                                 <motion.div
-                                  key={card!.gamecardId}
+                                  key={`${card!.gamecardId}-${i}`}
                                   whileHover={{ y: -3 }}
                                   whileTap={{ scale: 0.95 }}
                                   onClick={() => togglePaymentExhaust(card!.gamecardId)}
@@ -1261,11 +1306,11 @@ export const BattleField: React.FC = () => {
                         侵蚀区支付 (Erosion Payment - Select {Math.abs(pendingPlayCard.acValue)} cards)
                       </div>
                       <div className="grid grid-cols-2 gap-3 pb-2 pt-2 justify-items-center">
-                        {me.erosionFront.filter(c => c && c.displayState === 'FRONT_UPRIGHT').map(card => {
+                        {me.erosionFront.filter(c => c && c.displayState === 'FRONT_UPRIGHT').map((card, i) => {
                           const isSelected = paymentSelection.erosionFrontIds.includes(card!.gamecardId);
                           return (
                             <motion.div
-                              key={card!.gamecardId}
+                              key={`${card!.gamecardId}-${i}`}
                               whileHover={{ y: -3 }}
                               whileTap={{ scale: 0.95 }}
                               onClick={() => togglePaymentErosionFront(card!.gamecardId)}
@@ -1341,11 +1386,7 @@ export const BattleField: React.FC = () => {
                   highlightedCardIds={highlightedCardIds}
                   onShowLogs={() => setShowFullLogs(true)}
                   onOpenRulebook={() => setIsRulebookOpen(true)}
-                  onSurrender={() => {
-                    if (window.confirm('确定要投降吗？')) {
-                      socket.emit('gameAction', { gameId, action: 'SURRENDER' });
-                    }
-                  }}
+                  onSurrender={() => setShowSurrenderConfirm(true)}
                   onPhaseClick={() => {
                     const isMyTurn = game.playerIds[game.currentTurnPlayer] === myUid;
                     if (isMyTurn && ['MAIN', 'BATTLE_DECLARATION', 'BATTLE_FREE'].includes(game.phase)) {
@@ -1354,8 +1395,11 @@ export const BattleField: React.FC = () => {
                       setShowPhaseMenu(!showPhaseMenu);
                     }
                   }}
-                  confrontationStrategy={confrontationStrategy}
+                  confrontationStrategy={localStrategy}
                   onUpdateStrategy={updateConfrontationStrategy}
+                  isPopupHidden={isPopupHidden}
+                  onExpand={() => setIsPopupHidden(false)}
+
                   showPhaseMenu={showPhaseMenu}
                   isAnyPopupOpen={!!previewCard || !!viewingZone || isRulebookOpen || !!game.pendingQuery || game.phase === 'EROSION' || game.phase === 'DISCARD' || game.phase === 'END' || !!pendingPlayCard}
                 />
@@ -1452,87 +1496,40 @@ export const BattleField: React.FC = () => {
           )}
         </AnimatePresence>
 
+        <StandardPopup
+          isOpen={
+            game.phase === 'COUNTERING' && 
+            game.priorityPlayerId === myUid && 
+            !game.isResolvingStack && 
+            !isConfronting && 
+            (localStrategy === 'ON' || (localStrategy === 'AUTO' && canConfront))
+          }
+          title="对抗响应"
+          description={`请作为 Link ${game.counterStack.length + 1} 响应。你可以选择发动卡牌或效果进行对抗，或选择不对抗直接进入结算。`}
+          mode="double_selection"
+          confirmText="进行对抗"
+          cancelText="不对抗，直接结算"
+          onConfirm={() => setIsConfronting(true)}
+          onCancel={handleResolve}
+          confirmDisabled={!canConfront}
+          cardBackUrl={cardBackUrl}
+          onHide={() => setIsPopupHidden(true)}
+          isHidden={isPopupHidden}
+        />
+
         <AnimatePresence>
-          {game.phase === 'COUNTERING' && (
+          {game.phase === 'COUNTERING' && (game.priorityPlayerId !== myUid || game.isResolvingStack) && (
             <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="fixed inset-x-0 top-[15%] z-[140] flex flex-col items-center gap-4 pointer-events-none"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 20 }}
+              className="fixed inset-x-0 bottom-32 z-[140] flex flex-col items-center pointer-events-none"
             >
-              <div className={cn(
-                "bg-zinc-900/90 border border-red-500/50 px-8 py-4 rounded-full shadow-[0_0_30px_rgba(239,68,68,0.3)] backdrop-blur-sm flex items-center gap-6",
-                game.priorityPlayerId === myUid && "border-red-500 animate-pulse ring-2 ring-red-500/20 shadow-[0_0_40px_rgba(239,68,68,0.5)]"
-              )}>
-                <div className="flex flex-col items-center text-center">
-                  <p className="text-red-500 font-black tracking-widest uppercase flex items-center gap-2 md:gap-3 text-sm md:text-lg italic">
-                    <ShieldCheck className="w-5 h-5 md:w-6 md:h-6 animate-pulse" />
-                    对抗阶段
-                  </p>
-                  <p className="text-white text-[9px] md:text-[11px] uppercase tracking-[0.1em] md:tracking-[0.2em] font-black">
-                    {game.isResolvingStack
-                      ? "正在结算连锁"
-                      : game.priorityPlayerId === myUid
-                        ? `请作为 Link ${game.counterStack.length + 1} 响应`
-                        : `等待 ${game.players[game.priorityPlayerId!]?.displayName || '对手'} 响应`}
-                  </p>
-                </div>
-
-                {game.priorityPlayerId === myUid && !game.isResolvingStack && (
-                  <div className="flex items-center gap-3 pointer-events-auto mt-2 md:mt-0">
-                    <button
-                      onClick={handleResolve}
-                      className="px-6 md:px-10 py-2 md:py-2.5 bg-red-600 hover:bg-red-700 text-white font-black italic uppercase tracking-widest rounded-full transition-all flex items-center gap-2 border border-red-400 group shadow-lg shadow-red-600/40 text-[10px] md:text-xs"
-                    >
-                      <X className="w-4 h-4 md:w-5 md:h-5 group-hover:rotate-90 transition-transform" />
-                      不对抗，直接结算
-                    </button>
-                  </div>
-                )}
-              </div>
-
-              {/* Stack Visualization */}
-              <div className="flex flex-wrap justify-center gap-4 md:gap-6 mt-4 md:mt-8 px-4">
-                {game.counterStack.map((item, idx) => (
-                  <motion.div
-                    key={`${idx}-${item.timestamp}`}
-                    initial={{ y: 20, opacity: 0, scale: 0.8 }}
-                    animate={{ y: 0, opacity: 1, scale: idx === game.counterStack.length - 1 ? (window.innerWidth < 768 ? 1.05 : 1.15) : 1 }}
-                    className={cn(
-                      "w-24 md:w-36 h-36 md:h-52 rounded-xl overflow-hidden border-2 shadow-2xl relative transition-all duration-300 shrink-0",
-                      idx === game.counterStack.length - 1
-                        ? "border-red-500 z-10 ring-4 ring-red-500/20"
-                        : "border-white/10 opacity-60 grayscale-[0.5]"
-                    )}
-                  >
-                    {item.card ? (
-                      <CardComponent card={item.card} disableZoom cardBackUrl={cardBackUrl} />
-                    ) : (
-                      <div className="w-full h-full bg-zinc-900 flex flex-col items-center justify-center p-4 text-center border-t-4 border-red-500/50">
-                        <Sword className="w-10 h-10 text-red-500/40 mb-3" />
-                        <span className="text-[12px] font-black text-white uppercase tracking-widest leading-tight">
-                          {getActionTypeLabel(item.type)}
-                        </span>
-                      </div>
-                    )}
-                    <div className="absolute top-2 left-2 px-2 py-0.5 bg-red-600 rounded-full border border-white/40 flex items-center justify-center text-[11px] font-black italic text-white shadow-xl z-20">
-                      连锁 {idx + 1}
-                    </div>
-
-                    {/* UL/UR Labels for Countering Stack */}
-                    <div className={cn(
-                      "absolute top-2 left-2 px-2 py-0.5 rounded-full text-[8px] font-black uppercase italic shadow-lg z-10 translate-y-6",
-                      item.ownerUid === myUid ? "bg-blue-600 text-white" : "bg-red-600 text-white"
-                    )}>
-                      {item.ownerUid === myUid ? "我方" : "对方"}
-                    </div>
-                    {item.card && (
-                      <div className="absolute top-2 right-2 px-2 py-0.5 bg-black/80 rounded-full text-[8px] font-bold text-white uppercase z-10">
-                        {getCardIdentity(game, item.ownerUid, item.card).split('|')[1].replace(']', '')}
-                      </div>
-                    )}
-                  </motion.div>
-                ))}
+              <div className="bg-zinc-900/90 border border-red-500/50 px-8 py-4 rounded-full shadow-[0_0_30px_rgba(239,68,68,0.3)] backdrop-blur-sm flex items-center gap-4">
+                <Loader2 className="w-5 h-5 text-red-500 animate-spin" />
+                <span className="text-white font-black italic uppercase tracking-widest text-sm">
+                  {game.isResolvingStack ? "正在结算连锁..." : `等待 ${game.players[game.priorityPlayerId!]?.displayName || '对手'} 响应...`}
+                </span>
               </div>
             </motion.div>
           )}
@@ -1540,29 +1537,45 @@ export const BattleField: React.FC = () => {
 
         {/* Defense Declaration Prompt Overlay (Replacement for Modal) */}
         <AnimatePresence>
-          {game.phase === 'DEFENSE_DECLARATION' && !me.isTurn && (
+        <StandardPopup
+          isOpen={game.phase === 'DEFENSE_DECLARATION' && !me.isTurn && !isSelectingDefender}
+          title="防御宣告"
+          description="你要进行防御吗？选择后点击场上单位完成宣告。"
+          mode="double_selection"
+          confirmText="进行防御"
+          cancelText="不进行防御"
+          onConfirm={() => setIsSelectingDefender(true)}
+          onCancel={() => handleDeclareDefense(undefined)}
+          confirmDisabled={!me.unitZone.some(c => c && !c.isExhausted)}
+          cardBackUrl={cardBackUrl}
+          onHide={() => setIsPopupHidden(true)}
+          isHidden={isPopupHidden}
+        />
+
+        {/* Guided Defense Selection UI */}
+        <AnimatePresence>
+          {isSelectingDefender && (
             <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="fixed inset-x-0 top-[15%] z-[140] flex flex-col items-center gap-4 pointer-events-auto"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 20 }}
+              className="fixed inset-x-0 top-[15%] z-[140] flex flex-col items-center gap-4 pointer-events-none"
             >
-              <div className="bg-zinc-900/90 border border-blue-500/50 px-8 py-4 rounded-full shadow-[0_0_30px_rgba(37,99,235,0.3)] backdrop-blur-sm">
-                <p className="text-blue-400 font-bold tracking-widest uppercase flex items-center gap-3 text-sm">
-                  <Shield className="w-5 h-5" />
-                  选择防御单位或放弃防御
+              <div className="bg-blue-600/90 border border-blue-400/50 px-8 py-4 rounded-full shadow-[0_0_30px_rgba(37,99,235,0.5)] backdrop-blur-md">
+                <p className="text-white font-black tracking-widest uppercase flex items-center gap-3">
+                  <Shield className="w-5 h-5 animate-pulse" />
+                  请选择一名待机单位进行防御
                 </p>
               </div>
-              <div className="flex gap-4">
-                <button
-                  onClick={() => handleDeclareDefense(undefined)}
-                  className="px-10 py-2 bg-blue-600/10 hover:bg-blue-600/20 rounded-full text-blue-200 font-black italic tracking-widest transition-all backdrop-blur-md border border-blue-500/20 shadow-lg group"
-                >
-                  不进行防御 <span className="opacity-0 group-hover:opacity-100 transition-opacity ml-2">(放弃)</span>
-                </button>
-              </div>
+              <button
+                onClick={() => setIsSelectingDefender(false)}
+                className="px-8 py-2 bg-zinc-900/80 hover:bg-zinc-800 text-white font-bold rounded-full border border-white/10 pointer-events-auto shadow-lg"
+              >
+                取消选择
+              </button>
             </motion.div>
           )}
+        </AnimatePresence>
 
           {game.phase === 'DEFENSE_DECLARATION' && me.isTurn && (
             <div className="absolute inset-0 z-[100] bg-black/40 backdrop-blur-sm flex items-center justify-center pointer-events-none">
@@ -1584,79 +1597,47 @@ export const BattleField: React.FC = () => {
           )}
         </AnimatePresence>
 
-        <AnimatePresence>
-          {game.phase === 'DISCARD' && me.uid === getAuthUser()?.uid && me.isTurn && me.hand.length > 6 && (
-            <div className="absolute inset-0 z-[70] flex items-center justify-center bg-black/60 backdrop-blur-md">
-              <div className="flex flex-col items-center gap-4 md:gap-8 max-w-full px-4 text-center">
-                <h2 className="text-2xl md:text-4xl font-black italic text-[#f27d26] uppercase tracking-widest">请选择弃牌</h2>
-                <p className="text-white/60 text-sm md:text-lg">你的手牌超过 6 张，请选择要弃置的卡牌（当前：{me.hand.length}）</p>
-                <div className="grid grid-cols-2 md:grid-cols-4 lg:flex lg:flex-nowrap gap-4 w-full max-w-5xl p-4 md:p-8 custom-scrollbar">
-                  {me.hand.map(card => (
-                    <motion.div
-                      key={card.gamecardId}
-                      whileHover={{ y: -20, scale: 1.1 }}
-                      onClick={() => handleDiscardCard(card.gamecardId)}
-                      className="w-full lg:w-32 shrink-0 cursor-pointer transition-all hover:shadow-[0_0_30px_rgba(242,125,38,0.4)]"
-                    >
-                      <CardComponent card={card} disableZoom cardBackUrl={cardBackUrl} />
-                    </motion.div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          )}
-        </AnimatePresence>
+        <StandardPopup
+          isOpen={game.phase === 'DISCARD' && me.uid === getAuthUser()?.uid && me.isTurn && me.hand.length > 6}
+          title="请选择弃牌"
+          description={`你的手牌超过 6 张，请选择要弃置的卡牌（当前：${me.hand.length}，需弃置：${me.hand.length - 6}）`}
+          mode="card_selection"
+          cards={me.hand}
+          selectedIds={discardSelection}
+          minSelections={me.hand.length - 6}
+          maxSelections={me.hand.length - 6}
+          onCardClick={(card) => {
+            const id = card.gamecardId;
+            const required = me.hand.length - 6;
+            setDiscardSelection(prev => {
+              if (prev.includes(id)) return prev.filter(i => i !== id);
+              if (prev.length >= required) return prev;
+              return [...prev, id];
+            });
+          }}
+          onSelectionComplete={async () => {
+            for (const id of discardSelection) {
+              await handleDiscardCard(id);
+            }
+            setDiscardSelection([]);
+          }}
+          confirmText="确认弃置"
+          cardBackUrl={cardBackUrl}
+        />
 
-        <AnimatePresence>
-          {game.phase === 'SHENYI_CHOICE' && game.pendingShenyi && game.pendingShenyi.playerUid === myUid && (
-            <div className="absolute inset-0 z-[160] flex items-center justify-center bg-black/70 backdrop-blur-lg">
-              <motion.div
-                initial={{ scale: 0.8, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                exit={{ scale: 0.8, opacity: 0 }}
-                className="bg-[#1a0f1a] border-2 border-[#4a0d4a] p-10 rounded-3xl flex flex-col items-center gap-8 shadow-[0_0_100px_rgba(74,13,74,0.4)] max-w-2xl"
-              >
-                <div className="flex flex-col items-center gap-2">
-                  <div className="w-12 h-12 md:w-20 md:h-20 bg-[#4a0d4a] rounded-2xl flex items-center justify-center shadow-[0_0_30px_rgba(74,13,74,0.6)] animate-pulse">
-                    <Sparkles className="w-8 h-8 md:w-12 md:h-12 text-white" />
-                  </div>
-                  <h2 className="text-2xl md:text-4xl font-black italic text-white uppercase tracking-[0.1em] md:tracking-[0.15em] mt-2 md:mt-4 text-center">女神之辉：神依</h2>
-                  <p className="text-zinc-400 text-center text-[10px] md:text-sm font-medium tracking-wide max-w-md">
-                    你已进入女神化状态。是否触发【神依】效果，将指定单位重置为竖直状态？
-                  </p>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4 w-full justify-items-center pb-2">
-                  {game.pendingShenyi.cardIds.map(cid => {
-                    const card = me.unitZone.find(u => u?.gamecardId === cid);
-                    if (!card) return null;
-                    return (
-                      <div key={cid} className="w-full aspect-[3/4] shrink-0 rounded-xl overflow-hidden border-2 border-[#4a0d4a]/50 shadow-2xl relative group max-w-[160px]">
-                        <CardComponent card={card} disableZoom cardBackUrl={cardBackUrl} />
-                        <div className="absolute inset-0 bg-purple-500/20 animate-pulse pointer-events-none" />
-                      </div>
-                    );
-                  })}
-                </div>
-
-                <div className="flex flex-col sm:flex-row gap-4 w-full">
-                  <button
-                    onClick={() => handleShenyiChoice('CONFIRM_SHENYI')}
-                    className="flex-1 py-3 md:py-5 bg-[#4a0d4a] hover:bg-[#5d115d] text-white font-black italic uppercase tracking-widest rounded-2xl transition-all shadow-2xl hover:scale-[1.02] border border-white/10 text-xs md:text-sm"
-                  >
-                    确认触发 (CONFIRM)
-                  </button>
-                  <button
-                    onClick={() => handleShenyiChoice('DECLINE_SHENYI')}
-                    className="flex-1 py-3 md:py-5 bg-zinc-800 hover:bg-zinc-700 text-white font-black italic uppercase tracking-widest rounded-2xl transition-all border border-white/10 text-xs md:text-sm"
-                  >
-                    忽略 (SKIP)
-                  </button>
-                </div>
-              </motion.div>
-            </div>
-          )}
-        </AnimatePresence>
+        {/* Standardized Shenyi Choice Popup */}
+        <StandardPopup
+          isOpen={game.phase === 'SHENYI_CHOICE' && game.pendingShenyi && game.pendingShenyi.playerUid === myUid}
+          title="女神之辉：神依"
+          description="你已进入女神化状态。是否触发【神依】效果，将指定单位重置为竖直状态？"
+          mode="double_selection"
+          cards={game.pendingShenyi?.cardIds.map(cid => me.unitZone.find(u => u?.gamecardId === cid)!).filter(Boolean) || []}
+          confirmText="确认触发 (CONFIRM)"
+          cancelText="忽略 (SKIP)"
+          onConfirm={() => handleShenyiChoice('CONFIRM_SHENYI')}
+          onCancel={() => handleShenyiChoice('DECLINE_SHENYI')}
+          cardBackUrl={cardBackUrl}
+        />
 
 
 
@@ -1669,13 +1650,13 @@ export const BattleField: React.FC = () => {
       <AnimatePresence>
         {cardMenu && (
           <>
-            <div className="fixed inset-0 z-[190]" onClick={() => setCardMenu(null)}></div>
+            <div className="fixed inset-0 z-[1990]" onClick={() => setCardMenu(null)}></div>
             <motion.div
               initial={{ opacity: 0, scale: 0.9, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.9, y: 20 }}
               className={cn(
-                "fixed z-[200] flex flex-col gap-3 w-[260px] md:w-40 bg-zinc-900/95 backdrop-blur-xl p-6 md:p-4 rounded-[2rem] md:rounded-3xl border border-white/10 shadow-[0_20px_50px_rgba(0,0,0,0.8)] max-h-[70vh] overflow-y-auto custom-scrollbar",
+                "fixed z-[2000] flex flex-col gap-3 w-[260px] md:w-40 bg-zinc-900/95 backdrop-blur-xl p-6 md:p-4 rounded-[2rem] md:rounded-3xl border border-white/10 shadow-[0_20px_50px_rgba(0,0,0,0.8)] max-h-[70vh] overflow-y-auto custom-scrollbar",
                 window.innerWidth < 768 ? "left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2" : ""
               )}
               style={window.innerWidth < 768 ? {} : {
@@ -1703,6 +1684,9 @@ export const BattleField: React.FC = () => {
                         className="px-4 py-3 md:py-1.5 text-[12px] md:text-[10px] font-bold text-black bg-[#facc15] rounded-full shadow-lg border border-white/20 flex items-center justify-center w-full"
                         onClick={() => {
                           playCardFromHand(cardMenu.card);
+                          if (['item', 'grave', 'exile', 'erosion_front', 'erosion_back'].includes(cardMenu.zone)) {
+                            setViewingZone(null);
+                          }
                           setCardMenu(null);
                         }}
                       >
@@ -1769,6 +1753,9 @@ export const BattleField: React.FC = () => {
                             triggerLocation
                           });
                         }
+                        if (['item', 'grave', 'exile', 'erosion_front', 'erosion_back'].includes(cardMenu.zone)) {
+                          setViewingZone(null);
+                        }
                         setCardMenu(null);
                       }}
                     >
@@ -1793,6 +1780,9 @@ export const BattleField: React.FC = () => {
                             className="px-4 py-3 md:py-1.5 text-[12px] md:text-[10px] font-bold text-white bg-[#ef4444] rounded-full shadow-lg border border-white/20 flex items-center justify-center w-full"
                             onClick={() => {
                               handleDeclareAttack([cardMenu.card.gamecardId], false);
+                              if (['item', 'grave', 'exile', 'erosion_front', 'erosion_back'].includes(cardMenu.zone)) {
+                                setViewingZone(null);
+                              }
                               setCardMenu(null);
                             }}
                           >
@@ -1804,6 +1794,9 @@ export const BattleField: React.FC = () => {
                           className="px-4 py-3 md:py-1.5 text-[12px] md:text-[10px] font-bold text-white bg-[#ef4444] rounded-full shadow-lg border border-white/20 flex items-center justify-center w-full"
                           onClick={() => {
                             setAllianceTargetSelection(cardMenu.card.gamecardId);
+                            if (['item', 'grave', 'exile', 'erosion_front', 'erosion_back'].includes(cardMenu.zone)) {
+                              setViewingZone(null);
+                            }
                             setCardMenu(null);
                           }}
                         >
@@ -1827,6 +1820,10 @@ export const BattleField: React.FC = () => {
                         className="px-4 py-3 md:py-1.5 text-[12px] md:text-[10px] font-bold text-white bg-[#3b82f6] rounded-full shadow-lg border border-white/20 flex items-center justify-center min-w-[100px] md:min-w-[70px]"
                         onClick={() => {
                           handleDeclareDefense(cardMenu.card.gamecardId);
+                          setIsSelectingDefender(false);
+                          if (['item', 'grave', 'exile', 'erosion_front', 'erosion_back'].includes(cardMenu.zone)) {
+                            setViewingZone(null);
+                          }
                           setCardMenu(null);
                         }}
                       >
@@ -1845,6 +1842,9 @@ export const BattleField: React.FC = () => {
                   className="px-3 py-1 text-[9px] font-black tracking-tighter text-red-50 bg-red-600 rounded-full shadow-[0_0_15px_rgba(220,38,38,0.4)] flex items-center gap-2 border border-red-400/50"
                   onClick={() => {
                     handleDiscardCard(cardMenu.card.gamecardId);
+                    if (['item', 'grave', 'exile', 'erosion_front', 'erosion_back'].includes(cardMenu.zone)) {
+                      setViewingZone(null);
+                    }
                     setCardMenu(null);
                   }}
                 >
@@ -1871,71 +1871,28 @@ export const BattleField: React.FC = () => {
 
 
 
-      {/* Alliance Confirmation Prompt */}
-      <AnimatePresence>
-        {allianceConfirmation && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[200] bg-black/90 backdrop-blur-md flex items-center justify-center p-8"
-          >
-            <motion.div
-              initial={{ scale: 0.9, y: 20 }}
-              animate={{ scale: 1, y: 0 }}
-              className="bg-zinc-900 border border-orange-500/50 p-6 md:p-10 rounded-3xl flex flex-col items-center gap-6 md:gap-8 shadow-[0_0_100px_rgba(249,115,22,0.2)] max-w-3xl w-full overflow-y-auto max-h-screen"
-            >
-              <div className="flex flex-col items-center gap-2">
-                <div className="w-12 h-12 md:w-16 md:h-16 bg-orange-500/10 rounded-2xl flex items-center justify-center shadow-inner">
-                  <Sword className="w-8 h-8 md:w-10 md:h-10 text-orange-500" />
-                </div>
-                <h2 className="text-lg md:text-3xl font-black italic text-white tracking-tighter mt-2 md:mt-4 text-center">确认联军宣告</h2>
-                <p className="text-zinc-400 text-[10px] md:text-sm font-medium tracking-wide text-center">是否宣告这两个单位进行联军攻击？</p>
-              </div>
-
-              <div className="flex flex-row md:flex-row gap-4 md:gap-8 items-center">
-                <div className="flex flex-col items-center gap-3">
-                  <div className="w-24 md:w-40 aspect-[3/4] rounded-xl overflow-hidden border-2 border-white/10 shadow-2xl">
-                    <CardComponent card={allianceConfirmation.attacker1} disableZoom cardBackUrl={cardBackUrl} />
-                  </div>
-                  <span className="text-[8px] md:text-[10px] font-black text-white/40 tracking-widest">攻击者 1</span>
-                </div>
-
-                <div className="flex flex-col items-center">
-                  <div className="w-8 h-8 md:w-12 md:h-12 rounded-full bg-white/5 flex items-center justify-center border border-white/10">
-                    <Zap className="w-4 h-4 md:w-6 md:h-6 text-orange-500 animate-pulse" />
-                  </div>
-                </div>
-
-                <div className="flex flex-col items-center gap-3">
-                  <div className="w-24 md:w-40 aspect-[3/4] rounded-xl overflow-hidden border-2 border-white/10 shadow-2xl">
-                    <CardComponent card={allianceConfirmation.attacker2} disableZoom cardBackUrl={cardBackUrl} />
-                  </div>
-                  <span className="text-[8px] md:text-[10px] font-black text-white/40 tracking-widest">攻击者 2</span>
-                </div>
-              </div>
-
-              <div className="flex flex-col sm:flex-row gap-4 md:gap-6 w-full">
-                <button
-                  onClick={() => {
-                    handleDeclareAttack([allianceConfirmation.attacker1.gamecardId, allianceConfirmation.attacker2.gamecardId], true);
-                    setAllianceConfirmation(null);
-                  }}
-                  className="flex-1 py-3 md:py-5 bg-orange-600 hover:bg-orange-500 text-white font-black italic uppercase tracking-widest rounded-2xl transition-all shadow-xl hover:scale-[1.02] border border-orange-400/50 text-xs md:text-sm"
-                >
-                  确认宣告
-                </button>
-                <button
-                  onClick={() => setAllianceConfirmation(null)}
-                  className="flex-1 py-3 md:py-5 bg-zinc-800 hover:bg-zinc-700 text-white font-black italic uppercase tracking-widest rounded-2xl transition-all border border-white/10 text-xs md:text-sm"
-                >
-                  取消
-                </button>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      {/* Standardized Alliance Confirmation Popup */}
+      <StandardPopup
+        isOpen={!!allianceConfirmation}
+        onClose={() => setAllianceConfirmation(null)}
+        title="确认联军宣告"
+        description="是否宣告这两个单位进行联军攻击？"
+        mode="card_selection"
+        cards={allianceConfirmation ? [allianceConfirmation.attacker1, allianceConfirmation.attacker2] : []}
+        selectedIds={allianceConfirmation ? [allianceConfirmation.attacker1.gamecardId, allianceConfirmation.attacker2.gamecardId] : []}
+        minSelections={2}
+        maxSelections={2}
+        confirmText="确认宣告"
+        cancelText="取消"
+        onSelectionComplete={() => {
+          if (allianceConfirmation) {
+            handleDeclareAttack([allianceConfirmation.attacker1.gamecardId, allianceConfirmation.attacker2.gamecardId], true);
+            setAllianceConfirmation(null);
+          }
+        }}
+        onCancel={() => setAllianceConfirmation(null)}
+        cardBackUrl={cardBackUrl}
+      />
 
       {/* Alliance Target Selection Overlay */}
       <AnimatePresence>
@@ -2087,41 +2044,187 @@ export const BattleField: React.FC = () => {
         )}
       </AnimatePresence>
 
-      {/* Confrontation Overlay */}
+      {/* Global Confrontation Chain Overlay (Above Popups) */}
       <AnimatePresence>
-        {game.phase === 'BATTLE_FREE' && game.battleState?.askConfront === 'ASKING_OPPONENT' && !me.isTurn && (
+        {((game.phase === 'BATTLE_FREE' && game.battleState?.askConfront) || game.phase === 'COUNTERING' || isConfronting) && 
+         (game.counterStack.length > 0 || game.battleState?.attackerCardId) && (
           <motion.div
-            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[150] bg-black/80 backdrop-blur-md flex items-center justify-center p-8"
+            initial={{ opacity: 0, y: -50 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -50 }}
+            className="fixed inset-x-0 top-12 z-[1100] flex flex-col items-center pointer-events-none"
           >
-            <div className="bg-zinc-900 border-2 border-[#f27d26]/50 p-8 rounded-3xl flex flex-col items-center gap-6 shadow-[0_0_50px_rgba(242,125,38,0.3)] relative">
-              <h2 className="text-3xl font-black italic text-[#f27d26] uppercase tracking-widest">确认对抗</h2>
-              <p className="text-white/80">对手准备进入伤害结算，你要先进行对抗吗？</p>
-              <div className="flex gap-4">
-                <button onClick={() => GameService.advancePhase(gameId!, 'CONFIRM_CONFRONTATION')} className="px-8 py-3 bg-[#f27d26] text-black font-black uppercase rounded-lg hover:bg-orange-400">对抗</button>
-                <button onClick={() => GameService.advancePhase(gameId!, 'DECLINE_CONFRONTATION')} className="px-8 py-3 bg-zinc-700 text-white font-black uppercase rounded-lg hover:bg-zinc-600">放弃</button>
+            <div className="flex flex-col items-center gap-4 bg-black/60 backdrop-blur-md p-6 rounded-[2rem] border border-white/10 shadow-2xl">
+              <div className="flex items-center gap-2 text-zinc-400 text-[10px] font-black uppercase tracking-widest mb-2">
+                <Layers className="w-4 h-4 text-red-500" />
+                完整对抗连锁
               </div>
-            </div>
-          </motion.div>
-        )}
+              
+              <div className="flex items-center gap-4">
+                {/* Battle Context (The "Root" of the confrontation) */}
+                {game.battleState?.attackerCardId && (
+                  <>
+                    <div className="flex flex-col items-center gap-2">
+                      <div className="w-16 md:w-24 aspect-[3/4] rounded-xl overflow-hidden border-2 border-red-500 shadow-[0_0_20px_rgba(239,68,68,0.3)] relative">
+                        {(() => {
+                          const attacker = [...game.players[game.battleState.attackerUid!].unitZone, ...game.players[game.battleState.attackerUid!].itemZone].find(c => c?.gamecardId === game.battleState!.attackerCardId);
+                          return attacker ? <CardComponent card={attacker} disableZoom cardBackUrl={cardBackUrl} /> : <div className="w-full h-full bg-zinc-800" />;
+                        })()}
+                        <div className="absolute top-1 left-1 px-1.5 py-0.5 bg-red-600 rounded text-[8px] font-black italic text-white z-10 shadow-lg">
+                          攻击者
+                        </div>
+                      </div>
+                      <span className="text-[8px] font-bold text-red-400 uppercase">
+                        {game.battleState.attackerUid === myUid ? "我方" : "对方"}
+                      </span>
+                    </div>
 
-        {game.phase === 'BATTLE_FREE' && game.battleState?.askConfront === 'ASKING_TURN_PLAYER' && me.isTurn && (
-          <motion.div
-            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[150] bg-black/80 backdrop-blur-md flex items-center justify-center p-8"
-          >
-            <div className="bg-zinc-900 border-2 border-[#f27d26]/50 p-8 rounded-3xl flex flex-col items-center gap-6 shadow-[0_0_50px_rgba(242,125,38,0.3)] relative">
-              <h2 className="text-3xl font-black italic text-[#f27d26] uppercase tracking-widest">确认对抗</h2>
-              <p className="text-white/80">对手放弃对抗，你要进行对抗吗？选择“放弃”将直接进入伤害结算。</p>
-              <div className="flex gap-4">
-                <button onClick={() => GameService.advancePhase(gameId!, 'CONFIRM_CONFRONTATION')} className="px-8 py-3 bg-[#f27d26] text-black font-black uppercase rounded-lg hover:bg-orange-400">对抗</button>
-                <button onClick={() => GameService.advancePhase(gameId!, 'DECLINE_CONFRONTATION')} className="px-8 py-3 bg-zinc-700 text-white font-black uppercase rounded-lg hover:bg-zinc-600">放弃</button>
+                    {game.battleState.defenderCardId && (
+                      <div className="flex items-center gap-4">
+                        <Sword className="w-4 h-4 text-zinc-500 animate-pulse" />
+                        <div className="flex flex-col items-center gap-2">
+                          <div className="w-16 md:w-24 aspect-[3/4] rounded-xl overflow-hidden border-2 border-blue-500 shadow-[0_0_20px_rgba(59,130,246,0.3)] relative">
+                            {(() => {
+                              const defender = [...game.players[game.battleState!.defenderUid!].unitZone].find(c => c?.gamecardId === game.battleState!.defenderCardId);
+                              return defender ? <CardComponent card={defender} disableZoom cardBackUrl={cardBackUrl} /> : <div className="w-full h-full bg-zinc-800" />;
+                            })()}
+                            <div className="absolute top-1 left-1 px-1.5 py-0.5 bg-blue-600 rounded text-[8px] font-black italic text-white z-10 shadow-lg">
+                              防御者
+                            </div>
+                          </div>
+                          <span className="text-[8px] font-bold text-blue-400 uppercase">
+                            {game.battleState.defenderUid === myUid ? "我方" : "对方"}
+                          </span>
+                        </div>
+                      </div>
+                    )}
+                    
+                    {(game.counterStack.length > 0) && (
+                      <div className="h-12 w-px bg-white/10 mx-2" />
+                    )}
+                  </>
+                )}
+
+                {/* Counter Stack */}
+                {game.counterStack.map((item, idx) => (
+                  <div key={`${idx}-${item.timestamp}`} className="flex items-center gap-4">
+                    <div className="flex flex-col items-center gap-2">
+                      <div className="w-16 md:w-24 aspect-[3/4] rounded-xl overflow-hidden border-2 border-white/20 shadow-2xl relative">
+                        {item.card ? <CardComponent card={item.card} disableZoom cardBackUrl={cardBackUrl} /> : <div className="w-full h-full bg-zinc-800" />}
+                        <div className={cn(
+                          "absolute top-1 left-1 px-1.5 py-0.5 rounded text-[8px] font-black italic text-white z-10 shadow-lg",
+                          item.ownerUid === myUid ? "bg-blue-600" : "bg-red-600"
+                        )}>
+                          L{idx + 1}
+                        </div>
+                      </div>
+                      <span className={cn(
+                        "text-[8px] font-bold uppercase",
+                        item.ownerUid === myUid ? "text-blue-400" : "text-red-400"
+                      )}>
+                        {item.ownerUid === myUid ? "我方" : "对方"}
+                      </span>
+                    </div>
+                    {idx < game.counterStack.length - 1 && (
+                      <ChevronRight className="w-4 h-4 text-zinc-700" />
+                    )}
+                  </div>
+                ))}
               </div>
+
+              {isConfronting && (
+                <div className="mt-4 px-6 py-2 bg-red-600/20 border border-red-500/50 rounded-full animate-pulse">
+                  <span className="text-red-400 text-xs font-black italic uppercase tracking-widest">
+                    请点击卡牌来发动对抗
+                  </span>
+                </div>
+              )}
             </div>
           </motion.div>
         )}
       </AnimatePresence>
 
+      {/* Standardized Confrontation Popup (Opponent Perspective) */}
+      <div className="fixed inset-0 z-[160] pointer-events-none flex flex-col items-center justify-center">
+        {game.phase === 'BATTLE_FREE' && 
+         game.battleState?.askConfront === 'ASKING_OPPONENT' && 
+         !me.isTurn && 
+         !isConfronting && 
+         (localStrategy === 'ON' || (localStrategy === 'AUTO' && canConfront)) && (
+          <div className="flex flex-col items-center gap-8 pointer-events-auto">
+            <StandardPopup
+              isOpen={true}
+              title="确认对抗"
+              description="对手准备进入伤害结算，你要先进行对抗吗？"
+              mode="double_selection"
+              confirmText="进行对抗"
+              cancelText="放弃对抗"
+              onConfirm={() => {
+                GameService.advancePhase(gameId!, 'CONFIRM_CONFRONTATION');
+                setIsConfronting(true);
+              }}
+              onCancel={() => GameService.advancePhase(gameId!, 'DECLINE_CONFRONTATION')}
+              confirmDisabled={!canConfront}
+              cardBackUrl={cardBackUrl}
+              onHide={() => setIsPopupHidden(true)}
+              isHidden={isPopupHidden}
+            />
+
+          </div>
+        )}
+      </div>
+
+      {/* Standardized Confrontation Popup (Turn Player Perspective) */}
+      <div className="fixed inset-0 z-[160] pointer-events-none flex flex-col items-center justify-center">
+        {game.phase === 'BATTLE_FREE' && 
+         game.battleState?.askConfront === 'ASKING_TURN_PLAYER' && 
+         me.isTurn && 
+         !isConfronting && 
+         (localStrategy === 'ON' || (localStrategy === 'AUTO' && canConfront)) && (
+          <div className="flex flex-col items-center gap-8 pointer-events-auto">
+            <StandardPopup
+              isOpen={true}
+              title="确认对抗"
+              description="对手放弃对抗，你要进行对抗吗？选择“放弃”将直接进入伤害结算。"
+              mode="double_selection"
+              confirmText="进行对抗"
+              cancelText="放弃对抗"
+              onConfirm={() => {
+                GameService.advancePhase(gameId!, 'CONFIRM_CONFRONTATION');
+                setIsConfronting(true);
+              }}
+              onCancel={() => GameService.advancePhase(gameId!, 'DECLINE_CONFRONTATION')}
+              confirmDisabled={!canConfront}
+              cardBackUrl={cardBackUrl}
+              onHide={() => setIsPopupHidden(true)}
+              isHidden={isPopupHidden}
+            />
+
+          </div>
+        )}
+      </div>
+
+      {/* Standardized Surrender Confirmation Popup */}
+      <StandardPopup
+        isOpen={showSurrenderConfirm}
+        onClose={() => setShowSurrenderConfirm(false)}
+        title="确认投降"
+        description="你确定要投降吗？这会立即结束当前对局。"
+        mode="double_selection"
+        confirmText="确认投降"
+        cancelText="取消"
+        onConfirm={() => {
+          socket.emit('gameAction', { gameId, action: 'SURRENDER' });
+          setShowSurrenderConfirm(false);
+        }}
+        onCancel={() => setShowSurrenderConfirm(false)}
+        cardBackUrl={cardBackUrl}
+        onHide={() => setIsPopupHidden(true)}
+        isHidden={isPopupHidden}
+      />
+
+
+      {/* Waiting for Opponent Query Overlay */}
       <AnimatePresence>
         {game.pendingQuery && game.pendingQuery.playerUid !== myUid && (
           <motion.div
@@ -2140,342 +2243,181 @@ export const BattleField: React.FC = () => {
         )}
       </AnimatePresence>
 
-      <AnimatePresence>
-        {game.pendingQuery && game.pendingQuery.playerUid === myUid && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[600] bg-black/80 backdrop-blur-md flex flex-col items-center justify-center p-8"
-          >
-            {/* Background Accent for Discard */}
-            {(game.pendingQuery.title.includes('舍弃') || game.pendingQuery.title.includes('Discard')) && (
-              <div className="absolute inset-0 pointer-events-none overflow-hidden">
-                <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[400px] bg-red-600/10 blur-[120px] rounded-full" />
+      {/* Standardized My Pending Query Popup */}
+      <StandardPopup
+        isOpen={!!(game.pendingQuery && game.pendingQuery.playerUid === myUid)}
+        title={game.pendingQuery?.title || ''}
+        description={game.pendingQuery?.description || ''}
+        mode={
+          normalizedPendingQueryType === 'SELECT_PAYMENT' ? 'payment_selection' :
+          normalizedPendingQueryType === 'ASK_TRIGGER' ? 'double_selection' :
+          normalizedPendingQueryType === 'SELECT_CARD' ? (pendingQueryOptions.some(o => o.card?.id === 'PLAYER_SELF' || o.card?.id === 'PLAYER_OPPONENT') ? 'player_selection' : 'card_selection') :
+          'card_selection' // Fallback for SELECT_CHOICE or others
+        }
+        cards={pendingQueryOptions.filter(o => !!o.card).map(o => o.card!)}
+        selectedIds={selectedQueryIds}
+        minSelections={game.pendingQuery?.minSelections}
+        maxSelections={game.pendingQuery?.maxSelections}
+        onCardClick={(card) => {
+          const optionId = card.gamecardId || card.id;
+          const option = pendingQueryOptions.find(o => (o.card?.gamecardId || o.card?.id || o.id) === optionId);
+          if (option?.disabled) return;
+
+          setSelectedQueryIds(prev => {
+            const alreadySelected = prev.includes(optionId);
+            if (alreadySelected) return prev.filter(id => id !== optionId);
+            if (prev.length >= (game.pendingQuery?.maxSelections || 1)) {
+              if (game.pendingQuery?.maxSelections === 1) return [optionId];
+              return prev;
+            }
+            return [...prev, optionId];
+          });
+        }}
+        onSelectionComplete={handleQuerySubmit}
+        paymentCost={game.pendingQuery?.paymentCost}
+        paymentCurrent={
+          (game.pendingQuery?.paymentCost || 0) > 0
+            ? getSelectedHandPaymentValue(game.pendingQuery?.paymentColor, game.pendingQuery?.paymentCost) + paymentSelection.exhaustIds.length
+            : paymentSelection.erosionFrontIds.length
+        }
+        confirmText="确认"
+        cancelText="取消"
+        onConfirm={() => GameService.submitQueryChoice(gameId!, game.pendingQuery!.id, ['YES'])}
+        onCancel={() => GameService.submitQueryChoice(gameId!, game.pendingQuery!.id, ['NO'])}
+        cardBackUrl={cardBackUrl}
+      >
+        {normalizedPendingQueryType === 'SELECT_PAYMENT' && (
+          <div className="flex flex-col gap-8 w-full max-w-4xl max-h-[50vh] overflow-y-auto p-4 custom-scrollbar">
+            {/* Hand Replacement Section */}
+            {(game.pendingQuery!.paymentCost || 0) > 0 && getHandPaymentOptions(game.pendingQuery?.paymentColor, game.pendingQuery?.paymentCost).length > 0 && (
+              <div className="flex flex-col gap-3">
+                <div className="flex items-center gap-2 text-blue-400 font-black uppercase italic tracking-widest text-sm">
+                  <Zap className="w-4 h-4" />
+                  手牌代替支付
+                </div>
+                <div className="grid grid-cols-2 gap-3 pb-2 pt-2 justify-items-center">
+                  {getHandPaymentOptions(game.pendingQuery?.paymentColor, game.pendingQuery?.paymentCost).map((card, i) => {
+                    const isSelected = paymentSelection.useFeijing.includes(card.gamecardId);
+                    return (
+                      <motion.div
+                        key={`${card.gamecardId}-${i}`}
+                        whileHover={{ y: -3 }}
+                        whileTap={{ scale: 0.95 }}
+                        onClick={() => togglePaymentFeijing(card.gamecardId)}
+                        className={cn(
+                          "aspect-[3/4] w-full max-w-[10.8rem] cursor-pointer transition-all rounded-lg overflow-hidden border-2 md:max-w-none",
+                          isSelected ? "border-blue-500 scale-105 shadow-[0_0_20px_rgba(59,130,246,0.5)]" : "border-white/5 opacity-60 hover:opacity-100"
+                        )}
+                      >
+                        <div className="relative h-full w-full">
+                          <CardComponent card={card} disableZoom displayMode="hand" cardBackUrl={cardBackUrl} />
+                          <div className="absolute left-2 top-2 rounded-lg bg-black/75 px-2 py-1 text-[10px] font-black text-white shadow-lg">
+                            {getOwnedCardLocationLabel(card)}
+                          </div>
+                        </div>
+                      </motion.div>
+                    );
+                  })}
+                </div>
               </div>
             )}
 
-            <div className="max-w-2xl w-[95vw] md:w-full bg-zinc-900/90 border border-white/10 rounded-[2rem] flex flex-col items-center gap-4 md:gap-6 p-4 md:p-8 relative z-10 shadow-2xl overflow-y-auto max-h-[90vh]">
-              <div className="text-center flex flex-col items-center">
-                <div className={cn(
-                  "flex items-center justify-center gap-4 mb-3",
-                  (game.pendingQuery.title.includes('舍弃') || game.pendingQuery.title.includes('Discard')) ? "text-red-500" : "text-[#f27d26]"
-                )}>
-                  {(game.pendingQuery.title.includes('舍弃') || game.pendingQuery.title.includes('Discard')) && (
-                    <Trash2 className="w-10 h-10 animate-bounce" />
-                  )}
-                  <h2 className="text-lg md:text-3xl font-black italic uppercase tracking-tighter">
-                    {game.pendingQuery.title}
-                  </h2>
+            {/* Exhaust Section */}
+            {(game.pendingQuery!.paymentCost || 0) > 0 && me.unitZone.some(c => c && !c.isExhausted) && (
+              <div className="flex flex-col gap-3">
+                <div className="flex items-center gap-2 text-green-400 font-black uppercase italic tracking-widest text-sm">
+                  <Sword className="w-4 h-4" />
+                  横置支付（费用 -1）
                 </div>
-
-                <p className="text-zinc-400 uppercase tracking-[0.15em] md:tracking-[0.4em] text-[9px] md:text-sm max-w-2xl mx-auto leading-relaxed">
-                  {game.pendingQuery.description}
-                </p>
-                {normalizedPendingQueryType === 'SELECT_CARD' && (
-                  <div className="mt-4 px-6 py-2 bg-white/5 rounded-full border border-white/10 inline-block font-mono text-xs text-zinc-500">
-                    需要选择：{game.pendingQuery.minSelections} - {game.pendingQuery.maxSelections}
-                  </div>
-                )}
-                {normalizedPendingQueryType === 'SELECT_PAYMENT' && (
-                  <div className="mt-2 md:mt-4 flex items-center justify-center gap-3 md:gap-6">
-                    <div className="flex items-center gap-2">
-                      <span className="text-zinc-500 text-[8px] md:text-[10px] font-bold tracking-widest">需求</span>
-                      <span className="text-xl md:text-3xl font-black text-red-500">{game.pendingQuery.paymentCost}</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-zinc-500 text-[8px] md:text-[10px] font-bold tracking-widest">已选</span>
-                      <span className="text-xl md:text-3xl font-black text-white">
-                        {(game.pendingQuery.paymentCost || 0) > 0
-                          ? getSelectedHandPaymentValue(game.pendingQuery?.paymentColor, game.pendingQuery?.paymentCost) + paymentSelection.exhaustIds.length
-                          : paymentSelection.erosionFrontIds.length}
-                      </span>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {normalizedPendingQueryType === 'SELECT_CARD' ? (
-                <div className="grid w-full max-w-[23rem] grid-cols-2 gap-3 p-2 md:flex md:max-w-full md:gap-12 md:overflow-x-auto md:overflow-y-hidden md:px-32 md:py-16 custom-scrollbar scroll-smooth scroll-px-32">
-                  <div className="hidden md:block w-12 shrink-0" /> {/* Larger Spacer */}
-                  {pendingQueryOptions.filter(option => !!option?.card).map((option, i) => {
-                    const optionCard = option.card!;
-                    const optionId = optionCard.gamecardId || option.id || `${i}`;
-                    const isSelected = selectedQueryIds.includes(optionId);
-                    const selectionOrder = selectedQueryIds.indexOf(optionId) + 1;
-                    const isDisabled = !!option.disabled;
-                    const isDiscardQuery = game.pendingQuery!.title.includes('舍弃') || game.pendingQuery!.title.includes('Discard');
+                <div className="grid grid-cols-2 gap-3 pb-2 pt-2 justify-items-center">
+                  {me.unitZone.filter(c => c && !c.isExhausted).map((card, i) => {
+                    const isSelected = paymentSelection.exhaustIds.includes(card!.gamecardId);
                     return (
-                      <div key={`${optionId}-${i}`} className="flex w-full max-w-[10.8rem] md:w-48 md:max-w-none shrink-0 flex-col items-center gap-4 group justify-self-center">
-                        <div className="relative w-full">
-                          <motion.div
-                            whileHover={isDisabled ? undefined : { scale: 1.08, y: -12 }}
-                            whileTap={isDisabled ? undefined : { scale: 0.95 }}
-                            onClick={() => {
-                              if (isDisabled) return;
-                              setSelectedQueryIds(prev => {
-                                const alreadySelected = prev.includes(optionId);
-                                if (alreadySelected) return prev.filter(id => id !== optionId);
-                                if (prev.length >= (game.pendingQuery?.maxSelections || 1)) {
-                                  if (game.pendingQuery?.maxSelections === 1) return [optionId];
-                                  return prev;
-                                }
-                                return [...prev, optionId];
-                              });
-                            }}
-                            className={cn(
-                              "w-full transition-all rounded-lg md:rounded-2xl overflow-hidden border-2 relative",
-                              isSelected
-                                ? isDiscardQuery ? "border-red-500 shadow-[0_0_40px_rgba(239,68,68,0.4)] scale-105" : "border-[#f27d26] shadow-[0_0_40px_rgba(242,125,38,0.4)] scale-105"
-                                : isDisabled
-                                  ? "border-white/5 opacity-45 cursor-not-allowed"
-                                  : "border-white/5 opacity-80 hover:opacity-100 cursor-pointer group-hover:shadow-2xl"
-                            )}
-                          >
-                            {(optionCard.id === 'PLAYER_SELF' || optionCard.id === 'PLAYER_OPPONENT') ? (
-                              <div className="w-full aspect-[3/4] bg-zinc-800 rounded-lg md:rounded-2xl flex flex-col items-center justify-center p-2 md:p-4 border border-white/10">
-                                <img
-                                  src={`/assets/icons/${optionCard.id === 'PLAYER_SELF' ? 'myself' : 'opponent'}.JPG`}
-                                  alt={optionCard.fullName}
-                                  className="w-16 h-16 md:w-32 md:h-32 object-contain mb-2 md:mb-4 rounded-full border-2 md:border-4 border-[#f27d26]/30"
-                                />
-                                <span className="text-[#f27d26] font-display font-black text-[10px] md:text-xl uppercase italic tracking-widest text-center">{optionCard.fullName}</span>
-                              </div>
-                            ) : getGraphicOptionMeta(optionCard) ? (
-                              renderGraphicQueryOption(optionCard)
-                            ) : (
-                              <div className="aspect-[3/4] drop-shadow-2xl">
-                                <CardComponent card={optionCard} disableZoom={true} cardBackUrl={cardBackUrl} />
-                              </div>
-                            )}
-
-                            {/* Selected Badge */}
-                            <AnimatePresence>
-                              {isSelected && (
-                                <motion.div
-                                  initial={{ scale: 0, opacity: 0 }}
-                                  animate={{ scale: 1, opacity: 1 }}
-                                  exit={{ scale: 0, opacity: 0 }}
-                                  className="absolute inset-0 bg-black/40 backdrop-blur-[2px] flex items-center justify-center pointer-events-none"
-                                >
-                                  <div className={cn(
-                                    "w-14 h-14 rounded-full flex items-center justify-center shadow-2xl relative",
-                                    isDiscardQuery ? "bg-red-600 text-white" : "bg-[#f27d26] text-black"
-                                  )}>
-                                    <span className="text-3xl font-black italic leading-none">{selectionOrder}</span>
-                                    <motion.div
-                                      animate={{ scale: [1, 1.2, 1] }}
-                                      transition={{ repeat: Infinity, duration: 2 }}
-                                      className="absolute inset-0 rounded-full border-2 border-current opacity-30"
-                                    />
-                                  </div>
-                                </motion.div>
-                              )}
-                            </AnimatePresence>
-
-                            {isDisabled && (
-                              <div className="absolute inset-x-3 bottom-3 rounded-xl border border-white/10 bg-black/75 px-3 py-2 text-center text-[10px] font-black uppercase tracking-widest text-white/70 pointer-events-none">
-                                {option.disabledReason || 'Cannot select'}
-                              </div>
-                            )}
-                          </motion.div>
-
-                          <div className="absolute -top-3 -right-3 px-3 py-1 bg-black/80 border border-white/10 rounded-lg text-[10px] font-black uppercase tracking-widest shadow-2xl z-20 text-white/70">
-                            {getLocationLabel(option.source)}
+                      <motion.div
+                        key={`${card!.gamecardId}-${i}`}
+                        whileHover={{ y: -3 }}
+                        whileTap={{ scale: 0.95 }}
+                        onClick={() => togglePaymentExhaust(card!.gamecardId)}
+                        className={cn(
+                          "aspect-[3/4] w-full max-w-[10.8rem] cursor-pointer transition-all rounded-lg overflow-hidden border-2 md:max-w-none",
+                          isSelected ? "border-green-500 scale-105 shadow-[0_0_20px_rgba(34,197,94,0.5)]" : "border-white/5 opacity-60 hover:opacity-100"
+                        )}
+                      >
+                        <div className="relative h-full w-full">
+                          <CardComponent card={card!} disableZoom cardBackUrl={cardBackUrl} />
+                          <div className="absolute left-2 top-2 rounded-lg bg-black/75 px-2 py-1 text-[10px] font-black text-white shadow-lg">
+                            {getOwnedCardLocationLabel(card!)}
                           </div>
-
-                          {(option.isMine !== undefined || option.ownerName) && (
-                            <div className={cn(
-                              "absolute -top-3 -left-3 px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest shadow-2xl z-20 border border-white/20",
-                              option.isMine ? "bg-blue-600 text-white" : "bg-red-600 text-white"
-                            )}>
-                              {option.isMine ? '我方' : '对方'}
-                            </div>
-                          )}
-
-                          {option.slotLabel && (
-                            <div className="absolute left-2 bottom-2 px-2 py-1 rounded-lg text-[10px] font-black tracking-wide shadow-2xl z-20 border border-white/20 bg-black/75 text-white">
-                              {option.slotLabel}
-                            </div>
-                          )}
                         </div>
-                        <div className="text-center">
-                          <p className="text-white text-[13px] font-black uppercase tracking-tight truncate max-w-[192px]">{optionCard.fullName}</p>
-                          <p className="text-zinc-500 text-[9px] uppercase tracking-widest mt-0.5">
-                            {getCardTypeLabel(optionCard.type)}
-                            {option.slotLabel ? ` · ${option.slotLabel}` : ''}
-                          </p>
-                        </div>
-                      </div>
+                      </motion.div>
                     );
                   })}
-                  <div className="hidden md:block w-12 shrink-0" /> {/* Larger Spacer */}
                 </div>
-              ) : normalizedPendingQueryType === 'SELECT_PAYMENT' ? (
-                /* Payment Selection for Query */
-                <div className="flex flex-col gap-8 w-full max-w-4xl max-h-[50vh] overflow-y-auto p-4 custom-scrollbar">
-                  {/* Hand Replacement Section */}
-                  {(game.pendingQuery.paymentCost || 0) > 0 && getHandPaymentOptions(game.pendingQuery?.paymentColor, game.pendingQuery?.paymentCost).length > 0 && (
-                    <div className="flex flex-col gap-3">
-                      <div className="flex items-center gap-2 text-blue-400 font-black uppercase italic tracking-widest text-sm">
-                        <Zap className="w-4 h-4" />
-                        手牌代替支付
-                      </div>
-                      <div className="grid grid-cols-2 gap-3 pb-2 pt-2 justify-items-center">
-                        {getHandPaymentOptions(game.pendingQuery?.paymentColor, game.pendingQuery?.paymentCost).map(card => {
-                          const isSelected = paymentSelection.useFeijing.includes(card.gamecardId);
-                          return (
-                            <motion.div
-                              key={card.gamecardId}
-                              whileHover={{ y: -3 }}
-                              whileTap={{ scale: 0.95 }}
-                              onClick={() => togglePaymentFeijing(card.gamecardId)}
-                              className={cn(
-                                "aspect-[3/4] w-full max-w-[10.8rem] cursor-pointer transition-all rounded-lg overflow-hidden border-2 md:max-w-none",
-                                isSelected ? "border-blue-500 scale-105 shadow-[0_0_20px_rgba(59,130,246,0.5)]" : "border-white/5 opacity-60 hover:opacity-100"
-                              )}
-                            >
-                              <div className="relative h-full w-full">
-                                <CardComponent card={card} disableZoom displayMode="hand" cardBackUrl={cardBackUrl} />
-                                <div className="absolute left-2 top-2 rounded-lg bg-black/75 px-2 py-1 text-[10px] font-black text-white shadow-lg">
-                                  {getOwnedCardLocationLabel(card)}
-                                </div>
-                              </div>
-                            </motion.div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
+              </div>
+            )}
 
-                  {/* Exhaust Section */}
-                  {(game.pendingQuery.paymentCost || 0) > 0 && me.unitZone.some(c => c && !c.isExhausted) && (
-                    <div className="flex flex-col gap-3">
-                      <div className="flex items-center gap-2 text-green-400 font-black uppercase italic tracking-widest text-sm">
-                        <Sword className="w-4 h-4" />
-                        横置支付（费用 -1）
-                      </div>
-                      <div className="grid grid-cols-2 gap-3 pb-2 pt-2 justify-items-center">
-                        {me.unitZone.filter(c => c && !c.isExhausted).map(card => {
-                          const isSelected = paymentSelection.exhaustIds.includes(card!.gamecardId);
-                          return (
-                            <motion.div
-                              key={card!.gamecardId}
-                              whileHover={{ y: -3 }}
-                              whileTap={{ scale: 0.95 }}
-                              onClick={() => togglePaymentExhaust(card!.gamecardId)}
-                              className={cn(
-                                "aspect-[3/4] w-full max-w-[10.8rem] cursor-pointer transition-all rounded-lg overflow-hidden border-2 md:max-w-none",
-                                isSelected ? "border-green-500 scale-105 shadow-[0_0_20px_rgba(34,197,94,0.5)]" : "border-white/5 opacity-60 hover:opacity-100"
-                              )}
-                            >
-                              <div className="relative h-full w-full">
-                                <CardComponent card={card!} disableZoom cardBackUrl={cardBackUrl} />
-                                <div className="absolute left-2 top-2 rounded-lg bg-black/75 px-2 py-1 text-[10px] font-black text-white shadow-lg">
-                                  {getOwnedCardLocationLabel(card!)}
-                                </div>
-                              </div>
-                            </motion.div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Erosion Front Section (Horizontal Units) - Only for negative costs */}
-                  {(game.pendingQuery.paymentCost || 0) < 0 && me.erosionFront.some(c => c && c.displayState === 'FRONT_UPRIGHT') && (
-                    <div className="flex flex-col gap-3">
-                      <div className="flex items-center gap-2 text-red-400 font-black uppercase italic tracking-widest text-sm">
-                        <Layers className="w-4 h-4" />
-                        水平支付（费用 -1）
-                      </div>
-                      <div className="grid grid-cols-2 gap-3 pb-2 pt-2 justify-items-center">
-                        {me.erosionFront.filter(c => c && c.displayState === 'FRONT_UPRIGHT').map(card => {
-                          const isSelected = paymentSelection.erosionFrontIds.includes(card!.gamecardId);
-                          return (
-                            <motion.div
-                              key={card!.gamecardId}
-                              whileHover={{ y: -3 }}
-                              whileTap={{ scale: 0.95 }}
-                              onClick={() => togglePaymentErosionFront(card!.gamecardId)}
-                              className={cn(
-                                "aspect-[3/4] w-full max-w-[10.8rem] cursor-pointer transition-all rounded-lg overflow-hidden border-2 md:max-w-none",
-                                isSelected ? "border-red-500 scale-105 shadow-[0_0_20px_rgba(239,68,68,0.5)]" : "border-white/5 opacity-60 hover:opacity-100"
-                              )}
-                            >
-                              <div className="relative h-full w-full">
-                                <CardComponent card={card!} disableZoom cardBackUrl={cardBackUrl} />
-                                <div className="absolute left-2 top-2 rounded-lg bg-black/75 px-2 py-1 text-[10px] font-black text-white shadow-lg">
-                                  {getOwnedCardLocationLabel(card!)}
-                                </div>
-                              </div>
-                            </motion.div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
-
-                  <p className="text-zinc-500 text-xs italic text-center px-8">
-                    提示：剩余费用将自动以侵蚀伤害的形式从你的牌库中扣除。
-                  </p>
+            {/* Erosion Front Section (Horizontal Units) - Only for negative costs */}
+            {(game.pendingQuery!.paymentCost || 0) < 0 && me.erosionFront.some(c => c && c.displayState === 'FRONT_UPRIGHT') && (
+              <div className="flex flex-col gap-3">
+                <div className="flex items-center gap-2 text-red-400 font-black uppercase italic tracking-widest text-sm">
+                  <Layers className="w-4 h-4" />
+                  水平支付（费用 -1）
                 </div>
-              ) : normalizedPendingQueryType === 'ASK_TRIGGER' ? (
-                <div className="flex gap-8 mt-4 w-full justify-center max-w-md">
-                  <button
-                    onClick={() => GameService.submitQueryChoice(gameId!, game.pendingQuery!.id, ['YES'])}
-                    className="flex-1 py-5 bg-[#f27d26] text-white font-black italic uppercase tracking-[0.2em] rounded-2xl hover:bg-[#f27d26]/80 transition-all shadow-[0_20px_50px_rgba(242,125,38,0.3)] hover:scale-105 active:scale-95"
-                  >
-                    确认
-                  </button>
-                  <button
-                    onClick={() => GameService.submitQueryChoice(gameId!, game.pendingQuery!.id, ['NO'])}
-                    className="flex-1 py-5 bg-zinc-800 text-white border border-white/20 font-black italic uppercase tracking-[0.2em] rounded-2xl hover:bg-zinc-700 transition-all hover:scale-105 active:scale-95"
-                  >
-                    取消
-                  </button>
-                </div>
-              ) : normalizedPendingQueryType === 'SELECT_CHOICE' ? (
-                <div className="grid grid-cols-2 gap-4 mt-4 w-full justify-center max-w-2xl px-6 md:px-12">
-                  {pendingQueryOptions.map((option, i) => (
-                    <button
-                      key={i}
-                      onClick={() => GameService.submitQueryChoice(gameId!, game.pendingQuery!.id, [option.id || option.card?.gamecardId || ''])}
-                      className="px-4 py-6 md:px-10 md:py-8 bg-zinc-900/80 backdrop-blur-md text-white border-2 border-white/10 font-black italic uppercase tracking-[0.1em] rounded-3xl hover:bg-[#f27d26] hover:text-black hover:border-transparent transition-all hover:scale-105 active:scale-95 shadow-[0_10px_30px_rgba(0,0,0,0.5)] group relative overflow-hidden text-center flex items-center justify-center min-h-[100px]"
-                    >
-                      <div className="absolute inset-0 bg-gradient-to-tr from-white/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-                      <div className="relative z-10 flex flex-col items-center gap-2">
-                        <span className="text-xs md:text-sm">{option.label || option.card?.fullName || option.id}</span>
-                        {(option.slotLabel || option.zoneLabel || option.ownerName) && (
-                          <span className="text-[10px] md:text-xs font-bold tracking-wide opacity-80">
-                            {[option.ownerName, option.slotLabel || option.zoneLabel].filter(Boolean).join(' · ')}
-                          </span>
+                <div className="grid grid-cols-2 gap-3 pb-2 pt-2 justify-items-center">
+                  {me.erosionFront.filter(c => c && c.displayState === 'FRONT_UPRIGHT').map((card, i) => {
+                    const isSelected = paymentSelection.erosionFrontIds.includes(card!.gamecardId);
+                    return (
+                      <motion.div
+                        key={`${card!.gamecardId}-${i}`}
+                        whileHover={{ y: -3 }}
+                        whileTap={{ scale: 0.95 }}
+                        onClick={() => togglePaymentErosionFront(card!.gamecardId)}
+                        className={cn(
+                          "aspect-[3/4] w-full max-w-[10.8rem] cursor-pointer transition-all rounded-lg overflow-hidden border-2 md:max-w-none",
+                          isSelected ? "border-red-500 scale-105 shadow-[0_0_20px_rgba(239,68,68,0.5)]" : "border-white/5 opacity-60 hover:opacity-100"
                         )}
-                      </div>
-                    </button>
-                  ))}
+                      >
+                        <div className="relative h-full w-full">
+                          <CardComponent card={card!} disableZoom cardBackUrl={cardBackUrl} />
+                          <div className="absolute left-2 top-2 rounded-lg bg-black/75 px-2 py-1 text-[10px] font-black text-white shadow-lg">
+                            {getOwnedCardLocationLabel(card!)}
+                          </div>
+                        </div>
+                      </motion.div>
+                    );
+                  })}
                 </div>
-              ) : null}
+              </div>
+            )}
 
-              {!['ASK_TRIGGER', 'SELECT_CHOICE'].includes(normalizedPendingQueryType || '') && (
-                <div className="flex flex-col items-center gap-6">
-                  <button
-                    onClick={handleQuerySubmit}
-                    disabled={normalizedPendingQueryType === 'SELECT_CARD' && selectedQueryIds.length < game.pendingQuery.minSelections}
-                    className="px-8 md:px-16 py-3 md:py-5 bg-[#f27d26] text-white font-black italic uppercase tracking-[0.2em] rounded-2xl hover:bg-[#f27d26]/80 transition-all disabled:opacity-30 disabled:cursor-not-allowed shadow-[0_20px_50px_rgba(242,125,38,0.3)] hover:scale-105 active:scale-95 text-xs md:text-base"
-                  >
-                    {querySubmitLabel}
-                  </button>
-                  <div className="flex items-center gap-2 text-zinc-600 uppercase text-[10px] font-black tracking-widest">
-                    <Loader2 className="w-3 h-3 animate-spin" />
-                    等待玩家输入
-                  </div>
-                </div>
-              )}
-            </div>
-          </motion.div>
+            <p className="text-zinc-500 text-xs italic text-center px-8">
+              提示：剩余费用将自动以侵蚀伤害的形式从你的牌库中扣除。
+            </p>
+          </div>
         )}
-      </AnimatePresence>
+
+        {normalizedPendingQueryType === 'SELECT_CHOICE' && (
+          <div className="grid grid-cols-2 gap-4 mt-4 w-full justify-center max-w-2xl px-6 md:px-12">
+            {pendingQueryOptions.map((option, i) => (
+              <button
+                key={i}
+                onClick={() => GameService.submitQueryChoice(gameId!, game.pendingQuery!.id, [option.id || option.card?.gamecardId || ''])}
+                className="px-4 py-6 md:px-10 md:py-8 bg-zinc-900/80 backdrop-blur-md text-white border-2 border-white/10 font-black italic uppercase tracking-[0.1em] rounded-3xl hover:bg-[#f27d26] hover:text-black hover:border-transparent transition-all hover:scale-105 active:scale-95 shadow-[0_10px_30px_rgba(0,0,0,0.5)] group relative overflow-hidden text-center flex items-center justify-center min-h-[100px]"
+              >
+                <div className="absolute inset-0 bg-gradient-to-tr from-white/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+                <div className="relative z-10 flex flex-col items-center gap-2">
+                  <span className="text-xs md:text-sm">{option.label || option.card?.fullName || option.id}</span>
+                  {(option.slotLabel || option.zoneLabel || option.ownerName) && (
+                    <span className="text-[10px] md:text-xs font-bold tracking-wide opacity-80">
+                      {[option.ownerName, option.slotLabel || option.zoneLabel].filter(Boolean).join(' · ')}
+                    </span>
+                  )}
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
+      </StandardPopup>
 
 
       {/* Background Ambience */}
