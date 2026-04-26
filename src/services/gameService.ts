@@ -153,6 +153,10 @@ export const GameService = {
     socket.emit('gameAction', { gameId, action: 'ACTIVATE_EFFECT', payload: { cardId, effectIndex } });
   },
 
+  async setConfrontationStrategy(gameId: string, strategy: 'ON' | 'AUTO' | 'OFF') {
+    socket.emit('gameAction', { gameId, action: 'SET_CONFRONTATION_STRATEGY', payload: { strategy } });
+  },
+
   async resolvePlay(gameId: string) {
     socket.emit('gameAction', { gameId, action: 'RESOLVE_PLAY' });
   },

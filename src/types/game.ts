@@ -269,6 +269,7 @@ export interface PlayerState {
   factionLock?: string; // Active faction restriction for the current turn
   markedUnitAttackTarget?: string; // Target selected at start of Main Phase that can be attacked
   skipDrawPhase?: boolean;
+  confrontationStrategy?: 'ON' | 'AUTO' | 'OFF';
 }
 
 export type StackItemType = 'PLAY' | 'EFFECT' | 'ATTACK' | 'PHASE_END';

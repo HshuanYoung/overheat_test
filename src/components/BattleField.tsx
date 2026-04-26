@@ -37,6 +37,12 @@ const getActionTypeLabel = (type?: string | null) => {
   return ACTION_TYPE_LABELS[type] || type.replace(/_/g, ' ');
 };
 
+const CONFRONTATION_STRATEGY_LABELS: Record<'ON' | 'AUTO' | 'OFF', string> = {
+  ON: '全开',
+  AUTO: '自动',
+  OFF: '全关'
+};
+
 export const BattleField: React.FC = () => {
   const { gameId } = useParams<{ gameId: string }>();
   const navigate = useNavigate();
@@ -452,6 +458,66 @@ export const BattleField: React.FC = () => {
   const querySubmitLabel = isSelectCardPendingQuery
     ? (isInspectOnlyPendingQuery ? '确认' : '确认选择')
     : '确认支付';
+
+  const highlightedCardIds = useMemo(() => {
+    const ids = new Set<string>();
+    if (!game || !me || !myUid) return ids;
+    if (game.pendingQuery || game.isResolvingStack || game.currentProcessingItem) return ids;
+
+    const isCounteringTurn = game.phase === 'COUNTERING' && game.priorityPlayerId === myUid;
+    const isOwnSharedPhase = me.isTurn && ['MAIN', 'BATTLE_DECLARATION', 'BATTLE_FREE'].includes(game.phase);
+    const canPlayFromHand =
+      (me.isTurn && game.phase === 'MAIN') ||
+      (me.isTurn && game.phase === 'BATTLE_FREE') ||
+      isCounteringTurn;
+
+    if (!isOwnSharedPhase && !isCounteringTurn) return ids;
+
+    if (canPlayFromHand) {
+      me.hand.forEach(card => {
+        const canPlayInPhase =
+          (me.isTurn && game.phase === 'MAIN') ||
+          (me.isTurn && game.phase === 'BATTLE_FREE' && card.type === 'STORY') ||
+          (isCounteringTurn && card.type === 'STORY');
+
+        if (canPlayInPhase && GameService.canPlayCard(game, me, card).canPlay) {
+          ids.add(card.gamecardId);
+        }
+      });
+    }
+
+    const activationZones: { cards: (Card | null)[]; location: TriggerLocation }[] = [
+      { cards: me.unitZone, location: 'UNIT' },
+      { cards: me.itemZone, location: 'ITEM' },
+      { cards: me.erosionFront, location: 'EROSION_FRONT' },
+      { cards: me.hand, location: 'HAND' }
+    ];
+
+    activationZones.forEach(({ cards, location }) => {
+      cards.forEach(card => {
+        if (!card) return;
+        if (card.type === 'STORY' && location === 'HAND') return;
+
+        const hasValidActivation = card.effects?.some((effect) =>
+          (effect.type === 'ACTIVATE' || effect.type === 'ACTIVATED') &&
+          GameService.checkEffectLimitsAndReqs(game, myUid, card, effect, location).valid
+        );
+
+        if (hasValidActivation) {
+          ids.add(card.gamecardId);
+        }
+      });
+    });
+
+    return ids;
+  }, [game, me, myUid]);
+
+  const confrontationStrategy = (me?.confrontationStrategy || 'ON') as 'ON' | 'AUTO' | 'OFF';
+
+  const updateConfrontationStrategy = (strategy: 'ON' | 'AUTO' | 'OFF') => {
+    if (!gameId || confrontationStrategy === strategy) return;
+    GameService.setConfrontationStrategy(gameId, strategy);
+  };
 
   if (!game || !myUid || !me) {
     return (
@@ -1337,6 +1403,43 @@ export const BattleField: React.FC = () => {
               </span>
             </motion.button>
 
+            {/* Confrontation Strategy */}
+            <div className="hidden md:flex items-center rounded-full border border-white/10 bg-zinc-900/70 p-1">
+              {(['ON', 'AUTO', 'OFF'] as const).map(strategy => (
+                <button
+                  key={strategy}
+                  onClick={() => updateConfrontationStrategy(strategy)}
+                  className={cn(
+                    "px-3 py-1 text-[10px] font-black tracking-widest rounded-full transition-all",
+                    confrontationStrategy === strategy
+                      ? "bg-[#f27d26] text-black shadow-[0_0_14px_rgba(242,125,38,0.35)]"
+                      : "text-white/45 hover:text-white hover:bg-white/10"
+                  )}
+                  title={`对抗策略：${CONFRONTATION_STRATEGY_LABELS[strategy]}`}
+                >
+                  {CONFRONTATION_STRATEGY_LABELS[strategy]}
+                </button>
+              ))}
+            </div>
+
+            <div className="flex md:hidden items-center rounded-full border border-white/10 bg-zinc-900/70 p-0.5">
+              {(['ON', 'AUTO', 'OFF'] as const).map(strategy => (
+                <button
+                  key={strategy}
+                  onClick={() => updateConfrontationStrategy(strategy)}
+                  className={cn(
+                    "px-2 py-1 text-[8px] font-black rounded-full transition-all",
+                    confrontationStrategy === strategy
+                      ? "bg-[#f27d26] text-black"
+                      : "text-white/45"
+                  )}
+                  title={`对抗策略：${CONFRONTATION_STRATEGY_LABELS[strategy]}`}
+                >
+                  {CONFRONTATION_STRATEGY_LABELS[strategy]}
+                </button>
+              ))}
+            </div>
+
             {/* Compact Stats Indicator (Desktop) */}
             <div className="hidden md:flex items-center gap-4">
               {/* My Stats */}
@@ -1420,6 +1523,7 @@ export const BattleField: React.FC = () => {
                   cardBackUrl={cardBackUrl}
                   viewingZone={viewingZone}
                   setViewingZone={setViewingZone}
+                  highlightedCardIds={highlightedCardIds}
                 />
               )}
             </div>
