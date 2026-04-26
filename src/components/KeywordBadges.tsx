@@ -23,7 +23,6 @@ export const KeywordBadges: React.FC<KeywordBadgesProps> = ({ card, className, v
       {keywords.map(keyword => (
         <div key={keyword.id} className="group relative">
           <div
-            title={`${keyword.label}: ${keyword.description}`}
             className={cn(
               'border border-white/20 shadow-lg',
               isDetail
@@ -41,19 +40,16 @@ export const KeywordBadges: React.FC<KeywordBadgesProps> = ({ card, className, v
             )}
           </div>
 
-          <div
-            className={cn(
-              'pointer-events-none absolute z-30 hidden rounded-xl border border-white/10 bg-black/95 p-3 text-left shadow-2xl group-hover:block',
-              isDetail ? 'left-0 top-full mt-2 w-64' : 'right-full top-0 mr-2 w-56'
-            )}
-          >
-            <div className="mb-1 text-xs font-black tracking-wide text-white">
-              {keyword.label}
+          {isDetail && (
+            <div className="pointer-events-none absolute left-0 top-full z-30 mt-2 hidden w-64 rounded-xl border border-white/10 bg-black/95 p-3 text-left shadow-2xl group-hover:block">
+              <div className="mb-1 text-xs font-black tracking-wide text-white">
+                {keyword.label}
+              </div>
+              <div className="text-[11px] leading-relaxed text-zinc-300">
+                {keyword.description}
+              </div>
             </div>
-            <div className="text-[11px] leading-relaxed text-zinc-300">
-              {keyword.description}
-            </div>
-          </div>
+          )}
         </div>
       ))}
     </div>

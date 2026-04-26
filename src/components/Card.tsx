@@ -48,6 +48,7 @@ const CardComponentImpl: React.FC<CardProps> = ({
   count,
   isBack,
   isExhausted,
+  disableZoom,
   statusBorder,
   displayMode,
   cardBackUrl,
@@ -56,7 +57,6 @@ const CardComponentImpl: React.FC<CardProps> = ({
   if (isBack || !card) {
     return (
       <motion.div
-        layout
         className={clsx(
           'relative aspect-[3/4] w-full rounded-xl overflow-hidden border-2 border-zinc-700 cursor-default bg-zinc-900 shadow-xl',
           className
@@ -96,15 +96,13 @@ const CardComponentImpl: React.FC<CardProps> = ({
 
   return (
     <motion.div
-      layout
       initial={false}
       style={{ rotate: exhausted ? 90 : 0 }}
-      transition={{ layout: { type: 'spring', damping: 25, stiffness: 300 } }}
-      whileHover={{ scale: 1.02, y: -2 }}
-      whileTap={{ scale: 0.98 }}
+      whileHover={disableZoom ? undefined : { scale: 1.02, y: -2 }}
+      whileTap={disableZoom ? undefined : { scale: 0.98 }}
       onClick={handleCardClick}
       className={clsx(
-        'relative aspect-[3/4] w-full rounded-xl cursor-pointer group transition-all bg-zinc-900 shadow-xl',
+        'relative aspect-[3/4] w-full rounded-xl cursor-pointer group transition-[border-color,box-shadow,opacity,filter] duration-300 bg-zinc-900 shadow-xl',
         statusBorder
           ? statusBorder === 'red'
             ? 'border-2 border-red-500 shadow-[0_0_20px_rgba(239,68,68,0.6)]'
