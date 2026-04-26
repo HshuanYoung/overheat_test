@@ -108,7 +108,7 @@ const CardComponentImpl: React.FC<CardProps> = ({
             ? 'border-2 border-red-500 shadow-[0_0_20px_rgba(239,68,68,0.6)]'
             : 'border-2 border-blue-500 shadow-[0_0_20px_rgba(59,130,246,0.6)]'
           : `${getRarityClass(card.rarity)} border-2`,
-        isHighlighted && 'ring-2 ring-yellow-300 shadow-[0_0_26px_rgba(250,204,21,0.8)] animate-pulse',
+        isHighlighted && '!border-yellow-400 !border-2 shadow-[0_0_20px_rgba(250,204,21,1)] z-50 scale-105',
         className
       )}
     >
