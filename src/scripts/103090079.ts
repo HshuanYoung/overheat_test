@@ -1,5 +1,38 @@
-import { Card } from '../types/game';
-import { getBt01CardEffects } from './_bt03YellowUtils';
+import { Card, CardEffect, TriggerLocation } from '../types/game';
+import { canPutUnitOntoBattlefield, createSelectCardQuery, isNonGodUnit, moveCard } from './BaseUtil';
+
+const cardEffects: CardEffect[] = [{
+    id: '103090079_revive',
+    type: 'TRIGGER',
+    triggerEvent: 'CARD_ENTERED_ZONE',
+    triggerLocation: ['UNIT'],
+    limitCount: 1,
+    limitNameType: true,
+    erosionTotalLimit: [6, 8],
+    description: '入场时，选择墓地中1个力量2000以下的绿色非神蚀单位放置到战场上。',
+    condition: (_gameState, playerState, instance, event) =>
+      event?.sourceCardId === instance.gamecardId &&
+      event.data?.zone === 'UNIT' &&
+      playerState.grave.some(card => isNonGodUnit(card) && card.color === 'GREEN' && (card.power || 0) <= 2000 && canPutUnitOntoBattlefield(playerState, card)),
+    execute: async (instance, gameState, playerState) => {
+      const candidates = playerState.grave.filter(card => isNonGodUnit(card) && card.color === 'GREEN' && (card.power || 0) <= 2000 && canPutUnitOntoBattlefield(playerState, card));
+      createSelectCardQuery(
+        gameState,
+        playerState.uid,
+        candidates,
+        '选择放置到战场的单位',
+        '选择你的墓地中的1个力量2000以下的绿色非神蚀单位，放置到战场上。',
+        1,
+        1,
+        { sourceCardId: instance.gamecardId, effectId: '103090079_revive' },
+        () => 'GRAVE'
+      );
+    },
+    onQueryResolve: async (instance, gameState, playerState, selections) => {
+      const target = playerState.grave.find(card => card.gamecardId === selections[0] && isNonGodUnit(card) && card.color === 'GREEN' && (card.power || 0) <= 2000 && canPutUnitOntoBattlefield(playerState, card));
+      if (target) moveCard(gameState, playerState.uid, target, 'UNIT', instance);
+    }
+  }];
 
 /**
  * Auto-generated from Card.xlsx + Card2.xlsx.
@@ -35,7 +68,7 @@ const card: Card = {
   canAttack: true,
   feijingMark: false,
   canResetCount: 0,
-  effects: getBt01CardEffects('103090079'),
+  effects: cardEffects,
   rarity: 'R',
   availableRarities: ['R'],
   cardPackage: 'BT01',

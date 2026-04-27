@@ -30,7 +30,7 @@ const card: Card = {
   effects: [],
   rarity: 'U',
   availableRarities: ['U'],
-  cardPackage: 'BT02,ST02',
+  cardPackage: 'BT02',
   uniqueId: null as any,
 };
 

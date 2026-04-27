@@ -1,5 +1,5 @@
 import { Card, CardEffect } from '../types/game';
-import { createChoiceQuery, getOnlyGodMarkUnit, moveCard } from './_bt03YellowUtils';
+import { createChoiceQuery, getOnlyGodMarkUnit, moveCard } from './BaseUtil';
 import { AtomicEffectExecutor } from '../services/AtomicEffectExecutor';
 
 const effect_305000074_trigger: CardEffect = {

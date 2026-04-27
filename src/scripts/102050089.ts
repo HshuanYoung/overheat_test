@@ -1,5 +1,40 @@
-import { Card } from '../types/game';
-import { getBt01CardEffects } from './_bt03YellowUtils';
+import { Card, CardEffect, TriggerLocation } from '../types/game';
+import { AtomicEffectExecutor, createSelectCardQuery, damagePlayerByEffect, moveCard } from './BaseUtil';
+
+const cardEffects: CardEffect[] = [{
+    id: '102050089_damage_search',
+    type: 'TRIGGER',
+    triggerEvent: 'COMBAT_DAMAGE_CAUSED',
+    triggerLocation: ['UNIT'],
+    description: '给予对手战斗伤害时，可以从卡组将1张<伊列宇王国>神蚀卡加入手牌。之后给予你1点伤害。',
+    condition: (gameState, playerState, instance, event) => event?.playerUid !== playerState.uid && gameState.battleState?.attackers?.includes(instance.gamecardId),
+    execute: async (instance, gameState, playerState) => {
+      const candidates = playerState.deck.filter(card => card.faction === '伊列宇王国' && card.godMark);
+      if (candidates.length === 0) {
+        await damagePlayerByEffect(gameState, playerState.uid, playerState.uid, 1, instance);
+        return;
+      }
+      createSelectCardQuery(
+        gameState,
+        playerState.uid,
+        candidates,
+        '选择加入手牌的卡',
+        '选择你的卡组中的1张<伊列宇王国>神蚀卡，将其加入手牌。',
+        0,
+        1,
+        { sourceCardId: instance.gamecardId, effectId: '102050089_damage_search' },
+        () => 'DECK'
+      );
+    },
+    onQueryResolve: async (instance, gameState, playerState, selections) => {
+      const target = playerState.deck.find(card => card.gamecardId === selections[0]);
+      if (target) {
+        moveCard(gameState, playerState.uid, target, 'HAND', instance);
+        await AtomicEffectExecutor.execute(gameState, playerState.uid, { type: 'SHUFFLE_DECK' }, instance);
+      }
+      await damagePlayerByEffect(gameState, playerState.uid, playerState.uid, 1, instance);
+    }
+  }];
 
 /**
  * Auto-generated from Card.xlsx + Card2.xlsx.
@@ -36,7 +71,7 @@ const card: Card = {
   canAttack: true,
   feijingMark: false,
   canResetCount: 0,
-  effects: getBt01CardEffects('102050089'),
+  effects: cardEffects,
   rarity: 'R',
   availableRarities: ['R'],
   cardPackage: 'BT01',

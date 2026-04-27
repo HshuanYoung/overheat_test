@@ -1,5 +1,41 @@
-import { Card } from '../types/game';
-import { getBt01CardEffects } from './_bt03YellowUtils';
+import { Card, CardEffect, TriggerLocation } from '../types/game';
+import { AtomicEffectExecutor, allCardsOnField, appendEndResolution, createSelectCardQuery, exileByEffect, moveCard, ownUnits, ownerUidOf } from './BaseUtil';
+
+const cardEffects: CardEffect[] = [{
+    id: '101140100_blink',
+    type: 'TRIGGER',
+    triggerEvent: 'CARD_ENTERED_ZONE',
+    triggerLocation: ['UNIT'],
+    description: '入场时，若你的<女神教会>单位有3个以上，放逐战场上1张其他卡，下一次你的回合结束时返回。',
+    condition: (_gameState, playerState, instance, event) => event?.sourceCardId === instance.gamecardId && event.data?.zone === 'UNIT' && ownUnits(playerState).filter(unit => unit.faction === '女神教会').length >= 3,
+    execute: async (instance, gameState, playerState) => {
+      const candidates = allCardsOnField(gameState).filter(card => card.gamecardId !== instance.gamecardId);
+      if (candidates.length === 0) return;
+      createSelectCardQuery(
+        gameState,
+        playerState.uid,
+        candidates,
+        '选择放逐对象',
+        '选择战场上的1张这个单位以外的卡，将其放逐。',
+        1,
+        1,
+        { sourceCardId: instance.gamecardId, effectId: '101140100_blink' },
+        card => card.cardlocation || 'UNIT'
+      );
+    },
+    onQueryResolve: async (instance, gameState, playerState, selections) => {
+      const target = allCardsOnField(gameState).find(card => card.gamecardId === selections[0]);
+      if (!target) return;
+      const ownerUid = ownerUidOf(gameState, target);
+      const zone = target.cardlocation as TriggerLocation;
+      const id = target.gamecardId;
+      exileByEffect(gameState, target, instance);
+      appendEndResolution(gameState, playerState.uid, instance, '101140100_return', (source, state) => {
+        const exiled = AtomicEffectExecutor.findCardById(state, id);
+        if (exiled && ownerUid) moveCard(state, ownerUid, exiled, zone, source);
+      });
+    }
+  }];
 
 /**
  * Auto-generated from Card.xlsx + Card2.xlsx.
@@ -35,7 +71,7 @@ const card: Card = {
   canAttack: true,
   feijingMark: false,
   canResetCount: 0,
-  effects: getBt01CardEffects('101140100'),
+  effects: cardEffects,
   rarity: 'U',
   availableRarities: ['U'],
   cardPackage: 'BT01',

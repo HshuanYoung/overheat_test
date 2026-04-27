@@ -1,5 +1,26 @@
-import { Card } from '../types/game';
-import { getBt01CardEffects } from './_bt03YellowUtils';
+import { Card, CardEffect, TriggerLocation } from '../types/game';
+import { AtomicEffectExecutor, damagePlayerByEffect, ownUnits } from './BaseUtil';
+
+const cardEffects: CardEffect[] = [{
+    id: '102000092_all_damage',
+    type: 'ACTIVATE',
+    triggerLocation: ['UNIT'],
+    limitCount: 1,
+    description: '主要阶段，给予所有玩家1点伤害。',
+    condition: (gameState, playerState) => gameState.phase === 'MAIN' && playerState.isTurn && ownUnits(playerState).filter(unit => AtomicEffectExecutor.matchesColor(unit, 'RED')).length >= 2,
+    execute: async (instance, gameState, playerState) => {
+      for (const uid of Object.keys(gameState.players)) await damagePlayerByEffect(gameState, playerState.uid, uid, 1, instance);
+    }
+  }, {
+    id: '102000092_self_damage',
+    type: 'TRIGGER',
+    triggerEvent: 'CARD_ENTERED_ZONE',
+    triggerLocation: ['UNIT'],
+    erosionTotalLimit: [9, 9],
+    description: '9~9：入场时给予你1点伤害。',
+    condition: (_gameState, _playerState, instance, event) => event?.sourceCardId === instance.gamecardId && event.data?.zone === 'UNIT',
+    execute: async (instance, gameState, playerState) => damagePlayerByEffect(gameState, playerState.uid, playerState.uid, 1, instance)
+  }];
 
 /**
  * Auto-generated from Card.xlsx + Card2.xlsx.
@@ -36,7 +57,7 @@ const card: Card = {
   canAttack: true,
   feijingMark: false,
   canResetCount: 0,
-  effects: getBt01CardEffects('102000092'),
+  effects: cardEffects,
   rarity: 'U',
   availableRarities: ['U'],
   cardPackage: 'BT01',

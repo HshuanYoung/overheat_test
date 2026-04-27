@@ -1,5 +1,5 @@
 import { Card, CardEffect } from '../types/game';
-import { findUnitOnBattlefield, universalEquipEffect } from './_bt03YellowUtils';
+import { findUnitOnBattlefield, universalEquipEffect } from './BaseUtil';
 
 const effect_305000081_continuous: CardEffect = {
   id: '305000081_continuous',

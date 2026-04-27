@@ -1,6 +1,6 @@
 import { Card, CardEffect } from '../types/game';
 import { AtomicEffectExecutor } from '../services/AtomicEffectExecutor';
-import { createSelectCardQuery, getBattlefieldCards } from './_bt03YellowUtils';
+import { createSelectCardQuery, getBattlefieldCards } from './BaseUtil';
 
 const effect_105120468_activate: CardEffect = {
   id: '105120468_activate',

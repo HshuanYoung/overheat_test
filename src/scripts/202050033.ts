@@ -1,5 +1,32 @@
-import { Card } from '../types/game';
-import { getBt01CardEffects } from './_bt03YellowUtils';
+import { Card, CardEffect, TriggerLocation } from '../types/game';
+import { addTempDamage, addTempPower, createSelectCardQuery, dealUnpreventableSelfDamage, ownUnits, story } from './BaseUtil';
+
+const cardEffects: CardEffect[] = [story('202050033_goddess', '5~7且创痕3：给予你5点不能防止的伤害，选择1个单位伤害+2、力量+2000。', async (instance, gameState, playerState) => {
+    dealUnpreventableSelfDamage(gameState, playerState.uid, 5, instance);
+    const candidates = ownUnits(playerState);
+    if (candidates.length === 0) return;
+    createSelectCardQuery(
+      gameState,
+      playerState.uid,
+      candidates,
+      '选择单位',
+      '选择你的1个单位，本回合中伤害+2、力量+2000。',
+      1,
+      1,
+      { sourceCardId: instance.gamecardId, effectId: '202050033_goddess' }
+    );
+  }, {
+    erosionTotalLimit: [5, 7],
+    erosionBackLimit: [3, 10],
+    condition: (_gameState, playerState) => ownUnits(playerState).length > 0,
+    onQueryResolve: async (instance, _gameState, playerState, selections) => {
+      const target = ownUnits(playerState).find(unit => unit.gamecardId === selections[0]);
+    if (target) {
+      addTempDamage(target, instance, 2);
+      addTempPower(target, instance, 2000);
+    }
+    }
+  })];
 
 /**
  * Auto-generated from Card.xlsx + Card2.xlsx.
@@ -28,7 +55,7 @@ const card: Card = {
   displayState: 'FRONT_UPRIGHT',
   feijingMark: false,
   canResetCount: 0,
-  effects: getBt01CardEffects('202050033'),
+  effects: cardEffects,
   rarity: 'U',
   availableRarities: ['U'],
   cardPackage: 'BT01',

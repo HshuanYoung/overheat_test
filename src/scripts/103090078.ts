@@ -1,5 +1,56 @@
-import { Card } from '../types/game';
-import { getBt01CardEffects } from './_bt03YellowUtils';
+import { Card, CardEffect, TriggerLocation } from '../types/game';
+import { AtomicEffectExecutor, addInfluence, appendEndResolution, createSelectCardQuery, destroyByEffect, ensureData, getOpponentUid, ownUnits, ownerOf, paymentCost } from './BaseUtil';
+
+const cardEffects: CardEffect[] = [{
+    id: '103090078_attack_gate',
+    type: 'CONTINUOUS',
+    description: '你的<瑟诺布>单位少于2个时，不能宣言攻击和防御。',
+    applyContinuous: (gameState, instance) => {
+      const owner = ownerOf(gameState, instance);
+      if (!owner || ownUnits(owner).filter(unit => unit.faction === '瑟诺布').length >= 2) return;
+      (instance as any).battleForbiddenByEffect = true;
+      addInfluence(instance, instance, '不能宣言攻击和防御');
+    }
+  }, {
+    id: '103090078_destroy_later',
+    type: 'ACTIVATE',
+    triggerLocation: ['UNIT'],
+    limitCount: 1,
+    limitNameType: true,
+    description: '主要阶段，支付1费并横置：选择对手1个力量不高于此单位的非神蚀单位，回合结束时破坏。',
+    condition: (gameState, playerState, instance) => playerState.isTurn && gameState.phase === 'MAIN' && !instance.isExhausted,
+    cost: async (gameState, playerState, instance) => {
+      const paid = await paymentCost(1, 'GREEN')!(gameState, playerState, instance);
+      instance.isExhausted = true;
+      return paid;
+    },
+    execute: async (instance, gameState, playerState) => {
+      const opponent = gameState.players[getOpponentUid(gameState, playerState.uid)];
+      const candidates = ownUnits(opponent).filter(unit => !unit.godMark && (unit.power || 0) <= (instance.power || 0));
+      if (candidates.length === 0) return;
+      createSelectCardQuery(
+        gameState,
+        playerState.uid,
+        candidates,
+        '选择破坏预约对象',
+        '选择对手的1个力量值在这个单位以下的非神蚀单位，回合结束时破坏。',
+        1,
+        1,
+        { sourceCardId: instance.gamecardId, effectId: '103090078_destroy_later' }
+      );
+    },
+    onQueryResolve: async (instance, gameState, playerState, selections) => {
+      const opponent = gameState.players[getOpponentUid(gameState, playerState.uid)];
+      const target = ownUnits(opponent).find(unit => unit.gamecardId === selections[0]);
+      if (!target) return;
+      ensureData(target).bt01DestroyAtEndBy = instance.fullName;
+      addInfluence(target, instance, '回合结束时破坏');
+      appendEndResolution(gameState, playerState.uid, instance, '103090078_end_destroy', (source, state) => {
+        const live = AtomicEffectExecutor.findCardById(state, target.gamecardId);
+        if (live) destroyByEffect(state, live, source);
+      });
+    }
+  }];
 
 /**
  * Auto-generated from Card.xlsx + Card2.xlsx.
@@ -36,7 +87,7 @@ const card: Card = {
   canAttack: true,
   feijingMark: false,
   canResetCount: 0,
-  effects: getBt01CardEffects('103090078'),
+  effects: cardEffects,
   rarity: 'R',
   availableRarities: ['R'],
   cardPackage: 'BT01',

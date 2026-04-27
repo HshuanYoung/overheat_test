@@ -1,7 +1,7 @@
 import { Card, CardEffect, GameEvent } from '../types/game';
 import { AtomicEffectExecutor } from '../services/AtomicEffectExecutor';
 import { EventEngine } from '../services/EventEngine';
-import { canPutCardOntoBattlefieldByEffect, createSelectCardQuery, getTopDeckCards, isAlchemyCard, isNonGodAccessLe3UnitOrItem, moveCardsToBottom } from './_bt02YellowUtils';
+import { canPutCardOntoBattlefieldByEffect, createSelectCardQuery, getTopDeckCards, isAlchemyCard, isNonGodAccessLe3UnitOrItem, moveCardsToBottom } from './BaseUtil';
 
 const effect_105120168_enter: CardEffect = {
   id: '105120168_enter',

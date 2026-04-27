@@ -1,5 +1,20 @@
-import { Card } from '../types/game';
-import { getBt01CardEffects } from './_bt03YellowUtils';
+import { Card, CardEffect, TriggerLocation } from '../types/game';
+import { AtomicEffectExecutor, addContinuousDamage, addContinuousPower, addInfluence, universalEquipEffect } from './BaseUtil';
+
+const cardEffects: CardEffect[] = [universalEquipEffect, {
+    id: '301000016_equip_buff',
+    type: 'CONTINUOUS',
+    description: '装备单位伤害+1、力量+500并获得英勇。',
+    applyContinuous: (gameState, instance) => {
+      if (!instance.equipTargetId) return;
+      const target = AtomicEffectExecutor.findCardById(gameState, instance.equipTargetId);
+      if (!target) return;
+      addContinuousDamage(target, instance, 1);
+      addContinuousPower(target, instance, 500);
+      target.isHeroic = true;
+      addInfluence(target, instance, '获得效果: 【英勇】');
+    }
+  }];
 
 /**
  * Auto-generated from Card.xlsx + Card2.xlsx.
@@ -29,7 +44,7 @@ const card: Card = {
   displayState: 'FRONT_UPRIGHT',
   feijingMark: false,
   canResetCount: 0,
-  effects: getBt01CardEffects('301000016'),
+  effects: cardEffects,
   rarity: 'U',
   availableRarities: ['U'],
   cardPackage: 'BT01',

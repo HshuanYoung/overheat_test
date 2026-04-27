@@ -1,5 +1,7 @@
-import { Card } from '../types/game';
-import { getBt01CardEffects } from './_bt03YellowUtils';
+import { Card, CardEffect, TriggerLocation } from '../types/game';
+import { searchDeckEffect } from './BaseUtil';
+
+const cardEffects: CardEffect[] = [searchDeckEffect('103090075_search', '入场时，可以从卡组将1张《风车守望者》以外的<瑟诺布>单位加入手牌。', card => card.type === 'UNIT' && card.faction === '瑟诺布' && card.fullName !== '风车守望者')];
 
 /**
  * Auto-generated from Card.xlsx + Card2.xlsx.
@@ -35,7 +37,7 @@ const card: Card = {
   canAttack: true,
   feijingMark: false,
   canResetCount: 0,
-  effects: getBt01CardEffects('103090075'),
+  effects: cardEffects,
   rarity: 'U',
   availableRarities: ['U'],
   cardPackage: 'BT01',

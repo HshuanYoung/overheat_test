@@ -1,5 +1,81 @@
-import { Card } from '../types/game';
-import { getBt01CardEffects } from './_bt03YellowUtils';
+import { Card, CardEffect, TriggerLocation } from '../types/game';
+import { addTempDamage, addTempKeyword, addTempPower, allCardsOnField, createSelectCardQuery, damagePlayerByEffect, destroyByEffect, getOpponentUid, millTop, moveCard } from './BaseUtil';
+
+const cardEffects: CardEffect[] = [{
+    id: '101140098_start',
+    type: 'TRIGGER',
+    triggerEvent: 'PHASE_CHANGED',
+    triggerLocation: ['UNIT'],
+    description: '你的回合开始时，将墓地1张卡放到卡组底。之后将对手卡组顶1张送入墓地。',
+    condition: (_gameState, playerState, _instance, event) =>
+      playerState.isTurn &&
+      event?.data?.phase === 'START' &&
+      playerState.grave.length > 0,
+    execute: async (instance, gameState, playerState) => {
+      createSelectCardQuery(
+        gameState,
+        playerState.uid,
+        playerState.grave,
+        '选择放回卡组底的卡',
+        '选择你的墓地中的1张卡，放置到卡组底。',
+        1,
+        1,
+        { sourceCardId: instance.gamecardId, effectId: '101140098_start' },
+        () => 'GRAVE'
+      );
+    },
+    onQueryResolve: async (instance, gameState, playerState, selections) => {
+      const graveCard = playerState.grave.find(card => card.gamecardId === selections[0]);
+      if (graveCard) moveCard(gameState, playerState.uid, graveCard, 'DECK', instance, { insertAtBottom: true });
+      millTop(gameState, getOpponentUid(gameState, playerState.uid), 1, instance);
+    }
+  }, {
+    id: '101140098_ten_destroy',
+    type: 'ACTIVATE',
+    triggerLocation: ['UNIT'],
+    limitCount: 1,
+    erosionTotalLimit: [10, 99],
+    description: '10+，侵蚀2：选择战场上1张卡破坏。',
+    cost: async (gameState, playerState, instance) => {
+      await damagePlayerByEffect(gameState, playerState.uid, playerState.uid, 2, instance);
+      return true;
+    },
+    execute: async (instance, gameState, playerState) => {
+      const candidates = allCardsOnField(gameState).filter(card => card.gamecardId !== instance.gamecardId);
+      if (candidates.length === 0) return;
+      createSelectCardQuery(
+        gameState,
+        playerState.uid,
+        candidates,
+        '选择破坏对象',
+        '选择战场上的1张卡，将其破坏。',
+        1,
+        1,
+        { sourceCardId: instance.gamecardId, effectId: '101140098_ten_destroy' },
+        card => card.cardlocation || 'UNIT'
+      );
+    },
+    onQueryResolve: async (instance, gameState, _playerState, selections) => {
+      const target = allCardsOnField(gameState).find(card => card.gamecardId === selections[0]);
+      if (target) destroyByEffect(gameState, target, instance);
+    }
+  }, {
+    id: '101140098_ten_form',
+    type: 'ACTIVATE',
+    triggerLocation: ['UNIT'],
+    limitCount: 1,
+    erosionTotalLimit: [10, 99],
+    description: '10+，侵蚀2：直到下一次你的回合结束，此单位变为伤害4、力量4000并获得英勇。',
+    cost: async (gameState, playerState, instance) => {
+      await damagePlayerByEffect(gameState, playerState.uid, playerState.uid, 2, instance);
+      return true;
+    },
+    execute: async instance => {
+      addTempDamage(instance, instance, 4 - (instance.damage || 0));
+      addTempPower(instance, instance, 4000 - (instance.power || 0));
+      addTempKeyword(instance, instance, 'heroic');
+    }
+  }];
 
 /**
  * Auto-generated from Card.xlsx + Card2.xlsx.
@@ -38,7 +114,7 @@ const card: Card = {
   canAttack: true,
   feijingMark: false,
   canResetCount: 0,
-  effects: getBt01CardEffects('101140098'),
+  effects: cardEffects,
   rarity: 'SR',
   availableRarities: ['SR', 'SER'],
   cardPackage: 'BT01',

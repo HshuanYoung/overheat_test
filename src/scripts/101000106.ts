@@ -1,5 +1,15 @@
-import { Card } from '../types/game';
-import { getBt01CardEffects } from './_bt03YellowUtils';
+import { Card, CardEffect, TriggerLocation } from '../types/game';
+import { addContinuousPower, ownerUidOf } from './BaseUtil';
+
+const cardEffects: CardEffect[] = [{
+    id: '101000106_opponent_power',
+    type: 'CONTINUOUS',
+    description: '对手回合中，力量+1000。',
+    applyContinuous: (gameState, instance) => {
+      const ownerUid = ownerUidOf(gameState, instance);
+      if (ownerUid && !gameState.players[ownerUid]?.isTurn) addContinuousPower(instance, instance, 1000);
+    }
+  }];
 
 /**
  * Auto-generated from Card.xlsx + Card2.xlsx.
@@ -35,7 +45,7 @@ const card: Card = {
   canAttack: true,
   feijingMark: false,
   canResetCount: 0,
-  effects: getBt01CardEffects('101000106'),
+  effects: cardEffects,
   rarity: 'C',
   availableRarities: ['C'],
   cardPackage: 'BT01',

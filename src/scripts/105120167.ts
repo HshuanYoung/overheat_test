@@ -1,7 +1,7 @@
 import { Card, CardEffect } from '../types/game';
 import { AtomicEffectExecutor } from '../services/AtomicEffectExecutor';
 import { EventEngine } from '../services/EventEngine';
-import { canPutCardOntoBattlefieldByEffect, createSelectCardQuery, isAlchemyCard, moveCardsToBottom } from './_bt02YellowUtils';
+import { canPutCardOntoBattlefieldByEffect, createSelectCardQuery, isAlchemyCard, moveCardsToBottom } from './BaseUtil';
 
 const effect_105120167_activate: CardEffect = {
   id: '105120167_activate',

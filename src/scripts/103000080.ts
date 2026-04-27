@@ -1,5 +1,38 @@
-import { Card } from '../types/game';
-import { getBt01CardEffects } from './_bt03YellowUtils';
+import { Card, CardEffect, TriggerLocation } from '../types/game';
+import { AtomicEffectExecutor, canPutUnitOntoBattlefield, createSelectCardQuery, getTopDeckCards, isNonGodUnit, moveCard, ownUnits } from './BaseUtil';
+
+const cardEffects: CardEffect[] = [{
+    id: '103000080_mill_revive',
+    type: 'ACTIVATE',
+    triggerLocation: ['UNIT'],
+    description: '放逐此单位：将卡组顶3张送入墓地，之后从那3张中将1个力量2500以下的非神蚀单位放置到战场上。',
+    condition: (_gameState, playerState) => ownUnits(playerState).filter(unit => AtomicEffectExecutor.matchesColor(unit, 'GREEN')).length >= 2,
+    cost: async (gameState, playerState, instance) => {
+      moveCard(gameState, playerState.uid, instance, 'EXILE', instance);
+      return true;
+    },
+    execute: async (instance, gameState, playerState) => {
+      const milled = getTopDeckCards(playerState, 3);
+      milled.forEach(card => moveCard(gameState, playerState.uid, card, 'GRAVE', instance));
+      const candidates = milled.filter(card => playerState.grave.some(grave => grave.gamecardId === card.gamecardId) && isNonGodUnit(card) && (card.power || 0) <= 2500 && canPutUnitOntoBattlefield(playerState, card));
+      if (candidates.length === 0) return;
+      createSelectCardQuery(
+        gameState,
+        playerState.uid,
+        candidates,
+        '选择放置到战场的单位',
+        '从送入墓地的3张卡中选择1个力量2500以下的非神蚀单位，放置到战场上。',
+        1,
+        1,
+        { sourceCardId: instance.gamecardId, effectId: '103000080_mill_revive' },
+        () => 'GRAVE'
+      );
+    },
+    onQueryResolve: async (instance, gameState, playerState, selections) => {
+      const target = playerState.grave.find(card => card.gamecardId === selections[0] && isNonGodUnit(card) && (card.power || 0) <= 2500 && canPutUnitOntoBattlefield(playerState, card));
+      if (target) moveCard(gameState, playerState.uid, target, 'UNIT', instance);
+    }
+  }];
 
 /**
  * Auto-generated from Card.xlsx + Card2.xlsx.
@@ -35,7 +68,7 @@ const card: Card = {
   canAttack: true,
   feijingMark: false,
   canResetCount: 0,
-  effects: getBt01CardEffects('103000080'),
+  effects: cardEffects,
   rarity: 'R',
   availableRarities: ['R'],
   cardPackage: 'BT01',

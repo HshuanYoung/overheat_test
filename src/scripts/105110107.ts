@@ -1,6 +1,6 @@
 import { Card, CardEffect, GameEvent, GameState, TriggerLocation } from '../types/game';
 import { AtomicEffectExecutor } from '../services/AtomicEffectExecutor';
-import { createSelectCardQuery, moveCard } from './_bt02YellowUtils';
+import { createSelectCardQuery, moveCard } from './BaseUtil';
 
 const getItemTargets = (gameState: GameState, playerUid: string) => {
   const playerState = gameState.players[playerUid];

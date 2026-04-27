@@ -1,6 +1,6 @@
 import { Card, CardEffect, GameEvent } from '../types/game';
 import { AtomicEffectExecutor } from '../services/AtomicEffectExecutor';
-import { createChoiceQuery, createSelectCardQuery, getBattlefieldUnits, isVirtualGodMarkReveal, shuffleAndRevealTopCards } from './_bt03YellowUtils';
+import { createChoiceQuery, createSelectCardQuery, getBattlefieldUnits, isVirtualGodMarkReveal, shuffleAndRevealTopCards } from './BaseUtil';
 
 const readySelfIfNeeded = (instance: Card, gameState: any, revealedCardId?: string) => {
   const revealedCard = revealedCardId ? AtomicEffectExecutor.findCardById(gameState, revealedCardId) : undefined;

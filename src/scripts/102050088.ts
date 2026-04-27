@@ -1,5 +1,13 @@
-import { Card } from '../types/game';
-import { getBt01CardEffects } from './_bt03YellowUtils';
+import { Card, CardEffect, TriggerLocation } from '../types/game';
+import { addContinuousDamage } from './BaseUtil';
+
+const cardEffects: CardEffect[] = [{
+    id: '102050088_damage',
+    type: 'CONTINUOUS',
+    erosionTotalLimit: [5, 7],
+    description: '5~7：伤害+1。',
+    applyContinuous: (_gameState, instance) => addContinuousDamage(instance, instance, 1)
+  }];
 
 /**
  * Auto-generated from Card.xlsx + Card2.xlsx.
@@ -36,7 +44,7 @@ const card: Card = {
   canAttack: true,
   feijingMark: false,
   canResetCount: 0,
-  effects: getBt01CardEffects('102050088'),
+  effects: cardEffects,
   rarity: 'R',
   availableRarities: ['R'],
   cardPackage: 'BT01',

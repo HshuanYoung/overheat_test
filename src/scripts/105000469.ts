@@ -1,6 +1,6 @@
 import { Card, CardEffect, GameEvent } from '../types/game';
 import { AtomicEffectExecutor } from '../services/AtomicEffectExecutor';
-import { canPutItemOntoBattlefield, createSelectCardQuery, moveCard } from './_bt03YellowUtils';
+import { canPutItemOntoBattlefield, createSelectCardQuery, moveCard } from './BaseUtil';
 
 const effect_105000469_enter: CardEffect = {
   id: '105000469_enter',

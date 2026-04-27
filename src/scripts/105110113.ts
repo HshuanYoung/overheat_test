@@ -1,7 +1,7 @@
 import { Card, CardEffect } from '../types/game';
 import { AtomicEffectExecutor } from '../services/AtomicEffectExecutor';
-import { canPutItemOntoBattlefield, createChoiceQuery, createSelectCardQuery, revealDeckCards } from './_bt03YellowUtils';
-import { moveCard } from './_bt02YellowUtils';
+import { canPutItemOntoBattlefield, createChoiceQuery, createSelectCardQuery, revealDeckCards } from './BaseUtil';
+import { moveCard } from './BaseUtil';
 
 const effect_105110113_continuous: CardEffect = {
   id: '105110113_continuous',

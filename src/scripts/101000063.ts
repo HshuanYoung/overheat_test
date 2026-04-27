@@ -1,4 +1,45 @@
-import { Card } from '../types/game';
+import { Card, CardEffect } from '../types/game';
+import { addInfluence, allUnitsOnField, createSelectCardQuery, damagePlayerByEffect } from './BaseUtil';
+
+const cardEffects: CardEffect[] = [{
+  id: '101000063_ten_reset_units',
+  type: 'ACTIVATE',
+  triggerLocation: ['UNIT'],
+  limitCount: 1,
+  erosionTotalLimit: [10, 99],
+  description: '10+，1回合1次，侵蚀2：选择2个非神蚀单位，将其重置。',
+  condition: (gameState, playerState) =>
+    playerState.isTurn &&
+    gameState.phase === 'MAIN' &&
+    allUnitsOnField(gameState).filter(unit => !unit.godMark).length >= 2,
+  cost: async (gameState, playerState, instance) => {
+    await damagePlayerByEffect(gameState, playerState.uid, playerState.uid, 2, instance);
+    return true;
+  },
+  execute: async (instance, gameState, playerState) => {
+    const candidates = allUnitsOnField(gameState).filter(unit => !unit.godMark);
+    if (candidates.length < 2) return;
+
+    createSelectCardQuery(
+      gameState,
+      playerState.uid,
+      candidates,
+      '选择重置单位',
+      '选择2个非神蚀单位，将其重置。',
+      2,
+      2,
+      { sourceCardId: instance.gamecardId, effectId: '101000063_ten_reset_units' },
+      card => card.cardlocation || 'UNIT'
+    );
+  },
+  onQueryResolve: async (instance, gameState, _playerState, selections) => {
+    const targets = allUnitsOnField(gameState).filter(unit => selections.includes(unit.gamecardId));
+    targets.forEach(target => {
+      target.isExhausted = false;
+      addInfluence(target, instance, '因效果重置');
+    });
+  }
+}];
 
 /**
  * Auto-generated from Card.xlsx + Card2.xlsx.
@@ -34,10 +75,10 @@ const card: Card = {
   canAttack: true,
   feijingMark: false,
   canResetCount: 0,
-  effects: [],
+  effects: cardEffects,
   rarity: 'U',
   availableRarities: ['U'],
-  cardPackage: 'ST01',
+  cardPackage: 'BT01',
   uniqueId: null as any,
 };
 

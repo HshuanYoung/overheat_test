@@ -1,6 +1,6 @@
 import { Card, CardEffect } from '../types/game';
 import { AtomicEffectExecutor } from '../services/AtomicEffectExecutor';
-import { createSelectCardQuery, hasTruthUnit, revealDeckCards } from './_bt03YellowUtils';
+import { createSelectCardQuery, hasTruthUnit, revealDeckCards } from './BaseUtil';
 
 const effect_205000142_activate: CardEffect = {
   id: '205000142_activate',

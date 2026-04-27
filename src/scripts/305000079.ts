@@ -1,6 +1,6 @@
 import { Card, CardEffect, GameEvent } from '../types/game';
 import { AtomicEffectExecutor } from '../services/AtomicEffectExecutor';
-import { canPutItemOntoBattlefield, createSelectCardQuery } from './_bt03YellowUtils';
+import { canPutItemOntoBattlefield, createSelectCardQuery } from './BaseUtil';
 
 const effect_305000079_trigger: CardEffect = {
   id: '305000079_trigger',

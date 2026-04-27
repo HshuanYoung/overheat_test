@@ -1,6 +1,6 @@
 import { Card, CardEffect, GameEvent } from '../types/game';
 import { AtomicEffectExecutor } from '../services/AtomicEffectExecutor';
-import { createChoiceQuery, createSelectCardQuery, getOpponentUid } from './_bt03YellowUtils';
+import { createChoiceQuery, createSelectCardQuery, getOpponentUid } from './BaseUtil';
 
 const effect_105000471_enter: CardEffect = {
   id: '105000471_enter',

@@ -1,5 +1,17 @@
-import { Card } from '../types/game';
-import { getBt01CardEffects } from './_bt03YellowUtils';
+import { Card, CardEffect, TriggerLocation } from '../types/game';
+import { addContinuousDamage, addContinuousPower, ownUnits, ownerOf } from './BaseUtil';
+
+const cardEffects: CardEffect[] = [{
+    id: '103090077_buff',
+    type: 'CONTINUOUS',
+    description: '若你的战场上的<瑟诺布>单位有3个以上，这个单位伤害+1、力量+1000。',
+    applyContinuous: (gameState, instance) => {
+      const owner = ownerOf(gameState, instance);
+      if (!owner || ownUnits(owner).filter(unit => unit.faction === '瑟诺布').length < 3) return;
+      addContinuousDamage(instance, instance, 1);
+      addContinuousPower(instance, instance, 1000);
+    }
+  }];
 
 /**
  * Auto-generated from Card.xlsx + Card2.xlsx.
@@ -35,7 +47,7 @@ const card: Card = {
   canAttack: true,
   feijingMark: false,
   canResetCount: 0,
-  effects: getBt01CardEffects('103090077'),
+  effects: cardEffects,
   rarity: 'U',
   availableRarities: ['U'],
   cardPackage: 'BT01',

@@ -1,5 +1,15 @@
-import { Card } from '../types/game';
-import { getBt01CardEffects } from './_bt03YellowUtils';
+import { Card, CardEffect, TriggerLocation } from '../types/game';
+import { addInfluence, ensureData } from './BaseUtil';
+
+const cardEffects: CardEffect[] = [{
+    id: '102000094_defense_limit',
+    type: 'CONTINUOUS',
+    description: '对手不能用力量2000以下的单位防御此单位的攻击。',
+    applyContinuous: (_gameState, instance) => {
+      ensureData(instance).bt01DefenseMinPower = 2000;
+      addInfluence(instance, instance, '对手不能用力量2000以下的单位防御');
+    }
+  }];
 
 /**
  * Auto-generated from Card.xlsx + Card2.xlsx.
@@ -35,7 +45,7 @@ const card: Card = {
   canAttack: true,
   feijingMark: false,
   canResetCount: 0,
-  effects: getBt01CardEffects('102000094'),
+  effects: cardEffects,
   rarity: 'U',
   availableRarities: ['U'],
   cardPackage: 'BT01',

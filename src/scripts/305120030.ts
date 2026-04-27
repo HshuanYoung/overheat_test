@@ -1,7 +1,7 @@
 import { Card, CardEffect } from '../types/game';
 import { AtomicEffectExecutor } from '../services/AtomicEffectExecutor';
 import { EventEngine } from '../services/EventEngine';
-import { createSelectCardQuery, isYellowHandCard, moveCard } from './_bt02YellowUtils';
+import { createSelectCardQuery, isYellowHandCard, moveCard } from './BaseUtil';
 
 const effect_305120030_activate: CardEffect = {
   id: '305120030_activate',

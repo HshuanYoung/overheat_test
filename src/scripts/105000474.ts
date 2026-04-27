@@ -1,6 +1,6 @@
 import { Card, CardEffect, GameEvent } from '../types/game';
 import { AtomicEffectExecutor } from '../services/AtomicEffectExecutor';
-import { createChoiceQuery, getOpponentUid, isVirtualGodMarkReveal, shuffleAndRevealTopCards } from './_bt03YellowUtils';
+import { createChoiceQuery, getOpponentUid, isVirtualGodMarkReveal, shuffleAndRevealTopCards } from './BaseUtil';
 
 const effect_105000474_enter: CardEffect = {
   id: '105000474_enter',

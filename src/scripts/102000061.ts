@@ -1,4 +1,42 @@
-import { Card } from '../types/game';
+import { Card, CardEffect } from '../types/game';
+import { allCardsOnField, createSelectCardQuery, damagePlayerByEffect, destroyByEffect } from './BaseUtil';
+
+const cardEffects: CardEffect[] = [{
+  id: '102000061_ten_destroy_card',
+  type: 'ACTIVATE',
+  triggerLocation: ['UNIT'],
+  limitCount: 1,
+  erosionTotalLimit: [10, 99],
+  description: '10+，1回合1次，侵蚀2：选择1张卡，将其破坏。',
+  condition: (gameState, playerState) =>
+    playerState.isTurn &&
+    gameState.phase === 'MAIN' &&
+    allCardsOnField(gameState).length > 0,
+  cost: async (gameState, playerState, instance) => {
+    await damagePlayerByEffect(gameState, playerState.uid, playerState.uid, 2, instance);
+    return true;
+  },
+  execute: async (instance, gameState, playerState) => {
+    const candidates = allCardsOnField(gameState);
+    if (candidates.length === 0) return;
+
+    createSelectCardQuery(
+      gameState,
+      playerState.uid,
+      candidates,
+      '选择破坏对象',
+      '选择1张卡，将其破坏。',
+      1,
+      1,
+      { sourceCardId: instance.gamecardId, effectId: '102000061_ten_destroy_card' },
+      card => card.cardlocation || 'UNIT'
+    );
+  },
+  onQueryResolve: async (instance, gameState, _playerState, selections) => {
+    const target = allCardsOnField(gameState).find(card => card.gamecardId === selections[0]);
+    if (target) destroyByEffect(gameState, target, instance);
+  }
+}];
 
 /**
  * Auto-generated from Card.xlsx + Card2.xlsx.
@@ -34,10 +72,10 @@ const card: Card = {
   canAttack: true,
   feijingMark: false,
   canResetCount: 0,
-  effects: [],
+  effects: cardEffects,
   rarity: 'U',
   availableRarities: ['U'],
-  cardPackage: 'ST01',
+  cardPackage: 'BT01',
   uniqueId: null as any,
 };
 

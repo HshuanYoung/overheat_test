@@ -1,5 +1,37 @@
-import { Card } from '../types/game';
-import { getBt01CardEffects } from './_bt03YellowUtils';
+import { Card, CardEffect, TriggerLocation } from '../types/game';
+import { createSelectCardQuery, destroyByEffect, getOpponentUid, ownUnits } from './BaseUtil';
+
+const cardEffects: CardEffect[] = [{
+    id: '102050087_destroy',
+    type: 'TRIGGER',
+    triggerEvent: 'CARD_ENTERED_ZONE',
+    triggerLocation: ['UNIT'],
+    description: '入场时，若你的<伊列宇王国>单位有4个以上，破坏对手1个非神蚀单位。',
+    condition: (gameState, playerState, instance, event) =>
+      event?.sourceCardId === instance.gamecardId &&
+      event.data?.zone === 'UNIT' &&
+      ownUnits(playerState).filter(unit => unit.faction === '伊列宇王国').length >= 4 &&
+      ownUnits(gameState.players[getOpponentUid(gameState, playerState.uid)]).some(unit => !unit.godMark),
+    execute: async (instance, gameState, playerState) => {
+      const candidates = ownUnits(gameState.players[getOpponentUid(gameState, playerState.uid)]).filter(unit => !unit.godMark);
+      createSelectCardQuery(
+        gameState,
+        playerState.uid,
+        candidates,
+        '选择破坏对象',
+        '选择对手的1个非神蚀单位，将其破坏。',
+        1,
+        1,
+        { sourceCardId: instance.gamecardId, effectId: '102050087_destroy' }
+      );
+    },
+    onQueryResolve: async (instance, gameState, _playerState, selections) => {
+      const target = Object.values(gameState.players)
+        .flatMap(player => ownUnits(player))
+        .find(unit => unit.gamecardId === selections[0]);
+      if (target) destroyByEffect(gameState, target, instance);
+    }
+  }];
 
 /**
  * Auto-generated from Card.xlsx + Card2.xlsx.
@@ -35,7 +67,7 @@ const card: Card = {
   canAttack: true,
   feijingMark: false,
   canResetCount: 0,
-  effects: getBt01CardEffects('102050087'),
+  effects: cardEffects,
   rarity: 'U',
   availableRarities: ['U'],
   cardPackage: 'BT01',

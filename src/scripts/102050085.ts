@@ -1,5 +1,17 @@
-import { Card } from '../types/game';
-import { getBt01CardEffects } from './_bt03YellowUtils';
+import { Card, CardEffect, TriggerLocation } from '../types/game';
+import { damagePlayerByEffect, getOpponentUid } from './BaseUtil';
+
+const cardEffects: CardEffect[] = [{
+    id: '102050085_alliance_damage',
+    type: 'TRIGGER',
+    triggerEvent: 'CARD_ATTACK_DECLARED',
+    triggerLocation: ['UNIT'],
+    limitCount: 1,
+    limitNameType: true,
+    description: '组成联军时，给予对手2点伤害。',
+    condition: (_gameState, _playerState, instance, event) => !!event?.data?.isAlliance && event.data.attackerIds?.includes(instance.gamecardId),
+    execute: async (instance, gameState, playerState) => damagePlayerByEffect(gameState, playerState.uid, getOpponentUid(gameState, playerState.uid), 2, instance)
+  }];
 
 /**
  * Auto-generated from Card.xlsx + Card2.xlsx.
@@ -36,7 +48,7 @@ const card: Card = {
   canAttack: true,
   feijingMark: false,
   canResetCount: 0,
-  effects: getBt01CardEffects('102050085'),
+  effects: cardEffects,
   rarity: 'U',
   availableRarities: ['U'],
   cardPackage: 'BT01',

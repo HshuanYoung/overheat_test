@@ -1,5 +1,36 @@
-import { Card } from '../types/game';
-import { getBt01CardEffects } from './_bt03YellowUtils';
+import { Card, CardEffect, TriggerLocation } from '../types/game';
+import { AtomicEffectExecutor, createSelectCardQuery, moveCard, ownUnits } from './BaseUtil';
+
+const cardEffects: CardEffect[] = [{
+    id: '101130101_bottom',
+    type: 'ACTIVATE',
+    triggerLocation: ['UNIT'],
+    description: '放逐此单位：选择墓地1张卡放到卡组底。',
+    condition: (_gameState, playerState) =>
+      ownUnits(playerState).filter(unit => AtomicEffectExecutor.matchesColor(unit, 'WHITE')).length >= 2 &&
+      playerState.grave.length > 0,
+    cost: async (gameState, playerState, instance) => {
+      moveCard(gameState, playerState.uid, instance, 'EXILE', instance);
+      return true;
+    },
+    execute: async (instance, gameState, playerState) => {
+      createSelectCardQuery(
+        gameState,
+        playerState.uid,
+        playerState.grave,
+        '选择放回卡组底的卡',
+        '选择你的墓地中的1张卡，放置到卡组底。',
+        1,
+        1,
+        { sourceCardId: instance.gamecardId, effectId: '101130101_bottom' },
+        () => 'GRAVE'
+      );
+    },
+    onQueryResolve: async (instance, gameState, playerState, selections) => {
+      const target = playerState.grave.find(card => card.gamecardId === selections[0]);
+      if (target) moveCard(gameState, playerState.uid, target, 'DECK', instance, { insertAtBottom: true });
+    }
+  }];
 
 /**
  * Auto-generated from Card.xlsx + Card2.xlsx.
@@ -35,7 +66,7 @@ const card: Card = {
   canAttack: true,
   feijingMark: false,
   canResetCount: 0,
-  effects: getBt01CardEffects('101130101'),
+  effects: cardEffects,
   rarity: 'R',
   availableRarities: ['R'],
   cardPackage: 'BT01',

@@ -1,6 +1,6 @@
 import { Card, CardEffect, GameEvent } from '../types/game';
 import { AtomicEffectExecutor } from '../services/AtomicEffectExecutor';
-import { canPutUnitOntoBattlefield } from './_bt03YellowUtils';
+import { canPutUnitOntoBattlefield } from './BaseUtil';
 
 const effect_105000472_virtual_godmark: CardEffect = {
   id: '105000472_virtual_godmark',

@@ -1,5 +1,15 @@
-import { Card } from '../types/game';
-import { getBt01CardEffects } from './_bt03YellowUtils';
+import { Card, CardEffect, TriggerLocation } from '../types/game';
+import { addTempPower, paymentCost } from './BaseUtil';
+
+const cardEffects: CardEffect[] = [{
+    id: '103000083_power',
+    type: 'ACTIVATE',
+    triggerLocation: ['UNIT'],
+    limitCount: 1,
+    description: '支付2费：此单位力量+1000。',
+    cost: paymentCost(2, 'GREEN'),
+    execute: async instance => addTempPower(instance, instance, 1000)
+  }];
 
 /**
  * Auto-generated from Card.xlsx + Card2.xlsx.
@@ -35,7 +45,7 @@ const card: Card = {
   canAttack: true,
   feijingMark: false,
   canResetCount: 0,
-  effects: getBt01CardEffects('103000083'),
+  effects: cardEffects,
   rarity: 'C',
   availableRarities: ['C'],
   cardPackage: 'BT01',

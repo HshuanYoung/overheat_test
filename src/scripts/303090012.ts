@@ -1,5 +1,23 @@
-import { Card } from '../types/game';
-import { getBt01CardEffects } from './_bt03YellowUtils';
+import { Card, CardEffect, TriggerLocation } from '../types/game';
+import { canPutUnitOntoBattlefield, exhaustCost, getTopDeckCards, isNonGodUnit, moveCard } from './BaseUtil';
+
+const cardEffects: CardEffect[] = [{
+    id: '303090012_mill_play',
+    type: 'ACTIVATE',
+    triggerLocation: ['ITEM'],
+    description: '横置：将卡组顶1张送入墓地。若其为力量2500以上非神蚀单位，可以放逐此卡并将其放置到战场。',
+    condition: (_gameState, _playerState, instance) => !instance.isExhausted,
+    cost: exhaustCost,
+    execute: async (instance, gameState, playerState) => {
+      const top = getTopDeckCards(playerState, 1)[0];
+      if (!top) return;
+      moveCard(gameState, playerState.uid, top, 'GRAVE', instance);
+      if (isNonGodUnit(top) && (top.power || 0) >= 2500 && canPutUnitOntoBattlefield(playerState, top)) {
+        moveCard(gameState, playerState.uid, instance, 'EXILE', instance);
+        moveCard(gameState, playerState.uid, top, 'UNIT', instance);
+      }
+    }
+  }];
 
 /**
  * Auto-generated from Card.xlsx + Card2.xlsx.
@@ -28,7 +46,7 @@ const card: Card = {
   displayState: 'FRONT_UPRIGHT',
   feijingMark: false,
   canResetCount: 0,
-  effects: getBt01CardEffects('303090012'),
+  effects: cardEffects,
   rarity: 'R',
   availableRarities: ['R'],
   cardPackage: 'BT01',

@@ -1,5 +1,18 @@
-import { Card } from '../types/game';
-import { getBt01CardEffects } from './_bt03YellowUtils';
+import { Card, CardEffect, TriggerLocation } from '../types/game';
+import { addInfluence } from './BaseUtil';
+
+const cardEffects: CardEffect[] = [{
+    id: '101140099_low_erosion_protect',
+    type: 'CONTINUOUS',
+    erosionTotalLimit: [0, 3],
+    description: '0~3：此单位参与的攻击中，此单位不会被破坏。',
+    applyContinuous: (gameState, instance) => {
+      if (gameState.battleState?.attackers?.includes(instance.gamecardId)) {
+        (instance as any).battleImmuneByEffect = true;
+        addInfluence(instance, instance, '攻击中不会被破坏');
+      }
+    }
+  }];
 
 /**
  * Auto-generated from Card.xlsx + Card2.xlsx.
@@ -36,7 +49,7 @@ const card: Card = {
   canAttack: true,
   feijingMark: false,
   canResetCount: 0,
-  effects: getBt01CardEffects('101140099'),
+  effects: cardEffects,
   rarity: 'U',
   availableRarities: ['U'],
   cardPackage: 'BT01',

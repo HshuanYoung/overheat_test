@@ -1,5 +1,91 @@
-import { Card } from '../types/game';
-import { getBt01CardEffects } from './_bt03YellowUtils';
+import { Card, CardEffect, TriggerLocation } from '../types/game';
+import { AtomicEffectExecutor, addInfluence, createSelectCardQuery, damagePlayerByEffect, ensureData, moveCard, ownerOf, paymentCost } from './BaseUtil';
+
+const cardEffects: CardEffect[] = [{
+    id: '101100096_alliance_protect',
+    type: 'CONTINUOUS',
+    description: '此单位参与的联军攻击中，你的白色联军单位不会被破坏。',
+    applyContinuous: (gameState, instance) => {
+      const owner = ownerOf(gameState, instance);
+      if (!owner || !gameState.battleState?.isAlliance || !gameState.battleState.attackers.includes(instance.gamecardId)) return;
+      gameState.battleState.attackers
+        .map(id => owner.unitZone.find(unit => unit?.gamecardId === id))
+        .filter((unit): unit is Card => !!unit && AtomicEffectExecutor.matchesColor(unit, 'WHITE'))
+        .forEach(unit => {
+          (unit as any).battleImmuneByEffect = true;
+          addInfluence(unit, instance, '联军攻击中不会被破坏');
+        });
+    }
+  }, {
+    id: '101100096_reset_after_attack',
+    type: 'TRIGGER',
+    triggerEvent: 'PHASE_CHANGED',
+    triggerLocation: ['UNIT'],
+    limitCount: 1,
+    description: '此单位参与的攻击结束后，支付1费：将你的所有参战单位重置。',
+    condition: (gameState, _playerState, instance, event) =>
+      event?.data?.phase === 'MAIN' &&
+      Array.isArray(ensureData(instance).bt01LastAllianceAttackIds) &&
+      ensureData(instance).bt01LastAllianceAttackTurn === gameState.turnCount,
+    cost: paymentCost(1, 'WHITE'),
+    execute: async (instance, gameState, playerState) => {
+      const ids = ensureData(instance).bt01LastAllianceAttackIds || [];
+      ids.forEach((id: string) => {
+        const unit = playerState.unitZone.find(card => card?.gamecardId === id);
+        if (unit) {
+          unit.isExhausted = false;
+          addInfluence(unit, instance, '因效果重置');
+        }
+      });
+      delete ensureData(instance).bt01LastAllianceAttackIds;
+      delete ensureData(instance).bt01LastAllianceAttackTurn;
+    }
+  }, {
+    id: '101100096_track_attack',
+    type: 'TRIGGER',
+    triggerEvent: 'CARD_ATTACK_DECLARED',
+    triggerLocation: ['UNIT'],
+    description: '记录此单位参与的攻击，用于攻击结束重置。',
+    isMandatory: true,
+    condition: (_gameState, _playerState, instance, event) => !!event?.data?.attackerIds?.includes(instance.gamecardId),
+    execute: async (instance, gameState, _playerState, event) => {
+      ensureData(instance).bt01LastAllianceAttackIds = event?.data?.attackerIds || [];
+      ensureData(instance).bt01LastAllianceAttackTurn = gameState.turnCount;
+    }
+  }, {
+    id: '101100096_ten_bottom',
+    type: 'ACTIVATE',
+    triggerLocation: ['UNIT'],
+    limitCount: 1,
+    limitGlobal: true,
+    erosionTotalLimit: [10, 99],
+    description: '10+，1游戏1次，侵蚀1：选择墓地6张卡放到卡组底。',
+    cost: async (gameState, playerState, instance) => {
+      await damagePlayerByEffect(gameState, playerState.uid, playerState.uid, 1, instance);
+      return true;
+    },
+    execute: async (instance, gameState, playerState) => {
+      if (playerState.grave.length === 0) return;
+      const count = Math.min(6, playerState.grave.length);
+      createSelectCardQuery(
+        gameState,
+        playerState.uid,
+        playerState.grave,
+        '选择放回卡组底的卡',
+        `选择你的墓地中的${count}张卡，放置到卡组底。`,
+        count,
+        count,
+        { sourceCardId: instance.gamecardId, effectId: '101100096_ten_bottom' },
+        () => 'GRAVE'
+      );
+    },
+    onQueryResolve: async (instance, gameState, playerState, selections) => {
+      selections
+        .map(id => playerState.grave.find(card => card.gamecardId === id))
+        .filter((card): card is Card => !!card)
+        .forEach(card => moveCard(gameState, playerState.uid, card, 'DECK', instance, { insertAtBottom: true }));
+    }
+  }];
 
 /**
  * Auto-generated from Card.xlsx + Card2.xlsx.
@@ -37,7 +123,7 @@ const card: Card = {
   canAttack: true,
   feijingMark: false,
   canResetCount: 0,
-  effects: getBt01CardEffects('101100096'),
+  effects: cardEffects,
   rarity: 'SR',
   availableRarities: ['SR', 'SER', 'UR'],
   cardPackage: 'BT01',

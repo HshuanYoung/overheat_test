@@ -1,5 +1,27 @@
-import { Card } from '../types/game';
-import { getBt01CardEffects } from './_bt03YellowUtils';
+import { Card, CardEffect, TriggerLocation } from '../types/game';
+import { allCardsOnField, createSelectCardQuery, destroyByEffect, story } from './BaseUtil';
+
+const cardEffects: CardEffect[] = [story('202000035_destroy', '选择1张非神蚀道具卡或1个力量2500以下非神蚀单位破坏。', async (instance, gameState, playerState) => {
+    const candidates = allCardsOnField(gameState).filter(card => !card.godMark && ((card.type === 'ITEM' || card.isEquip) || (card.type === 'UNIT' && (card.power || 0) <= 2500)));
+    if (candidates.length === 0) return;
+    createSelectCardQuery(
+      gameState,
+      playerState.uid,
+      candidates,
+      '选择破坏对象',
+      '选择1张非神蚀道具卡或1个力量2500以下的非神蚀单位，将其破坏。',
+      1,
+      1,
+      { sourceCardId: instance.gamecardId, effectId: '202000035_destroy' },
+      card => card.cardlocation || 'UNIT'
+    );
+  }, {
+    condition: gameState => allCardsOnField(gameState).some(card => !card.godMark && ((card.type === 'ITEM' || card.isEquip) || (card.type === 'UNIT' && (card.power || 0) <= 2500))),
+    onQueryResolve: async (instance, gameState, _playerState, selections) => {
+      const target = allCardsOnField(gameState).find(card => card.gamecardId === selections[0]);
+    if (target) destroyByEffect(gameState, target, instance);
+    }
+  })];
 
 /**
  * Auto-generated from Card.xlsx + Card2.xlsx.
@@ -28,7 +50,7 @@ const card: Card = {
   displayState: 'FRONT_UPRIGHT',
   feijingMark: false,
   canResetCount: 0,
-  effects: getBt01CardEffects('202000035'),
+  effects: cardEffects,
   rarity: 'U',
   availableRarities: ['U', 'C'],
   cardPackage: 'BT01',

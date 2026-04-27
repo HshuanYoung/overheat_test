@@ -1,6 +1,6 @@
 import { Card, CardEffect, GameState, PlayerState, TriggerLocation } from '../types/game';
 import { AtomicEffectExecutor } from '../services/AtomicEffectExecutor';
-import { createChoiceQuery, createSelectCardQuery, getBattlefieldUnits } from './_bt03YellowUtils';
+import { createChoiceQuery, createSelectCardQuery, getBattlefieldUnits } from './BaseUtil';
 
 const EFFECT_ID = '105110112_activate';
 

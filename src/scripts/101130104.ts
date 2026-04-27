@@ -1,5 +1,48 @@
-import { Card } from '../types/game';
-import { getBt01CardEffects } from './_bt03YellowUtils';
+import { Card, CardEffect, TriggerLocation } from '../types/game';
+import { addInfluence, createSelectCardQuery, moveCard } from './BaseUtil';
+
+const cardEffects: CardEffect[] = [{
+    id: '101130104_alliance_annihilation',
+    type: 'CONTINUOUS',
+    description: '参与联军攻击中获得歼灭。',
+    applyContinuous: (_gameState, instance) => {
+      if (instance.inAllianceGroup) {
+        instance.isAnnihilation = true;
+        addInfluence(instance, instance, '获得效果: 【歼灭】');
+      }
+    }
+  }, {
+    id: '101130104_damage_bottom',
+    type: 'TRIGGER',
+    triggerEvent: 'COMBAT_DAMAGE_CAUSED',
+    triggerLocation: ['UNIT'],
+    erosionTotalLimit: [0, 3],
+    description: '0~3：给予对手战斗伤害时，将墓地2张卡放到卡组底。',
+    condition: (gameState, playerState, instance, event) =>
+      event?.playerUid !== playerState.uid &&
+      gameState.battleState?.attackers?.includes(instance.gamecardId) &&
+      playerState.grave.length > 0,
+    execute: async (instance, gameState, playerState) => {
+      const count = Math.min(2, playerState.grave.length);
+      createSelectCardQuery(
+        gameState,
+        playerState.uid,
+        playerState.grave,
+        '选择放回卡组底的卡',
+        `选择你的墓地中的${count}张卡，放置到卡组底。`,
+        count,
+        count,
+        { sourceCardId: instance.gamecardId, effectId: '101130104_damage_bottom' },
+        () => 'GRAVE'
+      );
+    },
+    onQueryResolve: async (instance, gameState, playerState, selections) => {
+      selections
+        .map(id => playerState.grave.find(card => card.gamecardId === id))
+        .filter((card): card is Card => !!card)
+        .forEach(card => moveCard(gameState, playerState.uid, card, 'DECK', instance, { insertAtBottom: true }));
+    }
+  }];
 
 /**
  * Auto-generated from Card.xlsx + Card2.xlsx.
@@ -37,7 +80,7 @@ const card: Card = {
   canAttack: true,
   feijingMark: false,
   canResetCount: 0,
-  effects: getBt01CardEffects('101130104'),
+  effects: cardEffects,
   rarity: 'R',
   availableRarities: ['R'],
   cardPackage: 'BT01',

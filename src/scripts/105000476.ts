@@ -1,6 +1,6 @@
 import { Card, CardEffect } from '../types/game';
 import { AtomicEffectExecutor } from '../services/AtomicEffectExecutor';
-import { createSelectCardQuery, getOpponentUid } from './_bt03YellowUtils';
+import { createSelectCardQuery, getOpponentUid } from './BaseUtil';
 
 const effect_105000476_continuous: CardEffect = {
   id: '105000476_continuous',

@@ -1,5 +1,20 @@
-import { Card } from '../types/game';
-import { getBt01CardEffects } from './_bt03YellowUtils';
+import { Card, CardEffect, TriggerLocation } from '../types/game';
+import { addInfluence, ensureData, ownUnits, ownerOf } from './BaseUtil';
+
+const cardEffects: CardEffect[] = [{
+    id: '102050091_red_rush',
+    type: 'CONTINUOUS',
+    description: '你的所有红色神蚀单位获得速攻；此单位可以攻击对手横置单位。',
+    applyContinuous: (gameState, instance) => {
+      const owner = ownerOf(gameState, instance);
+      if (!owner) return;
+      ownUnits(owner).filter(unit => unit.color === 'RED' && unit.godMark).forEach(unit => {
+        unit.isrush = true;
+        addInfluence(unit, instance, '获得效果: 【速攻】');
+      });
+      ensureData(instance).bt01CanAttackExhausted = true;
+    }
+  }];
 
 /**
  * Auto-generated from Card.xlsx + Card2.xlsx.
@@ -37,7 +52,7 @@ const card: Card = {
   canAttack: true,
   feijingMark: false,
   canResetCount: 0,
-  effects: getBt01CardEffects('102050091'),
+  effects: cardEffects,
   rarity: 'SR',
   availableRarities: ['SR', 'SER'],
   cardPackage: 'BT01',

@@ -1,5 +1,5 @@
 import { Card, CardEffect } from '../types/game';
-import { isBattlingGodMarkUnit } from './_bt04YellowUtils';
+import { isBattlingGodMarkUnit } from './BaseUtil';
 
 const effect_105110444_continuous: CardEffect = {
   id: '105110444_continuous',

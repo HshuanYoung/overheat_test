@@ -1,5 +1,17 @@
-import { Card } from '../types/game';
-import { getBt01CardEffects } from './_bt03YellowUtils';
+import { Card, CardEffect, TriggerLocation } from '../types/game';
+import { addContinuousDamage, addContinuousPower } from './BaseUtil';
+
+const cardEffects: CardEffect[] = [{
+    id: '101130103_alliance_buff',
+    type: 'CONTINUOUS',
+    description: '英勇；参与联军攻击中，伤害+1、力量+500。',
+    applyContinuous: (_gameState, instance) => {
+      if (instance.inAllianceGroup) {
+        addContinuousDamage(instance, instance, 1);
+        addContinuousPower(instance, instance, 500);
+      }
+    }
+  }];
 
 /**
  * Auto-generated from Card.xlsx + Card2.xlsx.
@@ -37,7 +49,7 @@ const card: Card = {
   canAttack: true,
   feijingMark: false,
   canResetCount: 0,
-  effects: getBt01CardEffects('101130103'),
+  effects: cardEffects,
   rarity: 'U',
   availableRarities: ['U', 'R'],
   cardPackage: 'BT01',

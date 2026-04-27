@@ -1,6 +1,6 @@
 import { Card, CardEffect } from '../types/game';
 import { AtomicEffectExecutor } from '../services/AtomicEffectExecutor';
-import { canPutUnitOntoBattlefield, createSelectCardQuery, getOpponentUid, moveCard } from './_bt03YellowUtils';
+import { canPutUnitOntoBattlefield, createSelectCardQuery, getOpponentUid, moveCard } from './BaseUtil';
 
 const effect_205000144_activate: CardEffect = {
   id: '205000144_activate',

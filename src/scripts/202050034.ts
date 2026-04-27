@@ -1,5 +1,43 @@
-import { Card } from '../types/game';
-import { getBt01CardEffects } from './_bt03YellowUtils';
+import { Card, CardEffect, TriggerLocation } from '../types/game';
+import { addInfluence, allCardsOnField, createSelectCardQuery, damagePlayerByEffect, destroyByEffect, ownerOf, story } from './BaseUtil';
+
+const cardEffects: CardEffect[] = [story('202050034_destroy_god', '创痕2：选择1张神蚀卡破坏。之后给予你1点伤害。女神化时手牌中ACCESS值变为0。', async (instance, gameState, playerState) => {
+    const candidates = allCardsOnField(gameState).filter(card => card.godMark);
+    if (candidates.length === 0) {
+      await damagePlayerByEffect(gameState, playerState.uid, playerState.uid, 1, instance);
+      return;
+    }
+    createSelectCardQuery(
+      gameState,
+      playerState.uid,
+      candidates,
+      '选择破坏对象',
+      '选择1张神蚀卡，将其破坏。',
+      1,
+      1,
+      { sourceCardId: instance.gamecardId, effectId: '202050034_destroy_god' },
+      card => card.cardlocation || 'UNIT'
+    );
+  }, {
+    erosionBackLimit: [2, 10],
+    onQueryResolve: async (instance, gameState, playerState, selections) => {
+      const target = allCardsOnField(gameState).find(card => card.gamecardId === selections[0]);
+      if (target) destroyByEffect(gameState, target, instance);
+      await damagePlayerByEffect(gameState, playerState.uid, playerState.uid, 1, instance);
+    }
+  }), {
+    id: '202050034_hand_cost',
+    type: 'CONTINUOUS',
+    content: 'SELF_HAND_COST',
+    triggerLocation: ['HAND'],
+    description: '你处于女神化状态时，手牌中的这张卡ACCESS值变为0。',
+    applyContinuous: (_gameState, instance) => {
+      const owner = ownerOf(_gameState, instance);
+      if (!owner?.isGoddessMode || instance.cardlocation !== 'HAND') return;
+      instance.acValue = 0;
+      addInfluence(instance, instance, 'ACCESS值变为0');
+    }
+  }];
 
 /**
  * Auto-generated from Card.xlsx + Card2.xlsx.
@@ -28,7 +66,7 @@ const card: Card = {
   displayState: 'FRONT_UPRIGHT',
   feijingMark: false,
   canResetCount: 0,
-  effects: getBt01CardEffects('202050034'),
+  effects: cardEffects,
   rarity: 'R',
   availableRarities: ['R'],
   cardPackage: 'BT01',

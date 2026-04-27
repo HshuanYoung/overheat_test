@@ -1,5 +1,72 @@
-import { Card } from '../types/game';
-import { getBt01CardEffects } from './_bt03YellowUtils';
+import { Card, CardEffect, TriggerLocation } from '../types/game';
+import { addInfluence, addTempDamage, addTempPower, allUnitsOnField, canPutUnitOntoBattlefield, createSelectCardQuery, damagePlayerByEffect, ensureData, getOpponentUid, moveCard, ownUnits } from './BaseUtil';
+
+const cardEffects: CardEffect[] = [{
+    id: '102050090_attack_lock',
+    type: 'TRIGGER',
+    triggerEvent: 'CARD_ATTACK_DECLARED',
+    triggerLocation: ['UNIT'],
+    description: '攻击时，选择对手最多2个力量3000以上单位，本回合不能宣言防御。',
+    condition: (_gameState, _playerState, instance, event) => event?.sourceCardId === instance.gamecardId,
+    execute: async (instance, gameState, playerState) => {
+      const candidates = ownUnits(gameState.players[getOpponentUid(gameState, playerState.uid)])
+        .filter(unit => (unit.power || 0) >= 3000);
+      if (candidates.length === 0) return;
+      createSelectCardQuery(
+        gameState,
+        playerState.uid,
+        candidates,
+        '选择不能防御的单位',
+        '选择对手最多2个力量3000以上的单位，本回合中不能宣言防御。',
+        0,
+        Math.min(2, candidates.length),
+        { sourceCardId: instance.gamecardId, effectId: '102050090_attack_lock' }
+      );
+    },
+    onQueryResolve: async (instance, gameState, _playerState, selections) => {
+      allUnitsOnField(gameState)
+        .filter(unit => selections.includes(unit.gamecardId))
+        .forEach(unit => {
+          ensureData(unit).bt01CannotDefendTurn = gameState.turnCount;
+          ensureData(unit).bt01CannotDefendSourceName = instance.fullName;
+          addInfluence(unit, instance, '本回合不能宣言防御');
+        });
+    }
+  }, {
+    id: '102050090_goddess_entry',
+    type: 'TRIGGER',
+    triggerEvent: 'GODDESS_TRANSFORMATION',
+    triggerLocation: ['HAND'],
+    erosionTotalLimit: [10, 99],
+    description: '10+：进入女神化时，可以从手牌放置到战场，选择最多2个单位伤害+1、力量+1000。',
+    cost: async (gameState, playerState, instance) => {
+      await damagePlayerByEffect(gameState, playerState.uid, playerState.uid, 1, instance);
+      return true;
+    },
+    execute: async (instance, gameState, playerState) => {
+      if (canPutUnitOntoBattlefield(playerState, instance)) moveCard(gameState, playerState.uid, instance, 'UNIT', instance);
+      const candidates = allUnitsOnField(gameState);
+      if (candidates.length === 0) return;
+      createSelectCardQuery(
+        gameState,
+        playerState.uid,
+        candidates,
+        '选择强化单位',
+        '选择战场上的最多2个单位，本回合中伤害+1、力量+1000。',
+        0,
+        Math.min(2, candidates.length),
+        { sourceCardId: instance.gamecardId, effectId: '102050090_goddess_entry' },
+        card => card.cardlocation || 'UNIT'
+      );
+    },
+    onQueryResolve: async (instance, gameState, _playerState, selections) => {
+      const targets = allUnitsOnField(gameState).filter(unit => selections.includes(unit.gamecardId));
+      targets.forEach(unit => {
+        addTempDamage(unit, instance, 1);
+        addTempPower(unit, instance, 1000);
+      });
+    }
+  }];
 
 /**
  * Auto-generated from Card.xlsx + Card2.xlsx.
@@ -37,7 +104,7 @@ const card: Card = {
   canAttack: true,
   feijingMark: false,
   canResetCount: 0,
-  effects: getBt01CardEffects('102050090'),
+  effects: cardEffects,
   rarity: 'SR',
   availableRarities: ['SR', 'SER'],
   cardPackage: 'BT01',

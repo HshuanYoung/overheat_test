@@ -1,6 +1,6 @@
 import { Card, CardEffect } from '../types/game';
 import { AtomicEffectExecutor } from '../services/AtomicEffectExecutor';
-import { createSelectCardQuery, isValkyrieUnit } from './_bt02YellowUtils';
+import { createSelectCardQuery, isValkyrieUnit } from './BaseUtil';
 
 const effect_205110063_item_discount: CardEffect = {
   id: '205110063_item_discount',

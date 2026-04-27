@@ -1,5 +1,12 @@
-import { Card } from '../types/game';
-import { getBt01CardEffects } from './_bt03YellowUtils';
+import { Card, CardEffect, TriggerLocation } from '../types/game';
+import { backErosionCount, story } from './BaseUtil';
+
+const cardEffects: CardEffect[] = [story('203000029_wind_production', '本回合中，你下一次支付ACCESS值时，可以使自己的侵蚀区中的卡刚好达到10张。', async (instance, gameState, playerState) => {
+    if (backErosionCount(playerState) < 3) return;
+    (playerState as any).bt01WindProductionTurn = gameState.turnCount;
+    (playerState as any).bt01WindProductionSourceName = instance.fullName;
+    gameState.logs.push(`[${instance.fullName}] 本回合下一次支付ACCESS值可以刚好达到10张侵蚀。`);
+  })];
 
 /**
  * Auto-generated from Card.xlsx + Card2.xlsx.
@@ -28,7 +35,7 @@ const card: Card = {
   displayState: 'FRONT_UPRIGHT',
   feijingMark: false,
   canResetCount: 0,
-  effects: getBt01CardEffects('203000029'),
+  effects: cardEffects,
   rarity: 'U',
   availableRarities: ['U'],
   cardPackage: 'BT01',

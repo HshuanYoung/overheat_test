@@ -1,7 +1,7 @@
 import { Card, CardEffect } from '../types/game';
 import { AtomicEffectExecutor } from '../services/AtomicEffectExecutor';
-import { createSelectCardQuery, isVirtualGodMarkReveal, shuffleAndRevealTopCards } from './_bt03YellowUtils';
-import { getOpponentBattlefieldNonGodCards } from './_bt04YellowUtils';
+import { createSelectCardQuery, isVirtualGodMarkReveal, shuffleAndRevealTopCards } from './BaseUtil';
+import { getOpponentBattlefieldNonGodCards } from './BaseUtil';
 
 const effect_205000134_activate: CardEffect = {
   id: '205000134_activate',

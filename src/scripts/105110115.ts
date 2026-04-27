@@ -2,8 +2,8 @@ import { Card, CardEffect } from '../types/game';
 import { AtomicEffectExecutor } from '../services/AtomicEffectExecutor';
 import { EventEngine } from '../services/EventEngine';
 import { GameService } from '../services/gameService';
-import { canPutItemOntoBattlefield, canPutUnitOntoBattlefield, createChoiceQuery, createSelectCardQuery, revealDeckCards } from './_bt03YellowUtils';
-import { moveCard } from './_bt02YellowUtils';
+import { canPutItemOntoBattlefield, canPutUnitOntoBattlefield, createChoiceQuery, createSelectCardQuery, revealDeckCards } from './BaseUtil';
+import { moveCard } from './BaseUtil';
 
 const getErosionTotal = (playerState: any) =>
   playerState.erosionFront.filter((card: Card | null) => !!card).length +

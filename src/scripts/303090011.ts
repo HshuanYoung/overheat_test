@@ -1,5 +1,32 @@
-import { Card } from '../types/game';
-import { getBt01CardEffects } from './_bt03YellowUtils';
+import { Card, CardEffect, TriggerLocation } from '../types/game';
+import { addTempPower, createSelectCardQuery, exhaustCost, ownUnits } from './BaseUtil';
+
+const cardEffects: CardEffect[] = [{
+    id: '303090011_buff',
+    type: 'ACTIVATE',
+    triggerLocation: ['ITEM'],
+    description: '横置：选择你的1个单位，本回合力量+500。',
+    condition: (_gameState, _playerState, instance) => !instance.isExhausted,
+    cost: exhaustCost,
+    execute: async (instance, gameState, playerState) => {
+      const candidates = ownUnits(playerState);
+      if (candidates.length === 0) return;
+      createSelectCardQuery(
+        gameState,
+        playerState.uid,
+        candidates,
+        '选择单位',
+        '选择你的1个单位，本回合中力量+500。',
+        1,
+        1,
+        { sourceCardId: instance.gamecardId, effectId: '303090011_buff' }
+      );
+    },
+    onQueryResolve: async (instance, _gameState, playerState, selections) => {
+      const target = ownUnits(playerState).find(unit => unit.gamecardId === selections[0]);
+      if (target) addTempPower(target, instance, 500);
+    }
+  }];
 
 /**
  * Auto-generated from Card.xlsx + Card2.xlsx.
@@ -28,7 +55,7 @@ const card: Card = {
   displayState: 'FRONT_UPRIGHT',
   feijingMark: false,
   canResetCount: 0,
-  effects: getBt01CardEffects('303090011'),
+  effects: cardEffects,
   rarity: 'C',
   availableRarities: ['C'],
   cardPackage: 'BT01',

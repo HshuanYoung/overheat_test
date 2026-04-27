@@ -1,6 +1,6 @@
 import { Card, CardEffect, GameEvent, GameState, PlayerState } from '../types/game';
 import { AtomicEffectExecutor } from '../services/AtomicEffectExecutor';
-import { createSelectCardQuery, getTopDeckCards, moveCard } from './_bt02YellowUtils';
+import { createSelectCardQuery, getTopDeckCards, moveCard } from './BaseUtil';
 
 const getViewedTopCards = (playerState: PlayerState) => getTopDeckCards(playerState, 3);
 

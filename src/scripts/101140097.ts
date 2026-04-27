@@ -1,5 +1,38 @@
-import { Card } from '../types/game';
-import { getBt01CardEffects } from './_bt03YellowUtils';
+import { Card, CardEffect, TriggerLocation } from '../types/game';
+import { addTempDamage, addTempPower, createSelectCardQuery, ownUnits } from './BaseUtil';
+
+const cardEffects: CardEffect[] = [{
+    id: '101140097_grave_to_deck_buff',
+    type: 'TRIGGER',
+    triggerEvent: 'CARD_ENTERED_ZONE',
+    triggerLocation: ['UNIT'],
+    isGlobal: true,
+    description: '你的卡从墓地进入卡组时，选择你的1个单位，伤害+1、力量+500。',
+    condition: (_gameState, playerState, _instance, event) =>
+      event?.playerUid === playerState.uid &&
+      event.data?.zone === 'DECK' &&
+      (event.sourceCard as any)?.data?.lastMovedFromZone === 'GRAVE' &&
+      ownUnits(playerState).length > 0,
+    execute: async (instance, gameState, playerState) => {
+      createSelectCardQuery(
+        gameState,
+        playerState.uid,
+        ownUnits(playerState),
+        '选择单位',
+        '选择你的1个单位，本回合中伤害+1、力量+500。',
+        1,
+        1,
+        { sourceCardId: instance.gamecardId, effectId: '101140097_grave_to_deck_buff' }
+      );
+    },
+    onQueryResolve: async (instance, _gameState, playerState, selections) => {
+      const target = ownUnits(playerState).find(unit => unit.gamecardId === selections[0]);
+      if (target) {
+        addTempDamage(target, instance, 1);
+        addTempPower(target, instance, 500);
+      }
+    }
+  }];
 
 /**
  * Auto-generated from Card.xlsx + Card2.xlsx.
@@ -37,7 +70,7 @@ const card: Card = {
   canAttack: true,
   feijingMark: false,
   canResetCount: 0,
-  effects: getBt01CardEffects('101140097'),
+  effects: cardEffects,
   rarity: 'U',
   availableRarities: ['U', 'C'],
   cardPackage: 'BT01',

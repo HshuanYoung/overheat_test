@@ -1,5 +1,32 @@
-import { Card } from '../types/game';
-import { getBt01CardEffects } from './_bt03YellowUtils';
+import { Card, CardEffect, TriggerLocation } from '../types/game';
+import { createSelectCardQuery, faceUpErosion, moveCard, story } from './BaseUtil';
+
+const cardEffects: CardEffect[] = [story('201100036_prevent', '选择侵蚀区2张正面卡翻面。之后本回合防止你将受到的所有伤害。', async (instance, gameState, playerState) => {
+    const candidates = faceUpErosion(playerState);
+    if (candidates.length === 0) return;
+    const count = Math.min(2, candidates.length);
+    createSelectCardQuery(
+      gameState,
+      playerState.uid,
+      candidates,
+      '选择翻面的侵蚀卡',
+      `选择你的侵蚀区中的${count}张正面卡，将其翻面。`,
+      count,
+      count,
+      { sourceCardId: instance.gamecardId, effectId: '201100036_prevent' },
+      () => 'EROSION_FRONT'
+    );
+  }, {
+    condition: (_gameState, playerState) => faceUpErosion(playerState).length > 0,
+    onQueryResolve: async (instance, gameState, playerState, selections) => {
+      selections
+        .map(id => faceUpErosion(playerState).find(card => card.gamecardId === id))
+        .filter((card): card is Card => !!card)
+        .forEach(card => moveCard(gameState, playerState.uid, card, 'EROSION_BACK', instance, { faceDown: true }));
+      (playerState as any).bt01PreventAllDamageTurn = gameState.turnCount;
+      (playerState as any).bt01PreventAllDamageSourceName = instance.fullName;
+    }
+  })];
 
 /**
  * Auto-generated from Card.xlsx + Card2.xlsx.
@@ -28,7 +55,7 @@ const card: Card = {
   displayState: 'FRONT_UPRIGHT',
   feijingMark: false,
   canResetCount: 0,
-  effects: getBt01CardEffects('201100036'),
+  effects: cardEffects,
   rarity: 'U',
   availableRarities: ['U'],
   cardPackage: 'BT01',

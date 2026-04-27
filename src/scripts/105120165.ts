@@ -1,7 +1,7 @@
 import { Card, CardEffect, GameEvent } from '../types/game';
 import { AtomicEffectExecutor } from '../services/AtomicEffectExecutor';
 import { EventEngine } from '../services/EventEngine';
-import { createSelectCardQuery, getOpponentUid } from './_bt02YellowUtils';
+import { createSelectCardQuery, getOpponentUid } from './BaseUtil';
 
 const effect_105120165_forced_attack: CardEffect = {
   id: '105120165_forced_attack',

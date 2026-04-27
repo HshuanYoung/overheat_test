@@ -1,6 +1,6 @@
 import { Card, CardEffect, GameEvent } from '../types/game';
 import { AtomicEffectExecutor } from '../services/AtomicEffectExecutor';
-import { createSelectCardQuery, isNonGodAccessLe3Item } from './_bt02YellowUtils';
+import { createSelectCardQuery, isNonGodAccessLe3Item } from './BaseUtil';
 
 const effect_105110162_goddess_trigger: CardEffect = {
   id: '105110162_goddess_trigger',

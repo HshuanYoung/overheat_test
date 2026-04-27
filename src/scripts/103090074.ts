@@ -1,5 +1,7 @@
-import { Card } from '../types/game';
-import { getBt01CardEffects } from './_bt03YellowUtils';
+import { Card, CardEffect, TriggerLocation } from '../types/game';
+import { searchDeckEffect } from './BaseUtil';
+
+const cardEffects: CardEffect[] = [searchDeckEffect('103090074_search', '入场时，可以从卡组将1张卡名含有《银乐器》的卡加入手牌。', card => card.fullName.includes('银乐器'))];
 
 /**
  * Auto-generated from Card.xlsx + Card2.xlsx.
@@ -35,7 +37,7 @@ const card: Card = {
   canAttack: true,
   feijingMark: false,
   canResetCount: 0,
-  effects: getBt01CardEffects('103090074'),
+  effects: cardEffects,
   rarity: 'C',
   availableRarities: ['C'],
   cardPackage: 'BT01',

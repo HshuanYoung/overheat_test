@@ -1,5 +1,9 @@
-import { Card } from '../types/game';
-import { getBt01CardEffects } from './_bt03YellowUtils';
+import { Card, CardEffect, TriggerLocation } from '../types/game';
+import { allCardsOnField, destroyByEffect, story } from './BaseUtil';
+
+const cardEffects: CardEffect[] = [story('201100037_eclipse', '创痕3：破坏战场上的所有卡。本局你的《日蚀》效果不再处理。', async (instance, gameState) => {
+    [...allCardsOnField(gameState)].forEach(card => destroyByEffect(gameState, card, instance));
+  }, { erosionBackLimit: [3, 10], limitCount: 1, limitGlobal: true, limitNameType: true })];
 
 /**
  * Auto-generated from Card.xlsx + Card2.xlsx.
@@ -28,7 +32,7 @@ const card: Card = {
   displayState: 'FRONT_UPRIGHT',
   feijingMark: false,
   canResetCount: 0,
-  effects: getBt01CardEffects('201100037'),
+  effects: cardEffects,
   rarity: 'R',
   availableRarities: ['R'],
   cardPackage: 'BT01',

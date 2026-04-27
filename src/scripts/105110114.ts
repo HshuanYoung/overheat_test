@@ -1,6 +1,6 @@
 import { Card, CardEffect, GameEvent } from '../types/game';
 import { AtomicEffectExecutor } from '../services/AtomicEffectExecutor';
-import { moveCard } from './_bt02YellowUtils';
+import { moveCard } from './BaseUtil';
 
 const effect_105110114_indestructible: CardEffect = {
   id: '105110114_indestructible',

@@ -1,6 +1,6 @@
 import { Card, CardEffect } from '../types/game';
 import { AtomicEffectExecutor } from '../services/AtomicEffectExecutor';
-import { canPutUnitOntoBattlefield, createSelectCardQuery } from './_bt03YellowUtils';
+import { canPutUnitOntoBattlefield, createSelectCardQuery } from './BaseUtil';
 
 const effect_205000136_substitute: CardEffect = {
   id: '205000136_substitute',

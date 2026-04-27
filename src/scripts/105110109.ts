@@ -1,6 +1,6 @@
 import { Card, CardEffect, GameEvent, GameState } from '../types/game';
 import { AtomicEffectExecutor } from '../services/AtomicEffectExecutor';
-import { createSelectCardQuery } from './_bt02YellowUtils';
+import { createSelectCardQuery } from './BaseUtil';
 
 const getDestroyableItems = (gameState: GameState) =>
   Object.values(gameState.players).flatMap(player =>

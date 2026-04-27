@@ -1,7 +1,7 @@
 import { Card, CardEffect } from '../types/game';
 import { AtomicEffectExecutor } from '../services/AtomicEffectExecutor';
 import { EventEngine } from '../services/EventEngine';
-import { createSelectCardQuery, getTopDeckCards, isAlchemyCard } from './_bt02YellowUtils';
+import { createSelectCardQuery, getTopDeckCards, isAlchemyCard } from './BaseUtil';
 
 const effect_205000064_activate: CardEffect = {
   id: '205000064_activate',

@@ -1,7 +1,7 @@
 import { Card, CardEffect, PlayerState } from '../types/game';
 import { AtomicEffectExecutor } from '../services/AtomicEffectExecutor';
-import { createChoiceQuery, createSelectCardQuery } from './_bt03YellowUtils';
-import { getTopDeckCards, moveCard, moveCardsToBottom } from './_bt02YellowUtils';
+import { createChoiceQuery, createSelectCardQuery } from './BaseUtil';
+import { getTopDeckCards, moveCard, moveCardsToBottom } from './BaseUtil';
 
 const getDeclaredNameOptions = (playerState: PlayerState) => {
   const uniqueNames = Array.from(

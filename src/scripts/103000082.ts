@@ -1,5 +1,36 @@
-import { Card } from '../types/game';
-import { getBt01CardEffects } from './_bt03YellowUtils';
+import { Card, CardEffect, TriggerLocation } from '../types/game';
+import { addContinuousDamage, addContinuousPower, addInfluence, addTempPower, ensureData, paymentCost } from './BaseUtil';
+
+const cardEffects: CardEffect[] = [{
+    id: '103000082_base',
+    type: 'CONTINUOUS',
+    description: '不能组成联军，也不能成为效果对象；可以攻击对手重置单位。',
+    applyContinuous: (_gameState, instance) => {
+      ensureData(instance).cannotAllianceByEffect = true;
+      ensureData(instance).bt01CanAttackReady = true;
+      addInfluence(instance, instance, '不能组成联军，也不能成为效果对象');
+    }
+  }, {
+    id: '103000082_power',
+    type: 'ACTIVATE',
+    triggerLocation: ['UNIT'],
+    limitCount: 1,
+    description: '支付2费：本回合中，此单位力量+1500。',
+    cost: paymentCost(2, 'GREEN'),
+    execute: async (instance) => addTempPower(instance, instance, 1500)
+  }, {
+    id: '103000082_ten_plus',
+    type: 'CONTINUOUS',
+    erosionTotalLimit: [10, 99],
+    description: '10+：伤害+3、力量+3500，获得速攻、歼灭。',
+    applyContinuous: (_gameState, instance) => {
+      addContinuousDamage(instance, instance, 3);
+      addContinuousPower(instance, instance, 3500);
+      instance.isrush = true;
+      instance.isAnnihilation = true;
+      addInfluence(instance, instance, '获得效果: 【速攻】【歼灭】');
+    }
+  }];
 
 /**
  * Auto-generated from Card.xlsx + Card2.xlsx.
@@ -39,7 +70,7 @@ const card: Card = {
   canAttack: true,
   feijingMark: false,
   canResetCount: 0,
-  effects: getBt01CardEffects('103000082'),
+  effects: cardEffects,
   rarity: 'SR',
   availableRarities: ['SR', 'SER'],
   cardPackage: 'BT01',

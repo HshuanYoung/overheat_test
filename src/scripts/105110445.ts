@@ -1,6 +1,6 @@
 import { Card, CardEffect, TriggerLocation } from '../types/game';
 import { AtomicEffectExecutor } from '../services/AtomicEffectExecutor';
-import { canPutItemOntoBattlefield, canPutUnitOntoBattlefield, countItemTypes, createChoiceQuery, createSelectCardQuery, moveCard } from './_bt03YellowUtils';
+import { canPutItemOntoBattlefield, canPutUnitOntoBattlefield, countItemTypes, createChoiceQuery, createSelectCardQuery, moveCard } from './BaseUtil';
 
 const getTruthGodmarkCards = (playerState: any) => {
   const zones: { zone: (Card | null)[]; source: TriggerLocation }[] = [

@@ -1,7 +1,7 @@
 import { Card, CardEffect, GameEvent } from '../types/game';
 import { AtomicEffectExecutor } from '../services/AtomicEffectExecutor';
-import { countItemTypes, createChoiceQuery, createSelectCardQuery, getOnlyGodMarkUnit, getTopDeckCards } from './_bt03YellowUtils';
-import { wasPlayedFromHand } from './_bt04YellowUtils';
+import { createSelectCardQuery, getOnlyGodMarkUnit, getTopDeckCards } from './BaseUtil';
+import { wasPlayedFromHand } from './BaseUtil';
 
 const effect_105110442_continuous: CardEffect = {
   id: '105110442_continuous',

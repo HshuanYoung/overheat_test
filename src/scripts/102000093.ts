@@ -1,5 +1,39 @@
-import { Card } from '../types/game';
-import { getBt01CardEffects } from './_bt03YellowUtils';
+import { Card, CardEffect, TriggerLocation } from '../types/game';
+import { AtomicEffectExecutor, addTempDamage, addTempPower, createSelectCardQuery, ownUnits } from './BaseUtil';
+
+const cardEffects: CardEffect[] = [{
+    id: '102000093_red_buffs',
+    type: 'TRIGGER',
+    triggerEvent: 'CARD_ENTERED_ZONE',
+    triggerLocation: ['UNIT'],
+    description: '入场时，选择最多2个红色单位，本回合伤害+1、力量+500。',
+    condition: (_gameState, playerState, instance, event) =>
+      event?.sourceCardId === instance.gamecardId &&
+      event.data?.zone === 'UNIT' &&
+      ownUnits(playerState).some(unit => AtomicEffectExecutor.matchesColor(unit, 'RED')),
+    execute: async (instance, gameState, playerState) => {
+      const candidates = ownUnits(playerState).filter(unit => AtomicEffectExecutor.matchesColor(unit, 'RED'));
+      createSelectCardQuery(
+        gameState,
+        playerState.uid,
+        candidates,
+        '选择红色单位',
+        '选择最多2个红色单位，本回合中伤害+1、力量+500。',
+        0,
+        Math.min(2, candidates.length),
+        { sourceCardId: instance.gamecardId, effectId: '102000093_red_buffs' }
+      );
+    },
+    onQueryResolve: async (instance, _gameState, playerState, selections) => {
+      selections
+        .map(id => ownUnits(playerState).find(unit => unit.gamecardId === id))
+        .filter((unit): unit is Card => !!unit)
+        .forEach(unit => {
+          addTempDamage(unit, instance, 1);
+          addTempPower(unit, instance, 500);
+        });
+    }
+  }];
 
 /**
  * Auto-generated from Card.xlsx + Card2.xlsx.
@@ -35,7 +69,7 @@ const card: Card = {
   canAttack: true,
   feijingMark: false,
   canResetCount: 0,
-  effects: getBt01CardEffects('102000093'),
+  effects: cardEffects,
   rarity: 'C',
   availableRarities: ['C'],
   cardPackage: 'BT01',

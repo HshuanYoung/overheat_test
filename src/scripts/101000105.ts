@@ -1,5 +1,38 @@
-import { Card } from '../types/game';
-import { getBt01CardEffects } from './_bt03YellowUtils';
+import { Card, CardEffect, TriggerLocation } from '../types/game';
+import { createSelectCardQuery, exileByEffect } from './BaseUtil';
+
+const cardEffects: CardEffect[] = [{
+    id: '101000105_exile_grave',
+    type: 'ACTIVATE',
+    triggerLocation: ['UNIT'],
+    limitCount: 1,
+    description: '你的回合中，选择1名玩家墓地中的1张卡放逐。',
+    condition: (gameState, playerState) =>
+      playerState.isTurn &&
+      gameState.phase === 'MAIN' &&
+      Object.values(gameState.players).some(player => player.grave.length > 0),
+    execute: async (instance, gameState, playerState) => {
+      const candidates = Object.values(gameState.players).flatMap(player => player.grave);
+      if (candidates.length === 0) return;
+      createSelectCardQuery(
+        gameState,
+        playerState.uid,
+        candidates,
+        '选择放逐卡牌',
+        '选择任意玩家墓地中的1张卡，将其放逐。',
+        1,
+        1,
+        { sourceCardId: instance.gamecardId, effectId: '101000105_exile_grave' },
+        () => 'GRAVE'
+      );
+    },
+    onQueryResolve: async (instance, gameState, _playerState, selections) => {
+      const target = Object.values(gameState.players)
+        .flatMap(player => player.grave)
+        .find(card => card.gamecardId === selections[0]);
+      if (target) exileByEffect(gameState, target, instance);
+    }
+  }];
 
 /**
  * Auto-generated from Card.xlsx + Card2.xlsx.
@@ -35,10 +68,10 @@ const card: Card = {
   canAttack: true,
   feijingMark: false,
   canResetCount: 0,
-  effects: getBt01CardEffects('101000105'),
+  effects: cardEffects,
   rarity: 'U',
   availableRarities: ['U'],
-  cardPackage: 'ST01,BT01',
+  cardPackage: 'BT01',
   uniqueId: null as any,
 };
 

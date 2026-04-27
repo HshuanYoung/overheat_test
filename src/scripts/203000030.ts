@@ -1,5 +1,37 @@
-import { Card } from '../types/game';
-import { getBt01CardEffects } from './_bt03YellowUtils';
+import { Card, CardEffect, TriggerLocation } from '../types/game';
+import { AtomicEffectExecutor, addInfluence, appendEndResolution, canPutUnitOntoBattlefield, createSelectCardQuery, exileByEffect, isNonGodUnit, moveCard, story } from './BaseUtil';
+
+const cardEffects: CardEffect[] = [story('203000030_revive', '选择墓地中1个力量3000以下的非神蚀单位放置到战场上，回合结束时放逐。', async (instance, gameState, playerState) => {
+    const candidates = playerState.grave.filter(card => isNonGodUnit(card) && (card.power || 0) <= 3000 && canPutUnitOntoBattlefield(playerState, card));
+    if (candidates.length === 0) return;
+    createSelectCardQuery(
+      gameState,
+      playerState.uid,
+      candidates,
+      '选择放置到战场的单位',
+      '选择你的墓地中的1个力量3000以下的非神蚀单位，放置到战场上。',
+      1,
+      1,
+      { sourceCardId: instance.gamecardId, effectId: '203000030_revive' },
+      () => 'GRAVE'
+    );
+  }, {
+    condition: (_gameState, playerState) => playerState.grave.some(card => isNonGodUnit(card) && (card.power || 0) <= 3000 && canPutUnitOntoBattlefield(playerState, card)),
+    onQueryResolve: async (instance, gameState, playerState, selections) => {
+      const target = playerState.grave.find(card => card.gamecardId === selections[0] && isNonGodUnit(card) && (card.power || 0) <= 3000 && canPutUnitOntoBattlefield(playerState, card));
+    if (!target) return;
+    const id = target.gamecardId;
+    moveCard(gameState, playerState.uid, target, 'UNIT', instance);
+    const live = AtomicEffectExecutor.findCardById(gameState, id);
+    if (live) {
+      addInfluence(live, instance, '回合结束时放逐');
+      appendEndResolution(gameState, playerState.uid, instance, '203000030_end_exile', (source, state) => {
+        const current = AtomicEffectExecutor.findCardById(state, id);
+        if (current?.cardlocation === 'UNIT') exileByEffect(state, current, source);
+      });
+    }
+    }
+  })];
 
 /**
  * Auto-generated from Card.xlsx + Card2.xlsx.
@@ -28,7 +60,7 @@ const card: Card = {
   displayState: 'FRONT_UPRIGHT',
   feijingMark: false,
   canResetCount: 0,
-  effects: getBt01CardEffects('203000030'),
+  effects: cardEffects,
   rarity: 'R',
   availableRarities: ['R'],
   cardPackage: 'BT01',
