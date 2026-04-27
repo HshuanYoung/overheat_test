@@ -15,12 +15,6 @@ const applyTenForm = (instance: Card) => {
     ...(instance.temporaryBuffDetails || {}),
     power: [{ sourceCardName: instance.fullName, value: instance.temporaryPowerBuff }]
   };
-  instance.damage = 4;
-  instance.power = 4000;
-  instance.isHeroic = true;
-  addInfluence(instance, instance, '伤害变为4');
-  addInfluence(instance, instance, '力量变为4000');
-  addInfluence(instance, instance, '获得【英勇】');
 };
 
 const cardEffects: CardEffect[] = [{
@@ -56,6 +50,7 @@ const cardEffects: CardEffect[] = [{
     type: 'ACTIVATE',
     triggerLocation: ['UNIT'],
     limitCount: 1,
+    erosionFrontLimit: [2, 10],
     erosionTotalLimit: [10, 10],
     description: '10+，侵蚀2：选择战场上1张卡破坏。',
     cost: erosionCost(2),
@@ -83,15 +78,16 @@ const cardEffects: CardEffect[] = [{
     type: 'ACTIVATE',
     triggerLocation: ['UNIT'],
     limitCount: 1,
+    erosionFrontLimit: [2, 10],
     erosionTotalLimit: [10, 10],
     description: '10+，侵蚀2：直到下一次你的回合结束，此单位变为伤害4、力量4000并获得英勇。',
     cost: erosionCost(2),
     execute: async (instance, gameState, playerState) => {
       const data = ensureData(instance);
-      data.bt01TenFormActive = true;
-      data.bt01TenFormActivatedTurn = gameState.turnCount;
-      data.bt01TenFormOwnerUid = playerState.uid;
-      data.bt01TenFormSourceName = instance.fullName;
+      data.tenFormActive = true;
+      data.tenFormActivatedTurn = gameState.turnCount;
+      data.tenFormOwnerUid = playerState.uid;
+      data.tenFormSourceName = instance.fullName;
       applyTenForm(instance);
     }
   }, {
@@ -100,7 +96,7 @@ const cardEffects: CardEffect[] = [{
     triggerLocation: ['UNIT'],
     description: '愤怒：伤害4、力量4000并获得英勇。',
     applyContinuous: (_gameState, instance) => {
-      if (!ensureData(instance).bt01TenFormActive) return;
+      if (!ensureData(instance).tenFormActive) return;
       applyTenForm(instance);
     }
   }, {
@@ -112,15 +108,15 @@ const cardEffects: CardEffect[] = [{
     description: '你的回合结束时，平静。',
     condition: (gameState, playerState, instance, event) =>
       event?.playerUid === playerState.uid &&
-      ensureData(instance).bt01TenFormActive &&
-      ensureData(instance).bt01TenFormOwnerUid === playerState.uid &&
-      gameState.turnCount > ensureData(instance).bt01TenFormActivatedTurn,
+      ensureData(instance).tenFormActive &&
+      ensureData(instance).tenFormOwnerUid === playerState.uid &&
+      gameState.turnCount > ensureData(instance).tenFormActivatedTurn,
     execute: async instance => {
       const data = ensureData(instance);
-      delete data.bt01TenFormActive;
-      delete data.bt01TenFormActivatedTurn;
-      delete data.bt01TenFormOwnerUid;
-      delete data.bt01TenFormSourceName;
+      delete data.tenFormActive;
+      delete data.tenFormActivatedTurn;
+      delete data.tenFormOwnerUid;
+      delete data.tenFormSourceName;
       instance.temporaryPowerBuff = 0;
       instance.temporaryDamageBuff = 0;
       instance.temporaryHeroic = false;

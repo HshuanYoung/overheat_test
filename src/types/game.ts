@@ -221,6 +221,7 @@ export interface Card {
   temporaryPowerBuff?: number; // cleared at turn start
   temporaryDamageBuff?: number; // cleared at turn start
   temporaryRush?: boolean; // cleared at turn start
+  temporaryAnnihilation?: boolean; // cleared at turn start
   temporaryHeroic?: boolean; // cleared at turn start
   temporaryCanAttackAny?: boolean; // cleared at turn start
   effects?: CardEffect[];
@@ -297,6 +298,8 @@ export interface EffectQuery {
   options: {
     id?: string;
     label?: string;
+    icon?: string;
+    detail?: string;
     card?: Card;
     source?: TriggerLocation;
     ownerName?: string;
@@ -384,6 +387,8 @@ export interface GameState {
     resolvedUnitIds?: string[];
     forcedGuardTargetId?: string;
     forcedGuardLogged?: boolean;
+    skipAttackerExhaust?: boolean;
+    autoResolveDamage?: boolean;
   };
   effectUsage?: Record<string, number>;
   phaseTimerStart?: number;

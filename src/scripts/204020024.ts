@@ -4,6 +4,7 @@ import { AtomicEffectExecutor } from '../services/AtomicEffectExecutor';
 const effect_204020024_activate: CardEffect = {
   id: '204020024_activate',
   type: 'ACTIVATE',
+  triggerLocation: ['PLAY'],
   description: '选择以下效果之一发动：a.选择战场上一个非神位单位转为休息状态。b.选择单位区或道具区中一个处于休息状态的非神位卡牌返回持有者手牌。',
   condition: (gameState: GameState) => {
     const hasExhaustMode = Object.values(gameState.players).some(p =>
@@ -28,29 +29,19 @@ const effect_204020024_activate: CardEffect = {
 
     if (hasExhaustMode) {
       choiceOptions.push({
-        card: {
-          gamecardId: 'MODE_EXHAUST',
-          id: 'MODE_EXHAUST',
-          fullName: '模式A：横置单位',
-          type: 'STORY',
-          color: 'BLUE',
-          rarity: 'C'
-        } as any,
-        source: 'HAND'
+        id: 'MODE_EXHAUST',
+        label: '横置单位',
+        detail: '选择战场上1个非神位单位转为休息状态。',
+        icon: 'exhaust'
       });
     }
 
     if (hasBounceMode) {
       choiceOptions.push({
-        card: {
-          gamecardId: 'MODE_BOUNCE',
-          id: 'MODE_BOUNCE',
-          fullName: '模式B：回手横置牌',
-          type: 'STORY',
-          color: 'BLUE',
-          rarity: 'C'
-        } as any,
-        source: 'HAND'
+        id: 'MODE_BOUNCE',
+        label: '回手横置牌',
+        detail: '选择单位区或道具区1张休息状态的非神位卡牌返回手牌。',
+        icon: 'return'
       });
     }
 
@@ -61,7 +52,7 @@ const effect_204020024_activate: CardEffect = {
 
     gameState.pendingQuery = {
       id: Math.random().toString(36).substring(7),
-      type: 'SELECT_CARD',
+      type: 'SELECT_CHOICE',
       playerUid: playerState.uid,
       options: choiceOptions,
       title: '请选择发动模式',

@@ -13,8 +13,8 @@ const cardEffects: CardEffect[] = [{
       !!event?.data?.isAlliance &&
       event.data.attackerIds?.includes(instance.gamecardId),
     execute: async (instance, gameState, _playerState, event) => {
-      ensureData(instance).bt01AllianceAttackTurn = gameState.turnCount;
-      ensureData(instance).bt01AllianceAttackIds = event?.data?.attackerIds || [];
+      ensureData(instance).allianceAttackTurn = gameState.turnCount;
+      ensureData(instance).allianceAttackIds = event?.data?.attackerIds || [];
     }
   }, {
     id: '101130102_alliance_bottom',
@@ -28,8 +28,8 @@ const cardEffects: CardEffect[] = [{
       (
         (event?.data?.isAlliance && event.data.attackerIds?.includes(instance.gamecardId)) ||
         (
-          ensureData(instance).bt01AllianceAttackTurn === gameState.turnCount &&
-          ensureData(instance).bt01AllianceAttackIds?.includes(instance.gamecardId)
+          ensureData(instance).allianceAttackTurn === gameState.turnCount &&
+          ensureData(instance).allianceAttackIds?.includes(instance.gamecardId)
         )
       ) &&
       playerState.grave.length > 0,
@@ -49,8 +49,8 @@ const cardEffects: CardEffect[] = [{
     onQueryResolve: async (instance, gameState, playerState, selections) => {
       const target = playerState.grave.find(card => card.gamecardId === selections[0]);
       if (target) moveCard(gameState, playerState.uid, target, 'DECK', instance, { insertAtBottom: true });
-      delete ensureData(instance).bt01AllianceAttackTurn;
-      delete ensureData(instance).bt01AllianceAttackIds;
+      delete ensureData(instance).allianceAttackTurn;
+      delete ensureData(instance).allianceAttackIds;
     }
   }];
 

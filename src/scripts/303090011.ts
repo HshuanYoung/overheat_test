@@ -1,5 +1,5 @@
-import { Card, CardEffect, TriggerLocation } from '../types/game';
-import { addTempPower, createSelectCardQuery, exhaustCost, ownUnits } from './BaseUtil';
+import { Card, CardEffect } from '../types/game';
+import { addTempPower, cannotBeChosenAsEffectTarget, createSelectCardQuery, exhaustCost, ownUnits } from './BaseUtil';
 
 const cardEffects: CardEffect[] = [{
     id: '303090011_buff',
@@ -9,7 +9,7 @@ const cardEffects: CardEffect[] = [{
     condition: (_gameState, _playerState, instance) => !instance.isExhausted,
     cost: exhaustCost,
     execute: async (instance, gameState, playerState) => {
-      const candidates = ownUnits(playerState);
+      const candidates = ownUnits(playerState).filter(unit => !cannotBeChosenAsEffectTarget(unit, instance));
       if (candidates.length === 0) return;
       createSelectCardQuery(
         gameState,
@@ -23,7 +23,10 @@ const cardEffects: CardEffect[] = [{
       );
     },
     onQueryResolve: async (instance, _gameState, playerState, selections) => {
-      const target = ownUnits(playerState).find(unit => unit.gamecardId === selections[0]);
+      const target = ownUnits(playerState).find(unit =>
+        unit.gamecardId === selections[0] &&
+        !cannotBeChosenAsEffectTarget(unit, instance)
+      );
       if (target) addTempPower(target, instance, 500);
     }
   }];

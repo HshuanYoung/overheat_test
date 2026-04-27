@@ -1,6 +1,6 @@
 import { Card, CardEffect, GameState, PlayerState, TriggerLocation } from '../types/game';
 import { AtomicEffectExecutor } from '../services/AtomicEffectExecutor';
-import { createChoiceQuery, createSelectCardQuery, getBattlefieldUnits } from './BaseUtil';
+import { addInfluence, createChoiceQuery, createSelectCardQuery, getBattlefieldUnits } from './BaseUtil';
 
 const EFFECT_ID = '105110112_activate';
 
@@ -11,6 +11,7 @@ const markActivateLost = (instance: Card) => {
     ...((instance as any).data || {}),
     lostActivateEffect_105110112: true
   };
+  addInfluence(instance, instance, '已使用效果，失去此能力');
 };
 
 const createPlayerSelectQuery = (
@@ -224,6 +225,16 @@ const effect_105110112_activate: CardEffect = {
   }
 };
 
+const effect_105110112_lost_display: CardEffect = {
+  id: '105110112_lost_display',
+  type: 'CONTINUOUS',
+  description: '使用过【启】效果后，在 influenced by 中显示已失去此能力。',
+  applyContinuous: (_gameState, instance) => {
+    if (!hasLostActivate(instance)) return;
+    addInfluence(instance, instance, '已使用效果，失去此能力');
+  }
+};
+
 /**
  * Auto-generated from Card.xlsx + Card2.xlsx.
  * Source CardID: 105110112
@@ -261,7 +272,7 @@ const card: Card = {
   canAttack: true,
   feijingMark: false,
   canResetCount: 0,
-  effects: [effect_105110112_activate],
+  effects: [effect_105110112_activate, effect_105110112_lost_display],
   rarity: 'R',
   availableRarities: ['R'],
   cardPackage: 'BT01',

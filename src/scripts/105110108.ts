@@ -1,7 +1,7 @@
 import { Card, CardEffect, PlayerState } from '../types/game';
 import { AtomicEffectExecutor } from '../services/AtomicEffectExecutor';
 import { createChoiceQuery, createSelectCardQuery } from './BaseUtil';
-import { getTopDeckCards, moveCard, moveCardsToBottom } from './BaseUtil';
+import { ensureDeckHasCardsForMove, getTopDeckCards, moveCard, moveCardsToBottom } from './BaseUtil';
 
 const getDeclaredNameOptions = (playerState: PlayerState) => {
   const uniqueNames = Array.from(
@@ -43,6 +43,7 @@ const effect_105110108_activate: CardEffect = {
   onQueryResolve: async (instance, gameState, playerState, selections, context) => {
     if (context?.step === 'DECLARE_NAME') {
       const declaredName = selections[0];
+      if (!ensureDeckHasCardsForMove(gameState, playerState.uid, 1, instance)) return;
       const topCard = getTopDeckCards(playerState, 1)[0];
       if (!topCard) return;
 

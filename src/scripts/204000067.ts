@@ -19,6 +19,7 @@ const card: Card = {
     {
       id: 'yingwu_activate',
       type: 'ACTIVATE',
+      triggerLocation: ['HAND', 'PLAY'],
       condition: (gameState: GameState, playerState: PlayerState) => {
         // Can only be played if the player has at least one unit on the battlefield
         return playerState.unitZone.some(c => c !== null);

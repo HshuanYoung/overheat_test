@@ -4,42 +4,31 @@ import { AtomicEffectExecutor } from '../services/AtomicEffectExecutor';
 const effect_204020023_activate: CardEffect = {
   id: '204020023_activate',
   type: 'ACTIVATE',
+  triggerLocation: ['PLAY'],
   description: '对手选择以下效果之一发动。若你在神依状态下发动，则由你代替对手进行选择：a.抽三张牌，选择其两张手牌，放置在侵蚀前区。b.选择一个横置单位并破坏。',
   execute: async (instance: Card, gameState: GameState, playerState: PlayerState) => {
     const opponentUid = Object.keys(gameState.players).find(uid => uid !== playerState.uid)!;
     const activatedInGoddess = !!((instance as any).__playSnapshot?.isGoddessMode ?? playerState.isGoddessMode);
     const selectorUid = activatedInGoddess ? playerState.uid : opponentUid;
 
-    const options = [
-      {
-        card: {
-          gamecardId: 'MODE_A',
-          id: 'MODE_A',
-          fullName: '模式A：抽3张并充能2张',
-          type: 'STORY',
-          color: 'BLUE',
-          rarity: 'C'
-        } as any,
-        source: 'HAND' as any
-      },
-      {
-        card: {
-          gamecardId: 'MODE_B',
-          id: 'MODE_B',
-          fullName: '模式B：破坏横置单位',
-          type: 'STORY',
-          color: 'BLUE',
-          rarity: 'C'
-        } as any,
-        source: 'HAND' as any
-      }
-    ];
-
     gameState.pendingQuery = {
       id: Math.random().toString(36).substring(7),
-      type: 'SELECT_CARD',
+      type: 'SELECT_CHOICE',
       playerUid: selectorUid,
-      options: options,
+      options: [
+        {
+          id: 'MODE_A',
+          label: '抽3张并充能2张',
+          detail: '对手抽3张牌，选择其2张手牌放置到侵蚀前区。',
+          icon: 'draw'
+        },
+        {
+          id: 'MODE_B',
+          label: '破坏横置单位',
+          detail: '选择1个横置单位并破坏。',
+          icon: 'destroy'
+        }
+      ],
       title: '公平交易：选择效果',
       description: '请选择一个效果以执行。',
       minSelections: 1,

@@ -27,8 +27,8 @@ const cardEffects: CardEffect[] = [{
       allUnitsOnField(gameState)
         .filter(unit => selections.includes(unit.gamecardId))
         .forEach(unit => {
-          ensureData(unit).bt01CannotDefendTurn = gameState.turnCount;
-          ensureData(unit).bt01CannotDefendSourceName = instance.fullName;
+          ensureData(unit).cannotDefendTurn = gameState.turnCount;
+          ensureData(unit).cannotDefendSourceName = instance.fullName;
           addInfluence(unit, instance, '本回合不能宣言防御');
         });
     }

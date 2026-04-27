@@ -1477,7 +1477,7 @@ function createInitialPlayer(deckCards: Card[], displayName: string, isFirst: bo
         isGoddessMode: false,
         isTurn: isFirst,
         timeRemaining: turnTimerLimit ? turnTimerLimit * 1000 : 300000,
-        confrontationStrategy: 'ON'
+        confrontationStrategy: 'AUTO'
     };
 
 }
@@ -1688,8 +1688,8 @@ io.on('connection', (socket) => {
                     const { cardId, paymentSelection } = payload;
                     await ServerGameService.playCard(gameState, myUid, cardId, paymentSelection);
                 } else if (action === 'ATTACK') {
-                    const { attackerIds, isAlliance } = payload;
-                    await ServerGameService.declareAttack(gameState, myUid, attackerIds, isAlliance, undefined, undefined, syncCallback);
+                    const { attackerIds, isAlliance, targetId, skipDefense } = payload;
+                    await ServerGameService.declareAttack(gameState, myUid, attackerIds, isAlliance, targetId, skipDefense, syncCallback);
                 } else if (action === 'DEFEND') {
                     const { defenderId } = payload;
                     await ServerGameService.declareDefense(gameState, myUid, defenderId);

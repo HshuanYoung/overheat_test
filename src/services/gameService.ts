@@ -63,6 +63,14 @@ const getEffectivePlayCost = (player: PlayerState, card: Card) => {
     const unitCount = player.unitZone.filter(c => c !== null).length;
     return Math.max(0, baseCost - unitCount);
   }
+  if (card.id === '202050034' && player.isGoddessMode) {
+    return 0;
+  }
+  if (card.id === '105000117') {
+    const hasUnits = player.unitZone.some(cardInZone => cardInZone !== null);
+    const hasFaceUpErosion = player.erosionFront.some(cardInZone => cardInZone !== null && cardInZone.displayState === 'FRONT_UPRIGHT');
+    if (!hasUnits && !hasFaceUpErosion) return 0;
+  }
   if (card.id === '205110063') {
     const itemCount = player.itemZone.filter(c => c !== null).length;
     return Math.max(0, baseCost - itemCount);
@@ -141,8 +149,8 @@ export const GameService = {
     socket.emit('gameAction', { gameId, action: 'PLAY_CARD', payload: { cardId, paymentSelection } });
   },
 
-  async declareAttack(gameId: string, playerId: string, attackerIds: string[], isAlliance: boolean) {
-    socket.emit('gameAction', { gameId, action: 'ATTACK', payload: { attackerIds, isAlliance } });
+  async declareAttack(gameId: string, playerId: string, attackerIds: string[], isAlliance: boolean, targetId?: string, skipDefense?: boolean) {
+    socket.emit('gameAction', { gameId, action: 'ATTACK', payload: { attackerIds, isAlliance, targetId, skipDefense } });
   },
 
   async declareDefense(gameId: string, playerId: string, defenderId?: string) {

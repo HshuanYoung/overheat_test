@@ -6,6 +6,7 @@ const cardEffects: CardEffect[] = [{
     type: 'TRIGGER',
     triggerEvent: 'CARD_ATTACK_DECLARED',
     triggerLocation: ['UNIT'],
+    isGlobal: true,
     limitCount: 1,
     limitNameType: true,
     description: '组成联军时，给予对手2点伤害。',

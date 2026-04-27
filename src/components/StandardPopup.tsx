@@ -140,7 +140,7 @@ export const StandardPopup: React.FC<StandardPopupProps> = ({
             )}
 
             {/* Selection Status */}
-            {mode === 'card_selection' && maxSelections > 0 && (
+            {(mode === 'card_selection' || mode === 'player_selection') && maxSelections > 0 && (
               <div className="mt-4 px-4 py-1.5 bg-white/5 rounded-full border border-white/10 text-[10px] md:text-xs font-black text-zinc-500 uppercase tracking-widest">
                 选择进度: {selectedIds.length} / {maxSelections} (至少 {minSelections})
               </div>
@@ -267,14 +267,14 @@ export const StandardPopup: React.FC<StandardPopupProps> = ({
           </div>
 
           {/* Footer Actions */}
-          {(mode === 'card_selection' || mode === 'payment_selection') && (
+          {(mode === 'card_selection' || mode === 'player_selection' || mode === 'payment_selection') && (
             <div className="relative z-10 p-6 md:p-8 border-t border-white/5 bg-black/20 flex flex-col items-center gap-4 shrink-0">
               <button
                 onClick={onSelectionComplete}
-                disabled={mode === 'card_selection' && selectedIds.length < minSelections}
+                disabled={(mode === 'card_selection' || mode === 'player_selection') && selectedIds.length < minSelections}
                 className="px-12 py-4 bg-[#f27d26] text-white font-black italic uppercase tracking-[0.2em] rounded-xl hover:bg-[#f27d26]/80 transition-all disabled:opacity-30 disabled:cursor-not-allowed shadow-xl shadow-[#f27d26]/20 hover:scale-105 active:scale-95"
               >
-                {mode === 'card_selection' ? '确认选择' : '确认支付'}
+                {mode === 'payment_selection' ? '确认支付' : '确认选择'}
               </button>
               <div className="flex items-center gap-2 text-zinc-600 uppercase text-[10px] font-black tracking-widest">
                 <Loader2 className="w-3 h-3 animate-spin" />

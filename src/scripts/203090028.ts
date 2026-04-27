@@ -1,8 +1,8 @@
-import { Card, CardEffect, TriggerLocation } from '../types/game';
-import { createSelectCardQuery, destroyByEffect, getOpponentUid, ownUnits, story } from './BaseUtil';
+import { Card, CardEffect } from '../types/game';
+import { createSelectCardQuery, getOpponentUid, ownUnits, story } from './BaseUtil';
 
 const cardEffects: CardEffect[] = [story('203090028_forced_battle', '主要阶段使用：选择你的1个单位和对手1个非神蚀单位，直接进行伤害判定。', async (instance, gameState, playerState) => {
-    const attackers = ownUnits(playerState).filter(unit => !unit.isExhausted);
+    const attackers = ownUnits(playerState);
     if (attackers.length === 0) return;
     createSelectCardQuery(
       gameState,
@@ -16,9 +16,9 @@ const cardEffects: CardEffect[] = [story('203090028_forced_battle', '主要阶�
     );
   }, {
     condition: (gameState, playerState) =>
-      gameState.phase === 'MAIN' &&
+      (gameState.phase === 'MAIN' || gameState.previousPhase === 'MAIN') &&
       playerState.isTurn &&
-      ownUnits(playerState).some(unit => !unit.isExhausted) &&
+      ownUnits(playerState).length > 0 &&
       ownUnits(gameState.players[getOpponentUid(gameState, playerState.uid)]).some(unit => !unit.godMark),
     onQueryResolve: async (instance, gameState, playerState, selections, context) => {
       if (context?.step === 'ATTACKER') {
@@ -45,20 +45,24 @@ const cardEffects: CardEffect[] = [story('203090028_forced_battle', '主要阶�
 
       if (context?.step !== 'DEFENDER') return;
       const attacker = ownUnits(playerState).find(unit => unit.gamecardId === context.attackerId);
-    const opponent = gameState.players[getOpponentUid(gameState, playerState.uid)];
+      const opponent = gameState.players[getOpponentUid(gameState, playerState.uid)];
       const defender = ownUnits(opponent).find(unit => unit.gamecardId === selections[0]);
-    if (!attacker || !defender) return;
+      if (!attacker || !defender || defender.godMark) return;
 
-    const attackerPower = attacker.power || 0;
-    const defenderPower = defender.power || 0;
-    if (attackerPower > defenderPower) {
-      destroyByEffect(gameState, defender, instance);
-    } else if (attackerPower < defenderPower) {
-      destroyByEffect(gameState, attacker, instance);
-    } else {
-      destroyByEffect(gameState, attacker, instance);
-      destroyByEffect(gameState, defender, instance);
-    }
+      gameState.battleState = {
+        attackers: [attacker.gamecardId],
+        defender: defender.gamecardId,
+        unitTargetId: defender.gamecardId,
+        defenseLockedToTargetId: defender.gamecardId,
+        isAlliance: false,
+        resolvedUnitIds: [],
+        skipAttackerExhaust: true,
+        autoResolveDamage: true
+      };
+      gameState.previousPhase = undefined;
+      gameState.phase = 'DAMAGE_CALCULATION';
+      gameState.phaseTimerStart = Date.now();
+      gameState.logs.push(`[${instance.fullName}] 使 [${attacker.fullName}] 与 [${defender.fullName}] 直接进入伤害判定。`);
     }
   })];
 

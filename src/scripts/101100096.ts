@@ -25,11 +25,11 @@ const cardEffects: CardEffect[] = [{
     description: '此单位参与的攻击结束后，支付1费：将你的所有参战单位重置。',
     condition: (gameState, _playerState, instance, event) =>
       event?.data?.phase === 'MAIN' &&
-      Array.isArray(ensureData(instance).bt01LastAllianceAttackIds) &&
-      ensureData(instance).bt01LastAllianceAttackTurn === gameState.turnCount,
+      Array.isArray(ensureData(instance).lastAllianceAttackIds) &&
+      ensureData(instance).lastAllianceAttackTurn === gameState.turnCount,
     cost: paymentCost(1, 'WHITE'),
     execute: async (instance, gameState, playerState) => {
-      const ids = ensureData(instance).bt01LastAllianceAttackIds || [];
+      const ids = ensureData(instance).lastAllianceAttackIds || [];
       ids.forEach((id: string) => {
         const unit = playerState.unitZone.find(card => card?.gamecardId === id);
         if (unit) {
@@ -37,8 +37,8 @@ const cardEffects: CardEffect[] = [{
           addInfluence(unit, instance, '因效果重置');
         }
       });
-      delete ensureData(instance).bt01LastAllianceAttackIds;
-      delete ensureData(instance).bt01LastAllianceAttackTurn;
+      delete ensureData(instance).lastAllianceAttackIds;
+      delete ensureData(instance).lastAllianceAttackTurn;
     }
   }, {
     id: '101100096_track_attack',
@@ -50,8 +50,8 @@ const cardEffects: CardEffect[] = [{
     isGlobal: true,
     condition: (_gameState, _playerState, instance, event) => !!event?.data?.attackerIds?.includes(instance.gamecardId),
     execute: async (instance, gameState, _playerState, event) => {
-      ensureData(instance).bt01LastAllianceAttackIds = event?.data?.attackerIds || [];
-      ensureData(instance).bt01LastAllianceAttackTurn = gameState.turnCount;
+      ensureData(instance).lastAllianceAttackIds = event?.data?.attackerIds || [];
+      ensureData(instance).lastAllianceAttackTurn = gameState.turnCount;
     }
   }, {
     id: '101100096_ten_bottom',

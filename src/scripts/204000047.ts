@@ -19,6 +19,7 @@ const card: Card = {
     {
       id: 'fufeng_activate',
       type: 'ACTIVATE',
+      triggerLocation: ['HAND', 'PLAY'],
       condition: (gameState: GameState, playerState: PlayerState, card: Card) => {
         // Can only be played if there is at least one valid target unit on the battlefield
         const isFuhuaPresent = playerState.unitZone.some(c => c && c.specialName === '风花');

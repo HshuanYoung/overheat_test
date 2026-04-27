@@ -4,6 +4,17 @@ import { EventEngine } from './EventEngine';
 import { getCardIdentity } from '../lib/utils';
 
 export class AtomicEffectExecutor {
+  private static loseForInsufficientDeckMove(gameState: GameState, playerUid: string, count: number, sourceCard?: Card) {
+    if (gameState.gameStatus === 2) return;
+    const player = gameState.players[playerUid];
+    if (!player) return;
+    gameState.gameStatus = 2;
+    gameState.winReason = 'DECK_OUT_DECK_MOVE';
+    gameState.winnerId = gameState.playerIds.find(id => id !== playerUid);
+    gameState.winSourceCardName = sourceCard?.fullName;
+    gameState.logs.push(`[游戏结束] ${player.displayName} 的卡组数量不足，无法从卡组移动 ${count} 张卡，判负。`);
+  }
+
   /**
    * Enriches query options with ownership metadata.
    */
@@ -392,6 +403,23 @@ export class AtomicEffectExecutor {
     gameState.logs.push(`${player.displayName} 洗了卡组`);
   }
 
+  private static checkErosionBackDefeat(gameState: GameState) {
+    if (gameState.gameStatus === 2) return true;
+
+    for (const player of Object.values(gameState.players)) {
+      const erosionBackCount = player.erosionBack.filter(card => card !== null).length;
+      if (erosionBackCount >= 10) {
+        gameState.gameStatus = 2;
+        gameState.winReason = 'EROSION_BACK_FULL';
+        gameState.winnerId = gameState.playerIds.find(id => id !== player.uid);
+        gameState.logs.push(`[游戏结束] ${player.displayName} 的侵蚀区背面达到 10 张，判负。`);
+        return true;
+      }
+    }
+
+    return false;
+  }
+
   private static applyStatChange(gameState: GameState, effect: AtomicEffect, stat: 'power' | 'damage' | 'acValue' | 'godMark', sourceCard?: Card, querySelections?: string[]) {
     const targets = this.findTargets(gameState, effect.targetFilter, sourceCard, querySelections);
     targets.forEach(card => {
@@ -446,8 +474,8 @@ export class AtomicEffectExecutor {
     const player = gameState.players[targetPlayerUid];
     const dealer = gameState.players[dealerPlayerUid];
 
-    if ((player as any).bt01PreventAllDamageTurn === gameState.turnCount) {
-      gameState.logs.push(`[${(player as any).bt01PreventAllDamageSourceName || '伤害防止'}] 防止了 ${player.displayName} 将要受到的 ${amount} 点伤害。`);
+    if ((player as any).preventAllDamageTurn === gameState.turnCount) {
+      gameState.logs.push(`[${(player as any).preventAllDamageSourceName || '伤害防止'}] 防止了 ${player.displayName} 将要受到的 ${amount} 点伤害。`);
       return;
     }
 
@@ -655,6 +683,13 @@ export class AtomicEffectExecutor {
     // Limit by targetCount. Default to 1 for MOVE_FROM_DECK if not specified to prevent moving whole deck.
     const defaultCount = (fromZonePref === 'DECK' && !querySelections) ? 1 : undefined;
     const count = effect.targetCount !== undefined ? effect.targetCount : defaultCount;
+    if (fromZonePref === 'DECK' && count !== undefined && count > 0 && !querySelections) {
+      const deckCount = gameState.players[playerUid]?.deck.length || 0;
+      if (deckCount < count) {
+        this.loseForInsufficientDeckMove(gameState, playerUid, count, sourceCard);
+        return;
+      }
+    }
     const finalTargets = count !== undefined ? processedTargets.slice(0, count) : processedTargets;
 
     finalTargets.forEach(card => {
@@ -872,6 +907,17 @@ export class AtomicEffectExecutor {
           // Check for immunity to unit effects
           if (card.isImmuneToUnitEffects && sourceCard && sourceCard.type === 'UNIT') {
             if (card.gamecardId !== sourceCard.gamecardId) return;
+          }
+
+          const isChosenEffectTarget = !!filter?.gamecardId || !!filter?.querySelection;
+          if (
+            isChosenEffectTarget &&
+            sourceCard &&
+            card.cardlocation === 'UNIT' &&
+            card.gamecardId !== sourceCard.gamecardId &&
+            (card as any).cannotBeEffectTargetByEffect
+          ) {
+            return;
           }
 
           if (this.matchesFilter(card, filter, sourceCard, querySelections, zone.type)) {
@@ -1120,6 +1166,10 @@ export class AtomicEffectExecutor {
     } else {
       this.dispatchMovementEvents(gameState, playerUid, card, fromZone, toZone, isEffect, options);
     }
+
+    if (toZone === 'EROSION_BACK') {
+      this.checkErosionBackDefeat(gameState);
+    }
   }
 
   private static dispatchMovementEvents(
@@ -1192,6 +1242,7 @@ export class AtomicEffectExecutor {
 
     if (targets.length > 0) {
       gameState.logs.push(`${player.displayName} 将 ${targets.length} 张侵蚀区的卡翻面并转至背面区域。`);
+      this.checkErosionBackDefeat(gameState);
     }
   }
 

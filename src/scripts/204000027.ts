@@ -4,6 +4,7 @@ import { AtomicEffectExecutor } from '../services/AtomicEffectExecutor';
 const effect_204000027_activate: CardEffect = {
   id: '204000027_activate',
   type: 'ACTIVATE',
+  triggerLocation: ['PLAY'],
   description: '每回合此卡名限一次，抽两张牌。',
   limitCount: 1,
   limitNameType: true,

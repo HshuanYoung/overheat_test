@@ -1,5 +1,5 @@
-import { Card, CardEffect, TriggerLocation } from '../types/game';
-import { AtomicEffectExecutor, canPutUnitOntoBattlefield, createSelectCardQuery, getTopDeckCards, isNonGodUnit, moveCard, ownUnits } from './BaseUtil';
+import { Card, CardEffect } from '../types/game';
+import { AtomicEffectExecutor, canPutUnitOntoBattlefield, createSelectCardQuery, ensureDeckHasCardsForMove, getTopDeckCards, isNonGodUnit, moveCard, ownUnits } from './BaseUtil';
 
 const cardEffects: CardEffect[] = [{
     id: '103000080_mill_revive',
@@ -9,9 +9,10 @@ const cardEffects: CardEffect[] = [{
     condition: (_gameState, playerState) => ownUnits(playerState).filter(unit => AtomicEffectExecutor.matchesColor(unit, 'GREEN')).length >= 2,
     cost: async (gameState, playerState, instance) => {
       moveCard(gameState, playerState.uid, instance, 'EXILE', instance);
-      return true;
+      return playerState.exile.some(card => card.gamecardId === instance.gamecardId);
     },
     execute: async (instance, gameState, playerState) => {
+      if (!ensureDeckHasCardsForMove(gameState, playerState.uid, 3, instance)) return;
       const milled = getTopDeckCards(playerState, 3);
       milled.forEach(card => moveCard(gameState, playerState.uid, card, 'GRAVE', instance));
       const candidates = milled.filter(card => playerState.grave.some(grave => grave.gamecardId === card.gamecardId) && isNonGodUnit(card) && (card.power || 0) <= 2500 && canPutUnitOntoBattlefield(playerState, card));

@@ -5,25 +5,31 @@ const effect_204000025_activation: CardEffect = {
   id: 'kaguya_flowering_silence',
   type: 'ACTIVATE',
   description: '【启】主要阶段：选择场上一个单位的一个“启”效果，在本回合中不被处理。不论目标是否处理该效果，此卡均可参与对抗并支付费用。或者：在对抗阶段：使一次发动无效并送入墓地。',
-  triggerLocation: ['HAND', 'UNIT', 'PLAY'],
-  condition: (gameState: GameState, playerState: PlayerState) => {
-    if (gameState.phase === 'MAIN' && playerState.isTurn) {
+  triggerLocation: ['PLAY'],
+  condition: (gameState: GameState, playerState: PlayerState, instance: Card) => {
+    const playPhase = (instance as any).__playSnapshot?.phase;
+    const isMainMode = playPhase === 'MAIN' || (!playPhase && gameState.phase === 'MAIN' && playerState.isTurn);
+    if (isMainMode) {
       return Object.values(gameState.players).some(p =>
         p.unitZone.some(c => c && c.effects && c.effects.some(e => e.type === 'ACTIVATE'))
       );
     }
 
-    if (gameState.phase === 'COUNTERING') {
+    const isCounterMode = playPhase === 'COUNTERING' || (!playPhase && gameState.phase === 'COUNTERING');
+    if (isCounterMode) {
       return gameState.counterStack.some(item =>
         (item.type === 'PLAY' || item.type === 'EFFECT') &&
-        !item.isNegated
+        !item.isNegated &&
+        item.ownerUid !== playerState.uid
       );
     }
 
     return false;
   },
   execute: async (instance: Card, gameState: GameState, playerState: PlayerState) => {
-    if (gameState.phase === 'MAIN' && playerState.isTurn) {
+    const playPhase = (instance as any).__playSnapshot?.phase;
+    const isMainMode = playPhase === 'MAIN' || (!playPhase && gameState.phase === 'MAIN' && playerState.isTurn);
+    if (isMainMode) {
       const fieldCandidates: Card[] = [];
       Object.values(gameState.players).forEach(p => {
         p.unitZone.forEach(c => {
@@ -65,7 +71,8 @@ const effect_204000025_activation: CardEffect = {
       return;
     }
 
-    if (gameState.phase === 'COUNTERING') {
+    const isCounterMode = playPhase === 'COUNTERING' || (!playPhase && gameState.phase === 'COUNTERING');
+    if (isCounterMode) {
       const stackCandidates = gameState.counterStack
         .filter(item => (item.type === 'PLAY' || item.type === 'EFFECT') && !item.isNegated && item.ownerUid !== playerState.uid);
 

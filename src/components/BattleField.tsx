@@ -14,7 +14,7 @@ import { PlayField } from './PlayField';
 import { Rulebook } from './Rulebook';
 import { motion, AnimatePresence } from 'motion/react';
 import { StandardPopup } from './StandardPopup';
-import { Flag, Trophy, Frown, Home, Sword, Shield, Zap, LogOut, BookOpen, Send, Loader2, Trash2, X, Play, Search, ChevronRight, ShieldCheck, Layers, Sparkles, Flame, AlertTriangle } from 'lucide-react';
+import { Flag, Trophy, Frown, Home, Sword, Shield, Zap, LogOut, BookOpen, Send, Loader2, Trash2, X, Play, Search, ChevronRight, ShieldCheck, Layers, Sparkles, Flame, AlertTriangle, RotateCcw, Undo2, Hand, PackagePlus } from 'lucide-react';
 import { cn, getCardColorLabel, getCardImageUrl, getCardIdentity, getCardTypeLabel, getLocationLabel, getPhaseLabel } from '../lib/utils';
 import { KeywordBadges } from './KeywordBadges';
 
@@ -37,6 +37,21 @@ const getEffectTypeLabel = (type?: string | null) => {
 const getActionTypeLabel = (type?: string | null) => {
   if (!type) return '处理中';
   return ACTION_TYPE_LABELS[type] || type.replace(/_/g, ' ');
+};
+
+const getChoiceIcon = (icon?: string) => {
+  switch (icon) {
+    case 'draw':
+      return PackagePlus;
+    case 'destroy':
+      return Trash2;
+    case 'exhaust':
+      return RotateCcw;
+    case 'return':
+      return Undo2;
+    default:
+      return Hand;
+  }
 };
 
 const CONFRONTATION_STRATEGY_LABELS: Record<'ON' | 'AUTO' | 'OFF', string> = {
@@ -120,7 +135,7 @@ export const BattleField: React.FC = () => {
   const me = useMemo(() => (game && myUid) ? game.players[myUid.toString()] : null, [game, myUid]);
   const opponentUid = useMemo(() => (game && myUid) ? Object.keys(game.players).find(uid => uid.toString() !== myUid.toString()) : null, [game, myUid]);
   const opponent = useMemo(() => (game && opponentUid) ? game.players[opponentUid] : null, [game, opponentUid]);
-  const confrontationStrategy = (me?.confrontationStrategy || 'ON') as 'ON' | 'AUTO' | 'OFF';
+  const confrontationStrategy = (me?.confrontationStrategy || 'AUTO') as 'ON' | 'AUTO' | 'OFF';
   const [localStrategy, setLocalStrategy] = useState<'ON' | 'AUTO' | 'OFF'>(confrontationStrategy);
 
   // Sync local strategy with server state when it arrives, but ignore if we just updated it locally
@@ -174,6 +189,7 @@ export const BattleField: React.FC = () => {
       { cards: me.unitZone || [], location: 'UNIT' },
       { cards: me.itemZone || [], location: 'ITEM' },
       { cards: me.erosionFront || [], location: 'EROSION_FRONT' },
+      { cards: me.grave || [], location: 'GRAVE' },
       { cards: me.hand || [], location: 'HAND' }
     ];
 
@@ -583,6 +599,14 @@ export const BattleField: React.FC = () => {
       const unitCount = player.unitZone.filter(Boolean).length;
       return Math.max(0, baseCost - unitCount);
     }
+    if (card.id === '202050034' && player?.isGoddessMode) {
+      return 0;
+    }
+    if (card.id === '105000117' && player) {
+      const hasUnits = player.unitZone.some(Boolean);
+      const hasFaceUpErosion = player.erosionFront.some(erosionCard => !!erosionCard && erosionCard.displayState === 'FRONT_UPRIGHT');
+      if (!hasUnits && !hasFaceUpErosion) return 0;
+    }
     if (card.id === '205110063' && player) {
       const itemCount = player.itemZone.filter(Boolean).length;
       return Math.max(0, baseCost - itemCount);
@@ -635,6 +659,7 @@ export const BattleField: React.FC = () => {
       { cards: me.unitZone, location: 'UNIT' },
       { cards: me.itemZone, location: 'ITEM' },
       { cards: me.erosionFront, location: 'EROSION_FRONT' },
+      { cards: me.grave, location: 'GRAVE' },
       { cards: me.hand, location: 'HAND' }
     ];
 
@@ -1830,11 +1855,11 @@ export const BattleField: React.FC = () => {
                 const canActivateInPhase = isOwnSharedPhase || isCounteringTurn;
 
                 if (!canActivateInPhase) return null;
-                const isMyCard = [...me.unitZone, ...me.itemZone, ...me.erosionFront, ...me.hand].some(c => c?.gamecardId === cardMenu.card.gamecardId);
+                const isMyCard = [...me.unitZone, ...me.itemZone, ...me.erosionFront, ...me.grave, ...me.hand].some(c => c?.gamecardId === cardMenu.card.gamecardId);
                 if (!isMyCard) return null;
 
                 const latestCard = [
-                  ...me.unitZone, ...me.itemZone, ...me.erosionFront, ...me.hand,
+                  ...me.unitZone, ...me.itemZone, ...me.erosionFront, ...me.grave, ...me.hand,
                   ...(opponent?.unitZone || []), ...(opponent?.itemZone || []), ...(opponent?.erosionFront || [])
                 ].find(c => c?.gamecardId === cardMenu.card.gamecardId) || cardMenu.card;
 
@@ -1848,6 +1873,7 @@ export const BattleField: React.FC = () => {
                   'unit': 'UNIT',
                   'item': 'ITEM',
                   'erosion_front': 'EROSION_FRONT',
+                  'grave': 'GRAVE',
                   'hand': 'HAND'
                 };
                 const validEffects = activateEffects.filter(e => {
@@ -1861,7 +1887,7 @@ export const BattleField: React.FC = () => {
                       whileHover={{ scale: 1.1 }}
                       className="px-4 py-3 md:py-1.5 text-[12px] md:text-[10px] font-bold text-white bg-[#22c55e] rounded-full shadow-lg border border-white/20 flex items-center justify-center w-full"
                       onClick={() => {
-                        const triggerLocation = (cardMenu.zone === 'unit' ? 'UNIT' : cardMenu.zone === 'item' ? 'ITEM' : cardMenu.zone === 'erosion_front' ? 'EROSION_FRONT' : 'HAND') as TriggerLocation;
+                        const triggerLocation = (cardMenu.zone === 'unit' ? 'UNIT' : cardMenu.zone === 'item' ? 'ITEM' : cardMenu.zone === 'erosion_front' ? 'EROSION_FRONT' : cardMenu.zone === 'grave' ? 'GRAVE' : 'HAND') as TriggerLocation;
                         if (validEffects.length === 1) {
                           setEffectConfirmation({
                             card: latestCard,
@@ -2534,23 +2560,56 @@ export const BattleField: React.FC = () => {
 
         {normalizedPendingQueryType === 'SELECT_CHOICE' && (
           <div className="grid grid-cols-2 gap-4 mt-4 w-full justify-center max-w-2xl px-6 md:px-12">
-            {pendingQueryOptions.map((option, i) => (
-              <button
-                key={i}
-                onClick={() => GameService.submitQueryChoice(gameId!, game.pendingQuery!.id, [option.id || option.card?.gamecardId || ''])}
-                className="px-4 py-6 md:px-10 md:py-8 bg-zinc-900/80 backdrop-blur-md text-white border-2 border-white/10 font-black italic uppercase tracking-[0.1em] rounded-3xl hover:bg-[#f27d26] hover:text-black hover:border-transparent transition-all hover:scale-105 active:scale-95 shadow-[0_10px_30px_rgba(0,0,0,0.5)] group relative overflow-hidden text-center flex items-center justify-center min-h-[100px]"
-              >
-                <div className="absolute inset-0 bg-gradient-to-tr from-white/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-                <div className="relative z-10 flex flex-col items-center gap-2">
-                  <span className="text-xs md:text-sm">{option.label || option.card?.fullName || option.id}</span>
-                  {(option.slotLabel || option.zoneLabel || option.ownerName) && (
-                    <span className="text-[10px] md:text-xs font-bold tracking-wide opacity-80">
-                      {[option.ownerName, option.slotLabel || option.zoneLabel].filter(Boolean).join(' · ')}
-                    </span>
+            {pendingQueryOptions.map((option, i) => {
+              const optionId = option.id || option.card?.gamecardId || '';
+              const isSelected = selectedQueryIds.includes(optionId);
+              const ChoiceIcon = getChoiceIcon(option.icon);
+              return (
+                <button
+                  key={i}
+                  onClick={() => {
+                    if (!optionId || option.disabled) return;
+                    setSelectedQueryIds(prev => {
+                      if (prev.includes(optionId)) return prev.filter(id => id !== optionId);
+                      if (prev.length >= (game.pendingQuery?.maxSelections || 1)) {
+                        if (game.pendingQuery?.maxSelections === 1) return [optionId];
+                        return prev;
+                      }
+                      return [...prev, optionId];
+                    });
+                  }}
+                  className={cn(
+                    "px-4 py-6 md:px-8 md:py-8 backdrop-blur-md text-white border-2 font-black italic uppercase tracking-[0.1em] rounded-3xl transition-all hover:scale-105 active:scale-95 shadow-[0_10px_30px_rgba(0,0,0,0.5)] group relative overflow-hidden text-center flex items-center justify-center min-h-[140px]",
+                    isSelected
+                      ? "bg-[#f27d26] border-transparent text-black shadow-[#f27d26]/25"
+                      : "bg-zinc-900/80 border-white/10 hover:bg-[#f27d26] hover:text-black hover:border-transparent"
                   )}
-                </div>
-              </button>
-            ))}
+                >
+                  <div className="absolute inset-0 bg-gradient-to-tr from-white/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+                  <div className="relative z-10 flex flex-col items-center gap-3">
+                    <div className={cn(
+                      "flex h-14 w-14 items-center justify-center rounded-2xl border-2 transition-colors",
+                      isSelected
+                        ? "border-black/20 bg-black/10"
+                        : "border-[#f27d26]/40 bg-[#f27d26]/10 text-[#f27d26] group-hover:border-black/20 group-hover:bg-black/10 group-hover:text-black"
+                    )}>
+                      <ChoiceIcon className="h-8 w-8 stroke-[2.5]" />
+                    </div>
+                    <span className="text-xs md:text-sm">{option.label || option.card?.fullName || option.id}</span>
+                    {option.detail && (
+                      <span className="max-w-[14rem] text-[10px] md:text-xs font-bold not-italic leading-relaxed tracking-wide opacity-75">
+                        {option.detail}
+                      </span>
+                    )}
+                    {(option.slotLabel || option.zoneLabel || option.ownerName) && (
+                      <span className="text-[10px] md:text-xs font-bold tracking-wide opacity-80">
+                        {[option.ownerName, option.slotLabel || option.zoneLabel].filter(Boolean).join(' · ')}
+                      </span>
+                    )}
+                  </div>
+                </button>
+              );
+            })}
           </div>
         )}
       </StandardPopup>
@@ -3084,6 +3143,7 @@ const winReasonMap: Record<string, string> = {
   'DECK_OUT_DAMAGE': '受到伤害时卡组卡牌不足',
   'DECK_OUT_BATTLE_DAMAGE': '受到战斗伤害时卡组卡牌不足',
   'DECK_OUT_EFFECT_DAMAGE': '受到效果伤害时卡组卡牌不足',
+  'DECK_OUT_DECK_MOVE': '从卡组移动卡牌时卡组数量不足',
   'DECK_OUT_COST': '支付费用时卡组卡牌不足',
   'EROSION_BACK_FULL': '侵蚀区背面卡牌达到10张',
   'SURRENDER': '投降',

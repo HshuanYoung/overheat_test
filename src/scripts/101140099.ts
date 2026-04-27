@@ -12,7 +12,7 @@ const cardEffects: CardEffect[] = [{
       event?.playerUid !== playerState.uid &&
       gameState.battleState?.attackers?.includes(instance.gamecardId),
     execute: async (instance, gameState) => {
-      ensureData(instance).bt01DealtCombatDamageTurn = gameState.turnCount;
+      ensureData(instance).dealtCombatDamageTurn = gameState.turnCount;
     }
   }, {
     id: '101140099_end_reset_others',
@@ -23,7 +23,7 @@ const cardEffects: CardEffect[] = [{
     description: '回合结束时，若此单位本回合给予过对手战斗伤害，将你的其他所有单位重置。',
     condition: (gameState, playerState, instance, event) =>
       event?.playerUid === playerState.uid &&
-      ensureData(instance).bt01DealtCombatDamageTurn === gameState.turnCount,
+      ensureData(instance).dealtCombatDamageTurn === gameState.turnCount,
     execute: async (instance, _gameState, playerState) => {
       playerState.unitZone
         .filter((unit): unit is Card => !!unit && unit.gamecardId !== instance.gamecardId)
@@ -31,7 +31,7 @@ const cardEffects: CardEffect[] = [{
           unit.isExhausted = false;
           addInfluence(unit, instance, '因效果重置');
         });
-      delete ensureData(instance).bt01DealtCombatDamageTurn;
+      delete ensureData(instance).dealtCombatDamageTurn;
     }
   }, {
     id: '101140099_low_erosion_protect',

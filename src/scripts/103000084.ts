@@ -1,12 +1,17 @@
 import { Card, CardEffect, TriggerLocation } from '../types/game';
-import { AtomicEffectExecutor, addInfluence, addTempKeyword, canPutUnitOntoBattlefield, createSelectCardQuery, erosionCost, getOpponentUid, isNonGodUnit, moveCard, ownUnits } from './BaseUtil';
+import { AtomicEffectExecutor, addInfluence, addTempKeyword, createSelectCardQuery, erosionCost, getOpponentUid, isNonGodUnit, moveCard, ownUnits } from './BaseUtil';
 
 const cardEffects: CardEffect[] = [{
     id: '103000084_grave_entry',
     type: 'ACTIVATE',
     triggerLocation: ['GRAVE'],
     description: '主要阶段，从墓地发动：将你战场上3个非神蚀单位送入墓地，将此卡放置到战场，本回合获得速攻、歼灭。',
-    condition: (gameState, playerState) => gameState.phase === 'MAIN' && playerState.isTurn && ownUnits(playerState).filter(unit => AtomicEffectExecutor.matchesColor(unit, 'GREEN')).length >= 2 && ownUnits(playerState).filter(isNonGodUnit).length >= 3 && canPutUnitOntoBattlefield(playerState, playerState.grave.find(card => card.id === '103000084') as Card),
+    condition: (gameState, playerState, instance) =>
+      gameState.phase === 'MAIN' &&
+      playerState.isTurn &&
+      instance.cardlocation === 'GRAVE' &&
+      ownUnits(playerState).filter(unit => AtomicEffectExecutor.matchesColor(unit, 'GREEN')).length >= 2 &&
+      ownUnits(playerState).filter(isNonGodUnit).length >= 3,
     execute: async (instance, gameState, playerState) => {
       const candidates = ownUnits(playerState).filter(isNonGodUnit);
       createSelectCardQuery(
@@ -98,8 +103,10 @@ const card: Card = {
   godMark: true,
   displayState: 'FRONT_UPRIGHT',
   isExhausted: false,
-  isrush: true,
-  isAnnihilation: true,
+  isrush: false,
+  baseIsrush: false,
+  isAnnihilation: false,
+  baseAnnihilation: false,
   canAttack: true,
   feijingMark: false,
   canResetCount: 0,

@@ -1,4 +1,4 @@
-﻿import { GameState, PlayerState, Card, GameEvent, CardEffect, TriggerLocation } from '../types/game';
+import { GameState, PlayerState, Card, GameEvent, CardEffect, TriggerLocation } from '../types/game';
 import { GameService } from './gameService';
 import { AtomicEffectExecutor } from './AtomicEffectExecutor';
 import { getCardIdentity } from '../lib/utils';
@@ -191,9 +191,16 @@ export class EventEngine {
         if (card) {
           delete (card as any).battleForbiddenByEffect;
           delete (card as any).cannotBeAttackTargetByEffect;
+          delete (card as any).cannotBeEffectTargetByEffect;
           delete (card as any).battleImmuneByEffect;
           if ((card as any).data?.cannotAllianceByEffect !== undefined) {
             delete (card as any).data.cannotAllianceByEffect;
+          }
+          if ((card as any).data?.canAttackExhausted !== undefined) {
+            delete (card as any).data.canAttackExhausted;
+          }
+          if ((card as any).data?.canAttackReady !== undefined) {
+            delete (card as any).data.canAttackReady;
           }
           if ((card as any).data?.indestructibleByEffect !== undefined) {
             delete (card as any).data.indestructibleByEffect;
@@ -209,7 +216,7 @@ export class EventEngine {
           if (card.basePower !== undefined) card.power = card.basePower + (card.temporaryPowerBuff || 0);
           if (card.baseDamage !== undefined) card.damage = card.baseDamage + (card.temporaryDamageBuff || 0);
           if (card.baseIsrush !== undefined) card.isrush = card.baseIsrush || !!card.temporaryRush;
-          if (card.baseAnnihilation !== undefined) card.isAnnihilation = card.baseAnnihilation;
+          if (card.baseAnnihilation !== undefined) card.isAnnihilation = card.baseAnnihilation || !!card.temporaryAnnihilation;
           if (card.baseCanAttack !== undefined) card.canAttack = card.baseCanAttack;
           if (card.temporaryCanAttackAny !== undefined && card.temporaryCanAttackAny) {
             // "Full Attack" logic: potentially update some property that battle system checks
@@ -266,6 +273,10 @@ export class EventEngine {
             const source = card.temporaryBuffSources?.['rush'] || '效果';
             card.influencingEffects.push({ sourceCardName: source, description: '获得【速攻】' });
           }
+          if (card.temporaryAnnihilation) {
+            const source = card.temporaryBuffSources?.['annihilation'] || '效果';
+            card.influencingEffects.push({ sourceCardName: source, description: '获得【歼灭】' });
+          }
           if (card.temporaryHeroic) {
             const source = card.temporaryBuffSources?.['heroic'] || '效果';
             card.influencingEffects.push({ sourceCardName: source, description: '获得【英勇】' });
@@ -314,22 +325,19 @@ export class EventEngine {
             description: '获得效果: 【永续】不会被战斗破坏'
           });
         }
-        if (card && (card as any).data?.bt01ReturnAtOwnEndSourceName) {
+        if (card && (card as any).data?.returnAtOwnEndSourceName) {
           if (!card.influencingEffects) card.influencingEffects = [];
           card.influencingEffects.push({
-            sourceCardName: (card as any).data.bt01ReturnAtOwnEndSourceName,
+            sourceCardName: (card as any).data.returnAtOwnEndSourceName,
             description: '在回合结束时回归战场'
           });
         }
-        if (card && (card as any).data?.bt01TenFormActive) {
+        if (card && (card as any).data?.destroyAtEndBy) {
           if (!card.influencingEffects) card.influencingEffects = [];
-          const source = (card as any).data.bt01TenFormSourceName || card.fullName || '效果';
-          card.power = 4000;
-          card.damage = 4;
-          card.isHeroic = true;
-          card.influencingEffects.push({ sourceCardName: source, description: '力量变为4000' });
-          card.influencingEffects.push({ sourceCardName: source, description: '伤害变为4' });
-          card.influencingEffects.push({ sourceCardName: source, description: '获得【英勇】' });
+          card.influencingEffects.push({
+            sourceCardName: (card as any).data.destroyAtEndBy,
+            description: '回合结束时破坏'
+          });
         }
       });
     });

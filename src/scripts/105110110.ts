@@ -10,13 +10,20 @@ const reorderRemainingTopCards = (
   orderedTopToBottomIds: string[],
   sourceCard: Card
 ) => {
+  const player = gameState.players[playerUid];
   const cards = orderedTopToBottomIds
     .map(id => AtomicEffectExecutor.findCardById(gameState, id))
     .filter((card): card is Card => !!card && card.cardlocation === 'DECK');
 
+  if (cards.length === 0) return;
+
+  const orderedIds = new Set(cards.map(card => card.gamecardId));
+  player.deck = player.deck.filter(card => !orderedIds.has(card.gamecardId));
   for (let i = cards.length - 1; i >= 0; i -= 1) {
-    moveCard(gameState, playerUid, cards[i], 'DECK', sourceCard);
+    cards[i].cardlocation = 'DECK';
+    player.deck.push(cards[i]);
   }
+  gameState.logs.push(`[${sourceCard.fullName}] 将检视后剩余的 ${cards.length} 张卡按选择顺序放回卡组顶。`);
 };
 
 const effect_105110110_enter: CardEffect = {

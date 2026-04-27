@@ -6,7 +6,7 @@ const cardEffects: CardEffect[] = [{
     type: 'CONTINUOUS',
     description: '对手不能用力量2000以下的单位防御此单位的攻击。',
     applyContinuous: (_gameState, instance) => {
-      ensureData(instance).bt01DefenseMinPower = 2000;
+      ensureData(instance).defenseMinPower = 2000;
       addInfluence(instance, instance, '对手不能用力量2000以下的单位防御');
     }
   }];

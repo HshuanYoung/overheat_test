@@ -1,13 +1,14 @@
-import { Card, CardEffect, TriggerLocation } from '../types/game';
-import { addContinuousDamage, addContinuousPower, addInfluence, addTempPower, ensureData, paymentCost } from './BaseUtil';
+import { Card, CardEffect } from '../types/game';
+import { addContinuousDamage, addContinuousPower, addInfluence, addTempPower, canPayAccessCost, ensureData, paymentCost } from './BaseUtil';
 
 const cardEffects: CardEffect[] = [{
     id: '103000082_base',
     type: 'CONTINUOUS',
-    description: '不能组成联军，也不能成为效果对象；可以攻击对手重置单位。',
+    description: '不能组成联军，也不能成为效果对象；可以攻击对手横置单位。',
     applyContinuous: (_gameState, instance) => {
       ensureData(instance).cannotAllianceByEffect = true;
-      ensureData(instance).bt01CanAttackReady = true;
+      ensureData(instance).canAttackExhausted = true;
+      (instance as any).cannotBeEffectTargetByEffect = true;
       addInfluence(instance, instance, '不能组成联军，也不能成为效果对象');
     }
   }, {
@@ -16,6 +17,7 @@ const cardEffects: CardEffect[] = [{
     triggerLocation: ['UNIT'],
     limitCount: 1,
     description: '支付2费：本回合中，此单位力量+1500。',
+    condition: (gameState, playerState, instance) => canPayAccessCost(gameState, playerState, 2, 'GREEN', instance),
     cost: paymentCost(2, 'GREEN'),
     execute: async (instance) => addTempPower(instance, instance, 1500)
   }, {
@@ -65,8 +67,10 @@ const card: Card = {
   godMark: true,
   displayState: 'FRONT_UPRIGHT',
   isExhausted: false,
-  isrush: true,
-  isAnnihilation: true,
+  isrush: false,
+  baseIsrush: false,
+  isAnnihilation: false,
+  baseAnnihilation: false,
   canAttack: true,
   feijingMark: false,
   canResetCount: 0,

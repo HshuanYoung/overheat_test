@@ -1,5 +1,6 @@
 import { Card, GameState, PlayerState, GameEvent } from '../types/game';
 import { AtomicEffectExecutor } from '../services/AtomicEffectExecutor';
+import { ensureDeckHasCardsForMove } from './BaseUtil';
 
 const card: Card = {
   id: '104020064',
@@ -47,12 +48,10 @@ const card: Card = {
         const opponentUid = Object.keys(gameState.players).find(uid => uid !== playerState.uid);
         if (!opponentUid) return;
 
+        if (!ensureDeckHasCardsForMove(gameState, playerState.uid, 2, card)) return;
+
         // Take top 2 cards from deck
         const topCards = playerState.deck.slice(-2).reverse();
-        if (topCards.length === 0) {
-          gameState.logs.push(`[小巷里的情报贩子] 卡组已空，无法发动效果。`);
-          return;
-        }
 
         // We technically "publicly display" them by putting them in query options for the opponent
         gameState.pendingQuery = {

@@ -8,7 +8,9 @@ const effect_205110042_activate: CardEffect = {
   limitNameType: true,
   triggerLocation: ['HAND', 'PLAY'],
   description: 'Main phase only. Each player discards all cards in hand, then draws the same amount.',
-  condition: (gameState, playerState) => gameState.phase === 'MAIN' && playerState.isTurn,
+  condition: (gameState, playerState, instance) =>
+    instance.cardlocation === 'PLAY' ||
+    (gameState.phase === 'MAIN' && playerState.isTurn),
   execute: async (instance, gameState) => {
     for (const player of Object.values(gameState.players)) {
       const discardIds = player.hand.map(card => card.gamecardId);

@@ -32,10 +32,10 @@ const cardEffects: CardEffect[] = [{
       exileByEffect(gameState, target, instance);
       const exiled = AtomicEffectExecutor.findCardById(gameState, id);
       if (exiled) {
-        ensureData(exiled).bt01ReturnAtOwnEndSourceName = instance.fullName;
+        ensureData(exiled).returnAtOwnEndSourceName = instance.fullName;
         addInfluence(exiled, instance, '在回合结束时回归战场');
       }
-      const returns = (playerState as any).bt01BlinkReturns || [];
+      const returns = (playerState as any).blinkReturns || [];
       returns.push({
         cardId: id,
         ownerUid,
@@ -43,7 +43,7 @@ const cardEffects: CardEffect[] = [{
         afterTurn: gameState.turnCount,
         sourceName: instance.fullName
       });
-      (playerState as any).bt01BlinkReturns = returns;
+      (playerState as any).blinkReturns = returns;
     }
   }, {
     id: '101140100_return_at_own_end',
@@ -54,9 +54,9 @@ const cardEffects: CardEffect[] = [{
     description: '下一次你的回合结束时，将此效果放逐的卡放回其持有者的战场。',
     condition: (gameState, playerState, _instance, event) =>
       event?.playerUid === playerState.uid &&
-      ((playerState as any).bt01BlinkReturns || []).some((entry: any) => gameState.turnCount >= entry.afterTurn),
+      ((playerState as any).blinkReturns || []).some((entry: any) => gameState.turnCount >= entry.afterTurn),
     execute: async (instance, gameState, playerState) => {
-      const returns = ((playerState as any).bt01BlinkReturns || []) as any[];
+      const returns = ((playerState as any).blinkReturns || []) as any[];
       const remaining: any[] = [];
       returns.forEach(entry => {
         if (gameState.turnCount < entry.afterTurn) {
@@ -67,12 +67,12 @@ const cardEffects: CardEffect[] = [{
         const exiled = AtomicEffectExecutor.findCardById(gameState, entry.cardId);
         if (exiled && entry.ownerUid && exiled.cardlocation === 'EXILE') {
           const data = ensureData(exiled);
-          delete data.bt01ReturnAtOwnEndSourceName;
+          delete data.returnAtOwnEndSourceName;
           moveCard(gameState, entry.ownerUid, exiled, entry.zone || 'UNIT', instance);
           gameState.logs.push(`[${entry.sourceName || instance.fullName}] ${exiled.fullName} 在回合结束时回归战场。`);
         }
       });
-      (playerState as any).bt01BlinkReturns = remaining;
+      (playerState as any).blinkReturns = remaining;
     }
   }];
 

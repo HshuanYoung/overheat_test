@@ -23,8 +23,8 @@ const cardEffects: CardEffect[] = [story('201100036_prevent', '选择侵蚀区2�
         .map(id => faceUpErosion(playerState).find(card => card.gamecardId === id))
         .filter((card): card is Card => !!card)
         .forEach(card => moveCard(gameState, playerState.uid, card, 'EROSION_BACK', instance, { faceDown: true }));
-      (playerState as any).bt01PreventAllDamageTurn = gameState.turnCount;
-      (playerState as any).bt01PreventAllDamageSourceName = instance.fullName;
+      (playerState as any).preventAllDamageTurn = gameState.turnCount;
+      (playerState as any).preventAllDamageSourceName = instance.fullName;
     }
   })];
 

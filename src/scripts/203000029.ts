@@ -1,12 +1,11 @@
-import { Card, CardEffect, TriggerLocation } from '../types/game';
-import { backErosionCount, story } from './BaseUtil';
+import { Card, CardEffect } from '../types/game';
+import { story } from './BaseUtil';
 
 const cardEffects: CardEffect[] = [story('203000029_wind_production', '本回合中，你下一次支付ACCESS值时，可以使自己的侵蚀区中的卡刚好达到10张。', async (instance, gameState, playerState) => {
-    if (backErosionCount(playerState) < 3) return;
-    (playerState as any).bt01WindProductionTurn = gameState.turnCount;
-    (playerState as any).bt01WindProductionSourceName = instance.fullName;
+    (playerState as any).windProductionTurn = gameState.turnCount;
+    (playerState as any).windProductionSourceName = instance.fullName;
     gameState.logs.push(`[${instance.fullName}] 本回合下一次支付ACCESS值可以刚好达到10张侵蚀。`);
-  })];
+  }, { erosionBackLimit: [3, 10] })];
 
 /**
  * Auto-generated from Card.xlsx + Card2.xlsx.

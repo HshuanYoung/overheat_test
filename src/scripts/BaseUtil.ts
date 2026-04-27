@@ -11,6 +11,33 @@ export const getOpponentUid = (gameState: GameState, playerUid: string) =>
 export const getTopDeckCards = (player: PlayerState, count: number) =>
   player.deck.slice(-count).reverse();
 
+export const loseForInsufficientDeckMove = (
+  gameState: GameState,
+  playerUid: string,
+  count: number,
+  sourceCard?: Card
+) => {
+  if (gameState.gameStatus === 2) return;
+  const player = gameState.players[playerUid];
+  gameState.gameStatus = 2;
+  gameState.winReason = 'DECK_OUT_DECK_MOVE';
+  gameState.winnerId = gameState.playerIds.find(id => id !== playerUid);
+  gameState.winSourceCardName = sourceCard?.fullName;
+  gameState.logs.push(`[游戏结束] ${player.displayName} 的卡组数量不足，无法从卡组移动 ${count} 张卡，判负。`);
+};
+
+export const ensureDeckHasCardsForMove = (
+  gameState: GameState,
+  playerUid: string,
+  count: number,
+  sourceCard?: Card
+) => {
+  const player = gameState.players[playerUid];
+  if (!player || player.deck.length >= count) return true;
+  loseForInsufficientDeckMove(gameState, playerUid, count, sourceCard);
+  return false;
+};
+
 export const revealDeckCards = (gameState: GameState, playerUid: string, count: number, sourceCard?: Card) => {
   const cards = getTopDeckCards(gameState.players[playerUid], count);
   const hasPuppetRevealBoost =
@@ -60,6 +87,12 @@ export const isVirtualGodMarkReveal = (gameState: GameState, card: Card | undefi
     (card as any).data?.bt04PuppetRevealTurn === gameState.turnCount
   );
 
+export const cannotBeChosenAsEffectTarget = (card: Card, sourceCard?: Card) =>
+  !!sourceCard &&
+  card.cardlocation === 'UNIT' &&
+  card.gamecardId !== sourceCard.gamecardId &&
+  !!(card as any).cannotBeEffectTargetByEffect;
+
 export const createSelectCardQuery = (
   gameState: GameState,
   playerUid: string,
@@ -71,6 +104,9 @@ export const createSelectCardQuery = (
   context: any,
   sourceResolver?: (card: Card) => TriggerLocation
 ) => {
+  const sourceCard = context?.sourceCardId ? AtomicEffectExecutor.findCardById(gameState, context.sourceCardId) : undefined;
+  const selectableCards = cards.filter(card => !cannotBeChosenAsEffectTarget(card, sourceCard));
+  if (selectableCards.length < minSelections) return;
   gameState.pendingQuery = {
     id: Math.random().toString(36).substring(7),
     type: 'SELECT_CARD',
@@ -78,7 +114,7 @@ export const createSelectCardQuery = (
     options: AtomicEffectExecutor.enrichQueryOptions(
       gameState,
       playerUid,
-      cards.map(card => ({
+      selectableCards.map(card => ({
         card,
         source: sourceResolver ? sourceResolver(card) : (card.cardlocation as TriggerLocation)
       }))
@@ -397,7 +433,9 @@ export const addTempKeyword = (target: Card, source: Card, keyword: 'rush' | 'he
     target.isHeroic = true;
     target.temporaryBuffSources.heroic = source.fullName;
   } else {
+    target.temporaryAnnihilation = true;
     target.isAnnihilation = true;
+    target.temporaryBuffSources.annihilation = source.fullName;
     addInfluence(target, source, '获得效果: 【歼灭】');
   }
 };
@@ -416,11 +454,13 @@ export const moveByEffect = (
 
 export const moveTopDeckTo = (gameState: GameState, playerUid: string, count: number, toZone: TriggerLocation, source: Card, faceDown?: boolean) => {
   const player = gameState.players[playerUid];
+  if (!ensureDeckHasCardsForMove(gameState, playerUid, count, source)) return;
   getTopDeckCards(player, count).forEach(card => moveCard(gameState, playerUid, card, toZone, source, { faceDown }));
 };
 
 export const millTop = (gameState: GameState, playerUid: string, count: number, source: Card) => {
   const player = gameState.players[playerUid];
+  if (!ensureDeckHasCardsForMove(gameState, playerUid, count, source)) return;
   getTopDeckCards(player, count).forEach(card => moveCard(gameState, playerUid, card, 'GRAVE', source));
 };
 
@@ -494,6 +534,35 @@ export const paymentCost = (amount: number, color?: string): CardEffect['cost'] 
     context: { sourceCardId: instance.gamecardId }
   };
   return true;
+};
+
+export const canPayAccessCost = (gameState: GameState, playerState: PlayerState, amount: number, color?: string, sourceCard?: Card) => {
+  if (amount <= 0) return true;
+
+  const paymentColor = color || sourceCard?.color;
+  const sourceCardId = sourceCard?.gamecardId;
+  const hasFeijing = playerState.hand.some(card =>
+    card.gamecardId !== sourceCardId &&
+    (
+      (card.feijingMark && (!paymentColor || card.color === paymentColor)) ||
+      (card.id === '204000145' && paymentColor === 'BLUE' && amount <= 3) ||
+      (card.id === '205000136' && paymentColor === 'YELLOW' && amount <= 3)
+    )
+  );
+
+  let remaining = hasFeijing ? Math.max(0, amount - 3) : amount;
+  const readyUnits = playerState.unitZone.filter(unit => unit && !unit.isExhausted).length;
+  remaining = Math.max(0, remaining - readyUnits);
+  if (remaining <= 0) return true;
+
+  const totalErosion = playerState.erosionFront.filter(card => card !== null).length +
+    playerState.erosionBack.filter(card => card !== null).length;
+  const canUseWindProduction =
+    (playerState as any).windProductionTurn === gameState.turnCount &&
+    totalErosion + remaining === 10;
+  if (!canUseWindProduction && totalErosion + remaining >= 10) return false;
+
+  return playerState.deck.length >= remaining;
 };
 
 export const exhaustCost: CardEffect['cost'] = async (_gameState, _playerState, instance) => {
@@ -577,7 +646,7 @@ export const appendEndResolution = (
     card: source,
     playerUid,
     event,
-    effectIndex: 0,
+    effectIndex: -1,
     effect: {
       id,
       type: 'TRIGGER',

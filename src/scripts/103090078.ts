@@ -1,4 +1,4 @@
-import { Card, CardEffect, TriggerLocation } from '../types/game';
+import { Card, CardEffect } from '../types/game';
 import { AtomicEffectExecutor, addInfluence, appendEndResolution, createSelectCardQuery, destroyByEffect, ensureData, getOpponentUid, ownUnits, ownerOf, paymentCost } from './BaseUtil';
 
 const cardEffects: CardEffect[] = [{
@@ -18,7 +18,14 @@ const cardEffects: CardEffect[] = [{
     limitCount: 1,
     limitNameType: true,
     description: '主要阶段，支付1费并横置：选择对手1个力量不高于此单位的非神蚀单位，回合结束时破坏。',
-    condition: (gameState, playerState, instance) => playerState.isTurn && gameState.phase === 'MAIN' && !instance.isExhausted,
+    condition: (gameState, playerState, instance) => {
+      if (!playerState.isTurn || gameState.phase !== 'MAIN' || instance.isExhausted) return false;
+      const opponent = gameState.players[getOpponentUid(gameState, playerState.uid)];
+      return ownUnits(opponent).some(unit =>
+        !unit.godMark &&
+        (unit.power || 0) <= (instance.power || 0)
+      );
+    },
     cost: async (gameState, playerState, instance) => {
       const paid = await paymentCost(1, 'GREEN')!(gameState, playerState, instance);
       instance.isExhausted = true;
@@ -26,7 +33,10 @@ const cardEffects: CardEffect[] = [{
     },
     execute: async (instance, gameState, playerState) => {
       const opponent = gameState.players[getOpponentUid(gameState, playerState.uid)];
-      const candidates = ownUnits(opponent).filter(unit => !unit.godMark && (unit.power || 0) <= (instance.power || 0));
+      const candidates = ownUnits(opponent).filter(unit =>
+        !unit.godMark &&
+        (unit.power || 0) <= (instance.power || 0)
+      );
       if (candidates.length === 0) return;
       createSelectCardQuery(
         gameState,
@@ -43,11 +53,18 @@ const cardEffects: CardEffect[] = [{
       const opponent = gameState.players[getOpponentUid(gameState, playerState.uid)];
       const target = ownUnits(opponent).find(unit => unit.gamecardId === selections[0]);
       if (!target) return;
-      ensureData(target).bt01DestroyAtEndBy = instance.fullName;
+      const data = ensureData(target);
+      data.destroyAtEndBy = instance.fullName;
+      data.destroyAtEndSourceCardId = instance.gamecardId;
+      data.destroyAtEndSourcePlayerUid = playerState.uid;
       addInfluence(target, instance, '回合结束时破坏');
       appendEndResolution(gameState, playerState.uid, instance, '103090078_end_destroy', (source, state) => {
         const live = AtomicEffectExecutor.findCardById(state, target.gamecardId);
-        if (live) destroyByEffect(state, live, source);
+        if (!live) return;
+        delete (live as any).data?.destroyAtEndBy;
+        delete (live as any).data?.destroyAtEndSourceCardId;
+        delete (live as any).data?.destroyAtEndSourcePlayerUid;
+        destroyByEffect(state, live, source);
       });
     }
   }];

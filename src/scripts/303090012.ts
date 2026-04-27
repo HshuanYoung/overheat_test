@@ -1,5 +1,5 @@
 import { Card, CardEffect, TriggerLocation } from '../types/game';
-import { canPutUnitOntoBattlefield, exhaustCost, getTopDeckCards, isNonGodUnit, moveCard } from './BaseUtil';
+import { canPutUnitOntoBattlefield, ensureDeckHasCardsForMove, exhaustCost, getTopDeckCards, isNonGodUnit, moveCard } from './BaseUtil';
 
 const cardEffects: CardEffect[] = [{
     id: '303090012_mill_play',
@@ -9,6 +9,7 @@ const cardEffects: CardEffect[] = [{
     condition: (_gameState, _playerState, instance) => !instance.isExhausted,
     cost: exhaustCost,
     execute: async (instance, gameState, playerState) => {
+      if (!ensureDeckHasCardsForMove(gameState, playerState.uid, 1, instance)) return;
       const top = getTopDeckCards(playerState, 1)[0];
       if (!top) return;
       moveCard(gameState, playerState.uid, top, 'GRAVE', instance);
