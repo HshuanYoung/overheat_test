@@ -321,6 +321,16 @@ export class EventEngine {
             description: '在回合结束时回归战场'
           });
         }
+        if (card && (card as any).data?.bt01TenFormActive) {
+          if (!card.influencingEffects) card.influencingEffects = [];
+          const source = (card as any).data.bt01TenFormSourceName || card.fullName || '效果';
+          card.power = 4000;
+          card.damage = 4;
+          card.isHeroic = true;
+          card.influencingEffects.push({ sourceCardName: source, description: '力量变为4000' });
+          card.influencingEffects.push({ sourceCardName: source, description: '伤害变为4' });
+          card.influencingEffects.push({ sourceCardName: source, description: '获得【英勇】' });
+        }
       });
     });
 

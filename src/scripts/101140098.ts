@@ -1,6 +1,28 @@
 import { Card, CardEffect, TriggerLocation } from '../types/game';
 import { addInfluence, allCardsOnField, createSelectCardQuery, destroyByEffect, ensureData, erosionCost, getOpponentUid, millTop, moveCard } from './BaseUtil';
 
+const applyTenForm = (instance: Card) => {
+  instance.temporaryPowerBuff = 4000 - (instance.basePower ?? 0);
+  instance.temporaryDamageBuff = 4 - (instance.baseDamage ?? 0);
+  instance.temporaryHeroic = true;
+  instance.temporaryBuffSources = {
+    ...(instance.temporaryBuffSources || {}),
+    power: instance.fullName,
+    damage: instance.fullName,
+    heroic: instance.fullName
+  };
+  instance.temporaryBuffDetails = {
+    ...(instance.temporaryBuffDetails || {}),
+    power: [{ sourceCardName: instance.fullName, value: instance.temporaryPowerBuff }]
+  };
+  instance.damage = 4;
+  instance.power = 4000;
+  instance.isHeroic = true;
+  addInfluence(instance, instance, '伤害变为4');
+  addInfluence(instance, instance, '力量变为4000');
+  addInfluence(instance, instance, '获得【英勇】');
+};
+
 const cardEffects: CardEffect[] = [{
     id: '101140098_start',
     type: 'TRIGGER',
@@ -69,12 +91,8 @@ const cardEffects: CardEffect[] = [{
       data.bt01TenFormActive = true;
       data.bt01TenFormActivatedTurn = gameState.turnCount;
       data.bt01TenFormOwnerUid = playerState.uid;
-      instance.damage = 4;
-      instance.power = 4000;
-      instance.isHeroic = true;
-      addInfluence(instance, instance, '伤害变为4');
-      addInfluence(instance, instance, '力量变为4000');
-      addInfluence(instance, instance, '获得【英勇】');
+      data.bt01TenFormSourceName = instance.fullName;
+      applyTenForm(instance);
     }
   }, {
     id: '101140098_ten_form_continuous',
@@ -83,12 +101,7 @@ const cardEffects: CardEffect[] = [{
     description: '愤怒：伤害4、力量4000并获得英勇。',
     applyContinuous: (_gameState, instance) => {
       if (!ensureData(instance).bt01TenFormActive) return;
-      instance.damage = 4;
-      instance.power = 4000;
-      instance.isHeroic = true;
-      addInfluence(instance, instance, '伤害变为4');
-      addInfluence(instance, instance, '力量变为4000');
-      addInfluence(instance, instance, '获得【英勇】');
+      applyTenForm(instance);
     }
   }, {
     id: '101140098_ten_form_clear',
@@ -107,6 +120,10 @@ const cardEffects: CardEffect[] = [{
       delete data.bt01TenFormActive;
       delete data.bt01TenFormActivatedTurn;
       delete data.bt01TenFormOwnerUid;
+      delete data.bt01TenFormSourceName;
+      instance.temporaryPowerBuff = 0;
+      instance.temporaryDamageBuff = 0;
+      instance.temporaryHeroic = false;
       instance.isHeroic = instance.baseHeroic ?? false;
     }
   }];
