@@ -775,7 +775,10 @@ export const ServerGameService = {
       if (remainingCost > 0) {
         const totalErosionCount = player.erosionFront.filter(c => c !== null).length +
           player.erosionBack.filter(c => c !== null).length;
-        if (totalErosionCount + remainingCost >= 10) {
+        const canUseWindProduction =
+          (player as any).bt01WindProductionTurn === gameState.turnCount &&
+          totalErosionCount + remainingCost === 10;
+        if (!canUseWindProduction && totalErosionCount + remainingCost >= 10) {
           return { canPlay: false, reason: '侵蚀区空间不足 (总数不能超过 9 张)' };
         }
       }
@@ -950,6 +953,14 @@ export const ServerGameService = {
 
       if (remainingCost > 0) {
         const totalErosion = player.erosionFront.filter(c => c !== null).length + player.erosionBack.filter(c => c !== null).length;
+        if (
+          (player as any).bt01WindProductionTurn === gameState.turnCount &&
+          remainingCost === 10 - totalErosion
+        ) {
+          gameState.logs.push(`[${(player as any).bt01WindProductionSourceName || '风力生产'}] 允许本次ACCESS支付使侵蚀区刚好达到10张。`);
+          delete (player as any).bt01WindProductionTurn;
+          delete (player as any).bt01WindProductionSourceName;
+        } else
         if (remainingCost >= 10 - totalErosion) {
           if (reservedDeckCard) player.deck.push(reservedDeckCard);
           return { success: false, reason: '侵蚀区空间不足以支付剩余费用 (不能达到 10 张)' };
@@ -2093,6 +2104,9 @@ export const ServerGameService = {
       if (!unit) throw new Error('Defender not found in unit zone');
       if (unit.isExhausted) throw new Error('Defender is already exhausted');
       if ((unit as any).battleForbiddenByEffect) throw new Error(`单位 [${unit.fullName}] 由于效果不能参与战斗`);
+      if ((unit as any).data?.bt01CannotDefendTurn === gameState.turnCount) {
+        throw new Error(`单位 [${unit.fullName}] 由于 [${(unit as any).data.bt01CannotDefendSourceName || '卡牌效果'}] 不能宣言防御`);
+      }
 
       const lockedTargetId = gameState.battleState.defenseLockedToTargetId;
       if (lockedTargetId && defenderId !== lockedTargetId) {
@@ -2106,6 +2120,13 @@ export const ServerGameService = {
       const maxPower = gameState.battleState.defenseMaxPowerRestriction;
       if (maxPower !== undefined && (unit.power || 0) >= maxPower) {
         throw new Error(`无法防御：对方的效果使得力量值 ${maxPower} 以上的单位不能进行防御`);
+      }
+      const attackers = gameState.battleState.attackers
+        .map(id => gameState.players[gameState.playerIds[gameState.currentTurnPlayer]].unitZone.find(attacker => attacker?.gamecardId === id))
+        .filter(Boolean) as Card[];
+      const minExclusive = Math.max(0, ...attackers.map(attacker => (attacker as any).data?.bt01DefenseMinPower || 0));
+      if (minExclusive > 0 && (unit.power || 0) <= minExclusive) {
+        throw new Error(`无法防御：攻击单位的效果使力量值 ${minExclusive} 以下的单位不能防御`);
       }
 
       ServerGameService.exhaustCard(unit);
@@ -2386,6 +2407,11 @@ export const ServerGameService = {
 
   applyDamageToPlayer(gameState: GameState, playerId: string, damage: number, source: 'BATTLE' | 'EFFECT' = 'BATTLE') {
     const player = gameState.players[playerId];
+
+    if ((player as any).bt01PreventAllDamageTurn === gameState.turnCount) {
+      gameState.logs.push(`[${(player as any).bt01PreventAllDamageSourceName || '伤害防止'}] 防止了 ${player.displayName} 将要受到的 ${damage} 点伤害。`);
+      return;
+    }
 
     let finalAmount = damage;
     let finalDestination: TriggerLocation = 'EROSION_FRONT';
@@ -2761,6 +2787,10 @@ export const ServerGameService = {
         p.hasUnitReturnedThisTurn = false;
         p.hasExhaustedThisTurn = [];
         p.negatedNames = [];
+        delete (p as any).bt01WindProductionTurn;
+        delete (p as any).bt01WindProductionSourceName;
+        delete (p as any).bt01PreventAllDamageTurn;
+        delete (p as any).bt01PreventAllDamageSourceName;
 
         const allCards = [
           ...p.deck, ...p.hand, ...p.grave, ...p.exile,

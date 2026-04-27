@@ -9,7 +9,7 @@ const isCardModule = (module: any): module is { default: Card } =>
   typeof module.default === 'object' &&
   typeof module.default.id === 'string';
 
-export const CARD_LIBRARY: Card[] = Object.values(cardModules).flatMap((module: any) => {
+export const CARD_LIBRARY: Card[] = Object.values(cardModules).flatMap((module: any): Card[] => {
   if (!isCardModule(module)) {
     return [];
   }

@@ -1,4 +1,5 @@
 import { Card } from '../types/game';
+import { getBt01CardEffects } from './_bt03YellowUtils';
 
 /**
  * Auto-generated from Card.xlsx + Card2.xlsx.
@@ -34,7 +35,7 @@ const card: Card = {
   canAttack: true,
   feijingMark: false,
   canResetCount: 0,
-  effects: [],
+  effects: getBt01CardEffects('101000105'),
   rarity: 'U',
   availableRarities: ['U'],
   cardPackage: 'ST01,BT01',

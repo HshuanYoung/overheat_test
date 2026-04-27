@@ -406,6 +406,11 @@ export class AtomicEffectExecutor {
     const player = gameState.players[targetPlayerUid];
     const dealer = gameState.players[dealerPlayerUid];
 
+    if ((player as any).bt01PreventAllDamageTurn === gameState.turnCount) {
+      gameState.logs.push(`[${(player as any).bt01PreventAllDamageSourceName || '伤害防止'}] 防止了 ${player.displayName} 将要受到的 ${amount} 点伤害。`);
+      return;
+    }
+
     let finalAmount = amount;
     if (source === 'EFFECT' && dealer.effectDamageModifier) {
       finalAmount += dealer.effectDamageModifier;
