@@ -39,6 +39,46 @@ export class AtomicEffectExecutor {
         };
       }
 
+      const graveIndex = owner.grave.findIndex(c => c?.gamecardId === cardId);
+      if (graveIndex !== -1) {
+        const slotNumber = graveIndex + 1;
+        return {
+          slotNumber,
+          slotLabel: `墓地 ${slotNumber}`,
+          zoneLabel: '墓地'
+        };
+      }
+
+      const deckIndex = owner.deck.findIndex(c => c?.gamecardId === cardId);
+      if (deckIndex !== -1) {
+        const slotNumber = deckIndex + 1;
+        return {
+          slotNumber,
+          slotLabel: `卡组 ${slotNumber}`,
+          zoneLabel: '卡组'
+        };
+      }
+
+      const exileIndex = owner.exile.findIndex(c => c?.gamecardId === cardId);
+      if (exileIndex !== -1) {
+        const slotNumber = exileIndex + 1;
+        return {
+          slotNumber,
+          slotLabel: `放逐区 ${slotNumber}`,
+          zoneLabel: '放逐区'
+        };
+      }
+
+      const playIndex = owner.playZone.findIndex(c => c?.gamecardId === cardId);
+      if (playIndex !== -1) {
+        const slotNumber = playIndex + 1;
+        return {
+          slotNumber,
+          slotLabel: `处理区 ${slotNumber}`,
+          zoneLabel: '处理区'
+        };
+      }
+
       const erosionCards = [
         ...owner.erosionBack.filter((c): c is Card => !!c),
         ...owner.erosionFront.filter((c): c is Card => !!c)
@@ -505,9 +545,17 @@ export class AtomicEffectExecutor {
       card.cardlocation = loopDestination;
 
       if (loopDestination === 'EROSION_FRONT') {
-        const emptyIndex = player.erosionFront.findIndex(c => c === null);
-        if (emptyIndex !== -1) player.erosionFront[emptyIndex] = card;
-        else player.erosionFront.push(card);
+        const currentErosion = player.erosionFront.filter(c => c !== null).length + player.erosionBack.filter(c => c !== null).length;
+        if (currentErosion >= 10) {
+          loopDestination = 'GRAVE';
+          card.cardlocation = 'GRAVE';
+          player.grave.push(card);
+          gameState.logs.push(`[侵蚀区已满] ${card.fullName} 因侵蚀区已达10张改为送入墓地。`);
+        } else {
+          const emptyIndex = player.erosionFront.findIndex(c => c === null);
+          if (emptyIndex !== -1) player.erosionFront[emptyIndex] = card;
+          else player.erosionFront.push(card);
+        }
       } else if (loopDestination === 'GRAVE') {
         player.grave.push(card);
       } else if (loopDestination === 'HAND') {
@@ -519,7 +567,12 @@ export class AtomicEffectExecutor {
       // Check for goddess transformation during resolution
       const totalErosion = player.erosionFront.filter(c => c !== null).length + player.erosionBack.filter(c => c !== null).length;
       if (totalErosion >= 10 && !player.isGoddessMode) {
-        (GameService as any).triggerGoddessTransformation(gameState, targetPlayerUid);
+        if (typeof (GameService as any).triggerGoddessTransformation === 'function') {
+          (GameService as any).triggerGoddessTransformation(gameState, targetPlayerUid);
+        } else {
+          player.isGoddessMode = true;
+          gameState.logs.push(`${player.displayName} 进入女神化状态。`);
+        }
         // Note: doubling and direct grave destination apply only to damage received thereafter.
       }
     }
@@ -983,6 +1036,16 @@ export class AtomicEffectExecutor {
     } else if (toZone === 'GRAVE') {
       card.displayState = 'FRONT_UPRIGHT';
       card.isExhausted = false;
+    }
+
+    if ((toZone === 'EROSION_FRONT' || toZone === 'EROSION_BACK')) {
+      const currentErosion = targetPlayer.erosionFront.filter(c => c !== null).length + targetPlayer.erosionBack.filter(c => c !== null).length;
+      if (currentErosion >= 10) {
+        gameState.logs.push(`[侵蚀区已满] ${card.fullName} 因侵蚀区已达10张改为送入墓地。`);
+        toZone = 'GRAVE';
+        card.displayState = 'FRONT_UPRIGHT';
+        card.isExhausted = false;
+      }
     }
 
     if (

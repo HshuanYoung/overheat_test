@@ -1,5 +1,5 @@
 import { Card, CardEffect, TriggerLocation } from '../types/game';
-import { addTempDamage, addTempKeyword, addTempPower, allCardsOnField, createSelectCardQuery, damagePlayerByEffect, destroyByEffect, getOpponentUid, millTop, moveCard } from './BaseUtil';
+import { addTempDamage, addTempKeyword, addTempPower, allCardsOnField, createSelectCardQuery, destroyByEffect, erosionCost, getOpponentUid, millTop, moveCard } from './BaseUtil';
 
 const cardEffects: CardEffect[] = [{
     id: '101140098_start',
@@ -36,10 +36,7 @@ const cardEffects: CardEffect[] = [{
     limitCount: 1,
     erosionTotalLimit: [10, 99],
     description: '10+，侵蚀2：选择战场上1张卡破坏。',
-    cost: async (gameState, playerState, instance) => {
-      await damagePlayerByEffect(gameState, playerState.uid, playerState.uid, 2, instance);
-      return true;
-    },
+    cost: erosionCost(2),
     execute: async (instance, gameState, playerState) => {
       const candidates = allCardsOnField(gameState).filter(card => card.gamecardId !== instance.gamecardId);
       if (candidates.length === 0) return;
@@ -66,10 +63,7 @@ const cardEffects: CardEffect[] = [{
     limitCount: 1,
     erosionTotalLimit: [10, 99],
     description: '10+，侵蚀2：直到下一次你的回合结束，此单位变为伤害4、力量4000并获得英勇。',
-    cost: async (gameState, playerState, instance) => {
-      await damagePlayerByEffect(gameState, playerState.uid, playerState.uid, 2, instance);
-      return true;
-    },
+    cost: erosionCost(2),
     execute: async instance => {
       addTempDamage(instance, instance, 4 - (instance.damage || 0));
       addTempPower(instance, instance, 4000 - (instance.power || 0));

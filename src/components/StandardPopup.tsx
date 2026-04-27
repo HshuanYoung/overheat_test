@@ -22,6 +22,7 @@ interface StandardPopupProps {
   
   // Card Selection & Display props
   cards?: Card[];
+  cardMeta?: Record<string, { ownerName?: string; slotLabel?: string; zoneLabel?: string; isMine?: boolean }>;
   selectedIds?: string[];
   minSelections?: number;
   maxSelections?: number;
@@ -54,6 +55,7 @@ export const StandardPopup: React.FC<StandardPopupProps> = ({
   confirmType = 'primary',
   confirmDisabled = false,
   cards = [],
+  cardMeta = {},
   selectedIds = [],
   minSelections = 0,
   maxSelections = 0,
@@ -193,6 +195,8 @@ export const StandardPopup: React.FC<StandardPopupProps> = ({
                 {cards.map((card, i) => {
                   const isSelected = selectedIds.includes(card.gamecardId);
                   const selectionOrder = selectedIds.indexOf(card.gamecardId) + 1;
+                  const meta = cardMeta[card.gamecardId || card.id] || {};
+                  const locationText = [meta.ownerName, meta.slotLabel || meta.zoneLabel].filter(Boolean).join(' · ');
                   
                   return (
                     <motion.div
@@ -208,6 +212,11 @@ export const StandardPopup: React.FC<StandardPopupProps> = ({
                       )}
                     >
                       <CardComponent card={card} disableZoom={true} cardBackUrl={cardBackUrl} />
+                      {locationText && (
+                        <div className="absolute left-2 top-2 max-w-[calc(100%-1rem)] rounded-lg bg-black/80 px-2 py-1 text-[10px] font-black leading-tight text-white shadow-lg ring-1 ring-white/10">
+                          {locationText}
+                        </div>
+                      )}
                       
                       {/* Selection Order Badge */}
                       {isSelected && mode === 'card_selection' && (

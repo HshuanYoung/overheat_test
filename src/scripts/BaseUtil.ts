@@ -449,9 +449,16 @@ export const dealUnpreventableSelfDamage = (gameState: GameState, playerUid: str
     if (player.isGoddessMode) {
       player.grave.push(card);
     } else {
-      const emptyIndex = player.erosionFront.findIndex(slot => slot === null);
-      if (emptyIndex !== -1) player.erosionFront[emptyIndex] = card;
-      else player.erosionFront.push(card);
+      const currentErosion = player.erosionFront.filter(slot => !!slot).length + player.erosionBack.filter(slot => !!slot).length;
+      if (currentErosion >= 10) {
+        card.cardlocation = 'GRAVE';
+        player.grave.push(card);
+        gameState.logs.push(`[侵蚀区已满] ${card.fullName} 因侵蚀区已达10张改为送入墓地。`);
+      } else {
+        const emptyIndex = player.erosionFront.findIndex(slot => slot === null);
+        if (emptyIndex !== -1) player.erosionFront[emptyIndex] = card;
+        else player.erosionFront.push(card);
+      }
     }
   }
   gameState.logs.push(`[${source.fullName}] 对自己造成 ${amount} 点不能防止的效果伤害。`);
@@ -492,6 +499,14 @@ export const paymentCost = (amount: number, color?: string): CardEffect['cost'] 
 export const exhaustCost: CardEffect['cost'] = async (_gameState, _playerState, instance) => {
   if (instance.isExhausted) return false;
   instance.isExhausted = true;
+  return true;
+};
+
+export const erosionCost = (amount: number): CardEffect['cost'] => async (gameState, playerState, instance) => {
+  const targets = faceUpErosion(playerState).slice(0, amount);
+  if (targets.length < amount) return false;
+  targets.forEach(card => moveCard(gameState, playerState.uid, card, 'EROSION_BACK', instance, { faceDown: true }));
+  gameState.logs.push(`[${instance.fullName}] 支付侵蚀${amount}：将 ${amount} 张正面侵蚀卡转为背面。`);
   return true;
 };
 

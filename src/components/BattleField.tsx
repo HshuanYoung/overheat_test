@@ -2373,6 +2373,19 @@ export const BattleField: React.FC = () => {
           'card_selection' // Fallback for SELECT_CHOICE or others
         }
         cards={pendingQueryOptions.filter(o => !!o.card).map(o => o.card!)}
+        cardMeta={Object.fromEntries(
+          pendingQueryOptions
+            .filter(o => !!o.card)
+            .map(o => [
+              o.card!.gamecardId || o.card!.id,
+              {
+                ownerName: o.ownerName,
+                slotLabel: o.slotLabel,
+                zoneLabel: o.zoneLabel || o.source,
+                isMine: o.isMine
+              }
+            ])
+        )}
         selectedIds={selectedQueryIds}
         minSelections={game.pendingQuery?.minSelections}
         maxSelections={game.pendingQuery?.maxSelections}

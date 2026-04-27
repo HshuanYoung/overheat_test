@@ -593,6 +593,17 @@ export const ServerGameService = {
       card.isExhausted = false;
     }
 
+    if (targetZone === 'EROSION_FRONT' || targetZone === 'EROSION_BACK') {
+      const currentErosion = targetPlayer.erosionFront.filter(c => c !== null).length + targetPlayer.erosionBack.filter(c => c !== null).length;
+      if (currentErosion >= 10) {
+        gameState.logs.push(`[侵蚀区已满] ${card.fullName} 因侵蚀区已达10张改为送入墓地。`);
+        targetZone = 'GRAVE';
+        card.cardlocation = 'GRAVE';
+        card.displayState = 'FRONT_UPRIGHT';
+        card.isExhausted = false;
+      }
+    }
+
     if (targetZone === 'UNIT' || targetZone === 'ITEM') {
       ServerGameService.readyCard(card);
       // Mark as played this turn to handle summon sickness/triggers correctly
@@ -2480,11 +2491,19 @@ export const ServerGameService = {
       }
 
       if (loopDestination === 'EROSION_FRONT') {
-        card.cardlocation = 'EROSION_FRONT';
-        card.displayState = 'FRONT_UPRIGHT';
-        const emptyIdx = player.erosionFront.findIndex(c => c === null);
-        if (emptyIdx !== -1) player.erosionFront[emptyIdx] = card;
-        else player.erosionFront.push(card);
+        const currentErosion = player.erosionFront.filter(c => c !== null).length + player.erosionBack.filter(c => c !== null).length;
+        if (currentErosion >= 10) {
+          card.cardlocation = 'GRAVE';
+          card.displayState = 'FRONT_UPRIGHT';
+          player.grave.push(card);
+          gameState.logs.push(`[侵蚀区已满] ${card.fullName} 因侵蚀区已达10张改为送入墓地。`);
+        } else {
+          card.cardlocation = 'EROSION_FRONT';
+          card.displayState = 'FRONT_UPRIGHT';
+          const emptyIdx = player.erosionFront.findIndex(c => c === null);
+          if (emptyIdx !== -1) player.erosionFront[emptyIdx] = card;
+          else player.erosionFront.push(card);
+        }
       } else if (loopDestination === 'UNIT') {
         card.cardlocation = 'UNIT';
         card.displayState = 'FRONT_UPRIGHT';

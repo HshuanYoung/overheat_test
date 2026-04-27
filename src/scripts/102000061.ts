@@ -1,5 +1,5 @@
 import { Card, CardEffect } from '../types/game';
-import { allCardsOnField, createSelectCardQuery, damagePlayerByEffect, destroyByEffect } from './BaseUtil';
+import { allCardsOnField, createSelectCardQuery, destroyByEffect, erosionCost } from './BaseUtil';
 
 const cardEffects: CardEffect[] = [{
   id: '102000061_ten_destroy_card',
@@ -12,10 +12,7 @@ const cardEffects: CardEffect[] = [{
     playerState.isTurn &&
     gameState.phase === 'MAIN' &&
     allCardsOnField(gameState).length > 0,
-  cost: async (gameState, playerState, instance) => {
-    await damagePlayerByEffect(gameState, playerState.uid, playerState.uid, 2, instance);
-    return true;
-  },
+  cost: erosionCost(2),
   execute: async (instance, gameState, playerState) => {
     const candidates = allCardsOnField(gameState);
     if (candidates.length === 0) return;

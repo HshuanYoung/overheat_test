@@ -1,5 +1,5 @@
 import { Card, CardEffect } from '../types/game';
-import { addInfluence, allUnitsOnField, createSelectCardQuery, damagePlayerByEffect } from './BaseUtil';
+import { addInfluence, allUnitsOnField, createSelectCardQuery, erosionCost } from './BaseUtil';
 
 const cardEffects: CardEffect[] = [{
   id: '101000063_ten_reset_units',
@@ -12,10 +12,7 @@ const cardEffects: CardEffect[] = [{
     playerState.isTurn &&
     gameState.phase === 'MAIN' &&
     allUnitsOnField(gameState).filter(unit => !unit.godMark).length >= 2,
-  cost: async (gameState, playerState, instance) => {
-    await damagePlayerByEffect(gameState, playerState.uid, playerState.uid, 2, instance);
-    return true;
-  },
+  cost: erosionCost(2),
   execute: async (instance, gameState, playerState) => {
     const candidates = allUnitsOnField(gameState).filter(unit => !unit.godMark);
     if (candidates.length < 2) return;

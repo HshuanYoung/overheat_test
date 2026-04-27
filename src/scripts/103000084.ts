@@ -1,5 +1,5 @@
 import { Card, CardEffect, TriggerLocation } from '../types/game';
-import { AtomicEffectExecutor, addInfluence, addTempKeyword, canPutUnitOntoBattlefield, createSelectCardQuery, damagePlayerByEffect, getOpponentUid, isNonGodUnit, moveCard, ownUnits } from './BaseUtil';
+import { AtomicEffectExecutor, addInfluence, addTempKeyword, canPutUnitOntoBattlefield, createSelectCardQuery, erosionCost, getOpponentUid, isNonGodUnit, moveCard, ownUnits } from './BaseUtil';
 
 const cardEffects: CardEffect[] = [{
     id: '103000084_grave_entry',
@@ -38,10 +38,7 @@ const cardEffects: CardEffect[] = [{
     limitGlobal: true,
     erosionTotalLimit: [10, 99],
     description: '10+，1游戏1次，侵蚀2：横置对手最多2个非神蚀单位；下次对手回合开始不能重置。',
-    cost: async (gameState, playerState, instance) => {
-      await damagePlayerByEffect(gameState, playerState.uid, playerState.uid, 2, instance);
-      return true;
-    },
+    cost: erosionCost(2),
     execute: async (instance, gameState, playerState) => {
       const opponent = gameState.players[getOpponentUid(gameState, playerState.uid)];
       const candidates = ownUnits(opponent).filter(unit => !unit.godMark);

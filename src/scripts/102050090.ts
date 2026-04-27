@@ -1,5 +1,5 @@
 import { Card, CardEffect, TriggerLocation } from '../types/game';
-import { addInfluence, addTempDamage, addTempPower, allUnitsOnField, canPutUnitOntoBattlefield, createSelectCardQuery, damagePlayerByEffect, ensureData, getOpponentUid, moveCard, ownUnits } from './BaseUtil';
+import { addInfluence, addTempDamage, addTempPower, allUnitsOnField, canPutUnitOntoBattlefield, createSelectCardQuery, ensureData, erosionCost, getOpponentUid, moveCard, ownUnits } from './BaseUtil';
 
 const cardEffects: CardEffect[] = [{
     id: '102050090_attack_lock',
@@ -39,10 +39,7 @@ const cardEffects: CardEffect[] = [{
     triggerLocation: ['HAND'],
     erosionTotalLimit: [10, 99],
     description: '10+：进入女神化时，可以从手牌放置到战场，选择最多2个单位伤害+1、力量+1000。',
-    cost: async (gameState, playerState, instance) => {
-      await damagePlayerByEffect(gameState, playerState.uid, playerState.uid, 1, instance);
-      return true;
-    },
+    cost: erosionCost(1),
     execute: async (instance, gameState, playerState) => {
       if (canPutUnitOntoBattlefield(playerState, instance)) moveCard(gameState, playerState.uid, instance, 'UNIT', instance);
       const candidates = allUnitsOnField(gameState);

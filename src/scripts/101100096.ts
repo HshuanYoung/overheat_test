@@ -1,5 +1,5 @@
 import { Card, CardEffect, TriggerLocation } from '../types/game';
-import { AtomicEffectExecutor, addInfluence, createSelectCardQuery, damagePlayerByEffect, ensureData, moveCard, ownerOf, paymentCost } from './BaseUtil';
+import { AtomicEffectExecutor, addInfluence, createSelectCardQuery, ensureData, erosionCost, moveCard, ownerOf, paymentCost } from './BaseUtil';
 
 const cardEffects: CardEffect[] = [{
     id: '101100096_alliance_protect',
@@ -60,10 +60,7 @@ const cardEffects: CardEffect[] = [{
     limitGlobal: true,
     erosionTotalLimit: [10, 99],
     description: '10+，1游戏1次，侵蚀1：选择墓地6张卡放到卡组底。',
-    cost: async (gameState, playerState, instance) => {
-      await damagePlayerByEffect(gameState, playerState.uid, playerState.uid, 1, instance);
-      return true;
-    },
+    cost: erosionCost(1),
     execute: async (instance, gameState, playerState) => {
       if (playerState.grave.length === 0) return;
       const count = Math.min(6, playerState.grave.length);
