@@ -1,5 +1,5 @@
 import { Card, CardEffect } from '../types/game';
-import { AtomicEffectExecutor, addTempDamage, addTempPower, attackingUnits, createChoiceQuery, createSelectCardQuery, story } from './BaseUtil';
+import { AtomicEffectExecutor, addTempDamage, addTempPower, attackingUnits, createChoiceQuery, createSelectCardQuery, isBattleFreeContext, story } from './BaseUtil';
 
 const cardEffects: CardEffect[] = [story('201000057_weaken', '选择1个参与攻击的单位，本回合伤害-1、力量-1000。之后若背面侵蚀1张以下，你可以抽1张卡。', async (instance, gameState, playerState) => {
   const targets = attackingUnits(gameState);
@@ -15,7 +15,7 @@ const cardEffects: CardEffect[] = [story('201000057_weaken', '选择1个参与�
     { sourceCardId: instance.gamecardId, effectId: '201000057_weaken', step: 'TARGET' }
   );
 }, {
-  condition: gameState => gameState.phase === 'BATTLE_FREE' && attackingUnits(gameState).length > 0,
+  condition: gameState => isBattleFreeContext(gameState) && attackingUnits(gameState).length > 0,
   onQueryResolve: async (instance, gameState, playerState, selections, context) => {
     if (context?.step === 'DRAW_CHOICE') {
       if (selections[0] === 'YES') await AtomicEffectExecutor.execute(gameState, playerState.uid, { type: 'DRAW', value: 1 }, instance);

@@ -389,6 +389,7 @@ export interface GameState {
     forcedGuardLogged?: boolean;
     skipAttackerExhaust?: boolean;
     autoResolveDamage?: boolean;
+    keepResetUnitIds?: string[];
   };
   effectUsage?: Record<string, number>;
   phaseTimerStart?: number;

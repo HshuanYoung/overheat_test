@@ -120,7 +120,12 @@ const goddessTriggerEffect: CardEffect = {
     if (event.playerUid !== opponentUid) return false;
 
     // 3. Check if current phase is damage calculation (caused by attack) or just transitioned to MAIN
-    if (gameState.phase !== 'DAMAGE_CALCULATION' && gameState.phase !== 'MAIN' && gameState.phase !== 'BATTLE_FREE') return false;
+    if (
+      gameState.phase !== 'DAMAGE_CALCULATION' &&
+      gameState.phase !== 'MAIN' &&
+      gameState.phase !== 'BATTLE_FREE' &&
+      gameState.previousPhase !== 'BATTLE_FREE'
+    ) return false;
 
     // 4. Check if equipped unit is in attackers
     if (!card.equipTargetId || !gameState.battleState?.attackers.includes(card.equipTargetId)) return false;

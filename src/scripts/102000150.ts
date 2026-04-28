@@ -9,9 +9,12 @@ const cardEffects: CardEffect[] = [{
   description: '从手牌进入战场时，选择对手最多2个单位横置。',
   condition: (gameState, playerState, instance, event) => {
     const opponent = gameState.players[getOpponentUid(gameState, playerState.uid)];
+    const enteredFromHand =
+      event.data?.sourceZone === 'HAND' ||
+      (event.data?.sourceZone === 'PLAY' && (instance as any).__playSnapshot?.sourceZone === 'HAND');
     return event?.sourceCardId === instance.gamecardId &&
       event.data?.zone === 'UNIT' &&
-      event.data?.sourceZone === 'HAND' &&
+      enteredFromHand &&
       ownUnits(opponent).length > 0;
   },
   execute: async (instance, gameState, playerState) => {

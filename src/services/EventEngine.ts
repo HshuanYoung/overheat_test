@@ -364,7 +364,14 @@ export class EventEngine {
             description: '回合结束时破坏'
           });
         }
-        if (card && (card as any).data?.preventNextDestroy) {
+        if (
+          card &&
+          (card as any).data?.preventNextDestroy &&
+          (
+            (card as any).data.preventNextDestroyUntilTurn === undefined ||
+            (card as any).data.preventNextDestroyUntilTurn >= gameState.turnCount
+          )
+        ) {
           if (!card.influencingEffects) card.influencingEffects = [];
           card.influencingEffects.push({
             sourceCardName: (card as any).data.preventNextDestroySourceName || '效果',
@@ -509,6 +516,13 @@ export class EventEngine {
                 description: '装备中'
               });
             }
+          } else {
+            item.equipTargetId = undefined;
+            if (!item.influencingEffects) item.influencingEffects = [];
+            item.influencingEffects.push({
+              sourceCardName: '系统状态',
+              description: '装备目标离场，已解除装备'
+            });
           }
         }
       });

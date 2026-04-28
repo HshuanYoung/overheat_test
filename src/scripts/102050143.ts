@@ -1,6 +1,8 @@
 import { Card, CardEffect } from '../types/game';
 import { addContinuousDamage, addInfluence, attackingUnits } from './BaseUtil';
 
+const isIleu = (card: Card) => String(card.faction || '').includes('伊列宇王国');
+
 const cardEffects: CardEffect[] = [{
   id: '102050143_alliance_boost',
   type: 'CONTINUOUS',
@@ -8,7 +10,7 @@ const cardEffects: CardEffect[] = [{
   applyContinuous: (gameState, instance) => {
     const attackers = attackingUnits(gameState);
     if (!gameState.battleState?.isAlliance || !attackers.some(unit => unit.gamecardId === instance.gamecardId)) return;
-    if (!attackers.some(unit => unit.gamecardId !== instance.gamecardId && unit.faction === '伊列宇王国')) return;
+    if (!attackers.some(unit => unit.gamecardId !== instance.gamecardId && isIleu(unit))) return;
     attackers.forEach(unit => {
       addContinuousDamage(unit, instance, 1);
       unit.isAnnihilation = true;
@@ -49,7 +51,7 @@ const card: Card = {
   displayState: 'FRONT_UPRIGHT',
   isExhausted: false,
   isrush: true,
-  isAnnihilation: true,
+  isAnnihilation: false,
   canAttack: true,
   feijingMark: false,
   canResetCount: 0,

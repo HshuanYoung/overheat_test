@@ -716,8 +716,37 @@ export const BattleField: React.FC = () => {
     return isRush || !wasPlayedThisTurn;
   };
 
+  const getForcedAttackIds = () => {
+    const ids = new Set<string>();
+    if (!game || !me) return ids;
+    me.unitZone.forEach(unit => {
+      if (!unit) return;
+      if ((unit as any).data?.forcedAttackTurn !== game.turnCount) return;
+      if ((unit as any).battleForbiddenByEffect) return;
+      if ((unit as any).data?.cannotAttackOrDefendUntilTurn && (unit as any).data.cannotAttackOrDefendUntilTurn >= game.turnCount) return;
+      if (canUnitAttack(unit)) ids.add(unit.gamecardId);
+    });
+    return ids;
+  };
+
+  const hasForcedAttackUnits = () => getForcedAttackIds().size > 0;
+
+  const canUnitAttackNow = (card: Card) => {
+    if (!canUnitAttack(card)) return false;
+    if (game.phase !== 'BATTLE_DECLARATION') return true;
+    const forcedAttackIds = getForcedAttackIds();
+    return forcedAttackIds.size === 0 || forcedAttackIds.has(card.gamecardId);
+  };
+
   const getAvailableAttackers = () => {
-    return me.unitZone.filter(c => c !== null && canUnitAttack(c)) as Card[];
+    return me.unitZone.filter(c => c !== null && canUnitAttackNow(c)) as Card[];
+  };
+
+  const canDeclareSelectedAttackers = () => {
+    if (selectedAttackers.length === 0) return false;
+    const forcedAttackIds = getForcedAttackIds();
+    if (forcedAttackIds.size === 0) return true;
+    return selectedAttackers.length === 1 && forcedAttackIds.has(selectedAttackers[0]);
   };
 
   const getAvailableDefenders = () => {
@@ -933,7 +962,8 @@ export const BattleField: React.FC = () => {
     if (allianceTargetSelection) {
       const isPartnerUnit =
         me.unitZone.some(c => c?.gamecardId === card.gamecardId) &&
-        canUnitAttack(card) &&
+        !hasForcedAttackUnits() &&
+        canUnitAttackNow(card) &&
         card.gamecardId !== allianceTargetSelection;
 
       if (zone === 'unit' && isPartnerUnit) {
@@ -1860,7 +1890,14 @@ export const BattleField: React.FC = () => {
                 const isOwnSharedPhase =
                   me.isTurn &&
                   ['MAIN', 'BATTLE_DECLARATION', 'BATTLE_FREE'].includes(game.phase);
-                const canActivateInPhase = isOwnSharedPhase || isCounteringTurn;
+                const isBattleFreeConfrontPrompt =
+                  game.phase === 'BATTLE_FREE' &&
+                  !!game.battleState?.askConfront &&
+                  (
+                    (game.battleState.askConfront === 'ASKING_OPPONENT' && !me.isTurn) ||
+                    (game.battleState.askConfront === 'ASKING_TURN_PLAYER' && me.isTurn)
+                  );
+                const canActivateInPhase = isOwnSharedPhase || isBattleFreeConfrontPrompt || isCounteringTurn;
 
                 if (!canActivateInPhase) return null;
                 const isMyCard = [...me.unitZone, ...me.itemZone, ...me.erosionFront, ...me.grave, ...me.hand].some(c => c?.gamecardId === cardMenu.card.gamecardId);
@@ -1927,8 +1964,9 @@ export const BattleField: React.FC = () => {
               {game.phase === 'BATTLE_DECLARATION' && me.isTurn && cardMenu.zone === 'unit' && (
                 (() => {
                   const isMyCard = me.unitZone.some(c => c?.gamecardId === cardMenu.card.gamecardId);
-                  if (isMyCard && canUnitAttack(cardMenu.card)) {
-                    const cannotAlliance = !!(cardMenu.card as any).data?.cannotAllianceByEffect;
+                  if (isMyCard && canUnitAttackNow(cardMenu.card)) {
+                    const forcedAttackActive = hasForcedAttackUnits();
+                    const cannotAlliance = forcedAttackActive || !!(cardMenu.card as any).data?.cannotAllianceByEffect;
                     return (
                       <div className="flex flex-col gap-2 md:gap-1 items-center">
                         {(!cardMenu.card.inAllianceGroup || cannotAlliance) && (
@@ -2704,7 +2742,7 @@ export const BattleField: React.FC = () => {
                     <motion.button
                       whileHover={{ scale: 1.05, y: -5 }}
                       whileTap={{ scale: 0.95 }}
-                      disabled={selectedAttackers.length === 0}
+                      disabled={!canDeclareSelectedAttackers()}
                       className="w-full h-18 py-5 px-10 bg-gradient-to-r from-red-600 to-red-500 hover:from-red-500 hover:to-red-400 text-white rounded-3xl text-sm font-black uppercase italic tracking-widest transition-all shadow-[0_20px_40px_rgba(220,38,38,0.4)] disabled:opacity-50 flex items-center justify-center gap-5 border-t border-white/20"
                       onClick={() => {
                         handleDeclareAttack();
@@ -2714,18 +2752,20 @@ export const BattleField: React.FC = () => {
                       <Sword className="w-6 h-6" />
                       {selectedAttackers.length === 2 ? '联军攻击' : '宣告攻击'}
                     </motion.button>
-                    <motion.button
-                      whileHover={{ scale: 1.05, y: -5 }}
-                      whileTap={{ scale: 0.95 }}
-                      className="w-full h-18 py-5 px-10 bg-gradient-to-r from-zinc-800 to-zinc-700 hover:from-zinc-700 hover:to-zinc-600 text-white rounded-3xl text-sm font-black uppercase italic tracking-widest transition-all border border-white/10 flex items-center justify-center gap-5 shadow-2xl"
-                      onClick={() => {
-                        GameService.advancePhase(gameId!, 'RETURN_MAIN');
-                        setShowPhaseMenu(false);
-                      }}
-                    >
-                      <ChevronRight className="w-6 h-6 rotate-180" />
-                      返回主要阶段
-                    </motion.button>
+                    {!hasForcedAttackUnits() && (
+                      <motion.button
+                        whileHover={{ scale: 1.05, y: -5 }}
+                        whileTap={{ scale: 0.95 }}
+                        className="w-full h-18 py-5 px-10 bg-gradient-to-r from-zinc-800 to-zinc-700 hover:from-zinc-700 hover:to-zinc-600 text-white rounded-3xl text-sm font-black uppercase italic tracking-widest transition-all border border-white/10 flex items-center justify-center gap-5 shadow-2xl"
+                        onClick={() => {
+                          GameService.advancePhase(gameId!, 'RETURN_MAIN');
+                          setShowPhaseMenu(false);
+                        }}
+                      >
+                        <ChevronRight className="w-6 h-6 rotate-180" />
+                        返回主要阶段
+                      </motion.button>
+                    )}
                   </>
                 )}
 

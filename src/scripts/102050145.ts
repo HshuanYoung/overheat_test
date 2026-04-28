@@ -1,8 +1,16 @@
 import { Card, CardEffect } from '../types/game';
-import { AtomicEffectExecutor, createPlayerSelectQuery, createSelectCardQuery, damagePlayerByEffect, destroyByEffect, ensureData, getOpponentUid, ownUnits } from './BaseUtil';
+import { AtomicEffectExecutor, createPlayerSelectQuery, createSelectCardQuery, damagePlayerByEffect, ensureData, getOpponentUid, isBattleFreeContext, moveCardAsCost, ownUnits } from './BaseUtil';
 
 const isSmallLost = (instance: Card, turn: number) =>
   Number(ensureData(instance).smallActivateLostUntilTurn || 0) > turn;
+
+const canUseInBattleFreeOrDamageRequest = (gameState: any, playerState: any) =>
+  (playerState.isTurn && gameState.phase === 'MAIN') ||
+  isBattleFreeContext(gameState) ||
+  (
+    gameState.phase === 'COUNTERING' &&
+    gameState.counterStack?.some((item: any) => item.type === 'PHASE_END' && item.nextPhase === 'DAMAGE_CALCULATION')
+  );
 
 const cardEffects: CardEffect[] = [{
   id: '102050145_sac_damage',
@@ -11,8 +19,7 @@ const cardEffects: CardEffect[] = [{
   limitCount: 1,
   description: '选择你的1个单位送入墓地。之后选择1名玩家，给予其1点伤害，并直到下一次你的回合开始失去此能力。',
   condition: (gameState, playerState, instance) =>
-    playerState.isTurn &&
-    gameState.phase === 'MAIN' &&
+    canUseInBattleFreeOrDamageRequest(gameState, playerState) &&
     !isSmallLost(instance, gameState.turnCount) &&
     ownUnits(playerState).length > 0,
   execute: async (instance, gameState, playerState) => {
@@ -31,7 +38,8 @@ const cardEffects: CardEffect[] = [{
     if (context?.step === 'SAC') {
       const target = selections[0] ? AtomicEffectExecutor.findCardById(gameState, selections[0]) : undefined;
       if (!target || target.cardlocation !== 'UNIT') return;
-      destroyByEffect(gameState, target, instance);
+      moveCardAsCost(gameState, playerState.uid, target, 'GRAVE', instance);
+      gameState.logs.push(`[${instance.fullName}] 将 [${target.fullName}] 送入墓地作为费用。`);
       const data = ensureData(instance);
       data.smallActivateLostUntilTurn = gameState.turnCount + 2;
       data.smallActivateLostSourceName = instance.fullName;
@@ -55,7 +63,7 @@ const cardEffects: CardEffect[] = [{
   triggerLocation: ['UNIT'],
   erosionTotalLimit: [10, 10],
   description: '10+：选择1名对手，给予其3点伤害。若未使对手败北，则你败北。',
-  condition: gameState => gameState.phase === 'MAIN',
+  condition: (gameState, playerState) => canUseInBattleFreeOrDamageRequest(gameState, playerState),
   execute: async (instance, gameState, playerState) => {
     createPlayerSelectQuery(
       gameState,

@@ -1,5 +1,5 @@
 import { Card, CardEffect } from '../types/game';
-import { AtomicEffectExecutor, attackingUnits, createSelectCardQuery, moveCard, ownerUidOf, story } from './BaseUtil';
+import { AtomicEffectExecutor, attackingUnits, createSelectCardQuery, isBattleFreeContext, moveCard, ownerUidOf, story } from './BaseUtil';
 
 const cardEffects: CardEffect[] = [story('201000058_bottom_attacker', '创痕2：选择1个参与攻击的单位放置到其持有者卡组底。若其是神蚀单位，其持有者选择墓地2张卡放置到卡组底。', async (instance, gameState, playerState) => {
   const targets = attackingUnits(gameState);
@@ -16,7 +16,7 @@ const cardEffects: CardEffect[] = [story('201000058_bottom_attacker', '创痕2�
   );
 }, {
   erosionBackLimit: [2, 10],
-  condition: gameState => gameState.phase === 'BATTLE_FREE' && attackingUnits(gameState).length > 0,
+  condition: gameState => isBattleFreeContext(gameState) && attackingUnits(gameState).length > 0,
   onQueryResolve: async (instance, gameState, playerState, selections, context) => {
     if (context?.step === 'GRAVE_BOTTOM') {
       selections.forEach(id => {

@@ -1,5 +1,5 @@
 import { Card, CardEffect } from '../types/game';
-import { AtomicEffectExecutor, battlingUnits, ownUnits, paymentCost } from './BaseUtil';
+import { AtomicEffectExecutor, battlingUnits, isBattleFreeContext, ownUnits, paymentCost } from './BaseUtil';
 
 const cardEffects: CardEffect[] = [{
   id: '101000158_battle_debuff',
@@ -8,7 +8,7 @@ const cardEffects: CardEffect[] = [{
   limitCount: 1,
   description: '战斗中支付1费，参与攻击的所有单位本回合力量-500。',
   condition: (gameState, playerState) =>
-    gameState.phase === 'BATTLE_FREE' &&
+    isBattleFreeContext(gameState) &&
     ownUnits(playerState).filter(unit => AtomicEffectExecutor.matchesColor(unit, 'WHITE')).length >= 2 &&
     battlingUnits(gameState).length > 0,
   cost: paymentCost(1),

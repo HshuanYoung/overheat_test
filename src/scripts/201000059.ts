@@ -16,7 +16,7 @@ const cardEffects: CardEffect[] = [story('201000059_prevent_destroy', '选择你
 }, {
   onQueryResolve: async (instance, gameState, _playerState, selections) => {
     const target = selections[0] ? AtomicEffectExecutor.findCardById(gameState, selections[0]) : undefined;
-    if (target?.cardlocation === 'UNIT') preventNextDestroy(target, instance);
+    if (target?.cardlocation === 'UNIT') preventNextDestroy(target, instance, gameState.turnCount);
   }
 })];
 

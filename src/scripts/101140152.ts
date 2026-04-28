@@ -1,5 +1,5 @@
 import { Card, CardEffect } from '../types/game';
-import { AtomicEffectExecutor, addInfluence, createSelectCardQuery, ensureData, erosionCost, forbidAttackAndDefenseUntil, moveCard } from './BaseUtil';
+import { AtomicEffectExecutor, addInfluence, createSelectCardQuery, ensureData, erosionCost, forbidAttackAndDefenseUntil, isBattleFreeContext, moveCard } from './BaseUtil';
 
 const cardEffects: CardEffect[] = [{
   id: '101140152_silence_god',
@@ -39,7 +39,7 @@ const cardEffects: CardEffect[] = [{
   erosionTotalLimit: [10, 10],
   limitCount: 1,
   description: '10+：侵蚀2，选择正在攻击的神蚀单位放到卡组底。',
-  condition: gameState => gameState.phase === 'BATTLE_FREE' && !!gameState.battleState?.attackers?.some(id => AtomicEffectExecutor.findCardById(gameState, id)?.godMark),
+  condition: gameState => isBattleFreeContext(gameState) && !!gameState.battleState?.attackers?.some(id => AtomicEffectExecutor.findCardById(gameState, id)?.godMark),
   cost: erosionCost(2),
   execute: async (instance, gameState, playerState) => {
     const targets = (gameState.battleState?.attackers || []).map(id => AtomicEffectExecutor.findCardById(gameState, id)).filter((card): card is Card => !!card && card.godMark);

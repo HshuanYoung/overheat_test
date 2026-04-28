@@ -25,7 +25,7 @@ const cardEffects: CardEffect[] = [{
   },
   onQueryResolve: async (instance, gameState, _playerState, selections) => {
     const target = selections[0] ? AtomicEffectExecutor.findCardById(gameState, selections[0]) : undefined;
-    if (target) preventNextDestroy(target, instance);
+    if (target) preventNextDestroy(target, instance, gameState.turnCount);
   }
 }];
 

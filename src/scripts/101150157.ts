@@ -38,7 +38,7 @@ const cardEffects: CardEffect[] = [{
 }, {
   id: '101150157_declare_tax',
   type: 'CONTINUOUS',
-  erosionBackLimit: [0, 3],
+  erosionTotalLimit: [0, 3],
   description: '0~3：对手宣言攻击或防御自己的单位时需要支付1费。',
   applyContinuous: (gameState, instance) => {
     const ownerUid = AtomicEffectExecutor.findCardOwnerKey(gameState, instance.gamecardId);

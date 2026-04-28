@@ -229,6 +229,36 @@ export const moveCard = (
   );
 };
 
+export const moveCardAsCost = (
+  gameState: GameState,
+  ownerUid: string,
+  card: Card,
+  toZone: TriggerLocation,
+  sourceCard?: Card,
+  options?: { insertAtBottom?: boolean; faceDown?: boolean; toPlayerUid?: string }
+) => {
+  const targetPlayerUid = options?.toPlayerUid || ownerUid;
+  const data = ensureData(card);
+  data.lastMovedAsCostTurn = gameState.turnCount;
+  data.lastMovedAsCostSourceCardId = sourceCard?.gamecardId;
+  data.lastMovedAsCostSourceName = sourceCard?.fullName;
+  AtomicEffectExecutor.moveCard(
+    gameState,
+    ownerUid,
+    card.cardlocation as TriggerLocation,
+    targetPlayerUid,
+    toZone,
+    card.gamecardId,
+    false,
+    {
+      insertAtBottom: options?.insertAtBottom,
+      faceDown: options?.faceDown,
+      effectSourcePlayerUid: (sourceCard ? AtomicEffectExecutor.findCardOwnerKey(gameState, sourceCard.gamecardId) : ownerUid) || ownerUid,
+      effectSourceCardId: sourceCard?.gamecardId
+    }
+  );
+};
+
 export const moveCardsToBottom = (
   gameState: GameState,
   ownerUid: string,
@@ -465,6 +495,10 @@ export const attackingUnits = (gameState: GameState) =>
 export const defendingUnit = (gameState: GameState) =>
   gameState.battleState?.defender ? AtomicEffectExecutor.findCardById(gameState, gameState.battleState.defender) : undefined;
 
+export const isBattleFreeContext = (gameState: GameState) =>
+  gameState.phase === 'BATTLE_FREE' ||
+  (gameState.phase === 'COUNTERING' && gameState.previousPhase === 'BATTLE_FREE');
+
 export const ownUnits = (player: PlayerState) => player.unitZone.filter((card): card is Card => !!card);
 export const ownItems = (player: PlayerState) => player.itemZone.filter((card): card is Card => !!card);
 export const faceUpErosion = (player: PlayerState) =>
@@ -562,10 +596,11 @@ export const addTempKeyword = (target: Card, source: Card, keyword: 'rush' | 'he
   }
 };
 
-export const preventNextDestroy = (target: Card, source: Card) => {
+export const preventNextDestroy = (target: Card, source: Card, untilTurn?: number) => {
   const data = ensureData(target);
   data.preventNextDestroy = true;
   data.preventNextDestroySourceName = source.fullName;
+  if (untilTurn !== undefined) data.preventNextDestroyUntilTurn = untilTurn;
   addInfluence(target, source, '下一次将被破坏时防止');
 };
 

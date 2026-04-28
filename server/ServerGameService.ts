@@ -96,10 +96,14 @@ export const ServerGameService = {
   },
 
   getForcedAttackUnit(gameState: GameState, playerId: string) {
-    const player = gameState.players[playerId];
-    if (!player) return undefined;
+    return ServerGameService.getForcedAttackUnits(gameState, playerId)[0];
+  },
 
-    return player.unitZone.find((unit): unit is Card => {
+  getForcedAttackUnits(gameState: GameState, playerId: string) {
+    const player = gameState.players[playerId];
+    if (!player) return [];
+
+    return player.unitZone.filter((unit): unit is Card => {
       if (!unit) return false;
       const forcedAttackTurn = (unit as any).data?.forcedAttackTurn;
       if (forcedAttackTurn !== gameState.turnCount) return false;
@@ -111,6 +115,33 @@ export const ServerGameService = {
       const wasPlayedThisTurn = unit.playedTurn === gameState.turnCount;
       return isRush || !wasPlayedThisTurn;
     });
+  },
+
+  async enterForcedAttackBattleIfNeeded(gameState: GameState, playerId: string, onUpdate?: (state: GameState) => Promise<void>, reason: string = 'FORCED_ATTACK') {
+    if (gameState.gameStatus === 2 || gameState.pendingQuery || gameState.isResolvingStack || gameState.currentProcessingItem) return false;
+    if (gameState.turnCount <= 1) return false;
+
+    const player = gameState.players[playerId];
+    if (!player?.isTurn) return false;
+
+    EventEngine.recalculateContinuousEffects(gameState);
+    const forcedAttackUnits = ServerGameService.getForcedAttackUnits(gameState, playerId);
+    if (forcedAttackUnits.length === 0) return false;
+
+    gameState.phase = 'BATTLE_DECLARATION';
+    gameState.phaseTimerStart = Date.now();
+
+    if (forcedAttackUnits.length === 1) {
+      const unit = forcedAttackUnits[0];
+      EventEngine.dispatchEvent(gameState, { type: 'PHASE_CHANGED', data: { phase: 'BATTLE_DECLARATION', reason } });
+      gameState.logs.push(`[强制攻击] ${player.displayName} 必须用 [${unit.fullName}] 攻击。`);
+      await ServerGameService.declareAttack(gameState, playerId, [unit.gamecardId], false, undefined, undefined, onUpdate);
+      return true;
+    }
+
+    EventEngine.dispatchEvent(gameState, { type: 'PHASE_CHANGED', data: { phase: 'BATTLE_DECLARATION', reason: `${reason}_CHOICE` } });
+    gameState.logs.push(`[强制攻击] ${player.displayName} 有多个必须攻击的单位，进入攻击宣言阶段请选择其中1个攻击。`);
+    return true;
   },
 
   canUse204000145AsPaymentSubstitute(paymentCard: Card | undefined, cardColor?: string, cost?: number, playingCardId?: string) {
@@ -1145,7 +1176,8 @@ export const ServerGameService = {
 
     (card as any).__playSnapshot = {
       isGoddessMode: !!player.isGoddessMode,
-      phase: gameState.phase
+      phase: gameState.phase,
+      sourceZone
     };
 
     // RULE 2: During countering phase, only story cards can be played
@@ -1654,6 +1686,11 @@ export const ServerGameService = {
           await ServerGameService.executeEndPhase(gameState, currentPlayer, true);
         }
       }
+
+      if (!gameState.pendingQuery && gameState.phase === 'MAIN') {
+        const currentPlayerId = gameState.playerIds[gameState.currentTurnPlayer];
+        await ServerGameService.enterForcedAttackBattleIfNeeded(gameState, currentPlayerId, onUpdate, 'FORCED_ATTACK_CONTINUE');
+      }
     }
   },
 
@@ -1767,6 +1804,26 @@ export const ServerGameService = {
     if (query.callbackKey === 'DECLARE_DEFENSE_TAX_PAYMENT') {
       const { defenderId } = query.context;
       await ServerGameService.declareDefense(gameState, playerUid, defenderId, true);
+      return gameState;
+    }
+
+    if (query.callbackKey === 'RESET_AFTER_BATTLE_DESTROY_CHOICE') {
+      const { unitId, sourceName } = query.context;
+      const unit = ServerGameService.findCardById(gameState, unitId);
+
+      if (currentSelections[0] === 'YES' && unit?.cardlocation === 'UNIT') {
+        unit.isExhausted = false;
+        if (gameState.battleState) {
+          gameState.battleState.keepResetUnitIds = Array.from(new Set([...(gameState.battleState.keepResetUnitIds || []), unit.gamecardId]));
+        }
+        gameState.logs.push(`[${sourceName || '效果'}] 将 [${unit.fullName}] 重置。`);
+      } else if (unit) {
+        gameState.logs.push(`[${sourceName || '效果'}] 不重置 [${unit.fullName}]。`);
+      }
+
+      if (gameState.phase === 'DAMAGE_CALCULATION') {
+        await ServerGameService.resolveDamage(gameState);
+      }
       return gameState;
     }
 
@@ -2066,10 +2123,7 @@ export const ServerGameService = {
 
       ServerGameService.executeErosionMovements(gameState, playerUid, choice, selectedCardId, keepCardId);
 
-      gameState.phase = 'MAIN';
-      gameState.phaseTimerStart = Date.now();
-      gameState.logs.push(`${gameState.players[playerUid].displayName} 进入主要阶段`);
-      EventEngine.dispatchEvent(gameState, { type: 'PHASE_CHANGED', data: { phase: 'MAIN', reason: 'MAIN_PHASE_START' } });
+      await ServerGameService.proceedAfterErosion(gameState, playerUid, onUpdate);
       await ServerGameService.checkTriggeredEffects(gameState, onUpdate);
       return gameState;
     }
@@ -2136,6 +2190,8 @@ export const ServerGameService = {
       // RESUME RESOLUTION
       if (gameState.isResolvingStack) {
         await ServerGameService.resolveCounterStack(gameState, onUpdate);
+      } else if (!gameState.pendingQuery && gameState.phase === 'MAIN') {
+        await ServerGameService.enterForcedAttackBattleIfNeeded(gameState, attackerId, onUpdate, 'FORCED_ATTACK_CONTINUE');
       }
       return gameState;
     }
@@ -2243,10 +2299,12 @@ export const ServerGameService = {
       throw new Error('单体攻击必须选择一个单位');
     }
 
-    const forcedAttackUnit = ServerGameService.getForcedAttackUnit(gameState, playerId);
-    if (forcedAttackUnit) {
-      if (isAlliance || attackerIds.length !== 1 || attackerIds[0] !== forcedAttackUnit.gamecardId) {
-        throw new Error(`本次必须由 [${forcedAttackUnit.fullName}] 单独宣告攻击`);
+    const forcedAttackUnits = ServerGameService.getForcedAttackUnits(gameState, playerId);
+    if (forcedAttackUnits.length > 0) {
+      const forcedIds = new Set(forcedAttackUnits.map(unit => unit.gamecardId));
+      if (isAlliance || attackerIds.length !== 1 || !forcedIds.has(attackerIds[0])) {
+        const names = forcedAttackUnits.map(unit => unit.fullName).join('、');
+        throw new Error(`本次必须由必须攻击的单位单独宣告攻击：${names}`);
       }
     }
 
@@ -2397,6 +2455,7 @@ export const ServerGameService = {
       unitTargetId: targetId === 'NO_PROMPT' ? undefined : targetId,
       defensePowerRestriction: 0
     };
+    EventEngine.recalculateContinuousEffects(gameState);
 
     let effectiveSkipDefense = !!skipDefense;
     if (!effectiveSkipDefense) {
@@ -2600,12 +2659,6 @@ export const ServerGameService = {
             if (destroyed === undefined) return gameState; // Wait for substitution choice
             if (destroyed !== false) {
               gameState.logs.push(`${attackingUnit.fullName} 破坏了 ${defendingUnit.fullName}`);
-              if ((attackingUnit as any).data?.resetAfterNextBattleDestroyTurn === gameState.turnCount) {
-                attackingUnit.isExhausted = false;
-                gameState.logs.push(`[${(attackingUnit as any).data.resetAfterNextBattleDestroySourceName || '效果'}] 将 [${attackingUnit.fullName}] 重置。`);
-                delete (attackingUnit as any).data.resetAfterNextBattleDestroyTurn;
-                delete (attackingUnit as any).data.resetAfterNextBattleDestroySourceName;
-              }
               gameState.battleState.resolvedUnitIds.push(defendingUnit.gamecardId);
 
               // Annihilation Effect
@@ -2622,6 +2675,33 @@ export const ServerGameService = {
                   }
                 });
                 ServerGameService.applyDamageToPlayer(gameState, defenderId, attackingUnit.damage || 0, 'BATTLE');
+              }
+
+              if ((attackingUnit as any).data?.resetAfterNextBattleDestroyTurn === gameState.turnCount && gameState.gameStatus !== 2) {
+                const sourceName = (attackingUnit as any).data.resetAfterNextBattleDestroySourceName || '效果';
+                delete (attackingUnit as any).data.resetAfterNextBattleDestroyTurn;
+                delete (attackingUnit as any).data.resetAfterNextBattleDestroySourceName;
+                gameState.pendingQuery = {
+                  id: Math.random().toString(36).substring(7),
+                  type: 'SELECT_CHOICE',
+                  playerUid: attackerId,
+                  options: [
+                    { id: 'YES', label: '重置(YES)' },
+                    { id: 'NO', label: '不重置(NO)' }
+                  ],
+                  title: '重置确认',
+                  description: `由于 [${sourceName}]，是否将 [${attackingUnit.fullName}] 重置？`,
+                  minSelections: 1,
+                  maxSelections: 1,
+                  callbackKey: 'RESET_AFTER_BATTLE_DESTROY_CHOICE',
+                  context: {
+                    unitId: attackingUnit.gamecardId,
+                    sourceName
+                  }
+                };
+                gameState.priorityPlayerId = attackerId;
+                gameState.logs.push(`[${sourceName}] 等待选择是否重置 [${attackingUnit.fullName}]。`);
+                return gameState;
               }
             }
           }
@@ -2752,9 +2832,10 @@ export const ServerGameService = {
       }
     }
     if (!gameState.battleState.skipAttackerExhaust) {
+      const keepResetUnitIds = new Set(gameState.battleState.keepResetUnitIds || []);
       attackingUnits.forEach(u => {
         const unit = attacker.unitZone.find(uz => uz?.gamecardId === u.gamecardId);
-        if (unit) unit.isExhausted = true;
+        if (unit && !keepResetUnitIds.has(unit.gamecardId)) unit.isExhausted = true;
       });
     }
 
@@ -2786,6 +2867,9 @@ export const ServerGameService = {
     gameState.battleState = undefined;
     gameState.phaseTimerStart = Date.now();
     await ServerGameService.checkTriggeredEffects(gameState);
+    if (!gameState.pendingQuery && gameState.phase === 'MAIN') {
+      await ServerGameService.enterForcedAttackBattleIfNeeded(gameState, attackerId, undefined, 'FORCED_ATTACK_CONTINUE');
+    }
     return gameState;
   },
 
@@ -2989,10 +3073,17 @@ export const ServerGameService = {
       return false;
     }
 
-    if ((unit as any).data?.preventNextDestroy) {
+    if (
+      (unit as any).data?.preventNextDestroy &&
+      (
+        (unit as any).data.preventNextDestroyUntilTurn === undefined ||
+        (unit as any).data.preventNextDestroyUntilTurn >= gameState.turnCount
+      )
+    ) {
       const sourceName = (unit as any).data?.preventNextDestroySourceName || '破坏防止';
       delete (unit as any).data.preventNextDestroy;
       delete (unit as any).data.preventNextDestroySourceName;
+      delete (unit as any).data.preventNextDestroyUntilTurn;
       gameState.logs.push(`[${sourceName}] 防止了 [${unit.fullName}] 将要被破坏。`);
       return false;
     }
@@ -3294,6 +3385,11 @@ export const ServerGameService = {
           if ((card as any).data?.cannotActivateUntilTurn !== undefined && (card as any).data.cannotActivateUntilTurn < gameState.turnCount) {
             delete (card as any).data.cannotActivateUntilTurn;
             delete (card as any).data.cannotActivateSourceName;
+          }
+          if ((card as any).data?.preventNextDestroyUntilTurn !== undefined && (card as any).data.preventNextDestroyUntilTurn < gameState.turnCount) {
+            delete (card as any).data.preventNextDestroy;
+            delete (card as any).data.preventNextDestroySourceName;
+            delete (card as any).data.preventNextDestroyUntilTurn;
           }
           if ((card as any).data?.forbiddenAlchemyBanishTurn !== undefined && (card as any).data.forbiddenAlchemyBanishTurn < gameState.turnCount) {
             delete (card as any).data.forbiddenAlchemyBanishTurn;
@@ -3643,6 +3739,10 @@ export const ServerGameService = {
         }
         break;
       case 'BATTLE_DECLARATION':
+        if ((action === 'RETURN_MAIN' || action === 'MAIN' || action === 'DECLARE_END' || action === 'DISCARD') && ServerGameService.getForcedAttackUnit(gameState, actingPlayerId)) {
+          const forcedAttackUnit = ServerGameService.getForcedAttackUnit(gameState, actingPlayerId)!;
+          throw new Error(`必须先用 [${forcedAttackUnit.fullName}] 宣告攻击`);
+        }
         if (action === 'DECLARE_END' || action === 'DISCARD') {
           if (action === 'DISCARD') {
             gameState.logs.push(`[阶段切换] 进入弃牌阶段`);
@@ -3898,14 +3998,28 @@ export const ServerGameService = {
 
     if (handleableCards.length === 0) {
       gameState.logs.push(`${player.displayName} 侵蚀区没有正面卡，跳过侵蚀阶段。`);
-      gameState.phase = 'MAIN';
-      gameState.logs.push(`${player.displayName} 进入主要阶段`);
-      EventEngine.dispatchEvent(gameState, { type: 'PHASE_CHANGED', data: { phase: 'MAIN', reason: 'MAIN_PHASE_START' } });
+      await ServerGameService.proceedAfterErosion(gameState, player.uid);
       // console.log(`[ServerGameService] No face-up cards, auto-moving to MAIN phase`);
     } else {
       gameState.logs.push(`${player.displayName} 进入侵蚀阶段，请选择处理方式。`);
       // console.log(`[ServerGameService] Waiting for erosion choice`);
     }
+  },
+
+  async proceedAfterErosion(gameState: GameState, playerId: string, onUpdate?: (state: GameState) => Promise<void>) {
+    const player = gameState.players[playerId];
+    if (!player) return gameState;
+
+    const enteredForcedAttack = await ServerGameService.enterForcedAttackBattleIfNeeded(gameState, playerId, onUpdate, 'FORCED_ATTACK_AFTER_EROSION');
+    if (enteredForcedAttack) {
+      return gameState;
+    }
+
+    gameState.phase = 'MAIN';
+    gameState.phaseTimerStart = Date.now();
+    gameState.logs.push(`${player.displayName} 进入主要阶段`);
+    EventEngine.dispatchEvent(gameState, { type: 'PHASE_CHANGED', data: { phase: 'MAIN', reason: 'MAIN_PHASE_START' } });
+    return gameState;
   },
 
 
@@ -3952,10 +4066,7 @@ export const ServerGameService = {
     ServerGameService.executeErosionMovements(gameState, playerId, choice, selectedCardId);
 
     if (gameState.phase !== 'SHENYI_CHOICE') {
-      gameState.phase = 'MAIN';
-      gameState.phaseTimerStart = Date.now();
-      gameState.logs.push(`${player.displayName} 进入主要阶段`);
-      EventEngine.dispatchEvent(gameState, { type: 'PHASE_CHANGED', data: { phase: 'MAIN', reason: 'MAIN_PHASE_START' } });
+      await ServerGameService.proceedAfterErosion(gameState, playerId);
     } else {
       gameState.previousPhase = 'MAIN';
     }
