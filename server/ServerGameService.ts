@@ -104,6 +104,8 @@ export const ServerGameService = {
       const forcedAttackTurn = (unit as any).data?.forcedAttackTurn;
       if (forcedAttackTurn !== gameState.turnCount) return false;
       if (unit.isExhausted || unit.canAttack === false) return false;
+      if ((unit as any).battleForbiddenByEffect) return false;
+      if ((unit as any).data?.cannotAttackOrDefendUntilTurn && (unit as any).data.cannotAttackOrDefendUntilTurn >= gameState.turnCount) return false;
 
       const isRush = !!unit.isrush;
       const wasPlayedThisTurn = unit.playedTurn === gameState.turnCount;
@@ -1239,7 +1241,8 @@ export const ServerGameService = {
     const isOwnSharedPhase =
       player.isTurn &&
       ['MAIN', 'BATTLE_DECLARATION', 'BATTLE_FREE'].includes(gameState.phase);
-    if (!isOwnSharedPhase && !isCounteringTurn) {
+    const isBattleFreeSharedPhase = gameState.phase === 'BATTLE_FREE';
+    if (!isOwnSharedPhase && !isBattleFreeSharedPhase && !isCounteringTurn) {
       throw new Error('当前阶段不能自由发动该起动效果');
     }
 
@@ -3288,6 +3291,10 @@ export const ServerGameService = {
             delete (card as any).data.cannotAttackOrDefendUntilTurn;
             delete (card as any).data.cannotAttackOrDefendSourceName;
           }
+          if ((card as any).data?.cannotActivateUntilTurn !== undefined && (card as any).data.cannotActivateUntilTurn < gameState.turnCount) {
+            delete (card as any).data.cannotActivateUntilTurn;
+            delete (card as any).data.cannotActivateSourceName;
+          }
           if ((card as any).data?.forbiddenAlchemyBanishTurn !== undefined && (card as any).data.forbiddenAlchemyBanishTurn < gameState.turnCount) {
             delete (card as any).data.forbiddenAlchemyBanishTurn;
             delete (card as any).data.forbiddenAlchemySourceName;
@@ -4310,15 +4317,22 @@ export const ServerGameService = {
       let selections: string[] = [];
 
       if (query.type === 'SELECT_PAYMENT') {
+        if (query.callbackKey === 'DECLARE_DEFENSE_TAX_PAYMENT') {
+          gameState.pendingQuery = undefined;
+          gameState.logs.push(`[Bot] 放弃支付宣言防御费用，不进行防御。`);
+          await ServerGameService.declareDefense(gameState, 'BOT_PLAYER', undefined);
+          return;
+        }
         // Simple payment: pick the first N cards needed to cover cost
         const player = gameState.players['BOT_PLAYER'];
-        const handIds = player.hand.map(c => c.gamecardId);
-        const unitsInZone = player.unitZone.filter(c => c && !c.isExhausted).map(c => c!.gamecardId);
+        const unitsInZone = player.unitZone
+          .filter(c => c && !c.isExhausted && !(c as any).data?.cannotExhaustByEffect)
+          .map(c => c!.gamecardId);
+        const paymentCost = query.paymentCost || 0;
 
         // Mock a simple payment selection
         const payment = {
-          trashIds: handIds.slice(0, query.paymentCost || 0),
-          exhaustIds: unitsInZone.slice(0, Math.max(0, (query.paymentCost || 0) - handIds.length))
+          exhaustUnitIds: unitsInZone.slice(0, paymentCost)
         };
         selections = [JSON.stringify(payment)];
       } else if (query.callbackKey === 'TRIGGER_CHOICE') {
@@ -4370,6 +4384,7 @@ export const ServerGameService = {
           c &&
           !c.isExhausted &&
           !(c as any).battleForbiddenByEffect &&
+          !((c as any).data?.cannotAttackOrDefendUntilTurn && (c as any).data.cannotAttackOrDefendUntilTurn >= gameState.turnCount) &&
           (!lockedTargetId || c.gamecardId === lockedTargetId) &&
           (c.power || 0) >= minPower &&
           (maxPower === undefined || (c.power || 0) < maxPower)
@@ -4449,6 +4464,8 @@ export const ServerGameService = {
       // If no cards can be played, try to enter battle or end turn
       const canAttack = bot.unitZone.some(c => {
         if (!c || c.isExhausted || c.canAttack === false) return false;
+        if ((c as any).battleForbiddenByEffect) return false;
+        if ((c as any).data?.cannotAttackOrDefendUntilTurn && (c as any).data.cannotAttackOrDefendUntilTurn >= gameState.turnCount) return false;
         if ((c.damage || 0) < 1) return false; // Rule 2: Robots will not attack with units having damage < 1
         const isRush = !!c.isrush;
         const wasPlayedThisTurn = c.playedTurn === gameState.turnCount;
@@ -4472,6 +4489,8 @@ export const ServerGameService = {
       const forcedAttackUnit = ServerGameService.getForcedAttackUnit(gameState, 'BOT_PLAYER');
       const attacker = forcedAttackUnit || bot.unitZone.find(c => {
         if (!c || c.isExhausted || c.canAttack === false) return false;
+        if ((c as any).battleForbiddenByEffect) return false;
+        if ((c as any).data?.cannotAttackOrDefendUntilTurn && (c as any).data.cannotAttackOrDefendUntilTurn >= gameState.turnCount) return false;
         if ((c.damage || 0) < 1) return false; // Rule 2: Robots will not attack with units having damage < 1
         const isRush = !!c.isrush;
         const wasPlayedThisTurn = c.playedTurn === gameState.turnCount;

@@ -1,5 +1,5 @@
 import { Card, CardEffect } from '../types/game';
-import { AtomicEffectExecutor, attackingUnits, ownUnits, paymentCost } from './BaseUtil';
+import { AtomicEffectExecutor, battlingUnits, ownUnits, paymentCost } from './BaseUtil';
 
 const cardEffects: CardEffect[] = [{
   id: '101000158_battle_debuff',
@@ -10,10 +10,10 @@ const cardEffects: CardEffect[] = [{
   condition: (gameState, playerState) =>
     gameState.phase === 'BATTLE_FREE' &&
     ownUnits(playerState).filter(unit => AtomicEffectExecutor.matchesColor(unit, 'WHITE')).length >= 2 &&
-    attackingUnits(gameState).length > 0,
+    battlingUnits(gameState).length > 0,
   cost: paymentCost(1),
   execute: async (instance, gameState) => {
-    attackingUnits(gameState).forEach(unit => {
+    battlingUnits(gameState).forEach(unit => {
       unit.temporaryPowerBuff = (unit.temporaryPowerBuff || 0) - 500;
       unit.power = (unit.power || 0) - 500;
       const details = unit.temporaryBuffDetails?.power || [];

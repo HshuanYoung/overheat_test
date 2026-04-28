@@ -16,6 +16,7 @@ const cardEffects: CardEffect[] = [story('201000058_bottom_attacker', '创痕2�
   );
 }, {
   erosionBackLimit: [2, 10],
+  condition: gameState => gameState.phase === 'BATTLE_FREE' && attackingUnits(gameState).length > 0,
   onQueryResolve: async (instance, gameState, playerState, selections, context) => {
     if (context?.step === 'GRAVE_BOTTOM') {
       selections.forEach(id => {

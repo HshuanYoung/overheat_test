@@ -1,5 +1,5 @@
 import { Card, CardEffect, GameEvent } from '../types/game';
-import { allCardsOnField, createSelectCardQuery, ensureData, getOpponentUid, moveCard, ownerUidOf } from './BaseUtil';
+import { addInfluence, allCardsOnField, createSelectCardQuery, ensureData, getOpponentUid, moveCard, ownerUidOf } from './BaseUtil';
 import { AtomicEffectExecutor } from '../services/AtomicEffectExecutor';
 
 const cardEffects: CardEffect[] = [{
@@ -30,6 +30,7 @@ const cardEffects: CardEffect[] = [{
       returnOnOpponentEndAfterTurn: gameState.turnCount,
       sourceName: instance.fullName
     };
+    addInfluence(target, instance, '对手回合结束时横置回场');
     const returns = ((playerState as any).escortReturns || []) as any[];
     returns.push({ cardId: target.gamecardId, ownerUid, zone: originalZone, afterTurn: gameState.turnCount });
     (playerState as any).escortReturns = returns;
@@ -55,6 +56,7 @@ const cardEffects: CardEffect[] = [{
       }
       const card = AtomicEffectExecutor.findCardById(gameState, entry.cardId);
       if (!card || card.cardlocation !== 'EXILE') continue;
+      delete ensureData(card).escortReturn;
       moveCard(gameState, entry.ownerUid, card, entry.zone, instance);
       card.isExhausted = true;
       card.displayState = 'FRONT_UPRIGHT';

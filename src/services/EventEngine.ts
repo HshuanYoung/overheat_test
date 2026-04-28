@@ -229,6 +229,9 @@ export class EventEngine {
           if (card.temporaryCanActivateEffect !== undefined) {
             card.canActivateEffect = card.temporaryCanActivateEffect;
           }
+          if ((card as any).data?.cannotActivateUntilTurn !== undefined && (card as any).data.cannotActivateUntilTurn >= gameState.turnCount) {
+            card.canActivateEffect = false;
+          }
           card.isImmuneToUnitEffects = card.baseIsImmuneToUnitEffects ?? false;
           if (card.temporaryImmuneToUnitEffects !== undefined) {
             card.isImmuneToUnitEffects = card.temporaryImmuneToUnitEffects;
@@ -373,6 +376,20 @@ export class EventEngine {
           card.influencingEffects.push({
             sourceCardName: (card as any).data.cannotAttackOrDefendSourceName,
             description: '不能宣言攻击和防御'
+          });
+        }
+        if (card && (card as any).data?.cannotActivateUntilTurn !== undefined && (card as any).data.cannotActivateUntilTurn >= gameState.turnCount) {
+          if (!card.influencingEffects) card.influencingEffects = [];
+          card.influencingEffects.push({
+            sourceCardName: (card as any).data.cannotActivateSourceName || '效果',
+            description: '不能发动能力'
+          });
+        }
+        if (card && (card as any).data?.escortReturn) {
+          if (!card.influencingEffects) card.influencingEffects = [];
+          card.influencingEffects.push({
+            sourceCardName: (card as any).data.escortReturn.sourceName || '效果',
+            description: '对手回合结束时横置回场'
           });
         }
         if (card && (card as any).data?.accessTapValue) {

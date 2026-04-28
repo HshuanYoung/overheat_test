@@ -1,5 +1,5 @@
 import { Card, CardEffect } from '../types/game';
-import { AtomicEffectExecutor, createSelectCardQuery, erosionCost, forbidAttackAndDefenseUntil, moveCard } from './BaseUtil';
+import { AtomicEffectExecutor, addInfluence, createSelectCardQuery, ensureData, erosionCost, forbidAttackAndDefenseUntil, moveCard } from './BaseUtil';
 
 const cardEffects: CardEffect[] = [{
   id: '101140152_silence_god',
@@ -23,9 +23,14 @@ const cardEffects: CardEffect[] = [{
   onQueryResolve: async (instance, gameState, playerState, selections) => {
     const target = selections[0] ? AtomicEffectExecutor.findCardById(gameState, selections[0]) : undefined;
     if (!target) return;
-    target.temporaryCanActivateEffect = false;
     const opponentUid = gameState.playerIds.find(uid => uid !== playerState.uid)!;
-    forbidAttackAndDefenseUntil(target, instance, gameState.players[opponentUid].isTurn ? gameState.turnCount : gameState.turnCount + 1);
+    const untilTurn = gameState.players[opponentUid].isTurn ? gameState.turnCount : gameState.turnCount + 1;
+    const data = ensureData(target);
+    data.cannotActivateUntilTurn = untilTurn;
+    data.cannotActivateSourceName = instance.fullName;
+    target.temporaryCanActivateEffect = false;
+    addInfluence(target, instance, '不能发动能力');
+    forbidAttackAndDefenseUntil(target, instance, untilTurn);
   }
 }, {
   id: '101140152_bottom_attacker',

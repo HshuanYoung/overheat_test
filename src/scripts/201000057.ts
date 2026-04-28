@@ -15,6 +15,7 @@ const cardEffects: CardEffect[] = [story('201000057_weaken', '选择1个参与�
     { sourceCardId: instance.gamecardId, effectId: '201000057_weaken', step: 'TARGET' }
   );
 }, {
+  condition: gameState => gameState.phase === 'BATTLE_FREE' && attackingUnits(gameState).length > 0,
   onQueryResolve: async (instance, gameState, playerState, selections, context) => {
     if (context?.step === 'DRAW_CHOICE') {
       if (selections[0] === 'YES') await AtomicEffectExecutor.execute(gameState, playerState.uid, { type: 'DRAW', value: 1 }, instance);

@@ -57,7 +57,7 @@ const card: Card = {
   gamecardId: null as any,
   colorReq: { WHITE: 1 },
   faction: '仙雪原',
-  acValue: 2,
+  acValue: 1,
   power: 500,
   basePower: 500,
   damage: 1,

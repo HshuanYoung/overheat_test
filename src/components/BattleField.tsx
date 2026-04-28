@@ -174,7 +174,7 @@ export const BattleField: React.FC = () => {
     const canPlayStory = (me.hand || []).some(card => {
       const canPlayInPhase =
         (isCounteringTurn && card.type === 'STORY') ||
-        (me.isTurn && game.phase === 'BATTLE_FREE' && card.type === 'STORY');
+        (game.phase === 'BATTLE_FREE' && card.type === 'STORY' && (me.isTurn || isBattleFreeConfrontPrompt));
 
       return canPlayInPhase && GameService.canPlayCard(game, me, card).canPlay;
     });
@@ -182,6 +182,7 @@ export const BattleField: React.FC = () => {
 
     const canActivateInPhase =
       isCounteringTurn ||
+      isBattleFreeConfrontPrompt ||
       (me.isTurn && ['MAIN', 'BATTLE_DECLARATION', 'BATTLE_FREE'].includes(game.phase));
     if (!canActivateInPhase) return false;
 
@@ -635,18 +636,25 @@ export const BattleField: React.FC = () => {
 
     const isCounteringTurn = game.phase === 'COUNTERING' && game.priorityPlayerId === myUid;
     const isOwnSharedPhase = me.isTurn && ['MAIN', 'BATTLE_DECLARATION', 'BATTLE_FREE'].includes(game.phase);
+    const isBattleFreeConfrontPrompt =
+      game.phase === 'BATTLE_FREE' &&
+      !!game.battleState?.askConfront &&
+      (
+        (game.battleState.askConfront === 'ASKING_OPPONENT' && !me.isTurn) ||
+        (game.battleState.askConfront === 'ASKING_TURN_PLAYER' && me.isTurn)
+      );
     const canPlayFromHand =
       (me.isTurn && game.phase === 'MAIN') ||
-      (me.isTurn && game.phase === 'BATTLE_FREE') ||
+      (game.phase === 'BATTLE_FREE' && (me.isTurn || isBattleFreeConfrontPrompt)) ||
       isCounteringTurn;
 
-    if (!isOwnSharedPhase && !isCounteringTurn) return ids;
+    if (!isOwnSharedPhase && !isBattleFreeConfrontPrompt && !isCounteringTurn) return ids;
 
     if (canPlayFromHand) {
       me.hand.forEach(card => {
         const canPlayInPhase =
           (me.isTurn && game.phase === 'MAIN') ||
-          (me.isTurn && game.phase === 'BATTLE_FREE' && card.type === 'STORY') ||
+          (game.phase === 'BATTLE_FREE' && card.type === 'STORY' && (me.isTurn || isBattleFreeConfrontPrompt)) ||
           (isCounteringTurn && card.type === 'STORY');
 
         if (canPlayInPhase && GameService.canPlayCard(game, me, card).canPlay) {
