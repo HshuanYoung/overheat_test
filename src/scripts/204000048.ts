@@ -5,6 +5,7 @@ import { ensureData } from './BaseUtil';
 const effect_204000048_activate: CardEffect = {
   id: '204000048_activate',
   type: 'ACTIVATE',
+  triggerLocation: ['PLAY'],
   description: '选择战场上一个神蚀单位转为竖置状态。在下个对手的回合开始阶段，该单位不能重置。',
   condition: (gameState: GameState) => {
     return Object.values(gameState.players).some(p =>

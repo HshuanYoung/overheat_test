@@ -1,5 +1,6 @@
 import { Card, GameState, PlayerState, CardEffect, GameEvent } from '../types/game';
 import { AtomicEffectExecutor } from '../services/AtomicEffectExecutor';
+import { ensureData } from './BaseUtil';
 
 const trigger_104020120: CardEffect = {
   id: '104020120_trigger',
@@ -61,6 +62,7 @@ const trigger_104020120: CardEffect = {
           targetFilter: { gamecardId: targetId },
           value: 1
         }, instance);
+        ensureData(targetCard).cannotResetSourceName = instance.fullName;
         
         gameState.logs.push(`[${instance.fullName}] 效果：横置了 ${targetCard.fullName} 并阻碍了其下一次调度。`);
       }
