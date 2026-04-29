@@ -401,7 +401,7 @@ export const Collection: React.FC = () => {
                   />
                   <input
                     className="bg-zinc-900/50 border border-white/5 rounded-xl px-2 md:px-3 py-2 md:py-2.5 text-[10px] md:text-xs font-bold text-white focus:outline-none"
-                    placeholder="卡包，如 BT01 / ST04"
+                    placeholder="卡包，如 BT01"
                     value={filters.cardPackage}
                     onChange={e => setFilters({ ...filters, cardPackage: e.target.value })}
                   />

@@ -10,7 +10,7 @@ import { Card } from '../types/game';
  * ID Source: card-xlsx
  * Keywords: N/A
  * Card Detail:
- * 只能在你有卡被放逐的回合中使用。将对手的1个正在进行攻击的单位破坏。
+ * 只能在你有卡被放逐的回合中使用。选择对手的1个正在进行攻击的单位破坏。
  * TODO: confirm ID / godMark / rarity variants and implement effects.
  */
 const card: Card = {

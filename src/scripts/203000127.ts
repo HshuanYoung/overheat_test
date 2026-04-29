@@ -10,7 +10,7 @@ import { Card } from '../types/game';
  * ID Source: card-xlsx
  * Keywords: N/A
  * Card Detail:
- * 选择你的1个非神蚀单位，将其送入墓地。之后，选择一名对手，将他卡组顶的2张卡送入墓地。
+ * 选择你的1个非神蚀单位，将其送入墓地。之后，将对手卡组顶的2张卡送入墓地。
  * TODO: confirm ID / godMark / rarity variants and implement effects.
  */
 const card: Card = {

@@ -732,7 +732,7 @@ export const DeckBuilder: React.FC = () => {
               <label className="text-[10px] text-zinc-500 font-bold uppercase">卡包</label>
               <input
                 className="bg-black border border-zinc-800 rounded px-2 py-1 text-xs"
-                placeholder="例如 BT01 / ST04"
+                placeholder="例如 BT01"
                 value={filters.cardPackage}
                 onChange={e => setFilters({ ...filters, cardPackage: e.target.value })}
               />

@@ -11,7 +11,7 @@ import { Card } from '../types/game';
  * Keywords: N/A
  * Card Detail:
  * 【歼灭】
- * 【永】：你的战场上只能有一个神蚀单位。与这个单位进行战斗的对方的所有单位在那个战斗阶段中，所有能力无效。（不包括基本能力）
+ * 【永】：你的战场上只能有一个神蚀单位。与这个单位进行战斗的对方的所有单位在那个战斗阶段中，所有效果无效。（不包括关键词效果）
  * 【启】〖同名一回合一次〗：[从你的手牌，卡组，墓地放逐合计2张「萨拉拉」的神蚀卡]这个能力只能在你的主要阶段发动。选择1名对手，将他卡组顶的3张卡送去墓地。
  * TODO: confirm ID / godMark / rarity variants and implement effects.
  */
@@ -39,7 +39,7 @@ const card: Card = {
   canResetCount: 0,
   effects: [],
   rarity: 'SER',
-  availableRarities: ['SER', 'UR'],
+  availableRarities: ['SER'],
   cardPackage: 'BT04',
   uniqueId: null as any,
 };

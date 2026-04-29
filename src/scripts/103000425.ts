@@ -10,7 +10,7 @@ import { Card } from '../types/game';
  * ID Source: card-xlsx
  * Keywords: N/A
  * Card Detail:
- * 【诱】：对手的每个回合开始时，将对手卡组顶的X张卡送入墓地（X为你的战场上的这个单位意外的卡名含有《魔女》的单位数。
+ * 【诱】：对手的每个回合开始时，将对手卡组顶的X张卡送入墓地（X为你的战场上的这个单位以外的卡名含有《魔女》的单位数。
  * 〖10+〗【启】〖1游戏1次〗:选择你的墓地中的1张卡名含有《魔女》的故事卡，将其放逐。之后，将那张卡的效果当做这个能力的效果并处理（不产生对抗）。
  * TODO: confirm ID / godMark / rarity variants and implement effects.
  */
