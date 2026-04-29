@@ -1,7 +1,7 @@
 import { Card, CardEffect, GameEvent } from '../types/game';
 import { AtomicEffectExecutor } from '../services/AtomicEffectExecutor';
 import { EventEngine } from '../services/EventEngine';
-import { canPutCardOntoBattlefieldByEffect, createSelectCardQuery, getTopDeckCards, isAlchemyCard, isNonGodAccessLe3UnitOrItem, moveCardsToBottom } from './BaseUtil';
+import { canPutCardOntoBattlefieldByEffect, createSelectCardQuery, getTopDeckCards, isAlchemyCard, isNonGodAccessLe3UnitOrItem, moveCardAsCost, moveCardsToBottom } from './BaseUtil';
 
 const effect_105120168_enter: CardEffect = {
   id: '105120168_enter',
@@ -48,7 +48,7 @@ const effect_105120168_activate: CardEffect = {
   erosionTotalLimit: [3, 5],
   description: 'Main phase only. Discard 1 hand card, reveal the top card of your deck, and if it is a non-god unit or item with AC 3 or less, put it onto the battlefield.',
   condition: (gameState, playerState) => gameState.phase === 'MAIN' && playerState.hand.length > 0,
-  execute: async (instance, gameState, playerState) => {
+  cost: async (gameState, playerState, instance) => {
     createSelectCardQuery(
       gameState,
       playerState.uid,
@@ -57,18 +57,12 @@ const effect_105120168_activate: CardEffect = {
       'Discard 1 hand card.',
       1,
       1,
-      { sourceCardId: instance.gamecardId, effectId: '105120168_activate', step: 'DISCARD' },
+      { sourceCardId: instance.gamecardId, effectId: '105120168_activate', step: 'DISCARD_COST' },
       () => 'HAND'
     );
+    return true;
   },
-  onQueryResolve: async (instance, gameState, playerState, selections, context) => {
-    if (context.step !== 'DISCARD') return;
-
-    await AtomicEffectExecutor.execute(gameState, playerState.uid, {
-      type: 'DISCARD_CARD',
-      targetFilter: { gamecardId: selections[0] }
-    }, instance);
-
+  execute: async (instance, gameState, playerState) => {
     const topCard = getTopDeckCards(playerState, 1)[0];
     if (!topCard) return;
 
@@ -77,16 +71,33 @@ const effect_105120168_activate: CardEffect = {
       playerUid: playerState.uid,
       data: { cards: [topCard] }
     });
-    gameState.logs.push(`[${instance.fullName}] 揭开了卡组顶的 [${topCard.fullName}]。`);
+    gameState.logs.push(`[${instance.fullName}] 公开了卡组顶的 [${topCard.fullName}]。`);
 
-    if (!isNonGodAccessLe3UnitOrItem(topCard)) return;
-    if (!canPutCardOntoBattlefieldByEffect(playerState, topCard)) return;
+    if (!isNonGodAccessLe3UnitOrItem(topCard)) {
+      gameState.logs.push(`[${instance.fullName}] 公开的卡不是ACCESS值3以下的非神蚀单位或道具，留在卡组顶。`);
+      return;
+    }
+    if (!canPutCardOntoBattlefieldByEffect(playerState, topCard)) {
+      gameState.logs.push(`[${instance.fullName}] 公开的卡无法放置到战场，留在卡组顶。`);
+      return;
+    }
 
     await AtomicEffectExecutor.execute(gameState, playerState.uid, {
       type: 'MOVE_FROM_DECK',
       targetFilter: { gamecardId: topCard.gamecardId },
       destinationZone: topCard.type === 'UNIT' ? 'UNIT' : 'ITEM'
     }, instance);
+  },
+  onQueryResolve: async (instance, gameState, playerState, selections, context) => {
+    if (context.step !== 'DISCARD_COST') return;
+
+    const discardCard = playerState.hand.find(card => card.gamecardId === selections[0]);
+    if (!discardCard) {
+      gameState.logs.push(`[${instance.fullName}] 选择的手牌已不合法，费用支付失败。`);
+      return;
+    }
+    moveCardAsCost(gameState, playerState.uid, discardCard, 'GRAVE', instance);
+    gameState.logs.push(`[${instance.fullName}] 舍弃了 [${discardCard.fullName}] 作为费用。`);
   }
 };
 

@@ -524,8 +524,10 @@ export const addInfluence = (card: Card, source: Card, description: string) => {
 export const markAccessTapValue = (target: Card, source: Card, value: number) => {
   const data = ensureData(target);
   data.accessTapValue = value;
+  data.accessTapMinValue = 1;
+  data.accessTapFlexible = true;
   data.accessTapValueSourceName = source.fullName;
-  addInfluence(target, source, `横置支付ACCESS时可当作+${value}`);
+  addInfluence(target, source, `横置支付ACCESS时可当作+1或+${value}`);
 };
 
 export const markDeclarationTax = (target: Card, source: Card, amount: number) => {

@@ -6,17 +6,29 @@ const hasExistingCocolaOnField = (playerState: PlayerState) => {
   return fieldCards.some(c => c && c.specialName === '可可拉');
 };
 
+const hasSummonableCocola = (playerState: PlayerState) =>
+  playerState.unitZone.some(slot => slot === null) &&
+  !hasExistingCocolaOnField(playerState) &&
+  [...playerState.hand, ...playerState.deck, ...playerState.grave].some(c =>
+    c && c.type === 'UNIT' && (c.specialName === '可可拉' || c.fullName.includes('可可拉'))
+  );
+
 const effect_104030126_kill_trigger: CardEffect = {
   id: 'cocoa_kill_trigger',
   type: 'TRIGGER',
   triggerEvent: 'CARD_DESTROYED_BATTLE',
+  triggerLocation: ['UNIT'],
   isGlobal: true,
   description: '【诱发】当此单位在战斗中破坏对手的单位时，选择对手的一个横置状态的非神迹单位并破坏。',
   condition: (gameState: GameState, playerState: PlayerState, instance: Card, event?: GameEvent) => {
-    if (!event || !event.data || !gameState.battleState) return false;
+    if (!event || event.type !== 'CARD_DESTROYED_BATTLE') return false;
     // Trigger if this unit was either the attacker or the defender in the battle that caused destruction
-    const isParticipant = gameState.battleState.attackers.includes(instance.gamecardId) || 
-                         gameState.battleState.defender === instance.gamecardId;
+    const attackerIds = Array.isArray(event.data?.attackerIds) ? event.data.attackerIds as string[] : [];
+    const isParticipant =
+      attackerIds.includes(instance.gamecardId) ||
+      event.data?.defenderId === instance.gamecardId ||
+      gameState.battleState?.attackers.includes(instance.gamecardId) ||
+      gameState.battleState?.defender === instance.gamecardId;
     // And verify the destruction target was an opponent's card
     const opponentId = gameState.playerIds.find(id => id !== playerState.uid)!;
     const isOpponentCard = event.playerUid === opponentId;
@@ -70,7 +82,7 @@ const effect_104030126_activate: CardEffect = {
   limitCount: 1,
   limitNameType: true,
   condition: (gameState: GameState, playerState: PlayerState) => {
-    return !hasExistingCocolaOnField(playerState);
+    return hasSummonableCocola(playerState);
   },
   execute: async (instance: Card, gameState: GameState, playerState: PlayerState) => {
     const frontCards = playerState.erosionFront.filter(c => c && c.displayState === 'FRONT_UPRIGHT') as Card[];
@@ -95,8 +107,8 @@ const effect_104030126_activate: CardEffect = {
   },
   onQueryResolve: async (instance: Card, gameState: GameState, playerState: PlayerState, selections: string[], context: any) => {
     if (context.step === 'COST' && selections.length > 0) {
-      if (hasExistingCocolaOnField(playerState)) {
-        gameState.logs.push('场上已有专用名为“可可拉”的卡牌，效果发动失败。');
+      if (!hasSummonableCocola(playerState)) {
+        gameState.logs.push('没有可放置的“可可拉”，或单位区已满，效果发动失败。');
         return;
       }
 
@@ -141,8 +153,8 @@ const effect_104030126_activate: CardEffect = {
         gameState.logs.push('未发现符合条件的“可可拉”卡牌。');
       }
     } else if (context.step === 'SUMMON' && selections.length > 0) {
-      if (hasExistingCocolaOnField(playerState)) {
-        gameState.logs.push('场上已有专用名为“可可拉”的卡牌，无法放置。');
+      if (hasExistingCocolaOnField(playerState) || !playerState.unitZone.some(slot => slot === null)) {
+        gameState.logs.push('场上已有专用名为“可可拉”的卡牌，或单位区已满，无法放置。');
         return;
       }
 

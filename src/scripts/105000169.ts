@@ -5,15 +5,15 @@ import { createSelectCardQuery, getOpponentUid } from './BaseUtil';
 const effect_105000169_trigger: CardEffect = {
   id: '105000169_trigger',
   type: 'TRIGGER',
-  triggerLocation: ['UNIT'],
+  triggerLocation: ['GRAVE'],
   triggerEvent: 'CARD_DESTROYED_BATTLE',
   limitCount: 1,
   limitNameType: true,
   description: 'When this unit is destroyed by battle, you may pay 1 with a yellow requirement. If you do, the opponent discards 1 hand card of their choice.',
   condition: (gameState, playerState, instance, event?: GameEvent) => {
     if (event?.type !== 'CARD_DESTROYED_BATTLE' || event.targetCardId !== instance.gamecardId) return false;
-    const yellowUnits = playerState.unitZone.filter(card => card && card.color === 'YELLOW').length;
-    return yellowUnits >= 1;
+    const opponentUid = getOpponentUid(gameState, playerState.uid);
+    return gameState.players[opponentUid].hand.length > 0;
   },
   cost: async (gameState, playerState, instance) => {
     gameState.pendingQuery = {
@@ -30,7 +30,8 @@ const effect_105000169_trigger: CardEffect = {
       context: {
         sourceCardId: instance.gamecardId,
         effectIndex: 0
-      }
+      },
+      paymentColor: 'YELLOW'
     };
     return true;
   },

@@ -126,6 +126,8 @@ export class EventEngine {
 
     Object.values(gameState.players).forEach(checkPlayerCards);
 
+    triggeredEffects.sort((a, b) => (b.effect.triggerPriority || 0) - (a.effect.triggerPriority || 0));
+
     // 2. Queue all valid triggers into the triggeredEffectsQueue for sequential resolution
     for (const { card, effect, effectIndex, playerUid } of triggeredEffects) {
       const pendingSourceCard = findCardByGamecardId(gameState.pendingQuery?.context?.sourceCardId);
@@ -239,6 +241,8 @@ export class EventEngine {
           if (card.baseShenyi !== undefined) card.isShenyi = card.baseShenyi;
           if ((card as any).data) {
             delete (card as any).data.accessTapValue;
+            delete (card as any).data.accessTapMinValue;
+            delete (card as any).data.accessTapFlexible;
             delete (card as any).data.accessTapValueSourceName;
             delete (card as any).data.declareAttackDefenseTax;
             delete (card as any).data.declareAttackDefenseTaxSourceName;
@@ -385,6 +389,20 @@ export class EventEngine {
             description: '不能宣言攻击和防御'
           });
         }
+        if (card && card.canResetCount !== undefined && card.canResetCount > 0 && (card as any).data?.cannotResetSourceName) {
+          if (!card.influencingEffects) card.influencingEffects = [];
+          card.influencingEffects.push({
+            sourceCardName: (card as any).data.cannotResetSourceName,
+            description: '下个重置阶段不能重置'
+          });
+        }
+        if (card && (card as any).data?.cocolaMarkedTurn === gameState.turnCount) {
+          if (!card.influencingEffects) card.influencingEffects = [];
+          card.influencingEffects.push({
+            sourceCardName: (card as any).data.cocolaMarkedSourceName || '可可拉',
+            description: '被可可拉标记'
+          });
+        }
         if (card && (card as any).data?.cannotActivateUntilTurn !== undefined && (card as any).data.cannotActivateUntilTurn >= gameState.turnCount) {
           if (!card.influencingEffects) card.influencingEffects = [];
           card.influencingEffects.push({
@@ -401,9 +419,14 @@ export class EventEngine {
         }
         if (card && (card as any).data?.accessTapValue) {
           if (!card.influencingEffects) card.influencingEffects = [];
+          const maxValue = (card as any).data.accessTapValue;
+          const minValue = (card as any).data.accessTapMinValue || 1;
+          const isFlexible = !!(card as any).data.accessTapFlexible && minValue < maxValue;
           card.influencingEffects.push({
             sourceCardName: (card as any).data.accessTapValueSourceName || '效果',
-            description: `横置支付ACCESS时可当作+${(card as any).data.accessTapValue}`
+            description: isFlexible
+              ? `横置支付ACCESS时可当作+${minValue}或+${maxValue}`
+              : `横置支付ACCESS时可当作+${maxValue}`
           });
         }
         if (card && (card as any).data?.declareAttackDefenseTax) {
@@ -553,7 +576,7 @@ export class EventEngine {
                 if (!u.influencingEffects.some(e => e.sourceCardName === source.fullName)) {
                   u.influencingEffects.push({
                     sourceCardName: source.fullName,
-                    description: '已标记'
+                    description: source.id === '104030125' ? '被可可拉标记' : '已标记'
                   });
                 }
               }

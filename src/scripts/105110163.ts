@@ -5,15 +5,15 @@ const effect_105110163_story_ping: CardEffect = {
   id: '105110163_story_ping',
   type: 'TRIGGER',
   triggerLocation: ['UNIT'],
-  triggerEvent: 'CARD_PLAYED',
+  triggerEvent: 'EFFECT_ACTIVATED',
   isGlobal: true,
   isMandatory: true,
-  description: 'Whenever a player uses a story card, deal 2 damage to that story card controller.',
+  description: 'Whenever a player resolves a story card effect, deal 2 effect damage to that story card controller.',
   condition: (gameState, _playerState, instance, event?: GameEvent) => {
     const playedCard = event?.sourceCard || (event?.sourceCardId ? AtomicEffectExecutor.findCardById(gameState, event.sourceCardId) : undefined);
     return (
       instance.cardlocation === 'UNIT' &&
-      event?.type === 'CARD_PLAYED' &&
+      event?.type === 'EFFECT_ACTIVATED' &&
       playedCard?.type === 'STORY' &&
       !!event.playerUid
     );

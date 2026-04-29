@@ -365,11 +365,7 @@ const PlayerHalf: React.FC<{
                             card={displayCard}
                             isFaceUp={displayCard.isFaceUp}
                             onPreview={onPreviewCard}
-                            onClick={(e) => {
-                              if (displayCard.isFaceUp) {
-                                onCardClick?.(displayCard, 'erosion_front', i, e);
-                              }
-                            }}
+                            onClick={(e) => onCardClick?.(displayCard, displayCard.isFaceUp ? 'erosion_front' : 'erosion_back', i, e)}
                             isSelectedForPayment={displayCard.isFaceUp && paymentSelection?.erosionFrontIds?.includes(displayCard.gamecardId)}
                             className={displayCard.isFaceUp ? "border-red-600" : "border-red-900/50"}
                             isHighlighted={displayCard.isFaceUp && highlightedCardIds?.has(displayCard.gamecardId)}

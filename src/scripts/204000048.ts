@@ -1,5 +1,6 @@
 import { Card, GameState, PlayerState, CardEffect } from '../types/game';
 import { AtomicEffectExecutor } from '../services/AtomicEffectExecutor';
+import { ensureData } from './BaseUtil';
 
 const effect_204000048_activate: CardEffect = {
   id: '204000048_activate',
@@ -50,6 +51,7 @@ const effect_204000048_activate: CardEffect = {
         targetFilter: { gamecardId: targetId },
         value: 1
       }, instance);
+      ensureData(target).cannotResetSourceName = instance.fullName;
 
       gameState.logs.push(`[${instance.fullName}] 效果：使 [${target.fullName}] 休息并进入冻结状态。`);
     }

@@ -1037,15 +1037,32 @@ export const ServerGameService = {
 
       const cardsToExhaust: Card[] = [];
       if (paymentSelection.exhaustUnitIds) {
+        const seenExhaustUnitIds = new Set<string>();
         for (const uid of paymentSelection.exhaustUnitIds) {
-          if (remainingCost <= 0) break;
+          if (seenExhaustUnitIds.has(uid)) {
+            if (reservedDeckCard) player.deck.push(reservedDeckCard);
+            return { success: false, reason: '不能重复选择同一个横置支付单位' };
+          }
+          seenExhaustUnitIds.add(uid);
           const card = [...player.unitZone].find(c => c?.gamecardId === uid && !c.isExhausted && !(c as any).data?.cannotExhaustByEffect);
           if (card) {
             cardsToExhaust.push(card);
-            remainingCost -= Math.max(1, Number((card as any).data?.accessTapValue || 1));
+          } else {
+            if (reservedDeckCard) player.deck.push(reservedDeckCard);
+            return { success: false, reason: '选择的横置支付单位无效' };
           }
         }
       }
+
+      const accessMinValue = (card: Card) => Math.max(1, Number((card as any).data?.accessTapMinValue || 1));
+      const accessMaxValue = (card: Card) => Math.max(accessMinValue(card), Number((card as any).data?.accessTapValue || 1));
+      const selectedAccessMin = cardsToExhaust.reduce((total, card) => total + accessMinValue(card), 0);
+      const selectedAccessMax = cardsToExhaust.reduce((total, card) => total + accessMaxValue(card), 0);
+      if (selectedAccessMin > remainingCost) {
+        if (reservedDeckCard) player.deck.push(reservedDeckCard);
+        return { success: false, reason: '选择的横置支付单位超过支付需求' };
+      }
+      remainingCost = selectedAccessMax >= remainingCost ? 0 : remainingCost - selectedAccessMax;
 
       // Actually exhaust them
       cardsToExhaust.forEach(c => ServerGameService.exhaustCard(c));
@@ -3218,6 +3235,7 @@ export const ServerGameService = {
         playerUid: playerId,
         data: {
           attackerIds: gameState.battleState?.attackers || [],
+          defenderId: gameState.battleState?.defender,
           isAlliance: gameState.battleState?.isAlliance || false
         }
       });
@@ -3305,22 +3323,10 @@ export const ServerGameService = {
         return;
       }
 
-      gameState.currentTurnPlayer = gameState.currentTurnPlayer === 0 ? 1 : 0;
-      gameState.turnCount += 1;
-      gameState.phase = 'START';
-      gameState.phaseTimerStart = Date.now();
-      const nextPlayerId = gameState.playerIds[gameState.currentTurnPlayer];
-      const nextPlayer = gameState.players[nextPlayerId];
-
-      currentPlayer.isTurn = false;
-      nextPlayer.isTurn = true;
-
-      gameState.logs.push(`--- 鍥炲悎 ${gameState.turnCount}: ${nextPlayer.displayName} ---`);
-
-      // 1. Process pending resolutions (End-of-Turn Effects)
+      // End-of-turn delayed effects must resolve before the turn counter/player changes.
       if (gameState.pendingResolutions && gameState.pendingResolutions.length > 0) {
         const resolutions = [...gameState.pendingResolutions];
-        gameState.pendingResolutions = []; // Clear queue immediately
+        gameState.pendingResolutions = [];
 
         for (const record of resolutions) {
           if (!record.effect || !record.effect.resolve) {
@@ -3330,7 +3336,6 @@ export const ServerGameService = {
           try {
             const player = gameState.players[record.playerUid];
             if (player) {
-              // Use Promise.race to prevent potential hangs in resolution scripts
               const resolvePromise = (record.effect.resolve as any)(record.card, gameState, player, record.event);
               await Promise.race([
                 resolvePromise,
@@ -3342,6 +3347,18 @@ export const ServerGameService = {
           }
         }
       }
+
+      gameState.currentTurnPlayer = gameState.currentTurnPlayer === 0 ? 1 : 0;
+      gameState.turnCount += 1;
+      gameState.phase = 'START';
+      gameState.phaseTimerStart = Date.now();
+      const nextPlayerId = gameState.playerIds[gameState.currentTurnPlayer];
+      const nextPlayer = gameState.players[nextPlayerId];
+
+      currentPlayer.isTurn = false;
+      nextPlayer.isTurn = true;
+
+      gameState.logs.push(`--- 鍥炲悎 ${gameState.turnCount}: ${nextPlayer.displayName} ---`);
 
       ServerGameService.processBt01DestroyAtEnd(gameState);
 
@@ -3940,6 +3957,9 @@ export const ServerGameService = {
             ServerGameService.readyCard(card);
           } else if (card && card.canResetCount !== undefined && card.canResetCount > 0) {
             card.canResetCount -= 1;
+            if (card.canResetCount <= 0) {
+              delete (card as any).data?.cannotResetSourceName;
+            }
           }
         }
       });
@@ -3950,6 +3970,9 @@ export const ServerGameService = {
           ServerGameService.readyCard(card);
         } else if (card && card.canResetCount !== undefined && card.canResetCount > 0) {
           card.canResetCount -= 1;
+          if (card.canResetCount <= 0) {
+            delete (card as any).data?.cannotResetSourceName;
+          }
         }
       });
       gameState.logs.push(`${player.displayName} 完成了调度。`);

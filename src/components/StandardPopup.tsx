@@ -32,7 +32,7 @@ interface StandardPopupProps {
   
   // Payment props
   paymentCost?: number;
-  paymentCurrent?: number;
+  paymentCurrent?: number | string;
   
   // Custom children for specialized content (like payment area)
   children?: React.ReactNode;
@@ -209,13 +209,13 @@ export const StandardPopup: React.FC<StandardPopupProps> = ({
                       whileHover={{ y: -10, scale: 1.05 }}
                       whileTap={{ scale: 0.95 }}
                       onClick={(e) => {
-                        if (!isHiddenDisplay) onCardClick?.(card, e);
+                        onCardClick?.(card, e);
                       }}
                       className={cn(
                         "w-full aspect-[3/4] rounded-xl md:rounded-2xl overflow-hidden border-2 transition-all relative shrink-0",
                         isSelected 
                           ? "border-[#f27d26] shadow-[0_0_30px_rgba(242,125,38,0.4)] scale-105" 
-                          : cn("border-white/5 opacity-80 hover:opacity-100", isHiddenDisplay ? "cursor-default" : "cursor-pointer")
+                          : cn("border-white/5 opacity-80 hover:opacity-100", "cursor-pointer")
                       )}
                     >
                       <CardComponent card={card} isBack={isFaceDown} disableZoom={true} cardBackUrl={cardBackUrl} />

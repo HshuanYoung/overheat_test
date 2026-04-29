@@ -5,7 +5,7 @@ const cardEffects: CardEffect[] = [{
   id: '303090021_all_access_plus_two',
   type: 'CONTINUOUS',
   triggerLocation: ['ITEM'],
-  description: '你的战场上所有单位获得横置支付ACCESS时可当作+2。',
+  description: '你的战场上所有单位获得横置支付ACCESS时可当作+1或+2。',
   applyContinuous: (gameState, instance) => {
     const ownerUid = Object.entries(gameState.players).find(([, player]) =>
       player.itemZone.some(item => item?.gamecardId === instance.gamecardId)

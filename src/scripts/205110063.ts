@@ -1,6 +1,6 @@
 import { Card, CardEffect } from '../types/game';
 import { AtomicEffectExecutor } from '../services/AtomicEffectExecutor';
-import { createSelectCardQuery, isValkyrieUnit } from './BaseUtil';
+import { addInfluence, createSelectCardQuery, isValkyrieUnit } from './BaseUtil';
 
 const effect_205110063_item_discount: CardEffect = {
   id: '205110063_item_discount',
@@ -13,7 +13,11 @@ const effect_205110063_item_discount: CardEffect = {
 
     const baseCost = instance.baseAcValue ?? instance.acValue ?? 0;
     const itemCount = gameState.players[ownerUid].itemZone.filter(Boolean).length;
-    instance.acValue = Math.max(0, baseCost - itemCount);
+    const nextCost = Math.max(0, baseCost - itemCount);
+    instance.acValue = nextCost;
+    if (nextCost < baseCost) {
+      addInfluence(instance, instance, `ACCESS值-${baseCost - nextCost}`);
+    }
   }
 };
 

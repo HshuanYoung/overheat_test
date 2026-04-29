@@ -1,16 +1,25 @@
 import { Card, GameState, PlayerState, CardEffect, TriggerLocation } from '../types/game';
 import { AtomicEffectExecutor } from '../services/AtomicEffectExecutor';
+import { ensureData } from './BaseUtil';
 
 const hasExistingCocoaOnField = (playerState: PlayerState) => {
   const fieldCards = [...playerState.unitZone, ...playerState.itemZone];
   return fieldCards.some(c => c && c.specialName === '可可亚');
 };
 
+const hasSummonableCocoa = (playerState: PlayerState) =>
+  playerState.unitZone.some(slot => slot === null) &&
+  !hasExistingCocoaOnField(playerState) &&
+  [...playerState.hand, ...playerState.deck, ...playerState.grave].some(c =>
+    c && c.type === 'UNIT' && (c.specialName === '可可亚' || c.fullName.includes('可可亚'))
+  );
+
 const effect_104030125_trigger: CardEffect = {
   id: 'cocola_main_phase_trigger',
   type: 'TRIGGER',
   triggerEvent: 'PHASE_CHANGED',
   triggerLocation: ['UNIT'],
+  triggerPriority: 100,
   description: '【诱发】在你的主要阶段开始时，选择对手的一个非神蚀单位，在本回合中，你的单位可以攻击该单位。',
   condition: (gameState: GameState, playerState: PlayerState, instance: Card, event?: any) => {
     return event?.type === 'PHASE_CHANGED' &&
@@ -48,6 +57,12 @@ const effect_104030125_trigger: CardEffect = {
     if (selections.length > 0) {
       playerState.markedUnitAttackTarget = selections[0];
       const targetUnit = AtomicEffectExecutor.findCardById(gameState, selections[0]);
+      if (targetUnit) {
+        ensureData(targetUnit).cocolaMarkedTurn = gameState.turnCount;
+        ensureData(targetUnit).cocolaMarkedSourceName = instance.fullName;
+      }
+      ensureData(instance).markedTargetId = selections[0];
+      ensureData(instance).cocolaMarkedTurn = gameState.turnCount;
       gameState.logs.push(`[${instance.fullName}] 效果：本回合攻击可以指向 [${targetUnit?.fullName}]。`);
     }
   }
@@ -62,7 +77,7 @@ const effect_104030125_activate: CardEffect = {
   limitCount: 1,
   limitNameType: true,
   condition: (gameState: GameState, playerState: PlayerState) => {
-    return !hasExistingCocoaOnField(playerState);
+    return hasSummonableCocoa(playerState);
   },
   execute: async (instance: Card, gameState: GameState, playerState: PlayerState) => {
     const frontCards = playerState.erosionFront.filter(c => c && c.displayState === 'FRONT_UPRIGHT') as Card[];
@@ -87,8 +102,8 @@ const effect_104030125_activate: CardEffect = {
   },
   onQueryResolve: async (instance: Card, gameState: GameState, playerState: PlayerState, selections: string[], context: any) => {
     if (context.step === 'COST' && selections.length > 0) {
-      if (hasExistingCocoaOnField(playerState)) {
-        gameState.logs.push('场上已有专用名为“可可亚”的卡牌，效果发动失败。');
+      if (!hasSummonableCocoa(playerState)) {
+        gameState.logs.push('没有可放置的“可可亚”，或单位区已满，效果发动失败。');
         return;
       }
 
@@ -135,8 +150,8 @@ const effect_104030125_activate: CardEffect = {
         gameState.logs.push('未发现符合条件的“可可亚”卡牌。');
       }
     } else if (context.step === 'SUMMON' && selections.length > 0) {
-      if (hasExistingCocoaOnField(playerState)) {
-        gameState.logs.push('场上已有专用名为“可可亚”的卡牌，无法放置。');
+      if (hasExistingCocoaOnField(playerState) || !playerState.unitZone.some(slot => slot === null)) {
+        gameState.logs.push('场上已有专用名为“可可亚”的卡牌，或单位区已满，无法放置。');
         return;
       }
 

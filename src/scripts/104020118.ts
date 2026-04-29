@@ -1,5 +1,6 @@
 import { Card, GameState, PlayerState, CardEffect } from '../types/game';
 import { AtomicEffectExecutor } from '../services/AtomicEffectExecutor';
+import { ensureData } from './BaseUtil';
 
 const card: Card = {
   id: '104020118',
@@ -69,6 +70,7 @@ const card: Card = {
 
           if (targetUnit) {
             targetUnit.canResetCount = 1;
+            ensureData(targetUnit).cannotResetSourceName = card.fullName;
             gameState.logs.push(`[幻国迷偶 代号NEW] 使单位 ${targetUnit.fullName}在下一个对手回合开始时无法竖置。`);
           }
         }

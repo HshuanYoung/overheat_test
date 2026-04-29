@@ -4,7 +4,7 @@ import { markAccessTapValue } from './BaseUtil';
 const cardEffects: CardEffect[] = [{
   id: '103100130_access_plus_two',
   type: 'CONTINUOUS',
-  description: '通过横置这个单位支付的ACCESS值可以当作+2。',
+  description: '通过横置这个单位支付的ACCESS值可以当作+1或+2。',
   applyContinuous: (_gameState, instance) => {
     markAccessTapValue(instance, instance, 2);
   }

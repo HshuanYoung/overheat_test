@@ -71,18 +71,13 @@ const effect_205000064_activate: CardEffect = {
     EventEngine.recalculateContinuousEffects(gameState);
   },
   resolve: async (instance, gameState, playerState) => {
-    if ((instance as any).data?.delayedBanishTurn !== gameState.turnCount) return;
+    const delayedBanishTurn = (instance as any).data?.delayedBanishTurn;
+    if (delayedBanishTurn !== gameState.turnCount && delayedBanishTurn !== gameState.turnCount - 1) return;
 
     const targetId = (instance as any).data?.delayedBanishTargetId;
     if (!targetId) return;
 
     const target = AtomicEffectExecutor.findCardById(gameState, targetId);
-    if (target) {
-      (target as any).data = {
-        ...((target as any).data || {}),
-        forbiddenAlchemyWillExileAtEndOfTurn: false
-      };
-    }
     if (!target || target.cardlocation !== 'UNIT' || isAlchemyCard(target)) return;
 
     const ownerUid = AtomicEffectExecutor.findCardOwnerKey(gameState, target.gamecardId);
@@ -93,6 +88,8 @@ const effect_205000064_activate: CardEffect = {
       effectSourceCardId: instance.gamecardId
     });
     gameState.logs.push(`[${instance.fullName}] 在回合结束时放逐了 [${target.fullName}]。`);
+    delete (instance as any).data.delayedBanishTargetId;
+    delete (instance as any).data.delayedBanishTurn;
   }
 };
 

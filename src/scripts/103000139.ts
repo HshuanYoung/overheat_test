@@ -7,10 +7,14 @@ const cardEffects: CardEffect[] = [{
   triggerEvent: 'CARD_ENTERED_ZONE',
   triggerLocation: ['UNIT'],
   description: '从手牌进入战场时，本回合你的所有单位伤害+1、力量+1000。',
-  condition: (_gameState, _playerState, instance, event) =>
-    event?.sourceCardId === instance.gamecardId &&
-    event.data?.zone === 'UNIT' &&
-    event.data?.sourceZone === 'HAND',
+  condition: (_gameState, _playerState, instance, event) => {
+    const enteredFromHand =
+      event?.data?.sourceZone === 'HAND' ||
+      (event?.data?.sourceZone === 'PLAY' && (instance as any).__playSnapshot?.sourceZone === 'HAND');
+    return event?.sourceCardId === instance.gamecardId &&
+      event.data?.zone === 'UNIT' &&
+      enteredFromHand;
+  },
   execute: async (instance, _gameState, playerState) => {
     ownUnits(playerState).forEach(unit => {
       addTempDamage(unit, instance, 1);
