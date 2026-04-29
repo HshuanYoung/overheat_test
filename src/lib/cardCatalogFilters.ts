@@ -1,0 +1,36 @@
+import type { Card, CardType } from '../types/game';
+
+export const SEARCHABLE_CARD_PACKAGES = ['BT01', 'BT02', 'BT03', 'BT04', 'BT05'] as const;
+export type SearchableCardPackage = typeof SEARCHABLE_CARD_PACKAGES[number];
+export type CardTypeFilter = 'ALL' | CardType;
+
+const tokenizeCardPackage = (value?: string | null) =>
+  (value || '')
+    .toUpperCase()
+    .replace(/[，、]/g, ',')
+    .split(/[,\s|/]+/)
+    .map(token => token.trim())
+    .filter(Boolean);
+
+export const getBtPackageNumbers = (cardPackage?: string | null) =>
+  tokenizeCardPackage(cardPackage)
+    .map(token => token.match(/^BT(\d+)/)?.[1])
+    .filter((value): value is string => !!value)
+    .map(value => Number(value))
+    .filter(value => Number.isFinite(value));
+
+export const isCardVisibleInCatalog = (card: Pick<Card, 'cardPackage'>) => {
+  const btNumbers = getBtPackageNumbers(card.cardPackage);
+  return btNumbers.length === 0 || btNumbers.some(value => value <= 5);
+};
+
+export const matchesCardPackageFilter = (cardPackage: string | undefined, selectedPackage: string) => {
+  if (!selectedPackage || selectedPackage === 'ALL') {
+    return true;
+  }
+
+  return tokenizeCardPackage(cardPackage).some(token => token.startsWith(selectedPackage));
+};
+
+export const matchesCardTypeFilter = (card: Pick<Card, 'type'>, selectedType: string) =>
+  selectedType === 'ALL' || card.type === selectedType;

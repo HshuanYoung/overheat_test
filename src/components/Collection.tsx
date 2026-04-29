@@ -10,6 +10,7 @@ import { CardComponent } from './Card';
 import { useCardCatalog } from '../hooks/useCardCatalog';
 import { KeywordBadges } from './KeywordBadges';
 import { readJsonResponse } from '../lib/http';
+import { SEARCHABLE_CARD_PACKAGES, matchesCardPackageFilter, matchesCardTypeFilter } from '../lib/cardCatalogFilters';
 
 const RARITY_BADGE: Record<string, string> = {
   C: 'bg-zinc-700 text-zinc-300', U: 'bg-emerald-900 text-emerald-300', R: 'bg-blue-900 text-blue-300',
@@ -19,24 +20,6 @@ const RARITY_BADGE: Record<string, string> = {
 
 type CollectionTab = 'DECKS' | 'CARDS' | 'BACKS' | 'RAY_CARDS';
 const INITIAL_VISIBLE_CARD_COUNT = 48;
-
-const tokenizeCardPackage = (value?: string | null) =>
-  (value || '')
-    .toUpperCase()
-    .replace(/[，、]/g, ',')
-    .split(/[,\s|/]+/)
-    .map(token => token.trim())
-    .filter(Boolean);
-
-const matchesCardPackageFilter = (cardPackage: string | undefined, query: string) => {
-  const queryTokens = tokenizeCardPackage(query);
-  if (queryTokens.length === 0) {
-    return true;
-  }
-
-  const packageTokens = tokenizeCardPackage(cardPackage);
-  return queryTokens.every(token => packageTokens.some(pkg => pkg.includes(token)));
-};
 
 export const Collection: React.FC = () => {
   const navigate = useNavigate();
@@ -58,7 +41,7 @@ export const Collection: React.FC = () => {
   const [filterColor, setFilterColor] = useState<string | null>(null);
   const [visibleCardCount, setVisibleCardCount] = useState(INITIAL_VISIBLE_CARD_COUNT);
   const [filters, setFilters] = useState({
-    ac: '', damage: '', power: '', cardPackage: '', faction: 'ALL', ownership: 'ALL'
+    ac: '', damage: '', power: '', cardPackage: 'ALL', cardType: 'ALL', faction: 'ALL', ownership: 'ALL'
   });
   const deferredSearchTerm = useDeferredValue(searchTerm.trim());
   const {
@@ -211,15 +194,19 @@ export const Collection: React.FC = () => {
     [profile?.favoriteBackId]
   );
 
-  const ownedCardCount = useMemo(() => Object.keys(collection).length, [collection]);
+  const ownedCardCount = useMemo(() =>
+    cardLibrary.filter(card => (collection[card.uniqueId] || collection[card.id] || 0) > 0).length,
+    [cardLibrary, collection]
+  );
 
   const filteredCards = useMemo(() => cardLibrary.filter(card => {
     if (deferredSearchTerm && !card.fullName.includes(deferredSearchTerm) && !(card.specialName && card.specialName.includes(deferredSearchTerm))) return false;
     if (filterRarity && card.rarity !== filterRarity) return false;
     if (filterColor && card.color !== filterColor) return false;
+    if (!matchesCardTypeFilter(card, filters.cardType)) return false;
     if (filters.ac !== '' && card.acValue.toString() !== filters.ac) return false;
-    if (filters.damage !== '' && card.damage?.toString() !== filters.damage) return false;
-    if (filters.power !== '' && card.power?.toString() !== filters.power) return false;
+    if (card.type === 'UNIT' && filters.damage !== '' && card.damage?.toString() !== filters.damage) return false;
+    if (card.type === 'UNIT' && filters.power !== '' && card.power?.toString() !== filters.power) return false;
     if (!matchesCardPackageFilter(card.cardPackage, filters.cardPackage)) return false;
     if (filters.faction !== 'ALL' && card.faction !== filters.faction) return false;
     const isOwned = (collection[card.uniqueId] || collection[card.id] || 0) > 0;
@@ -387,24 +374,42 @@ export const Collection: React.FC = () => {
                     value={filters.ac}
                     onChange={e => setFilters({ ...filters, ac: e.target.value })}
                   />
-                  <input
+                  <select
                     className="bg-zinc-900/50 border border-white/5 rounded-xl px-2 md:px-3 py-2 md:py-2.5 text-[10px] md:text-xs font-bold text-white focus:outline-none"
-                    placeholder="伤害"
-                    value={filters.damage}
-                    onChange={e => setFilters({ ...filters, damage: e.target.value })}
-                  />
-                  <input
+                    value={filters.cardType}
+                    onChange={e => setFilters({ ...filters, cardType: e.target.value, damage: '', power: '' })}
+                  >
+                    <option value="ALL">全部类型</option>
+                    <option value="UNIT">单位卡</option>
+                    <option value="STORY">故事卡</option>
+                    <option value="ITEM">道具卡</option>
+                  </select>
+                  {filters.cardType !== 'STORY' && filters.cardType !== 'ITEM' && (
+                    <>
+                      <input
+                        className="bg-zinc-900/50 border border-white/5 rounded-xl px-2 md:px-3 py-2 md:py-2.5 text-[10px] md:text-xs font-bold text-white focus:outline-none"
+                        placeholder="伤害"
+                        value={filters.damage}
+                        onChange={e => setFilters({ ...filters, damage: e.target.value })}
+                      />
+                      <input
+                        className="bg-zinc-900/50 border border-white/5 rounded-xl px-2 md:px-3 py-2 md:py-2.5 text-[10px] md:text-xs font-bold text-white focus:outline-none"
+                        placeholder="力量"
+                        value={filters.power}
+                        onChange={e => setFilters({ ...filters, power: e.target.value })}
+                      />
+                    </>
+                  )}
+                  <select
                     className="bg-zinc-900/50 border border-white/5 rounded-xl px-2 md:px-3 py-2 md:py-2.5 text-[10px] md:text-xs font-bold text-white focus:outline-none"
-                    placeholder="力量"
-                    value={filters.power}
-                    onChange={e => setFilters({ ...filters, power: e.target.value })}
-                  />
-                  <input
-                    className="bg-zinc-900/50 border border-white/5 rounded-xl px-2 md:px-3 py-2 md:py-2.5 text-[10px] md:text-xs font-bold text-white focus:outline-none"
-                    placeholder="卡包，如 BT01"
                     value={filters.cardPackage}
                     onChange={e => setFilters({ ...filters, cardPackage: e.target.value })}
-                  />
+                  >
+                    <option value="ALL">全部卡包</option>
+                    {SEARCHABLE_CARD_PACKAGES.map(pack => (
+                      <option key={pack} value={pack}>{pack}</option>
+                    ))}
+                  </select>
                 </div>
               </div>
 

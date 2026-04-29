@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Card } from '../types/game';
+import { isCardVisibleInCatalog } from '../lib/cardCatalogFilters';
 
 type CardCatalogMode = 'with-effects' | 'no-effects';
 
 const CARD_CATALOG_STORAGE_KEYS: Record<CardCatalogMode, string> = {
-  'with-effects': 'card_catalog_v2_with_effects',
-  'no-effects': 'card_catalog_v2_no_effects'
+  'with-effects': 'card_catalog_v3_with_effects',
+  'no-effects': 'card_catalog_v3_no_effects'
 };
 
 const cachedCards = new Map<CardCatalogMode, Card[]>();
@@ -40,7 +41,7 @@ async function fetchCardCatalog(includeEffects: boolean) {
   }
 
   const data = await res.json();
-  const cards = (data.cards || []) as Card[];
+  const cards = ((data.cards || []) as Card[]).filter(isCardVisibleInCatalog);
 
   cachedCards.set(mode, cards);
   cachedLookup.set(mode, buildLookup(cards));
@@ -69,7 +70,7 @@ function hydrateCardCatalogFromStorage(includeEffects: boolean) {
       return;
     }
 
-    const cards = JSON.parse(stored) as Card[];
+    const cards = (JSON.parse(stored) as Card[]).filter(isCardVisibleInCatalog);
     cachedCards.set(mode, cards);
     cachedLookup.set(mode, buildLookup(cards));
   } catch {

@@ -13,26 +13,9 @@ import { useCardCatalog } from '../hooks/useCardCatalog';
 import { LoadingOverlay } from './LoadingOverlay';
 import { KeywordBadges } from './KeywordBadges';
 import { readJsonResponse } from '../lib/http';
+import { SEARCHABLE_CARD_PACKAGES, matchesCardPackageFilter, matchesCardTypeFilter } from '../lib/cardCatalogFilters';
 
 const INITIAL_VISIBLE_CARD_COUNT = 48;
-
-const tokenizeCardPackage = (value?: string | null) =>
-  (value || '')
-    .toUpperCase()
-    .replace(/[，、]/g, ',')
-    .split(/[,\s|/]+/)
-    .map(token => token.trim())
-    .filter(Boolean);
-
-const matchesCardPackageFilter = (cardPackage: string | undefined, query: string) => {
-  const queryTokens = tokenizeCardPackage(query);
-  if (queryTokens.length === 0) {
-    return true;
-  }
-
-  const packageTokens = tokenizeCardPackage(cardPackage);
-  return queryTokens.every(token => packageTokens.some(pkg => pkg.includes(token)));
-};
 
 export const DeckBuilder: React.FC = () => {
   const navigate = useNavigate();
@@ -57,7 +40,8 @@ export const DeckBuilder: React.FC = () => {
     ac: '',
     damage: '',
     power: '',
-    cardPackage: '',
+    cardPackage: 'ALL',
+    cardType: 'ALL',
     color: 'ALL',
     faction: 'ALL',
     rarity: 'ALL',
@@ -420,9 +404,10 @@ export const DeckBuilder: React.FC = () => {
     if (!matchesSearch) return false;
 
     // Filters
+    if (!matchesCardTypeFilter(c, filters.cardType)) return false;
     if (filters.ac !== '' && c.acValue.toString() !== filters.ac) return false;
-    if (filters.damage !== '' && c.damage?.toString() !== filters.damage) return false;
-    if (filters.power !== '' && c.power?.toString() !== filters.power) return false;
+    if (c.type === 'UNIT' && filters.damage !== '' && c.damage?.toString() !== filters.damage) return false;
+    if (c.type === 'UNIT' && filters.power !== '' && c.power?.toString() !== filters.power) return false;
     if (!matchesCardPackageFilter(c.cardPackage, filters.cardPackage)) return false;
     if (filters.color !== 'ALL' && c.color !== filters.color) return false;
     if (filters.faction !== 'ALL' && c.faction !== filters.faction) return false;
@@ -711,31 +696,52 @@ export const DeckBuilder: React.FC = () => {
               />
             </div>
             <div className="flex flex-col gap-1">
-              <label className="text-[10px] text-zinc-500 font-bold uppercase">伤害</label>
-              <input
-                className="bg-black border border-zinc-800 rounded px-2 py-1 text-xs"
-                placeholder="全部"
-                value={filters.damage}
-                onChange={e => setFilters({ ...filters, damage: e.target.value })}
-              />
+              <label className="text-[10px] text-zinc-500 font-bold uppercase">类型</label>
+              <select
+                className="bg-black border border-zinc-800 rounded px-2 py-1 text-xs text-white appearance-none"
+                value={filters.cardType}
+                onChange={e => setFilters({ ...filters, cardType: e.target.value, damage: '', power: '' })}
+              >
+                <option value="ALL">全部类型</option>
+                <option value="UNIT">单位卡</option>
+                <option value="STORY">故事卡</option>
+                <option value="ITEM">道具卡</option>
+              </select>
             </div>
-            <div className="flex flex-col gap-1">
-              <label className="text-[10px] text-zinc-500 font-bold uppercase">力量</label>
-              <input
-                className="bg-black border border-zinc-800 rounded px-2 py-1 text-xs"
-                placeholder="全部"
-                value={filters.power}
-                onChange={e => setFilters({ ...filters, power: e.target.value })}
-              />
-            </div>
+            {filters.cardType !== 'STORY' && filters.cardType !== 'ITEM' && (
+              <>
+                <div className="flex flex-col gap-1">
+                  <label className="text-[10px] text-zinc-500 font-bold uppercase">伤害</label>
+                  <input
+                    className="bg-black border border-zinc-800 rounded px-2 py-1 text-xs"
+                    placeholder="全部"
+                    value={filters.damage}
+                    onChange={e => setFilters({ ...filters, damage: e.target.value })}
+                  />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label className="text-[10px] text-zinc-500 font-bold uppercase">力量</label>
+                  <input
+                    className="bg-black border border-zinc-800 rounded px-2 py-1 text-xs"
+                    placeholder="全部"
+                    value={filters.power}
+                    onChange={e => setFilters({ ...filters, power: e.target.value })}
+                  />
+                </div>
+              </>
+            )}
             <div className="flex flex-col gap-1">
               <label className="text-[10px] text-zinc-500 font-bold uppercase">卡包</label>
-              <input
+              <select
                 className="bg-black border border-zinc-800 rounded px-2 py-1 text-xs"
-                placeholder="例如 BT01"
                 value={filters.cardPackage}
                 onChange={e => setFilters({ ...filters, cardPackage: e.target.value })}
-              />
+              >
+                <option value="ALL">全部卡包</option>
+                {SEARCHABLE_CARD_PACKAGES.map(pack => (
+                  <option key={pack} value={pack}>{pack}</option>
+                ))}
+              </select>
             </div>
             <div className="flex flex-col gap-1">
               <label className="text-[10px] text-zinc-500 font-bold uppercase">颜色</label>

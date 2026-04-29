@@ -10,6 +10,7 @@ import { pool, dbInit } from './db';
 import { generateToken, verifyToken } from './auth';
 import { initServerCardLibrary, SERVER_CARD_LIBRARY } from './card_loader';
 import { getLiveCardVariations } from './card_inventory';
+import { isCardVisibleInCatalog } from '../src/lib/cardCatalogFilters';
 import {
     createVerificationCode,
     getVerificationCodeExpireMs,
@@ -1112,7 +1113,7 @@ function syncStoreFromLibrary() {
     const newPool: string[] = [];
     const newRarities: Record<string, string> = {};
 
-    for (const card of getLiveCardVariations()) {
+    for (const card of getLiveCardVariations().filter(isCardVisibleInCatalog)) {
         newPool.push(card.uniqueId);
         newRarities[card.uniqueId] = card.rarity;
     }
@@ -1181,7 +1182,7 @@ function getClientCardCatalog(includeEffects: boolean) {
     if (!CLIENT_CARD_CATALOG_CACHE.has(cacheKey)) {
         CLIENT_CARD_CATALOG_CACHE.set(
             cacheKey,
-            getLiveCardVariations().map(card => serializeCatalogCard(card, includeEffects))
+            getLiveCardVariations().filter(isCardVisibleInCatalog).map(card => serializeCatalogCard(card, includeEffects))
         );
     }
 
@@ -1224,7 +1225,7 @@ app.post('/api/store/buy-pack', async (req, res): Promise<void> => {
             return;
         }
 
-        const allCards = getLiveCardVariations();
+        const allCards = getLiveCardVariations().filter(isCardVisibleInCatalog);
         const drawnCards: Card[] = [];
 
         if (isPrizePack) {
