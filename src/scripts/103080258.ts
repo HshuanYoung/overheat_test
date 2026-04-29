@@ -1,4 +1,38 @@
-import { Card } from '../types/game';
+import { Card, CardEffect } from '../types/game';
+import { AtomicEffectExecutor, addTempDamage, addTempKeyword, addTempPowerUntilEndOfTurn, createSelectCardQuery, markReturnToDeckBottomAtEnd, nameContains, ownUnits } from './BaseUtil';
+
+const cardEffects: CardEffect[] = [{
+  id: '103080258_boost_return',
+  type: 'ACTIVATE',
+  triggerLocation: ['UNIT'],
+  limitCount: 1,
+  limitNameType: true,
+  description: '选择你的1个其他卡名含有《神木》的单位，本回合伤害+1、力量+1000并获得【歼灭】，回合结束时放置到卡组底。',
+  condition: (_gameState, playerState, instance) =>
+    ownUnits(playerState).some(unit => unit.gamecardId !== instance.gamecardId && nameContains(unit, '神木')),
+  execute: async (instance, gameState, playerState) => {
+    const targets = ownUnits(playerState).filter(unit => unit.gamecardId !== instance.gamecardId && nameContains(unit, '神木'));
+    createSelectCardQuery(
+      gameState,
+      playerState.uid,
+      targets,
+      '选择神木单位',
+      '选择你的战场上的1个《神木震慑者》以外的卡名含有《神木》的单位。',
+      1,
+      1,
+      { sourceCardId: instance.gamecardId, effectId: '103080258_boost_return' },
+      () => 'UNIT'
+    );
+  },
+  onQueryResolve: async (instance, gameState, playerState, selections) => {
+    const target = selections[0] ? AtomicEffectExecutor.findCardById(gameState, selections[0]) : undefined;
+    if (!target || target.cardlocation !== 'UNIT') return;
+    addTempDamage(target, instance, 1);
+    addTempPowerUntilEndOfTurn(target, instance, 1000, gameState);
+    addTempKeyword(target, instance, 'annihilation');
+    markReturnToDeckBottomAtEnd(target, instance, gameState, playerState.uid);
+  }
+}];
 
 /**
  * Auto-generated from Card.xlsx + Card2.xlsx.
@@ -31,11 +65,11 @@ const card: Card = {
   displayState: 'FRONT_UPRIGHT',
   isExhausted: false,
   isrush: false,
-  isAnnihilation: true,
+  isAnnihilation: false,
   canAttack: true,
   feijingMark: false,
   canResetCount: 0,
-  effects: [],
+  effects: cardEffects,
   rarity: 'C',
   availableRarities: ['C'],
   cardPackage: 'BT05',

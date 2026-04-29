@@ -1,4 +1,19 @@
-import { Card } from '../types/game';
+import { Card, CardEffect } from '../types/game';
+import { addContinuousDamage, addContinuousPower, isFeijingUnit, ownUnits, ownerUidOf } from './BaseUtil';
+
+const cardEffects: CardEffect[] = [{
+  id: '102050239_feijing_boost',
+  type: 'CONTINUOUS',
+  triggerLocation: ['UNIT'],
+  description: '若你的战场上有具有【菲晶】的单位，这个单位伤害+1、力量+500。',
+  condition: (_gameState, playerState) => ownUnits(playerState).some(isFeijingUnit),
+  applyContinuous: (gameState, instance) => {
+    const ownerUid = ownerUidOf(gameState, instance);
+    if (!ownerUid || !ownUnits(gameState.players[ownerUid]).some(isFeijingUnit)) return;
+    addContinuousDamage(instance, instance, 1);
+    addContinuousPower(instance, instance, 500);
+  }
+}];
 
 /**
  * Auto-generated from Card.xlsx + Card2.xlsx.
@@ -34,7 +49,7 @@ const card: Card = {
   canAttack: true,
   feijingMark: true,
   canResetCount: 0,
-  effects: [],
+  effects: cardEffects,
   rarity: 'C',
   availableRarities: ['C'],
   cardPackage: 'BT05',

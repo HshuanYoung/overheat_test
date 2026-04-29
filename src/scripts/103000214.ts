@@ -1,4 +1,39 @@
-import { Card } from '../types/game';
+import { Card, CardEffect } from '../types/game';
+import { AtomicEffectExecutor, cardsInZones, getOpponentUid, isFeijingCard, moveCard, selectFromEntries } from './BaseUtil';
+
+const cardEffects: CardEffect[] = [{
+  id: '103000214_combat_search',
+  type: 'TRIGGER',
+  triggerLocation: ['UNIT'],
+  triggerEvent: 'COMBAT_DAMAGE_CAUSED',
+  limitCount: 1,
+  limitNameType: true,
+  description: '这个单位造成战斗伤害时，可以将卡组或墓地中1张菲晶非神蚀卡加入手牌。',
+  condition: (gameState, playerState, instance, event) =>
+    event?.playerUid === getOpponentUid(gameState, playerState.uid) &&
+    (event.data?.attackerIds || []).includes(instance.gamecardId) &&
+    cardsInZones(playerState, ['DECK', 'GRAVE']).some(entry => isFeijingCard(entry.card) && !entry.card.godMark),
+  execute: async (instance, gameState, playerState) => {
+    const entries = cardsInZones(playerState, ['DECK', 'GRAVE']).filter(entry => isFeijingCard(entry.card) && !entry.card.godMark);
+    selectFromEntries(
+      gameState,
+      playerState.uid,
+      entries,
+      '选择菲晶卡',
+      '选择你的卡组或墓地中的1张具有【菲晶】的非神蚀卡加入手牌。',
+      0,
+      1,
+      { sourceCardId: instance.gamecardId, effectId: '103000214_combat_search' }
+    );
+  },
+  onQueryResolve: async (instance, gameState, playerState, selections) => {
+    const selected = selections[0] ? AtomicEffectExecutor.findCardById(gameState, selections[0]) : undefined;
+    if (!selected) return;
+    const fromDeck = selected.cardlocation === 'DECK';
+    moveCard(gameState, playerState.uid, selected, 'HAND', instance);
+    if (fromDeck) await AtomicEffectExecutor.execute(gameState, playerState.uid, { type: 'SHUFFLE_DECK' }, instance);
+  }
+}];
 
 /**
  * Auto-generated from Card.xlsx + Card2.xlsx.
@@ -34,7 +69,7 @@ const card: Card = {
   canAttack: true,
   feijingMark: true,
   canResetCount: 0,
-  effects: [],
+  effects: cardEffects,
   rarity: 'C',
   availableRarities: ['C'],
   cardPackage: 'BT05',

@@ -1,4 +1,41 @@
-import { Card } from '../types/game';
+import { Card, CardEffect } from '../types/game';
+import { AtomicEffectExecutor, createSelectCardQuery, isFeijingCard, moveCard } from './BaseUtil';
+
+const cardEffects: CardEffect[] = [{
+  id: '105110223_enter_leave_search',
+  type: 'TRIGGER',
+  triggerLocation: ['UNIT', 'GRAVE', 'EXILE'],
+  triggerEvent: ['CARD_ENTERED_ZONE', 'CARD_LEFT_FIELD'],
+  limitCount: 1,
+  limitNameType: true,
+  description: '进入战场或从战场离开时，可以将卡组中1张菲晶非神蚀卡加入手牌。',
+  condition: (_gameState, playerState, instance, event) => {
+    const entered = event?.type === 'CARD_ENTERED_ZONE' && event.sourceCardId === instance.gamecardId && event.data?.zone === 'UNIT';
+    const left = event?.type === 'CARD_LEFT_FIELD' && event.sourceCardId === instance.gamecardId && event.data?.sourceZone === 'UNIT';
+    return (entered || left) && playerState.deck.some(card => isFeijingCard(card) && !card.godMark);
+  },
+  execute: async (instance, gameState, playerState) => {
+    const candidates = playerState.deck.filter(card => isFeijingCard(card) && !card.godMark);
+    createSelectCardQuery(
+      gameState,
+      playerState.uid,
+      candidates,
+      '选择菲晶卡',
+      '选择卡组中1张具有【菲晶】的非神蚀卡加入手牌。',
+      0,
+      1,
+      { sourceCardId: instance.gamecardId, effectId: '105110223_enter_leave_search' },
+      () => 'DECK'
+    );
+  },
+  onQueryResolve: async (instance, gameState, playerState, selections) => {
+    const selected = selections[0] ? AtomicEffectExecutor.findCardById(gameState, selections[0]) : undefined;
+    if (selected?.cardlocation === 'DECK') {
+      moveCard(gameState, playerState.uid, selected, 'HAND', instance);
+      await AtomicEffectExecutor.execute(gameState, playerState.uid, { type: 'SHUFFLE_DECK' }, instance);
+    }
+  }
+}];
 
 /**
  * Auto-generated from Card.xlsx + Card2.xlsx.
@@ -34,7 +71,7 @@ const card: Card = {
   canAttack: true,
   feijingMark: true,
   canResetCount: 0,
-  effects: [],
+  effects: cardEffects,
   rarity: 'R',
   availableRarities: ['R'],
   cardPackage: 'BT05',

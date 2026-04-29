@@ -1,4 +1,24 @@
-import { Card } from '../types/game';
+import { Card, CardEffect } from '../types/game';
+import { addContinuousDamage, addContinuousKeyword, addContinuousPower, ownerUidOf } from './BaseUtil';
+
+const cardEffects: CardEffect[] = [{
+  id: '101150235_exile_boost',
+  type: 'CONTINUOUS',
+  triggerLocation: ['UNIT'],
+  description: '你的回合中，若放逐区10张以上且包含同名卡，这个单位伤害+1、力量+500并获得【英勇】。',
+  condition: (gameState, playerState) =>
+    playerState.isTurn &&
+    playerState.exile.length >= 10 &&
+    playerState.exile.some(card => card.id === '101150235'),
+  applyContinuous: (gameState, instance) => {
+    const ownerUid = ownerUidOf(gameState, instance);
+    if (!ownerUid || !gameState.players[ownerUid].isTurn) return;
+    if (gameState.players[ownerUid].exile.length < 10 || !gameState.players[ownerUid].exile.some(card => card.id === '101150235')) return;
+    addContinuousDamage(instance, instance, 1);
+    addContinuousPower(instance, instance, 500);
+    addContinuousKeyword(instance, instance, 'heroic');
+  }
+}];
 
 /**
  * Auto-generated from Card.xlsx + Card2.xlsx.
@@ -31,11 +51,11 @@ const card: Card = {
   displayState: 'FRONT_UPRIGHT',
   isExhausted: false,
   isrush: false,
-  isHeroic: true,
+  isHeroic: false,
   canAttack: true,
   feijingMark: false,
   canResetCount: 0,
-  effects: [],
+  effects: cardEffects,
   rarity: 'C',
   availableRarities: ['C'],
   cardPackage: 'BT05',

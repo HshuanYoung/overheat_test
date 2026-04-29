@@ -247,6 +247,8 @@ export class EventEngine {
             delete (card as any).data.accessTapMinValue;
             delete (card as any).data.accessTapFlexible;
             delete (card as any).data.accessTapValueSourceName;
+            delete (card as any).data.powerIncreaseBonus;
+            delete (card as any).data.powerIncreaseBonusSourceName;
             delete (card as any).data.declareAttackDefenseTax;
             delete (card as any).data.declareAttackDefenseTaxSourceName;
             delete (card as any).data.cannotAllianceByEffect;
@@ -413,13 +415,29 @@ export class EventEngine {
             description: '被可可拉标记'
           });
         }
-        if (card && (card as any).data?.cannotActivateUntilTurn !== undefined && (card as any).data.cannotActivateUntilTurn >= gameState.turnCount) {
-          if (!card.influencingEffects) card.influencingEffects = [];
-          card.influencingEffects.push({
-            sourceCardName: (card as any).data.cannotActivateSourceName || '效果',
-            description: '不能发动能力'
-          });
-        }
+          if (card && (card as any).data?.cannotActivateUntilTurn !== undefined && (card as any).data.cannotActivateUntilTurn >= gameState.turnCount) {
+            if (!card.influencingEffects) card.influencingEffects = [];
+            card.influencingEffects.push({
+              sourceCardName: (card as any).data.cannotActivateSourceName || '效果',
+              description: '不能发动能力'
+            });
+          }
+          if (card && (card as any).data?.freezeUntilTurn !== undefined && (card as any).data.freezeUntilTurn >= gameState.turnCount) {
+            (card as any).data.indestructibleByEffect = true;
+            card.canActivateEffect = false;
+            if (!card.influencingEffects) card.influencingEffects = [];
+            card.influencingEffects.push({
+              sourceCardName: (card as any).data.freezeSourceName || '效果',
+              description: '冻结：不能发动能力，不能宣言攻击和防御，也不会被破坏'
+            });
+          }
+          if (card && (card as any).data?.returnToDeckBottomAtTurnEnd === gameState.turnCount) {
+            if (!card.influencingEffects) card.influencingEffects = [];
+            card.influencingEffects.push({
+              sourceCardName: (card as any).data.returnToDeckBottomSourceName || '效果',
+              description: '回合结束时放置到卡组底'
+            });
+          }
         if (card && (card as any).data?.tempShenyiUntilTurn === gameState.turnCount) {
           if (!card.influencingEffects) card.influencingEffects = [];
           card.influencingEffects.push({
@@ -676,6 +694,9 @@ export class EventEngine {
       const player = gameState.players[playerUid];
       if (player) {
         player.hasUnitReturnedThisTurn = true;
+        if (targetZone === 'DECK') {
+          (player as any).unitsReturnedToDeckThisTurn = Number((player as any).unitsReturnedToDeckThisTurn || 0) + 1;
+        }
       }
     }
 

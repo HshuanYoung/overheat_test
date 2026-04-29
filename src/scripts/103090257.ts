@@ -1,4 +1,36 @@
-import { Card } from '../types/game';
+import { Card, CardEffect, GameEvent } from '../types/game';
+import { AtomicEffectExecutor, canPutUnitOntoBattlefield, createSelectCardQuery, isNonGodUnit, putUnitOntoField } from './BaseUtil';
+
+const cardEffects: CardEffect[] = [{
+  id: '103090257_feijing_enter',
+  type: 'TRIGGER',
+  triggerLocation: ['UNIT'],
+  triggerEvent: 'CARD_ENTERED_ZONE',
+  description: '进入战场时，若使用费用通过【菲晶】能力支付，可以选择墓地中1张非神蚀单位卡放置到战场上。',
+  condition: (_gameState, playerState, instance, event?: GameEvent) =>
+    event?.sourceCardId === instance.gamecardId &&
+    event.data?.zone === 'UNIT' &&
+    (instance as any).data?.playedUsingFeijingTurn === _gameState.turnCount &&
+    playerState.grave.some(card => isNonGodUnit(card) && canPutUnitOntoBattlefield(playerState, card)),
+  execute: async (instance, gameState, playerState) => {
+    const candidates = playerState.grave.filter(card => isNonGodUnit(card) && canPutUnitOntoBattlefield(playerState, card));
+    createSelectCardQuery(
+      gameState,
+      playerState.uid,
+      candidates,
+      '选择墓地单位',
+      '选择你墓地中的1张非神蚀单位卡放置到战场上。',
+      0,
+      1,
+      { sourceCardId: instance.gamecardId, effectId: '103090257_feijing_enter' },
+      () => 'GRAVE'
+    );
+  },
+  onQueryResolve: async (instance, gameState, playerState, selections) => {
+    const target = selections[0] ? AtomicEffectExecutor.findCardById(gameState, selections[0]) : undefined;
+    if (target?.cardlocation === 'GRAVE') putUnitOntoField(gameState, playerState.uid, target, instance);
+  }
+}];
 
 /**
  * Auto-generated from Card.xlsx + Card2.xlsx.
@@ -34,7 +66,7 @@ const card: Card = {
   canAttack: true,
   feijingMark: true,
   canResetCount: 0,
-  effects: [],
+  effects: cardEffects,
   rarity: 'SR',
   availableRarities: ['SR'],
   cardPackage: 'BT05',

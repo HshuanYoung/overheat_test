@@ -431,22 +431,27 @@ export class AtomicEffectExecutor {
         const sourceName = sourceCard ? sourceCard.fullName : '效果';
 
         if (stat === 'power') {
+          const ownerUid = this.findCardOwnerKey(gameState, card.gamecardId);
+          const bonus = effect.value > 0 && ownerUid
+            ? Number((card as any).data?.powerIncreaseBonus || 0)
+            : 0;
+          const finalValue = effect.value + bonus;
           if (effect.turnDuration === 0 || effect.turnDuration === -1) {
-            card.basePower = (card.basePower || 0) + effect.value;
+            card.basePower = (card.basePower || 0) + finalValue;
           } else if (effect.turnDuration === 1) {
-            card.temporaryPowerBuff = (card.temporaryPowerBuff || 0) + effect.value;
+            card.temporaryPowerBuff = (card.temporaryPowerBuff || 0) + finalValue;
             const existingDetails = card.temporaryBuffDetails['power'] || [];
             const existingEntry = existingDetails.find(entry => entry.sourceCardName === sourceName);
             if (existingEntry) {
-              existingEntry.value = (existingEntry.value || 0) + effect.value;
+              existingEntry.value = (existingEntry.value || 0) + finalValue;
             } else {
-              existingDetails.push({ sourceCardName: sourceName, value: effect.value });
+              existingDetails.push({ sourceCardName: sourceName, value: finalValue });
             }
             card.temporaryBuffDetails['power'] = existingDetails;
             card.temporaryBuffSources['power'] = sourceName;
           }
-          card.power = (card.power || 0) + effect.value;
-          EventEngine.dispatchEvent(gameState, { type: 'CARD_POWER_CHANGED', targetCardId: card.gamecardId, data: { delta: effect.value } });
+          card.power = (card.power || 0) + finalValue;
+          EventEngine.dispatchEvent(gameState, { type: 'CARD_POWER_CHANGED', targetCardId: card.gamecardId, data: { delta: finalValue } });
         } else if (stat === 'damage') {
           if (effect.turnDuration === 0 || effect.turnDuration === -1) {
             card.baseDamage = (card.baseDamage || 0) + effect.value;

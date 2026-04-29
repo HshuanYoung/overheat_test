@@ -1,4 +1,37 @@
-import { Card } from '../types/game';
+import { Card, CardEffect, GameEvent } from '../types/game';
+import { AtomicEffectExecutor, canPutUnitOntoBattlefield, createSelectCardQuery, isFeijingUnit, putUnitOntoField } from './BaseUtil';
+
+const cardEffects: CardEffect[] = [{
+  id: '102050242_enter_feijing',
+  type: 'TRIGGER',
+  triggerLocation: ['UNIT'],
+  triggerEvent: 'CARD_ENTERED_ZONE',
+  limitCount: 1,
+  limitNameType: true,
+  description: '进入战场时，可以选择手牌中1张ACCESS+3以下的菲晶单位卡放置到战场上。',
+  condition: (_gameState, playerState, instance, event?: GameEvent) =>
+    event?.sourceCardId === instance.gamecardId &&
+    event.data?.zone === 'UNIT' &&
+    playerState.hand.some(card => isFeijingUnit(card) && (card.acValue || 0) <= 3 && canPutUnitOntoBattlefield(playerState, card)),
+  execute: async (instance, gameState, playerState) => {
+    const candidates = playerState.hand.filter(card => isFeijingUnit(card) && (card.acValue || 0) <= 3 && canPutUnitOntoBattlefield(playerState, card));
+    createSelectCardQuery(
+      gameState,
+      playerState.uid,
+      candidates,
+      '选择菲晶单位',
+      '选择手牌中的1张ACCESS值+3以下的具有【菲晶】的单位卡放置到战场上。',
+      0,
+      1,
+      { sourceCardId: instance.gamecardId, effectId: '102050242_enter_feijing' },
+      () => 'HAND'
+    );
+  },
+  onQueryResolve: async (instance, gameState, playerState, selections) => {
+    const target = selections[0] ? AtomicEffectExecutor.findCardById(gameState, selections[0]) : undefined;
+    if (target?.cardlocation === 'HAND') putUnitOntoField(gameState, playerState.uid, target, instance);
+  }
+}];
 
 /**
  * Auto-generated from Card.xlsx + Card2.xlsx.
@@ -34,7 +67,7 @@ const card: Card = {
   canAttack: true,
   feijingMark: true,
   canResetCount: 0,
-  effects: [],
+  effects: cardEffects,
   rarity: 'C',
   availableRarities: ['C'],
   cardPackage: 'BT05',

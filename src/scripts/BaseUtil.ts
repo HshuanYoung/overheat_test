@@ -578,6 +578,8 @@ export const totalErosionCount = (player: PlayerState) => faceUpErosion(player).
 export const isFaction = (card: Card, faction: string) => card.faction === faction;
 export const isNonGodUnit = (card: Card) => card.type === 'UNIT' && !card.godMark;
 export const isNonGodFieldCard = (card: Card) => !card.godMark && (card.type === 'UNIT' || card.type === 'ITEM' || card.isEquip);
+export const isFeijingCard = (card: Card) => !!card.feijingMark;
+export const isFeijingUnit = (card: Card) => card.type === 'UNIT' && !!card.feijingMark;
 
 export const ensureData = (card: Card) => {
   (card as any).data = (card as any).data || {};
@@ -636,11 +638,16 @@ export const addContinuousDamage = (target: Card, source: Card, amount: number) 
 };
 
 export const addTempPower = (target: Card, source: Card, amount: number) => {
+  const bonus = amount > 0 ? Number((target as any).data?.powerIncreaseBonus || 0) : 0;
+  const finalAmount = amount + bonus;
   target.temporaryPowerBuff = (target.temporaryPowerBuff || 0) + amount;
-  target.power = (target.power || 0) + amount;
+  if (bonus > 0) {
+    target.temporaryPowerBuff += bonus;
+  }
+  target.power = (target.power || 0) + finalAmount;
   target.temporaryBuffSources = { ...(target.temporaryBuffSources || {}), power: source.fullName };
   const details = target.temporaryBuffDetails?.power || [];
-  details.push({ sourceCardName: source.fullName, value: amount });
+  details.push({ sourceCardName: source.fullName, value: finalAmount });
   target.temporaryBuffDetails = { ...(target.temporaryBuffDetails || {}), power: details };
 };
 
@@ -738,6 +745,63 @@ export const forbidAttackAndDefenseUntil = (target: Card, source: Card, untilTur
   data.cannotAttackOrDefendUntilTurn = untilTurn;
   data.cannotAttackOrDefendSourceName = source.fullName;
   addInfluence(target, source, '不能宣言攻击和防御');
+};
+
+export const freezeUntil = (target: Card, source: Card, untilTurn: number) => {
+  const data = ensureData(target);
+  data.freezeUntilTurn = untilTurn;
+  data.freezeSourceName = source.fullName;
+  data.cannotAttackOrDefendUntilTurn = untilTurn;
+  data.cannotAttackOrDefendSourceName = source.fullName;
+  data.cannotActivateUntilTurn = untilTurn;
+  data.cannotActivateSourceName = source.fullName;
+  data.indestructibleByEffect = true;
+  addInfluence(target, source, '冻结：不能发动能力，不能宣言攻击和防御，也不会被破坏');
+};
+
+export const untilOpponentEndTurn = (gameState: GameState, playerUid: string) => {
+  const opponentUid = getOpponentUid(gameState, playerUid);
+  return gameState.players[opponentUid]?.isTurn ? gameState.turnCount : gameState.turnCount + 1;
+};
+
+export const markReturnToDeckBottomAtEnd = (target: Card, source: Card, gameState: GameState, ownerUid?: string) => {
+  const data = ensureData(target);
+  data.returnToDeckBottomAtTurnEnd = gameState.turnCount;
+  data.returnToDeckBottomSourceName = source.fullName;
+  data.returnToDeckBottomOwnerUid = ownerUid || ownerUidOf(gameState, target);
+  addInfluence(target, source, '回合结束时放置到卡组底');
+};
+
+export const moveRandomGraveToDeckBottom = (gameState: GameState, playerUid: string, count: number, source: Card) => {
+  const player = gameState.players[playerUid];
+  const shuffled = [...player.grave].sort(() => Math.random() - 0.5).slice(0, count);
+  shuffled.forEach(card => moveCard(gameState, playerUid, card, 'DECK', source, { insertAtBottom: true }));
+};
+
+export const feijingCardsIn = (cards: Card[]) => cards.filter(isFeijingCard);
+
+export const selectFromEntries = (
+  gameState: GameState,
+  playerUid: string,
+  entries: { card: Card; source: TriggerLocation }[],
+  title: string,
+  description: string,
+  minSelections: number,
+  maxSelections: number,
+  context: any
+) => {
+  gameState.pendingQuery = {
+    id: Math.random().toString(36).substring(7),
+    type: 'SELECT_CARD',
+    playerUid,
+    options: AtomicEffectExecutor.enrichQueryOptions(gameState, playerUid, entries),
+    title,
+    description,
+    minSelections,
+    maxSelections,
+    callbackKey: 'EFFECT_RESOLVE',
+    context
+  };
 };
 
 export const discardHandCost = (count: number, predicate?: (card: Card) => boolean): CardEffect['cost'] => async (gameState, playerState, instance) => {

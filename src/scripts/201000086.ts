@@ -1,4 +1,26 @@
-import { Card } from '../types/game';
+import { Card, CardEffect } from '../types/game';
+import { AtomicEffectExecutor, allCardsOnField, createSelectCardQuery, moveRandomGraveToDeckBottom, story } from './BaseUtil';
+
+const cardEffects: CardEffect[] = [story('201000086_destroy_recover', '选择战场上的1张非神蚀道具卡破坏。之后恢复2。', async (instance, gameState, playerState) => {
+  const targets = allCardsOnField(gameState).filter(card => card.type === 'ITEM' && !card.godMark);
+  createSelectCardQuery(
+    gameState,
+    playerState.uid,
+    targets,
+    '选择道具卡',
+    '选择战场上的1张非神蚀道具卡破坏。',
+    1,
+    1,
+    { sourceCardId: instance.gamecardId, effectId: '201000086_destroy_recover' },
+    card => card.cardlocation as any
+  );
+}, {
+  condition: gameState => allCardsOnField(gameState).some(card => card.type === 'ITEM' && !card.godMark),
+  onQueryResolve: async (instance, gameState, playerState, selections) => {
+    await AtomicEffectExecutor.execute(gameState, playerState.uid, { type: 'DESTROY_CARD', targetFilter: { gamecardId: selections[0] } }, instance);
+    moveRandomGraveToDeckBottom(gameState, playerState.uid, 2, instance);
+  }
+})];
 
 /**
  * Auto-generated from Card.xlsx + Card2.xlsx.
@@ -27,7 +49,7 @@ const card: Card = {
   displayState: 'FRONT_UPRIGHT',
   feijingMark: false,
   canResetCount: 0,
-  effects: [],
+  effects: cardEffects,
   rarity: 'C',
   availableRarities: ['C'],
   cardPackage: 'BT05',

@@ -1,4 +1,44 @@
-import { Card } from '../types/game';
+import { Card, CardEffect } from '../types/game';
+import { AtomicEffectExecutor, createSelectCardQuery, exhaustCost, getOpponentUid, isNonGodUnit, ownUnits } from './BaseUtil';
+
+const cardEffects: CardEffect[] = [{
+  id: '105110227_only_feijing_payment',
+  type: 'CONTINUOUS',
+  content: 'ONLY_FEIJING_PAYMENT',
+  description: '只能通过【菲晶】能力来支付这张卡的使用费用。'
+}, {
+  id: '105110227_exhaust_unit',
+  type: 'ACTIVATE',
+  triggerLocation: ['UNIT'],
+  description: '你的回合中，选择对手1个非神蚀单位，横置这张卡：横置被选择的单位。',
+  condition: (gameState, playerState, instance) =>
+    playerState.isTurn &&
+    !instance.isExhausted &&
+    ownUnits(gameState.players[getOpponentUid(gameState, playerState.uid)]).some(isNonGodUnit),
+  cost: exhaustCost,
+  execute: async (instance, gameState, playerState) => {
+    const opponent = gameState.players[getOpponentUid(gameState, playerState.uid)];
+    createSelectCardQuery(
+      gameState,
+      playerState.uid,
+      ownUnits(opponent).filter(isNonGodUnit),
+      '选择横置目标',
+      '选择对手的1个非神蚀单位，将其横置。',
+      1,
+      1,
+      { sourceCardId: instance.gamecardId, effectId: '105110227_exhaust_unit' },
+      () => 'UNIT'
+    );
+  },
+  onQueryResolve: async (instance, gameState, playerState, selections) => {
+    await AtomicEffectExecutor.execute(
+      gameState,
+      playerState.uid,
+      { type: 'ROTATE_HORIZONTAL', targetFilter: { gamecardId: selections[0] } },
+      instance
+    );
+  }
+}];
 
 /**
  * Auto-generated from Card.xlsx + Card2.xlsx.
@@ -35,7 +75,7 @@ const card: Card = {
   canAttack: true,
   feijingMark: true,
   canResetCount: 0,
-  effects: [],
+  effects: cardEffects,
   rarity: 'SR',
   availableRarities: ['SR'],
   cardPackage: 'BT05',

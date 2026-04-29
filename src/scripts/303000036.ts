@@ -1,4 +1,36 @@
-import { Card } from '../types/game';
+import { Card, CardEffect } from '../types/game';
+import { AtomicEffectExecutor, canPayAccessCost, createSelectCardQuery, getOpponentUid, isFeijingCard, moveCard, paymentCost } from './BaseUtil';
+
+const cardEffects: CardEffect[] = [{
+  id: '303000036_opponent_end_recover',
+  type: 'TRIGGER',
+  triggerLocation: ['ITEM'],
+  triggerEvent: 'TURN_END' as any,
+  limitCount: 1,
+  description: '对手的回合结束时，可以支付1费，选择墓地中1张菲晶卡加入手牌。',
+  condition: (gameState, playerState, _instance, event) =>
+    event?.playerUid === getOpponentUid(gameState, playerState.uid) &&
+    playerState.grave.some(isFeijingCard) &&
+    canPayAccessCost(gameState, playerState, 1, 'GREEN'),
+  cost: paymentCost(1, 'GREEN'),
+  execute: async (instance, gameState, playerState) => {
+    createSelectCardQuery(
+      gameState,
+      playerState.uid,
+      playerState.grave.filter(isFeijingCard),
+      '选择菲晶卡',
+      '选择你墓地中的1张具有【菲晶】的卡加入手牌。',
+      0,
+      1,
+      { sourceCardId: instance.gamecardId, effectId: '303000036_opponent_end_recover' },
+      () => 'GRAVE'
+    );
+  },
+  onQueryResolve: async (instance, gameState, playerState, selections) => {
+    const selected = selections[0] ? AtomicEffectExecutor.findCardById(gameState, selections[0]) : undefined;
+    if (selected?.cardlocation === 'GRAVE') moveCard(gameState, playerState.uid, selected, 'HAND', instance);
+  }
+}];
 
 /**
  * Auto-generated from Card.xlsx + Card2.xlsx.
@@ -27,7 +59,7 @@ const card: Card = {
   displayState: 'FRONT_UPRIGHT',
   feijingMark: true,
   canResetCount: 0,
-  effects: [],
+  effects: cardEffects,
   rarity: 'R',
   availableRarities: ['R'],
   cardPackage: 'BT05',

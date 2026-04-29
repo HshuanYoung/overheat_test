@@ -1,4 +1,48 @@
-import { Card } from '../types/game';
+import { Card, CardEffect } from '../types/game';
+import { AtomicEffectExecutor, createSelectCardQuery, getOpponentUid, isNonGodUnit, moveCard, ownUnits, story } from './BaseUtil';
+
+const cardEffects: CardEffect[] = [story('203000084_send_units', '主要阶段中，选择你的与对手的各1个非神蚀单位，将被选择的单位送入墓地。', async (instance, gameState, playerState) => {
+  createSelectCardQuery(
+    gameState,
+    playerState.uid,
+    ownUnits(playerState).filter(isNonGodUnit),
+    '选择我方单位',
+    '选择你的1个非神蚀单位。',
+    1,
+    1,
+    { sourceCardId: instance.gamecardId, effectId: '203000084_send_units', step: 'OWN' },
+    () => 'UNIT'
+  );
+}, {
+  condition: (gameState, playerState) =>
+    gameState.phase === 'MAIN' &&
+    playerState.isTurn &&
+    ownUnits(playerState).some(isNonGodUnit) &&
+    ownUnits(gameState.players[getOpponentUid(gameState, playerState.uid)]).some(isNonGodUnit),
+  onQueryResolve: async (instance, gameState, playerState, selections, context) => {
+    if (context?.step === 'OWN') {
+      const ownTargetId = selections[0];
+      const opponent = gameState.players[getOpponentUid(gameState, playerState.uid)];
+      createSelectCardQuery(
+        gameState,
+        playerState.uid,
+        ownUnits(opponent).filter(isNonGodUnit),
+        '选择对手单位',
+        '选择对手的1个非神蚀单位。',
+        1,
+        1,
+        { sourceCardId: instance.gamecardId, effectId: '203000084_send_units', step: 'OPPONENT', ownTargetId },
+        () => 'UNIT'
+      );
+      return;
+    }
+    if (context?.step !== 'OPPONENT') return;
+    const ownTarget = AtomicEffectExecutor.findCardById(gameState, context.ownTargetId);
+    const opponentTarget = selections[0] ? AtomicEffectExecutor.findCardById(gameState, selections[0]) : undefined;
+    if (ownTarget?.cardlocation === 'UNIT') moveCard(gameState, playerState.uid, ownTarget, 'GRAVE', instance);
+    if (opponentTarget?.cardlocation === 'UNIT') moveCard(gameState, getOpponentUid(gameState, playerState.uid), opponentTarget, 'GRAVE', instance);
+  }
+})];
 
 /**
  * Auto-generated from Card.xlsx + Card2.xlsx.
@@ -27,7 +71,7 @@ const card: Card = {
   displayState: 'FRONT_UPRIGHT',
   feijingMark: false,
   canResetCount: 0,
-  effects: [],
+  effects: cardEffects,
   rarity: 'C',
   availableRarities: ['C'],
   cardPackage: 'BT05',

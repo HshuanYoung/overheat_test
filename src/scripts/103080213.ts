@@ -1,4 +1,22 @@
-import { Card } from '../types/game';
+import { Card, CardEffect } from '../types/game';
+import { AtomicEffectExecutor } from './BaseUtil';
+
+const cardEffects: CardEffect[] = [{
+  id: '103080213_leave_draw',
+  type: 'TRIGGER',
+  triggerLocation: ['GRAVE', 'EXILE', 'HAND', 'DECK'],
+  triggerEvent: 'CARD_LEFT_FIELD',
+  limitCount: 1,
+  limitNameType: true,
+  description: '通过卡的效果从战场离开时，可以抽1张卡。',
+  condition: (_gameState, _playerState, instance, event) =>
+    event?.sourceCardId === instance.gamecardId &&
+    event.data?.sourceZone === 'UNIT' &&
+    !!event.data?.isEffect,
+  execute: async (instance, gameState, playerState) => {
+    await AtomicEffectExecutor.execute(gameState, playerState.uid, { type: 'DRAW', value: 1 }, instance);
+  }
+}];
 
 /**
  * Auto-generated from Card.xlsx + Card2.xlsx.
@@ -34,7 +52,7 @@ const card: Card = {
   canAttack: true,
   feijingMark: false,
   canResetCount: 0,
-  effects: [],
+  effects: cardEffects,
   rarity: 'R',
   availableRarities: ['R'],
   cardPackage: 'BT05',

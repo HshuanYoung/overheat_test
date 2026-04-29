@@ -1,4 +1,59 @@
-import { Card } from '../types/game';
+import { Card, CardEffect } from '../types/game';
+import { createPlayerSelectQuery, createSelectCardQuery, damagePlayerByEffect, getOpponentUid, isFeijingCard, moveCardAsCost } from './BaseUtil';
+
+const cardEffects: CardEffect[] = [{
+  id: '302000044_burn',
+  type: 'ACTIVATE',
+  triggerLocation: ['ITEM'],
+  limitCount: 1,
+  limitNameType: true,
+  description: '你的主要阶段，选择1名对手，将这张卡送入墓地：舍弃最多2张菲晶手牌，每舍弃1张给予选择的对手2点伤害。',
+  condition: (gameState, playerState, instance) =>
+    gameState.phase === 'MAIN' &&
+    playerState.isTurn &&
+    instance.cardlocation === 'ITEM',
+  cost: async (gameState, playerState, instance) => {
+    moveCardAsCost(gameState, playerState.uid, instance, 'GRAVE', instance);
+    return true;
+  },
+  execute: async (instance, gameState, playerState) => {
+    createPlayerSelectQuery(
+      gameState,
+      playerState.uid,
+      '选择对手',
+      '选择1名对手。',
+      { sourceCardId: instance.gamecardId, effectId: '302000044_burn', step: 'PLAYER', ownerUid: playerState.uid },
+      { includeSelf: false, includeOpponent: true }
+    );
+  },
+  onQueryResolve: async (instance, gameState, playerState, selections, context) => {
+    if (context?.step === 'PLAYER') {
+      const owner = gameState.players[context.ownerUid || playerState.uid];
+      const feijingHands = owner.hand.filter(isFeijingCard);
+      createSelectCardQuery(
+        gameState,
+        owner.uid,
+        feijingHands,
+        '选择舍弃菲晶',
+        '选择手牌中的最多2张具有【菲晶】的卡舍弃。每舍弃1张，给予对手2点伤害。',
+        0,
+        Math.min(2, feijingHands.length),
+        { sourceCardId: instance.gamecardId, effectId: '302000044_burn', step: 'DISCARD', ownerUid: owner.uid, targetUid: getOpponentUid(gameState, owner.uid) },
+        () => 'HAND'
+      );
+      return;
+    }
+    if (context?.step !== 'DISCARD') return;
+    const ownerUid = context.ownerUid || playerState.uid;
+    const owner = gameState.players[ownerUid];
+    selections.forEach(id => {
+      const hand = owner.hand.find(card => card.gamecardId === id);
+      if (hand) moveCardAsCost(gameState, ownerUid, hand, 'GRAVE', instance);
+    });
+    const targetUid = context.targetUid || getOpponentUid(gameState, ownerUid);
+    if (selections.length > 0) await damagePlayerByEffect(gameState, ownerUid, targetUid, selections.length * 2, instance);
+  }
+}];
 
 /**
  * Auto-generated from Card.xlsx + Card2.xlsx.
@@ -27,7 +82,7 @@ const card: Card = {
   displayState: 'FRONT_UPRIGHT',
   feijingMark: true,
   canResetCount: 0,
-  effects: [],
+  effects: cardEffects,
   rarity: 'R',
   availableRarities: ['R'],
   cardPackage: 'BT05',

@@ -899,6 +899,7 @@ export const ServerGameService = {
 
     // 4. Cost Check (AC Value)
     const cost = ServerGameService.getEffectivePlayCost(player, card, gameState);
+    const onlyFeijingPayment = card.effects?.some(effect => effect.content === 'ONLY_FEIJING_PAYMENT');
     if (cost < 0) {
       const absCost = Math.abs(cost);
       const faceUpFrontCount = player.erosionFront.filter(c => c !== null && c.displayState === 'FRONT_UPRIGHT').length;
@@ -907,6 +908,13 @@ export const ServerGameService = {
       }
     } else if (cost > 0) {
       let remainingCost = cost;
+      if (onlyFeijingPayment && !player.hand.some(c =>
+        c.gamecardId !== card.gamecardId &&
+        c.feijingMark &&
+        c.color === card.color
+      )) {
+        return { canPlay: false, reason: '这张卡只能通过菲晶能力支付使用费用' };
+      }
       const hasSpecialSubstitute = player.hand.some(c =>
         ServerGameService.canUse204000145AsPaymentSubstitute(c, card.color, cost, card.gamecardId) ||
         ServerGameService.canUse205000136AsPaymentSubstitute(c, card.color, cost, card.gamecardId) ||
@@ -1032,7 +1040,18 @@ export const ServerGameService = {
 
   payCost(gameState: GameState, playerId: string, cost: number, paymentSelection: { feijingCardId?: string, exhaustUnitIds?: string[], erosionFrontIds?: string[] }, cardColor?: string, playingCardId?: string): { success: boolean; reason?: string } {
     const player = gameState.players[playerId];
-    if (cost === 0) return { success: true };
+    const findPlayingCard = () => playingCardId
+      ? player.hand.find(c => c.gamecardId === playingCardId) ||
+        player.playZone.find(c => c.gamecardId === playingCardId) ||
+        player.deck.find(c => c.gamecardId === playingCardId)
+      : undefined;
+    if (cost === 0) {
+      const zeroCostCard = findPlayingCard();
+      if (zeroCostCard?.effects?.some(effect => effect.content === 'ONLY_FEIJING_PAYMENT')) {
+        return { success: false, reason: '这张卡只能通过菲晶能力支付使用费用' };
+      }
+      return { success: true };
+    }
 
     if (cost < 0) {
       const absCost = Math.abs(cost);
@@ -1067,6 +1086,11 @@ export const ServerGameService = {
         playingCard = reservedDeckCard ||
           player.hand.find(c => c.gamecardId === playingCardId) ||
           player.playZone.find(c => c.gamecardId === playingCardId);
+      }
+
+      if (playingCard?.effects?.some(effect => effect.content === 'ONLY_FEIJING_PAYMENT') && !paymentSelection.feijingCardId) {
+        if (reservedDeckCard) player.deck.push(reservedDeckCard);
+        return { success: false, reason: '这张卡只能通过菲晶能力支付使用费用' };
       }
 
       if (paymentSelection.feijingCardId) {
@@ -1150,6 +1174,14 @@ export const ServerGameService = {
       }
 
       if (feijingCard) {
+        if (feijingCard.feijingMark && playingCard) {
+          (playingCard as any).data = {
+            ...((playingCard as any).data || {}),
+            playedUsingFeijingTurn: gameState.turnCount,
+            playedUsingFeijingCardId: feijingCard.gamecardId,
+            playedUsingFeijingCardName: feijingCard.fullName
+          };
+        }
         let fromZone: TriggerLocation = 'UNIT';
         if (player.itemZone.some(c => c?.gamecardId === feijingCard!.gamecardId)) {
           fromZone = 'ITEM';
@@ -3510,6 +3542,19 @@ export const ServerGameService = {
         return;
       }
 
+      Object.entries(gameState.players).forEach(([uid, player]) => {
+        player.unitZone.forEach(unit => {
+          if (!unit || (unit as any).data?.returnToDeckBottomAtTurnEnd !== gameState.turnCount) return;
+          const sourceName = (unit as any).data.returnToDeckBottomSourceName || '卡牌效果';
+          ServerGameService.moveCard(gameState, uid, 'UNIT', uid, 'DECK', unit.gamecardId, {
+            insertAtBottom: true,
+            isEffect: true,
+            effectSourcePlayerUid: uid
+          });
+          gameState.logs.push(`[${sourceName}] 将 [${unit.fullName}] 放置到卡组底。`);
+        });
+      });
+
       // End-of-turn delayed effects must resolve before the turn counter/player changes.
       if (gameState.pendingResolutions && gameState.pendingResolutions.length > 0) {
         const resolutions = [...gameState.pendingResolutions];
@@ -3552,6 +3597,7 @@ export const ServerGameService = {
       // 2. Perform global cleanup/flag reset
       Object.values(gameState.players).forEach(p => {
         p.hasUnitReturnedThisTurn = false;
+        delete (p as any).unitsReturnedToDeckThisTurn;
         p.hasExhaustedThisTurn = [];
         p.negatedNames = [];
         delete (p as any).windProductionTurn;

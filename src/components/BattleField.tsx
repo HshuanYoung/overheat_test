@@ -582,6 +582,10 @@ export const BattleField: React.FC = () => {
     ) {
       return paymentCost || 0;
     }
+    const pendingRequiresFeijing = pendingPlayCard?.effects?.some(effect => effect.content === 'ONLY_FEIJING_PAYMENT');
+    if (pendingRequiresFeijing && !card.feijingMark) {
+      return 0;
+    }
     if (card.feijingMark && (card.color === paymentColor || !paymentColor || paymentColor === 'NONE')) {
       return 3;
     }

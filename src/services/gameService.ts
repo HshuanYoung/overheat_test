@@ -312,6 +312,7 @@ export const GameService = {
     }
 
     const cost = getEffectivePlayCost(gameState, player, card);
+    const onlyFeijingPayment = card.effects?.some(effect => effect.content === 'ONLY_FEIJING_PAYMENT');
     if (cost < 0) {
       const absCost = Math.abs(cost);
       const faceUpFrontCount = player.erosionFront.filter(cardInZone => cardInZone !== null && cardInZone.displayState === 'FRONT_UPRIGHT').length;
@@ -320,6 +321,13 @@ export const GameService = {
       }
     } else if (cost > 0) {
       let remainingCost = cost;
+      if (onlyFeijingPayment && !player.hand.some(cardInHand =>
+        cardInHand.gamecardId !== card.gamecardId &&
+        cardInHand.feijingMark &&
+        cardInHand.color === card.color
+      )) {
+        return { canPlay: false, reason: 'This card can only be paid by Feijing' };
+      }
       const hasSpecialSubstitute = player.hand.some(cardInHand =>
         canUse204000145AsPaymentSubstitute(cardInHand, card.color, cost, card.gamecardId) ||
         canUse205000136AsPaymentSubstitute(cardInHand, card.color, cost, card.gamecardId) ||

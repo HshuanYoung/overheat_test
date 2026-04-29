@@ -1,4 +1,48 @@
-import { Card } from '../types/game';
+import { Card, CardEffect, GameEvent } from '../types/game';
+import { AtomicEffectExecutor, addTempPowerUntilEndOfTurn, createSelectCardQuery, isFaction, moveCard, ownerUidOf, ownUnits } from './BaseUtil';
+
+const cardEffects: CardEffect[] = [{
+  id: '102060243_enter_boost',
+  type: 'TRIGGER',
+  triggerLocation: ['UNIT'],
+  triggerEvent: 'CARD_ENTERED_ZONE',
+  isMandatory: true,
+  description: '进入战场时，选择你的1个<雷霆>单位，本回合力量+1000。',
+  condition: (_gameState, playerState, instance, event?: GameEvent) =>
+    event?.sourceCardId === instance.gamecardId &&
+    event.data?.zone === 'UNIT' &&
+    ownUnits(playerState).some(unit => isFaction(unit, '雷霆')),
+  execute: async (instance, gameState, playerState) => {
+    createSelectCardQuery(
+      gameState,
+      playerState.uid,
+      ownUnits(playerState).filter(unit => isFaction(unit, '雷霆')),
+      '选择雷霆单位',
+      '选择你的1个<雷霆>单位，本回合力量+1000。',
+      1,
+      1,
+      { sourceCardId: instance.gamecardId, effectId: '102060243_enter_boost' },
+      () => 'UNIT'
+    );
+  },
+  onQueryResolve: async (instance, gameState, _playerState, selections) => {
+    const target = selections[0] ? AtomicEffectExecutor.findCardById(gameState, selections[0]) : undefined;
+    if (target) addTempPowerUntilEndOfTurn(target, instance, 1000, gameState);
+  }
+}, {
+  id: '102060243_return_hand',
+  type: 'TRIGGER',
+  triggerLocation: ['UNIT'],
+  triggerEvent: 'TURN_END' as any,
+  isMandatory: true,
+  description: '回合结束时，将这个单位返回持有者的手牌。',
+  condition: (_gameState, _playerState, instance, event) =>
+    event?.type === ('TURN_END' as any) && instance.cardlocation === 'UNIT',
+  execute: async (instance, gameState) => {
+    const ownerUid = ownerUidOf(gameState, instance);
+    if (ownerUid) moveCard(gameState, ownerUid, instance, 'HAND', instance);
+  }
+}];
 
 /**
  * Auto-generated from Card.xlsx + Card2.xlsx.
@@ -35,7 +79,7 @@ const card: Card = {
   canAttack: true,
   feijingMark: false,
   canResetCount: 0,
-  effects: [],
+  effects: cardEffects,
   rarity: 'R',
   availableRarities: ['R'],
   cardPackage: 'BT05',

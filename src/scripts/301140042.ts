@@ -1,4 +1,29 @@
-import { Card } from '../types/game';
+import { Card, CardEffect } from '../types/game';
+import { AtomicEffectExecutor, addContinuousDamage, addContinuousKeyword, addContinuousPower, universalEquipEffect } from './BaseUtil';
+
+const onlyFeijingPayment: CardEffect = {
+  id: '301140042_only_feijing_payment',
+  type: 'CONTINUOUS',
+  content: 'ONLY_FEIJING_PAYMENT',
+  description: '只能通过【菲晶】能力来支付这张卡的使用费用。'
+};
+
+const equipBoost: CardEffect = {
+  id: '301140042_equip_boost',
+  type: 'CONTINUOUS',
+  triggerLocation: ['ITEM'],
+  description: '装备单位伤害+1、力量+1000并获得【英勇】。',
+  applyContinuous: (gameState, instance) => {
+    if (!instance.equipTargetId) return;
+    const target = AtomicEffectExecutor.findCardById(gameState, instance.equipTargetId);
+    if (!target || target.cardlocation !== 'UNIT') return;
+    addContinuousDamage(target, instance, 1);
+    addContinuousPower(target, instance, 1000);
+    addContinuousKeyword(target, instance, 'heroic');
+  }
+};
+
+const cardEffects: CardEffect[] = [universalEquipEffect, onlyFeijingPayment, equipBoost];
 
 /**
  * Auto-generated from Card.xlsx + Card2.xlsx.
@@ -29,7 +54,7 @@ const card: Card = {
   displayState: 'FRONT_UPRIGHT',
   feijingMark: true,
   canResetCount: 0,
-  effects: [],
+  effects: cardEffects,
   rarity: 'SR',
   availableRarities: ['SR'],
   cardPackage: 'BT05',
