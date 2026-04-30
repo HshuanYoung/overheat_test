@@ -1,13 +1,13 @@
 name: BT01-BT03 Card Script Bug Report
 description: Feedback for bugs in BT01-BT03 card scripts
-title: "[BT01-BT03 Bug] "
+title: "[BT01-BT03 Card Script Bug] "
 labels: ["bug"]
 body:
   - type: input
     id: card-id
     attributes:
       label: Card ID
-      description: Enter the exact ID of the bugged card (e.g. BT01-001)
+      description: Enter the exact ID of the bugged card (e.g. 101000001)
       placeholder: 101000001
     validations:
       required: true
