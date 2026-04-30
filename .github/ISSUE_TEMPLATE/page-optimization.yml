@@ -1,0 +1,22 @@
+name: Page Optimization
+description: Request a page UI/UX optimization with visual references
+title: "[Page Optimization] "
+labels: ["feature"]
+body:
+  - type: textarea
+    id: current-page-screenshot
+    attributes:
+      label: Current Page Screenshot
+      description: Upload or paste a screenshot of the current page that needs optimization.
+      placeholder: "Drag and drop the current page screenshot here."
+    validations:
+      required: true
+
+  - type: textarea
+    id: desired-effect-image
+    attributes:
+      label: Desired Effect Image
+      description: Upload or paste an image showing the desired result or reference design.
+      placeholder: "Drag and drop the desired effect image or reference design here."
+    validations:
+      required: true
