@@ -8,7 +8,7 @@ body:
     attributes:
       label: Card ID
       description: Enter the exact ID of the bugged card (e.g. 101000001)
-      placeholder: 101000001
+      placeholder: "101000001"
     validations:
       required: true
 
@@ -17,7 +17,7 @@ body:
     attributes:
       label: Card Effect
       description: Paste the official effect description of the card
-      placeholder: Write the full card effect here...
+      placeholder: "Write the full card effect here..."
     validations:
       required: true
 
@@ -26,7 +26,7 @@ body:
     attributes:
       label: Issue Description
       description: Clearly describe the bug/error in the card script
-      placeholder: Explain what is wrong with the script...
+      placeholder: "Explain what is wrong with the script..."
     validations:
       required: true
 
@@ -35,6 +35,6 @@ body:
     attributes:
       label: Issue Scenario
       description: Describe the game scenario/conditions where the bug occurs
-      placeholder: e.g. When attacking, during opponent's turn, etc.
+      placeholder: "e.g. When attacking, during opponent's turn, etc."
     validations:
       required: true
