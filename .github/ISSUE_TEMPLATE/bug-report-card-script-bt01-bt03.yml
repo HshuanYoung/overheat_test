@@ -1,0 +1,40 @@
+name: BT01-BT03 Card Script Bug Report
+description: Feedback for bugs in BT01-BT03 card scripts
+title: "[BT01-BT03 Bug] "
+labels: ["bug"]
+body:
+  - type: input
+    id: card-id
+    attributes:
+      label: Card ID
+      description: Enter the exact ID of the bugged card (e.g. BT01-001)
+      placeholder: 101000001
+    validations:
+      required: true
+
+  - type: textarea
+    id: card-effect
+    attributes:
+      label: Card Effect
+      description: Paste the official effect description of the card
+      placeholder: Write the full card effect here...
+    validations:
+      required: true
+
+  - type: textarea
+    id: issue-description
+    attributes:
+      label: Issue Description
+      description: Clearly describe the bug/error in the card script
+      placeholder: Explain what is wrong with the script...
+    validations:
+      required: true
+
+  - type: textarea
+    id: scenario
+    attributes:
+      label: Issue Scenario
+      description: Describe the game scenario/conditions where the bug occurs
+      placeholder: e.g. When attacking, during opponent's turn, etc.
+    validations:
+      required: true
