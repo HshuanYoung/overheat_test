@@ -2611,9 +2611,20 @@ export const ServerGameService = {
     if (gameState.pendingQuery || gameState.isResolvingStack || gameState.currentProcessingItem) {
       throw new Error('当前有未结算步骤，请等待处理完毕。');
     }
+    const player = gameState.players[playerId];
+    if (!player) throw new Error('Player not found');
+
+    if (gameState.phase === 'MAIN') {
+      if (!player.isTurn) throw new Error('Not your turn');
+      if (gameState.turnCount === 1) {
+        throw new Error('先手玩家第一回合不能进入战斗阶段');
+      }
+      gameState.phase = 'BATTLE_DECLARATION';
+      EventEngine.dispatchEvent(gameState, { type: 'PHASE_CHANGED', data: { phase: 'BATTLE_DECLARATION', reason: 'DECLARE_ATTACK_FROM_MAIN' } });
+      gameState.logs.push(`[阶段切换] ${player.displayName} 进入战斗阶段`);
+    }
     if (gameState.phase !== 'BATTLE_DECLARATION') throw new Error('Not in battle declaration phase');
 
-    const player = gameState.players[playerId];
     const attackers: Card[] = [];
 
     if (isAlliance && attackerIds.length !== 2) {

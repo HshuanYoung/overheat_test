@@ -785,7 +785,7 @@ export const BattleField: React.FC = () => {
 
 
   const canUnitAttack = (card: Card) => {
-    if (!card || card.isExhausted || card.canAttack === false) return false;
+    if (!card || card.isExhausted || card.canAttack === false || (card as any).battleForbiddenByEffect) return false;
     if ((card as any).data?.cannotAttackOrDefendUntilTurn && (card as any).data.cannotAttackOrDefendUntilTurn >= game.turnCount) return false;
     const isRush = !!card.isrush;
     const wasPlayedThisTurn = card.playedTurn === game.turnCount;
@@ -816,7 +816,7 @@ export const BattleField: React.FC = () => {
 
   const canUnitAttackNow = (card: Card) => {
     if (!canUnitAttack(card)) return false;
-    if (game.phase !== 'BATTLE_DECLARATION') return true;
+    if (!['MAIN', 'BATTLE_DECLARATION'].includes(game.phase)) return true;
     const forcedAttackIds = getForcedAttackIds();
     return forcedAttackIds.size === 0 || forcedAttackIds.has(card.gamecardId);
   };
@@ -2089,7 +2089,7 @@ export const BattleField: React.FC = () => {
               })()}
 
               {/* Action: Attack (Red) */}
-              {game.phase === 'BATTLE_DECLARATION' && me.isTurn && cardMenu.zone === 'unit' && (
+              {['MAIN', 'BATTLE_DECLARATION'].includes(game.phase) && me.isTurn && game.turnCount !== 1 && cardMenu.zone === 'unit' && (
                 (() => {
                   const isMyCard = me.unitZone.some(c => c?.gamecardId === cardMenu.card.gamecardId);
                   if (isMyCard && canUnitAttackNow(cardMenu.card)) {
@@ -2123,7 +2123,7 @@ export const BattleField: React.FC = () => {
                             setCardMenu(null);
                           }}
                         >
-                          联攻
+                          联军
                         </motion.button>}
                       </div>
                     );
@@ -2836,20 +2836,6 @@ export const BattleField: React.FC = () => {
               <div className="flex flex-col gap-4 w-full relative z-10">
                 {game.phase === 'MAIN' && (
                   <>
-                    {game.turnCount !== 1 && (
-                      <motion.button
-                        whileHover={{ scale: 1.05, y: -5 }}
-                        whileTap={{ scale: 0.95 }}
-                        className="w-full h-18 py-5 px-10 bg-gradient-to-r from-red-600 to-red-500 hover:from-red-500 hover:to-red-400 text-white rounded-3xl text-sm font-black uppercase italic tracking-widest transition-all shadow-[0_20px_40px_rgba(220,38,38,0.4)] flex items-center justify-center gap-5 border-t border-white/20"
-                        onClick={() => {
-                          GameService.advancePhase(gameId!, 'DECLARE_BATTLE');
-                          setShowPhaseMenu(false);
-                        }}
-                      >
-                        <Sword className="w-6 h-6" />
-                        宣告战斗
-                      </motion.button>
-                    )}
                     <motion.button
                       whileHover={{ scale: 1.05, y: -5 }}
                       whileTap={{ scale: 0.95 }}

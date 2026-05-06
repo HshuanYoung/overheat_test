@@ -121,6 +121,31 @@ const CardSlot: React.FC<{
           </div>
         )}
 
+        {(isAttacking || isDefending) && (
+          <div
+            className={cn(
+              "pointer-events-none absolute inset-0 z-30 flex items-center justify-center",
+              isOpponent && "rotate-180"
+            )}
+          >
+            <div
+              className={cn(
+                "relative flex h-9 w-9 items-center justify-center rounded-full border shadow-2xl md:h-11 md:w-11",
+                isAttacking
+                  ? "border-red-200/80 bg-gradient-to-br from-red-500 via-rose-600 to-zinc-950 shadow-[0_12px_24px_rgba(239,68,68,0.55),inset_0_2px_6px_rgba(255,255,255,0.35)]"
+                  : "border-blue-100/80 bg-gradient-to-br from-sky-300 via-blue-600 to-zinc-950 shadow-[0_12px_24px_rgba(59,130,246,0.55),inset_0_2px_6px_rgba(255,255,255,0.35)]"
+              )}
+            >
+              <div className="absolute inset-1 rounded-full bg-white/10 blur-[1px]" />
+              {isAttacking ? (
+                <Sword className="relative h-5 w-5 -rotate-45 text-white drop-shadow-[0_3px_2px_rgba(0,0,0,0.75)] md:h-6 md:w-6" />
+              ) : (
+                <Shield className="relative h-5 w-5 text-white drop-shadow-[0_3px_2px_rgba(0,0,0,0.75)] md:h-6 md:w-6" />
+              )}
+            </div>
+          </div>
+        )}
+
         {/* Count Badge - Repositioned to center and enlarged */}
         {showCount && (count > 0 || typeof count === 'string') && (
           <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-20">
