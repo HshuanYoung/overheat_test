@@ -9,7 +9,10 @@ import { grantedTotemReviveFromGrave } from '../src/scripts/BaseUtil';
 
 export const ServerGameService = {
   isFullEffectSilencedThisTurn(gameState: GameState, card: Card) {
-    return (card as any).data?.fullEffectSilencedTurn === gameState.turnCount;
+    const data = (card as any).data;
+    if (data?.fullEffectSilencedTurn !== gameState.turnCount) return false;
+    const zones = data.fullEffectSilencedZones as TriggerLocation[] | undefined;
+    return !zones || zones.includes(card.cardlocation as TriggerLocation);
   },
 
   getEffectivePlayCost(player: PlayerState, card: Card, gameState?: GameState) {

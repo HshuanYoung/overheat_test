@@ -781,10 +781,12 @@ export const markCannotResetNextStart = (target: Card, source: Card) => {
   addInfluence(target, source, '下个重置阶段不能重置');
 };
 
-export const silenceAllEffectsUntil = (target: Card, source: Card, untilTurn: number) => {
+export const silenceAllEffectsUntil = (target: Card, source: Card, untilTurn: number, zones?: TriggerLocation[]) => {
   const data = ensureData(target);
   data.fullEffectSilencedTurn = untilTurn;
   data.fullEffectSilenceSource = source.fullName;
+  if (zones) data.fullEffectSilencedZones = zones;
+  else delete data.fullEffectSilencedZones;
   addInfluence(target, source, '失去所有效果');
 };
 

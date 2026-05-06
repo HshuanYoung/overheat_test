@@ -7,7 +7,12 @@ import { socket } from '../socket';
 import { GameState, Card, CardEffect, TriggerLocation, GameEvent, PlayerState } from '../types/game';
 
 const isFullEffectSilencedThisTurn = (gameState: GameState | null, card: Card) =>
-  !!gameState && (card as any).data?.fullEffectSilencedTurn === gameState.turnCount;
+  !!gameState &&
+  (card as any).data?.fullEffectSilencedTurn === gameState.turnCount &&
+  (
+    !(card as any).data?.fullEffectSilencedZones ||
+    (card as any).data.fullEffectSilencedZones.includes(card.cardlocation as TriggerLocation)
+  );
 
 const isPseudoGoddessActiveForCard = (gameState: GameState | null, card?: Card | null) =>
   !!gameState && !!card && (card as any).data?.pseudoGoddessTenPlusTurn === gameState.turnCount;

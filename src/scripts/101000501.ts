@@ -1,4 +1,110 @@
-import { Card } from '../types/game';
+import { Card, CardEffect } from '../types/game';
+import { AtomicEffectExecutor } from '../services/AtomicEffectExecutor';
+import { canPutUnitOntoBattlefield, createSelectCardQuery, discardHandCost, getOpponentUid, moveCard, revealDeckCards } from './BaseUtil';
+
+const battlePhases = new Set(['BATTLE_DECLARATION', 'DEFENSE_DECLARATION', 'BATTLE_FREE', 'DAMAGE_CALCULATION']);
+
+const isBattlePhase = (gameState: any) => battlePhases.has(gameState.phase) ||
+  (gameState.phase === 'COUNTERING' && battlePhases.has(gameState.previousPhase));
+
+const effect_101000501_turn_end: CardEffect = {
+  id: '101000501_turn_end',
+  type: 'TRIGGER',
+  triggerEvent: 'TURN_END' as any,
+  triggerLocation: ['UNIT'],
+  limitCount: 1,
+  isMandatory: true,
+  description: '你的回合结束时，公开卡组顶1张。若其为白色卡，对手各自选择1个单位放逐。公开的卡原样放回。',
+  condition: (_gameState, playerState, _instance, event) => event?.playerUid === playerState.uid,
+  execute: async (instance, gameState, playerState) => {
+    const revealed = revealDeckCards(gameState, playerState.uid, 1, instance)[0];
+    if (!revealed || revealed.color !== 'WHITE') return;
+
+    const opponentUid = getOpponentUid(gameState, playerState.uid);
+    const opponent = gameState.players[opponentUid];
+    const candidates = opponent.unitZone.filter((card): card is Card => !!card);
+    if (candidates.length === 0) return;
+
+    createSelectCardQuery(
+      gameState,
+      opponentUid,
+      candidates,
+      '选择放逐单位',
+      '选择你的1个单位放逐。',
+      1,
+      1,
+      {
+        sourceCardId: instance.gamecardId,
+        effectId: '101000501_turn_end',
+        targetUid: opponentUid
+      },
+      () => 'UNIT'
+    );
+  },
+  onQueryResolve: async (instance, gameState, _playerState, selections, context) => {
+    if (context?.effectId !== '101000501_turn_end' || selections.length === 0) return;
+    await AtomicEffectExecutor.execute(gameState, context.targetUid, {
+      type: 'BANISH_CARD',
+      targetFilter: { gamecardId: selections[0], type: 'UNIT' }
+    }, instance);
+  }
+};
+
+const effect_101000501_battle_exile_return: CardEffect = {
+  id: '101000501_battle_exile_return',
+  type: 'ACTIVATE',
+  triggerLocation: ['UNIT'],
+  limitCount: 1,
+  limitNameType: true,
+  description: '战斗阶段中，舍弃1张白色单位手牌：将这个单位放逐。这个战斗阶段结束时，将其放置到战场上。',
+  condition: (gameState, playerState, instance) =>
+    instance.cardlocation === 'UNIT' &&
+    isBattlePhase(gameState) &&
+    playerState.hand.some(card =>
+      card.gamecardId !== instance.gamecardId &&
+      card.type === 'UNIT' &&
+      card.color === 'WHITE'
+    ),
+  cost: discardHandCost(1, card => card.type === 'UNIT' && card.color === 'WHITE'),
+  execute: async (instance, gameState, playerState) => {
+    (instance as any).data = {
+      ...((instance as any).data || {}),
+      returnFromExileAfterBattleTurn: gameState.turnCount,
+      returnFromExileAfterBattleOwnerUid: playerState.uid
+    };
+    moveCard(gameState, playerState.uid, instance, 'EXILE', instance);
+  }
+};
+
+const effect_101000501_return_after_battle: CardEffect = {
+  id: '101000501_return_after_battle',
+  type: 'TRIGGER',
+  triggerLocation: ['EXILE'],
+  triggerEvent: ['BATTLE_ENDED', 'PHASE_CHANGED'] as any,
+  isMandatory: true,
+  limitCount: 1,
+  description: '这个战斗阶段结束时，将被这个效果放逐的这张卡放置到战场上。',
+  condition: (gameState, _playerState, instance, event) => {
+    const data = (instance as any).data;
+    if (
+      instance.cardlocation !== 'EXILE' ||
+      data?.returnFromExileAfterBattleTurn !== gameState.turnCount
+    ) {
+      return false;
+    }
+    return event?.type === 'BATTLE_ENDED' || (event?.type === 'PHASE_CHANGED' && event.data?.phase === 'MAIN');
+  },
+  execute: async (instance, gameState, playerState) => {
+    const data = (instance as any).data || {};
+    const ownerUid = data.returnFromExileAfterBattleOwnerUid || playerState.uid;
+    const owner = gameState.players[ownerUid];
+    if (!owner || !canPutUnitOntoBattlefield(owner, instance)) return;
+
+    delete data.returnFromExileAfterBattleTurn;
+    delete data.returnFromExileAfterBattleOwnerUid;
+    moveCard(gameState, ownerUid, instance, 'UNIT', instance);
+  }
+};
 
 /**
  * Auto-generated from Card.xlsx + Card2.xlsx.
@@ -35,7 +141,7 @@ const card: Card = {
   canAttack: true,
   feijingMark: false,
   canResetCount: 0,
-  effects: [],
+  effects: [effect_101000501_turn_end, effect_101000501_battle_exile_return, effect_101000501_return_after_battle],
   rarity: 'C',
   availableRarities: ['C'],
   cardPackage: 'BT05',

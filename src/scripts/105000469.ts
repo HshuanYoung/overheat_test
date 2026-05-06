@@ -45,7 +45,7 @@ const effect_105000469_enter: CardEffect = {
     const item = AtomicEffectExecutor.findCardById(gameState, selections[0]);
     if (!item || item.cardlocation !== 'ITEM') return;
 
-    silenceAllEffectsUntil(item, instance, gameState.turnCount);
+    silenceAllEffectsUntil(item, instance, gameState.turnCount, ['ITEM']);
     markReturnToDeckBottomAtEnd(item, instance, gameState, playerState.uid);
   }
 };

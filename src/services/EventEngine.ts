@@ -5,7 +5,10 @@ import { getCardIdentity } from '../lib/utils';
 
 export class EventEngine {
   private static isFullEffectSilenced(gameState: GameState, card: Card) {
-    return (card as any).data?.fullEffectSilencedTurn === gameState.turnCount;
+    const data = (card as any).data;
+    if (data?.fullEffectSilencedTurn !== gameState.turnCount) return false;
+    const zones = data.fullEffectSilencedZones as TriggerLocation[] | undefined;
+    return !zones || zones.includes(card.cardlocation as TriggerLocation);
   }
 
   static dispatchEvent(gameState: GameState, event: GameEvent) {
