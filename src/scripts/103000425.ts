@@ -1,5 +1,5 @@
 import { Card, CardEffect } from '../types/game';
-import { AtomicEffectExecutor, createSelectCardQuery, ensureDeckHasCardsForMove, getOpponentUid, getTopDeckCards, millTop, moveCard, nameContains, ownUnits } from './BaseUtil';
+import { AtomicEffectExecutor, canActivateDefaultTiming, createSelectCardQuery, ensureDeckHasCardsForMove, getOpponentUid, getTopDeckCards, millTop, moveCard, nameContains, ownUnits } from './BaseUtil';
 
 const isWitchName = (card: Card) => nameContains(card, '魔女') || !!ensureDataSafe(card).extraNameContainsWitchBy;
 const ensureDataSafe = (card: Card) => ((card as any).data || {});
@@ -29,8 +29,7 @@ const cardEffects: CardEffect[] = [{
   limitGlobal: true,
   description: '10+ 1游戏1次：选择墓地中1张卡名含有《魔女》的故事卡放逐，处理那张卡的效果。',
   condition: (gameState, playerState) =>
-    playerState.isTurn &&
-    gameState.phase === 'MAIN' &&
+    canActivateDefaultTiming(gameState, playerState) &&
     playerState.grave.some(card => card.type === 'STORY' && nameContains(card, '魔女')),
   execute: async (instance, gameState, playerState) => {
     createSelectCardQuery(gameState, playerState.uid, playerState.grave.filter(card => card.type === 'STORY' && nameContains(card, '魔女')), '选择魔女故事', '选择墓地中1张卡名含有《魔女》的故事卡放逐，并处理其效果。', 1, 1, {

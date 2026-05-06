@@ -1,4 +1,5 @@
 import { Card } from '../types/game';
+import baseCocola from './104030125';
 
 /**
  * Auto-generated from Card.xlsx + Card2.xlsx.
@@ -35,10 +36,10 @@ const card: Card = {
   canAttack: true,
   feijingMark: false,
   canResetCount: 0,
-  effects: [],
+  effects: baseCocola.effects,
   rarity: 'PR',
   availableRarities: ['PR'],
-  cardPackage: '特殊',
+  cardPackage: 'BT05',
   uniqueId: null as any,
 };
 

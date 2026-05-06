@@ -484,6 +484,18 @@ export class AtomicEffectExecutor {
       return;
     }
 
+    if (
+      source === 'BATTLE' &&
+      (player as any).preventBattleDamageUpToTurn === gameState.turnCount &&
+      amount <= Number((player as any).preventBattleDamageUpToAmount || 0)
+    ) {
+      gameState.logs.push(`[${(player as any).preventBattleDamageUpToSourceName || '伤害防止'}] 防止了 ${player.displayName} 将要受到的 ${amount} 点战斗伤害。`);
+      delete (player as any).preventBattleDamageUpToTurn;
+      delete (player as any).preventBattleDamageUpToAmount;
+      delete (player as any).preventBattleDamageUpToSourceName;
+      return;
+    }
+
     let finalAmount = amount;
     if (source === 'EFFECT' && dealer.effectDamageModifier) {
       finalAmount += dealer.effectDamageModifier;
@@ -1329,6 +1341,21 @@ export class AtomicEffectExecutor {
       if (targetOwnerUid && sourceOwnerUid && targetOwnerUid !== sourceOwnerUid) {
         const identity = getCardIdentity(gameState, targetOwnerUid, card);
         gameState.logs.push(`${identity} is unaffected by opponent card effects right now.`);
+        return true;
+      }
+    }
+
+    if (card && sourceCard && (card as any).data?.unaffectedByOpponentColorEffects) {
+      const targetOwnerUid = this.findCardOwnerKey(gameState, card.gamecardId);
+      const sourceOwnerUid = this.findCardOwnerKey(gameState, sourceCard.gamecardId);
+      if (
+        targetOwnerUid &&
+        sourceOwnerUid &&
+        targetOwnerUid !== sourceOwnerUid &&
+        sourceCard.color === (card as any).data.unaffectedByOpponentColorEffects
+      ) {
+        const identity = getCardIdentity(gameState, targetOwnerUid, card);
+        gameState.logs.push(`${identity} 不受对手宣言颜色的卡牌效果影响。`);
         return true;
       }
     }

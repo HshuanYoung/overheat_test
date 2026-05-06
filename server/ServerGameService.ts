@@ -240,6 +240,9 @@ export const ServerGameService = {
     if (paymentCard.id === '201000132') {
       return playingCard.color === 'WHITE' && (playingCard.acValue || 0) <= 3;
     }
+    if (paymentCard.id === '202000151') {
+      return playingCard.color === 'RED' && (playingCard.acValue || 0) <= 3;
+    }
     if (paymentCard.id === '202060130') {
       return playingCard.faction === '雷霆';
     }
@@ -1187,7 +1190,7 @@ export const ServerGameService = {
         }
         feijingCard = player.hand.find(c =>
           c.gamecardId === paymentSelection.feijingCardId &&
-          (c.feijingMark || c.id === '204000145' || c.id === '205000136' || c.id === '201000132' || c.id === '202060130')
+          (c.feijingMark || c.id === '204000145' || c.id === '205000136' || c.id === '201000132' || c.id === '202000151' || c.id === '202060130')
         );
         if (feijingCard) {
           if (
@@ -2725,13 +2728,18 @@ export const ServerGameService = {
         }
         if (targetId !== 'NO_PROMPT') {
           const canAttackMarkedTarget = player.markedUnitAttackTarget === targetId;
+          const canAttackAnyUnitTarget =
+            !isAlliance &&
+            attackerIds.length === 1 &&
+            !!targetUnit &&
+            !!(unit as any).data?.canAttackAnyUnit;
           const canAttackExhaustedTarget =
             !isAlliance &&
             attackerIds.length === 1 &&
             !!targetUnit &&
             targetUnit.isExhausted &&
             ServerGameService.has102050091ExhaustedAttack(unit);
-          if (!canAttackMarkedTarget && !canAttackExhaustedTarget) {
+          if (!canAttackMarkedTarget && !canAttackAnyUnitTarget && !canAttackExhaustedTarget) {
             throw new Error('不能攻击该单位');
           }
         }
@@ -3256,6 +3264,18 @@ export const ServerGameService = {
       return;
     }
 
+    if (
+      source === 'BATTLE' &&
+      (player as any).preventBattleDamageUpToTurn === gameState.turnCount &&
+      damage <= Number((player as any).preventBattleDamageUpToAmount || 0)
+    ) {
+      gameState.logs.push(`[${(player as any).preventBattleDamageUpToSourceName || '伤害防止'}] 防止了 ${player.displayName} 将要受到的 ${damage} 点战斗伤害。`);
+      delete (player as any).preventBattleDamageUpToTurn;
+      delete (player as any).preventBattleDamageUpToAmount;
+      delete (player as any).preventBattleDamageUpToSourceName;
+      return;
+    }
+
     let finalAmount = damage;
     let finalDestination: TriggerLocation = 'EROSION_FRONT';
 
@@ -3501,6 +3521,19 @@ export const ServerGameService = {
     ) {
       gameState.logs.push(`[${unit.fullName}] 不受对手的卡牌效果影响。`);
       return false;
+    }
+
+    if (
+      isEffect &&
+      sourcePlayerId &&
+      sourcePlayerId !== playerId &&
+      (unit as any).data?.unaffectedByOpponentColorEffects
+    ) {
+      const sourceCard = gameState.currentProcessingItem?.card;
+      if (sourceCard && sourceCard.color === (unit as any).data.unaffectedByOpponentColorEffects) {
+        gameState.logs.push(`[${unit.fullName}] 不受对手宣言颜色的卡牌效果影响。`);
+        return false;
+      }
     }
 
     if ((unit as any).data?.returnToHandOnDestroyTurn === gameState.turnCount) {

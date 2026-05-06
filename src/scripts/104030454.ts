@@ -1,5 +1,6 @@
 import { Card, GameState, PlayerState, CardEffect, TriggerLocation, GameEvent } from '../types/game';
 import { AtomicEffectExecutor } from '../services/AtomicEffectExecutor';
+import { canActivateDefaultTiming } from './BaseUtil';
 
 const effect_104030454_trigger: CardEffect = {
   id: 'sodo_entry_bounce',
@@ -91,7 +92,7 @@ const effect_104030454_activate: CardEffect = {
   triggerLocation: ['HAND'],
   description: '【启】若场上存在蓝色单位且侵蚀区域正面没有“索德”卡牌，支付0费用：将此卡从手牌放置在侵蚀区域正面，并抽一张牌。',
   condition: (gameState: GameState, playerState: PlayerState) => {
-    if (!playerState.isTurn || gameState.phase !== 'MAIN') return false;
+    if (!canActivateDefaultTiming(gameState, playerState)) return false;
 
     // 1. Blue unit on field
     const hasBlueUnit = playerState.unitZone.some(u => u && AtomicEffectExecutor.matchesColor(u, 'BLUE'));

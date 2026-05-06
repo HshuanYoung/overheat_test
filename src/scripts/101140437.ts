@@ -1,5 +1,5 @@
 import { Card, CardEffect } from '../types/game';
-import { AtomicEffectExecutor, appendEndResolution, canPutUnitOntoBattlefield, cardsInZones, createSelectCardQuery, getOpponentUid, moveCard, ownUnits } from './BaseUtil';
+import { AtomicEffectExecutor, appendEndResolution, canActivateDefaultTiming, canPutUnitOntoBattlefield, cardsInZones, createSelectCardQuery, getOpponentUid, moveCard, ownUnits } from './BaseUtil';
 
 const cardEffects: CardEffect[] = [{
   id: '101140437_god_limit',
@@ -39,7 +39,7 @@ const cardEffects: CardEffect[] = [{
   limitNameType: true,
   description: '同名1回合1次：从手牌、卡组、墓地放逐合计2张「丝梅特」神蚀卡，选择对手1个单位放逐，回合结束时回到持有者战场。',
   condition: (gameState, playerState) => {
-    if (gameState.phase !== 'MAIN') return false;
+    if (!canActivateDefaultTiming(gameState, playerState)) return false;
     const costCount = cardsInZones(playerState, ['HAND', 'DECK', 'GRAVE']).filter(({ card }) => card.godMark && card.specialName === '丝梅特').length;
     const opponent = gameState.players[getOpponentUid(gameState, playerState.uid)];
     return costCount >= 2 && opponent.unitZone.some(unit => !!unit);

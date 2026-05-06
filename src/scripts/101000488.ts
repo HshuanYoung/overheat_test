@@ -1,4 +1,34 @@
-import { Card } from '../types/game';
+import { Card, CardEffect } from '../types/game';
+import { AtomicEffectExecutor, createSelectCardQuery, moveCard } from './BaseUtil';
+
+const cardEffects: CardEffect[] = [{
+  id: '101000488_destroy_bottom',
+  type: 'TRIGGER',
+  triggerLocation: ['UNIT'],
+  triggerEvent: ['CARD_DESTROYED_BATTLE', 'CARD_DESTROYED_EFFECT'],
+  limitCount: 1,
+  description: '1回合1次：你的单位被破坏时，可以选择墓地1张卡放置到卡组底。',
+  condition: (_gameState, playerState, _instance, event) =>
+    event?.playerUid === playerState.uid &&
+    playerState.grave.length > 0,
+  execute: async (instance, gameState, playerState) => {
+    createSelectCardQuery(
+      gameState,
+      playerState.uid,
+      playerState.grave,
+      '选择放回卡组底的卡',
+      '选择你的墓地中的1张卡，将其放置到卡组底。',
+      0,
+      1,
+      { sourceCardId: instance.gamecardId, effectId: '101000488_destroy_bottom' },
+      () => 'GRAVE'
+    );
+  },
+  onQueryResolve: async (instance, gameState, playerState, selections) => {
+    const target = selections[0] ? AtomicEffectExecutor.findCardById(gameState, selections[0]) : undefined;
+    if (target?.cardlocation === 'GRAVE') moveCard(gameState, playerState.uid, target, 'DECK', instance, { insertAtBottom: true });
+  }
+}];
 
 /**
  * Auto-generated from Card.xlsx + Card2.xlsx.
@@ -34,10 +64,10 @@ const card: Card = {
   canAttack: true,
   feijingMark: false,
   canResetCount: 0,
-  effects: [],
+  effects: cardEffects,
   rarity: 'PR',
   availableRarities: ['PR'],
-  cardPackage: '特殊',
+  cardPackage: 'BT05',
   uniqueId: null as any,
 };
 

@@ -1,4 +1,26 @@
-import { Card } from '../types/game';
+import { Card, CardEffect } from '../types/game';
+import { ensureData, getOpponentUid, markCannotDefendUntilEndOfTurn, totalErosionCount } from './BaseUtil';
+
+const cardEffects: CardEffect[] = [{
+  id: '102000483_cannot_be_defended',
+  type: 'TRIGGER',
+  triggerLocation: ['UNIT'],
+  triggerEvent: 'CARD_ATTACK_DECLARED',
+  isMandatory: true,
+  description: '5~7：这个单位单独攻击时，对手不能用单位防御。',
+  condition: (_gameState, playerState, instance, event) =>
+    totalErosionCount(playerState) >= 5 &&
+    totalErosionCount(playerState) <= 7 &&
+    !event?.data?.isAlliance &&
+    (event?.data?.attackerIds || []).includes(instance.gamecardId),
+  execute: async (instance, gameState, playerState) => {
+    const opponent = gameState.players[getOpponentUid(gameState, playerState.uid)];
+    opponent.unitZone
+      .filter((unit): unit is Card => !!unit && !unit.godMark)
+      .forEach(unit => markCannotDefendUntilEndOfTurn(unit, instance, gameState));
+    ensureData(instance).cannotBeDefendedSourceName = instance.fullName;
+  }
+}];
 
 /**
  * Auto-generated from Card.xlsx + Card2.xlsx.
@@ -34,10 +56,10 @@ const card: Card = {
   canAttack: true,
   feijingMark: false,
   canResetCount: 0,
-  effects: [],
+  effects: cardEffects,
   rarity: 'PR',
   availableRarities: ['PR'],
-  cardPackage: '特殊',
+  cardPackage: 'BT05',
   uniqueId: null as any,
 };
 

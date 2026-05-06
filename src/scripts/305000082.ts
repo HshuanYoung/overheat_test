@@ -1,4 +1,37 @@
-import { Card } from '../types/game';
+import { Card, CardEffect } from '../types/game';
+import { canActivateDuringYourTurn, createChoiceQuery, moveCard, revealDeckCards } from './BaseUtil';
+
+const cardEffects: CardEffect[] = [{
+  id: '305000082_scan',
+  type: 'ACTIVATE',
+  triggerLocation: ['ITEM'],
+  limitCount: 1,
+  description: '1回合1次：你的回合，宣言一个卡名，公开卡组顶1张。若卡名一致，加入手牌；否则放回卡组顶。',
+  condition: (gameState, playerState, instance) =>
+    canActivateDuringYourTurn(gameState, playerState) &&
+    instance.cardlocation === 'ITEM' &&
+    playerState.deck.length > 0,
+  execute: async (instance, gameState, playerState) => {
+    const names = Array.from(new Set(playerState.deck.map(card => card.fullName))).sort();
+    createChoiceQuery(
+      gameState,
+      playerState.uid,
+      '宣言卡名',
+      '选择要宣言的卡名。',
+      names.map(name => ({ id: name, label: name })),
+      { sourceCardId: instance.gamecardId, effectId: '305000082_scan' }
+    );
+  },
+  onQueryResolve: async (instance, gameState, playerState, selections) => {
+    const declaredName = selections[0];
+    const top = playerState.deck[playerState.deck.length - 1];
+    if (!top) return;
+    revealDeckCards(gameState, playerState.uid, 1, instance);
+    if (top.fullName === declaredName) {
+      moveCard(gameState, playerState.uid, top, 'HAND', instance);
+    }
+  }
+}];
 
 /**
  * Auto-generated from Card.xlsx + Card2.xlsx.
@@ -27,10 +60,10 @@ const card: Card = {
   displayState: 'FRONT_UPRIGHT',
   feijingMark: false,
   canResetCount: 0,
-  effects: [],
+  effects: cardEffects,
   rarity: 'PR',
   availableRarities: ['PR'],
-  cardPackage: '特殊',
+  cardPackage: 'BT05',
   uniqueId: null as any,
 };
 

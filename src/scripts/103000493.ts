@@ -1,4 +1,22 @@
-import { Card } from '../types/game';
+import { Card, CardEffect } from '../types/game';
+import { addTempPower, battlingUnits } from './BaseUtil';
+
+const cardEffects: CardEffect[] = [{
+  id: '103000493_big_opponent_boost',
+  type: 'TRIGGER',
+  triggerLocation: ['UNIT'],
+  triggerEvent: 'PHASE_CHANGED',
+  description: '与ACCESS值4以上的单位进行战斗时，这个单位力量+2000。',
+  condition: (gameState, _playerState, instance, event) => {
+    if (event?.data?.phase !== 'DAMAGE_CALCULATION') return false;
+    const units = battlingUnits(gameState);
+    return units.some(unit => unit.gamecardId === instance.gamecardId) &&
+      units.some(unit => unit.gamecardId !== instance.gamecardId && (unit.acValue || 0) >= 4);
+  },
+  execute: async (instance) => {
+    addTempPower(instance, instance, 2000);
+  }
+}];
 
 /**
  * Auto-generated from Card.xlsx + Card2.xlsx.
@@ -34,10 +52,10 @@ const card: Card = {
   canAttack: true,
   feijingMark: false,
   canResetCount: 0,
-  effects: [],
+  effects: cardEffects,
   rarity: 'PR',
   availableRarities: ['PR'],
-  cardPackage: '特殊',
+  cardPackage: 'BT04',
   uniqueId: null as any,
 };
 

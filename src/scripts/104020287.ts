@@ -1,4 +1,46 @@
-import { Card } from '../types/game';
+import { Card, CardEffect } from '../types/game';
+import { AtomicEffectExecutor, canPutUnitOntoBattlefield, cardsInZones, discardHandCost, moveCard, nameContains, ownUnits, selectFromEntries } from './BaseUtil';
+
+const wealthCount = (units: Card[]) => units.reduce((total, unit) => {
+  const dataValue = Number((unit as any).data?.wealthValue || 0);
+  const textValue = Math.max(0, ...((unit.effects || [])
+    .map(effect => effect.description.match(/财富\s*(\d+)/)?.[1])
+    .filter(Boolean)
+    .map(Number)));
+  return total + dataValue + textValue;
+}, 0);
+
+const cardEffects: CardEffect[] = [{
+  id: '104020287_minotaur_recruit',
+  type: 'ACTIVATE',
+  triggerLocation: ['UNIT'],
+  limitCount: 1,
+  cost: discardHandCost(2),
+  description: '1回合1次：财富指示物2个以上，舍弃2张手牌，将卡组或侵蚀区1张卡名含有《牛头人》的非神蚀单位放置到战场。',
+  condition: (_gameState, playerState, instance) =>
+    playerState.isTurn &&
+    instance.cardlocation === 'UNIT' &&
+    wealthCount(ownUnits(playerState)) >= 2 &&
+    canPutUnitOntoBattlefield(playerState, instance) &&
+    cardsInZones(playerState, ['DECK', 'EROSION_FRONT'])
+      .some(({ card }) => card.type === 'UNIT' && !card.godMark && nameContains(card, '牛头人') && canPutUnitOntoBattlefield(playerState, card)),
+  execute: async (instance, gameState, playerState) => {
+    const entries = cardsInZones(playerState, ['DECK', 'EROSION_FRONT'])
+      .filter(({ card }) => card.type === 'UNIT' && !card.godMark && nameContains(card, '牛头人') && canPutUnitOntoBattlefield(playerState, card));
+    selectFromEntries(gameState, playerState.uid, entries, '选择牛头人单位', '选择卡组或侵蚀区中的1张卡名含有《牛头人》的非神蚀单位放置到战场。', 1, 1, {
+      sourceCardId: instance.gamecardId,
+      effectId: '104020287_minotaur_recruit'
+    });
+  },
+  onQueryResolve: async (instance, gameState, playerState, selections) => {
+    const target = selections[0] ? AtomicEffectExecutor.findCardById(gameState, selections[0]) : undefined;
+    if (target && canPutUnitOntoBattlefield(playerState, target)) {
+      const fromDeck = target.cardlocation === 'DECK';
+      moveCard(gameState, playerState.uid, target, 'UNIT', instance);
+      if (fromDeck) await AtomicEffectExecutor.execute(gameState, playerState.uid, { type: 'SHUFFLE_DECK' }, instance);
+    }
+  }
+}];
 
 /**
  * Auto-generated from Card.xlsx + Card2.xlsx.
@@ -34,10 +76,10 @@ const card: Card = {
   canAttack: true,
   feijingMark: false,
   canResetCount: 0,
-  effects: [],
+  effects: cardEffects,
   rarity: 'PR',
   availableRarities: ['PR'],
-  cardPackage: '特殊',
+  cardPackage: 'BT05',
   uniqueId: null as any,
 };
 

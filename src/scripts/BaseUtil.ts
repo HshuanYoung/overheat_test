@@ -140,6 +140,13 @@ export const markCanAttackExhaustedUnit = (target: Card, source: Card) => {
   addInfluence(target, source, '可以攻击对手横置单位');
 };
 
+export const markCanAttackAnyUnit = (target: Card, source: Card) => {
+  const data = ensureData(target);
+  data.canAttackAnyUnit = true;
+  data.canAttackAnyUnitSourceName = source.fullName;
+  addInfluence(target, source, '可以攻击对手单位');
+};
+
 export const cardsInZones = (player: PlayerState, zones: TriggerLocation[]) => {
   const entries: { card: Card; source: TriggerLocation }[] = [];
   zones.forEach(zone => {
@@ -572,6 +579,18 @@ export const isBattleFreeContext = (gameState: GameState) =>
   gameState.phase === 'BATTLE_FREE' ||
   (gameState.phase === 'COUNTERING' && gameState.previousPhase === 'BATTLE_FREE');
 
+export const isConfrontationRequestTiming = (gameState: GameState) =>
+  gameState.phase === 'COUNTERING' ||
+  (gameState.phase === 'BATTLE_FREE' && !!gameState.battleState?.askConfront);
+
+export const canActivateDefaultTiming = (gameState: GameState, playerState: PlayerState) =>
+  (playerState.isTurn && gameState.phase === 'MAIN') ||
+  isConfrontationRequestTiming(gameState);
+
+export const canActivateDuringYourTurn = (gameState: GameState, playerState: PlayerState) =>
+  playerState.isTurn &&
+  (gameState.phase === 'MAIN' || isConfrontationRequestTiming(gameState));
+
 export const ownUnits = (player: PlayerState) => player.unitZone.filter((card): card is Card => !!card);
 export const ownItems = (player: PlayerState) => player.itemZone.filter((card): card is Card => !!card);
 export const faceUpErosion = (player: PlayerState) =>
@@ -737,6 +756,25 @@ export const preventFirstDestroyEachTurn = (target: Card, source: Card) => {
   const data = ensureData(target);
   data.preventFirstDestroyEachTurnSourceName = source.fullName;
   addInfluence(target, source, '每回合第一次将被破坏时防止');
+};
+
+export const preventNextBattleDamageUpTo = (
+  playerState: PlayerState,
+  source: Card,
+  maxAmount: number,
+  gameState: GameState
+) => {
+  (playerState as any).preventBattleDamageUpToTurn = gameState.turnCount;
+  (playerState as any).preventBattleDamageUpToAmount = maxAmount;
+  (playerState as any).preventBattleDamageUpToSourceName = source.fullName;
+  gameState.logs.push(`[${source.fullName}] 本次战斗中防止 ${playerState.displayName} 将要受到的 ${maxAmount} 点以下战斗伤害。`);
+};
+
+export const markCannotResetNextStart = (target: Card, source: Card) => {
+  target.canResetCount = Math.max(target.canResetCount || 0, 1);
+  const data = ensureData(target);
+  data.cannotResetSourceName = source.fullName;
+  addInfluence(target, source, '下个重置阶段不能重置');
 };
 
 export const silenceAllEffectsUntil = (target: Card, source: Card, untilTurn: number) => {

@@ -1,4 +1,43 @@
-import { Card } from '../types/game';
+import { Card, CardEffect } from '../types/game';
+import { createSelectCardQuery, moveCard, moveCardsToBottom, nameContains, ownUnits } from './BaseUtil';
+
+const cardEffects: CardEffect[] = [{
+  id: '203000089_wind_grace',
+  type: 'ACTIVATE',
+  triggerLocation: ['PLAY'],
+  erosionBackLimit: [1, 10],
+  limitCount: 1,
+  limitNameType: true,
+  description: '创痕3：主要阶段，将墓地X张卡放到卡组底，X为你的共鸣或菲晶单位数量且最多4。之后放逐这张卡。',
+  condition: (gameState, playerState) =>
+    playerState.isTurn &&
+    gameState.phase === 'MAIN' &&
+    playerState.grave.length > 0 &&
+    ownUnits(playerState).some(unit => unit.feijingMark || nameContains(unit, '共鸣')),
+  execute: async (instance, gameState, playerState) => {
+    const count = Math.min(4, ownUnits(playerState).filter(unit => unit.feijingMark || nameContains(unit, '共鸣')).length, playerState.grave.length);
+    createSelectCardQuery(
+      gameState,
+      playerState.uid,
+      playerState.grave,
+      '选择放回卡组底的卡',
+      `选择墓地中的${count}张卡，放置到卡组底。`,
+      count,
+      count,
+      { sourceCardId: instance.gamecardId, effectId: '203000089_wind_grace' },
+      () => 'GRAVE'
+    );
+  },
+  onQueryResolve: async (instance, gameState, playerState, selections) => {
+    const cards = selections
+      .map(id => playerState.grave.find(card => card.gamecardId === id))
+      .filter((card): card is Card => !!card);
+    moveCardsToBottom(gameState, playerState.uid, cards, instance);
+    if (instance.cardlocation === 'PLAY' || instance.cardlocation === 'GRAVE') {
+      moveCard(gameState, playerState.uid, instance, 'EXILE', instance);
+    }
+  }
+}];
 
 /**
  * Auto-generated from Card.xlsx + Card2.xlsx.
@@ -27,10 +66,10 @@ const card: Card = {
   displayState: 'FRONT_UPRIGHT',
   feijingMark: true,
   canResetCount: 0,
-  effects: [],
+  effects: cardEffects,
   rarity: 'PR',
   availableRarities: ['PR'],
-  cardPackage: '特殊',
+  cardPackage: 'BT05',
   uniqueId: null as any,
 };
 

@@ -1,4 +1,18 @@
-import { Card } from '../types/game';
+import { Card, CardEffect } from '../types/game';
+import { getOpponentUid, isBattleFreeContext, preventNextBattleDamageUpTo } from './BaseUtil';
+
+const cardEffects: CardEffect[] = [{
+  id: '201000088_prevent_battle_damage',
+  type: 'ACTIVATE',
+  triggerLocation: ['PLAY'],
+  description: '对手的战斗自由步骤：防止这次战斗中你受到的3点以下战斗伤害。',
+  condition: (gameState, playerState) =>
+    isBattleFreeContext(gameState) &&
+    gameState.players[getOpponentUid(gameState, playerState.uid)]?.isTurn,
+  execute: async (instance, gameState, playerState) => {
+    preventNextBattleDamageUpTo(playerState, instance, 3, gameState);
+  }
+}];
 
 /**
  * Auto-generated from Card.xlsx + Card2.xlsx.
@@ -27,10 +41,10 @@ const card: Card = {
   displayState: 'FRONT_UPRIGHT',
   feijingMark: false,
   canResetCount: 0,
-  effects: [],
+  effects: cardEffects,
   rarity: 'PR',
   availableRarities: ['PR'],
-  cardPackage: '特殊',
+  cardPackage: 'BT04',
   uniqueId: null as any,
 };
 

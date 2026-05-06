@@ -1,6 +1,7 @@
 import { Card, CardEffect, GameEvent, GameState, PlayerState } from '../types/game';
 import { AtomicEffectExecutor } from '../services/AtomicEffectExecutor';
 import { EventEngine } from '../services/EventEngine';
+import { canActivateDefaultTiming } from './BaseUtil';
 
 const trigger_104000222_enter: CardEffect = {
   id: '104000222_enter_combat_guard',
@@ -40,7 +41,7 @@ const activate_104000222_from_erosion: CardEffect = {
   condition: (gameState: GameState, playerState: PlayerState, instance: Card) => {
     if (instance.cardlocation !== 'EROSION_FRONT' || instance.displayState !== 'FRONT_UPRIGHT') return false;
     if (!playerState.unitZone.some(u => u === null)) return false;
-    if (!(playerState.isTurn && gameState.phase === 'MAIN') && gameState.phase !== 'COUNTERING') return false;
+    if (!canActivateDefaultTiming(gameState, playerState)) return false;
 
     return playerState.hand.some(card => card.feijingMark);
   },

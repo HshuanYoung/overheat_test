@@ -1,4 +1,31 @@
-import { Card } from '../types/game';
+import { Card, CardEffect } from '../types/game';
+import { addInfluence, ensureData, getOpponentUid, markCannotDefendUntilEndOfTurn } from './BaseUtil';
+
+const cardEffects: CardEffect[] = [{
+  id: '102070286_name_alias',
+  type: 'CONTINUOUS',
+  triggerLocation: ['UNIT', 'GRAVE'],
+  description: '墓地或战场上的这张卡的卡名也视作《异界狂蝠》。',
+  applyContinuous: (_gameState, instance) => {
+    ensureData(instance).extraNameContainsOtherworldBatBy = instance.fullName;
+    addInfluence(instance, instance, '也视为卡名含有《异界狂蝠》');
+  }
+}, {
+  id: '102070286_bat_cannot_defend',
+  type: 'TRIGGER',
+  triggerLocation: ['UNIT', 'GRAVE'],
+  triggerEvent: 'COMBAT_DAMAGE_CAUSED',
+  description: '你的单位对对手造成战斗伤害时，本回合中，对手的非神蚀单位不能防御你的《异界狂蝠》的攻击。',
+  condition: (gameState, playerState, _instance, event) =>
+    event?.playerUid === getOpponentUid(gameState, playerState.uid) &&
+    (event.data?.attackerIds || []).some((id: string) => !!id),
+  execute: async (instance, gameState, playerState) => {
+    const opponent = gameState.players[getOpponentUid(gameState, playerState.uid)];
+    opponent.unitZone
+      .filter((unit): unit is Card => !!unit && !unit.godMark)
+      .forEach(unit => markCannotDefendUntilEndOfTurn(unit, instance, gameState));
+  }
+}];
 
 /**
  * Auto-generated from Card.xlsx + Card2.xlsx.
@@ -36,10 +63,10 @@ const card: Card = {
   canAttack: true,
   feijingMark: false,
   canResetCount: 0,
-  effects: [],
+  effects: cardEffects,
   rarity: 'PR',
   availableRarities: ['PR'],
-  cardPackage: '特殊',
+  cardPackage: 'BT04',
   uniqueId: null as any,
 };
 

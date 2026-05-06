@@ -1,4 +1,30 @@
-import { Card } from '../types/game';
+import { Card, CardEffect } from '../types/game';
+import { canActivateDefaultTiming, createPlayerSelectQuery, dealUnpreventableSelfDamage, erosionCost, getOpponentUid } from './BaseUtil';
+
+const cardEffects: CardEffect[] = [{
+  id: '102000486_unpreventable_damage',
+  type: 'ACTIVATE',
+  triggerLocation: ['UNIT'],
+  limitCount: 1,
+  description: '1回合1次，侵蚀1：选择1名玩家，给予他1点不能防止的伤害。',
+  cost: erosionCost(1),
+  condition: (gameState, playerState, instance) =>
+    canActivateDefaultTiming(gameState, playerState) &&
+    instance.cardlocation === 'UNIT',
+  execute: async (instance, gameState, playerState) => {
+    createPlayerSelectQuery(
+      gameState,
+      playerState.uid,
+      '选择伤害对象',
+      '选择1名玩家，给予他1点不能防止的伤害。',
+      { sourceCardId: instance.gamecardId, effectId: '102000486_unpreventable_damage' }
+    );
+  },
+  onQueryResolve: async (instance, gameState, playerState, selections) => {
+    const targetUid = selections[0] === 'PLAYER_SELF' ? playerState.uid : getOpponentUid(gameState, playerState.uid);
+    dealUnpreventableSelfDamage(gameState, targetUid, 1, instance);
+  }
+}];
 
 /**
  * Auto-generated from Card.xlsx + Card2.xlsx.
@@ -34,10 +60,10 @@ const card: Card = {
   canAttack: true,
   feijingMark: false,
   canResetCount: 0,
-  effects: [],
+  effects: cardEffects,
   rarity: 'PR',
   availableRarities: ['PR'],
-  cardPackage: '特殊',
+  cardPackage: 'BT04',
   uniqueId: null as any,
 };
 

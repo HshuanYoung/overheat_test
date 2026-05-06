@@ -1,5 +1,5 @@
 import { Card, CardEffect } from '../types/game';
-import { AtomicEffectExecutor, createSelectCardQuery, exhaustCost, nameContains, ownUnits, readyByEffect } from './BaseUtil';
+import { AtomicEffectExecutor, canActivateDefaultTiming, createSelectCardQuery, exhaustCost, nameContains, ownUnits, readyByEffect } from './BaseUtil';
 
 const cardEffects: CardEffect[] = [{
   id: '101130439_reset_hall',
@@ -9,8 +9,7 @@ const cardEffects: CardEffect[] = [{
   description: '横置：选择这个单位以外你的1个卡名含有《殿堂》的单位，将其重置。',
   cost: exhaustCost,
   condition: (gameState, playerState, instance) =>
-    playerState.isTurn &&
-    gameState.phase === 'MAIN' &&
+    canActivateDefaultTiming(gameState, playerState) &&
     !instance.isExhausted &&
     ownUnits(playerState).some(unit => unit.gamecardId !== instance.gamecardId && unit.isExhausted && nameContains(unit, '殿堂')),
   execute: async (instance, gameState, playerState) => {

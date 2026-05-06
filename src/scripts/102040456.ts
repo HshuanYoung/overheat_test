@@ -1,4 +1,42 @@
-import { Card } from '../types/game';
+import { Card, CardEffect } from '../types/game';
+import { AtomicEffectExecutor, canPutCardOntoBattlefieldByEffect, createSelectCardQuery, moveCard } from './BaseUtil';
+
+const cardEffects: CardEffect[] = [{
+  id: '102040456_entry_partner',
+  type: 'TRIGGER',
+  triggerLocation: ['UNIT'],
+  triggerEvent: 'CARD_ENTERED_ZONE',
+  description: '进入战场时，可以选择手牌中的1张「Guardian Promise」或「Eternal」卡放置到战场。',
+  condition: (_gameState, playerState, instance, event) =>
+    event?.sourceCardId === instance.gamecardId &&
+    event.data?.zone === 'UNIT' &&
+    playerState.hand.some(card =>
+      (card.specialName === 'Guardian Promise' || card.specialName === 'Eternal') &&
+      canPutCardOntoBattlefieldByEffect(playerState, card)
+    ),
+  execute: async (instance, gameState, playerState) => {
+    createSelectCardQuery(
+      gameState,
+      playerState.uid,
+      playerState.hand.filter(card =>
+        (card.specialName === 'Guardian Promise' || card.specialName === 'Eternal') &&
+        canPutCardOntoBattlefieldByEffect(playerState, card)
+      ),
+      '选择放置到战场的卡',
+      '选择手牌中的1张「Guardian Promise」或「Eternal」卡放置到战场。',
+      0,
+      1,
+      { sourceCardId: instance.gamecardId, effectId: '102040456_entry_partner' },
+      () => 'HAND'
+    );
+  },
+  onQueryResolve: async (instance, gameState, playerState, selections) => {
+    const target = selections[0] ? AtomicEffectExecutor.findCardById(gameState, selections[0]) : undefined;
+    if (target?.cardlocation === 'HAND' && canPutCardOntoBattlefieldByEffect(playerState, target)) {
+      moveCard(gameState, playerState.uid, target, target.type === 'ITEM' ? 'ITEM' : 'UNIT', instance);
+    }
+  }
+}];
 
 /**
  * Auto-generated from Card.xlsx + Card2.xlsx.
@@ -34,10 +72,10 @@ const card: Card = {
   canAttack: true,
   feijingMark: false,
   canResetCount: 0,
-  effects: [],
+  effects: cardEffects,
   rarity: 'PR',
   availableRarities: ['PR'],
-  cardPackage: '特殊',
+  cardPackage: 'BT05',
   uniqueId: null as any,
 };
 

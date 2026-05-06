@@ -1,4 +1,56 @@
-import { Card } from '../types/game';
+import { Card, CardEffect } from '../types/game';
+import { addTempKeyword, addTempPower, canActivateDefaultTiming, createChoiceQuery, createSelectCardQuery, moveCard, ownUnits } from './BaseUtil';
+import { AtomicEffectExecutor } from '../services/AtomicEffectExecutor';
+
+const cardEffects: CardEffect[] = [{
+  id: '101000487_grave_exile_boost',
+  type: 'ACTIVATE',
+  triggerLocation: ['UNIT'],
+  limitCount: 1,
+  description: '1回合1次：将墓地3张卡放逐，选择本回合获得【英勇】或力量+500。',
+  condition: (gameState, playerState, instance) =>
+    canActivateDefaultTiming(gameState, playerState) &&
+    instance.cardlocation === 'UNIT' &&
+    playerState.grave.length >= 3,
+  execute: async (instance, gameState, playerState) => {
+    createSelectCardQuery(
+      gameState,
+      playerState.uid,
+      playerState.grave,
+      '选择放逐的墓地卡',
+      '选择墓地中的3张卡放逐作为费用。',
+      3,
+      3,
+      { sourceCardId: instance.gamecardId, effectId: '101000487_grave_exile_boost', step: 'COST' },
+      () => 'GRAVE'
+    );
+  },
+  onQueryResolve: async (instance, gameState, playerState, selections, context) => {
+    if (context?.step === 'COST') {
+      selections
+        .map(id => AtomicEffectExecutor.findCardById(gameState, id))
+        .filter((card): card is Card => !!card && card.cardlocation === 'GRAVE')
+        .forEach(card => moveCard(gameState, playerState.uid, card, 'EXILE', instance));
+      createChoiceQuery(
+        gameState,
+        playerState.uid,
+        '选择效果',
+        '选择「获得【英勇】」或「力量+500」。',
+        [
+          { id: 'HEROIC', label: '获得【英勇】' },
+          { id: 'POWER', label: '力量+500' }
+        ],
+        { sourceCardId: instance.gamecardId, effectId: '101000487_grave_exile_boost', step: 'CHOICE' }
+      );
+      return;
+    }
+
+    const live = ownUnits(playerState).find(unit => unit.gamecardId === instance.gamecardId);
+    if (!live) return;
+    if (selections[0] === 'HEROIC') addTempKeyword(live, instance, 'heroic');
+    if (selections[0] === 'POWER') addTempPower(live, instance, 500);
+  }
+}];
 
 /**
  * Auto-generated from Card.xlsx + Card2.xlsx.
@@ -33,14 +85,14 @@ const card: Card = {
   displayState: 'FRONT_UPRIGHT',
   isExhausted: false,
   isrush: false,
-  isHeroic: true,
+  isHeroic: false,
   canAttack: true,
   feijingMark: false,
   canResetCount: 0,
-  effects: [],
+  effects: cardEffects,
   rarity: 'PR',
   availableRarities: ['PR'],
-  cardPackage: '特殊',
+  cardPackage: 'BT04',
   uniqueId: null as any,
 };
 

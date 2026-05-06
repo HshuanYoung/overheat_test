@@ -1,5 +1,5 @@
 import { Card, CardEffect } from '../types/game';
-import { canPutUnitOntoBattlefield, moveCard, nameContains, ownUnits } from './BaseUtil';
+import { canActivateDuringYourTurn, canPutUnitOntoBattlefield, moveCard, nameContains, ownUnits } from './BaseUtil';
 
 const cardEffects: CardEffect[] = [{
   id: '103000463_grave_enter',
@@ -10,8 +10,7 @@ const cardEffects: CardEffect[] = [{
   limitNameType: true,
   description: '6-8同名1回合1次：你的回合中，若你战场上有卡名含有《黄昏的魔女》的卡，从墓地放置到战场。',
   condition: (gameState, playerState, instance) =>
-    playerState.isTurn &&
-    gameState.phase === 'MAIN' &&
+    canActivateDuringYourTurn(gameState, playerState) &&
     ownUnits(playerState).some(unit => nameContains(unit, '黄昏的魔女')) &&
     canPutUnitOntoBattlefield(playerState, instance),
   execute: async (instance, gameState, playerState) => {

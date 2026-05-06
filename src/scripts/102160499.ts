@@ -1,4 +1,76 @@
-import { Card } from '../types/game';
+import { Card, CardEffect } from '../types/game';
+import { addContinuousKeyword, allUnitsOnField, appendEndResolution, canActivateDuringYourTurn, canPutUnitOntoBattlefield, createSelectCardQuery, ensureData, erosionCost, markCanAttackAnyUnit, moveCard, ownerUidOf, paymentCost, totalErosionCount } from './BaseUtil';
+import { AtomicEffectExecutor } from '../services/AtomicEffectExecutor';
+
+const cardEffects: CardEffect[] = [{
+  id: '102160499_mid_continuous',
+  type: 'CONTINUOUS',
+  triggerLocation: ['UNIT'],
+  description: '2~7：这个单位获得【速攻】，并可以攻击对手的单位。',
+  applyContinuous: (gameState, instance) => {
+    const owner = Object.values(gameState.players).find(player => player.unitZone.some(unit => unit?.gamecardId === instance.gamecardId));
+    if (!owner || totalErosionCount(owner) < 2 || totalErosionCount(owner) > 7) return;
+    addContinuousKeyword(instance, instance, 'rush');
+    markCanAttackAnyUnit(instance, instance);
+  }
+}, {
+  id: '102160499_interrupt_battle',
+  type: 'TRIGGER',
+  triggerLocation: ['UNIT'],
+  triggerEvent: 'PHASE_CHANGED',
+  erosionTotalLimit: [2, 7],
+  cost: paymentCost(1),
+  description: '2~7：这个单位参与的战斗伤害判定步骤开始时，可以支付1费中断这次战斗。',
+  condition: (gameState, _playerState, instance, event) =>
+    event?.data?.phase === 'DAMAGE_CALCULATION' &&
+    !!gameState.battleState &&
+    [
+      ...(gameState.battleState.attackers || []),
+      ...(gameState.battleState.defender ? [gameState.battleState.defender] : [])
+    ].includes(instance.gamecardId),
+  execute: async (_instance, gameState) => {
+    gameState.battleState = undefined;
+    gameState.phase = 'MAIN';
+    gameState.logs.push('[蛊惑之主 欧吉尔] 中断了这次战斗。');
+  }
+}, {
+  id: '102160499_control',
+  type: 'ACTIVATE',
+  triggerLocation: ['UNIT'],
+  erosionTotalLimit: [10, 10],
+  erosionFrontLimit: [2, 10],
+  limitCount: 1,
+  limitNameType: true,
+  cost: erosionCost(2),
+  description: '10+：你的回合，侵蚀2，选择1个单位，获得其控制权。',
+  condition: (gameState, playerState, instance) =>
+    canActivateDuringYourTurn(gameState, playerState) &&
+    instance.cardlocation === 'UNIT' &&
+    allUnitsOnField(gameState).some(unit => {
+      const ownerUid = ownerUidOf(gameState, unit);
+      return ownerUid === playerState.uid || canPutUnitOntoBattlefield(playerState, unit);
+    }),
+  execute: async (instance, gameState, playerState) => {
+    const targets = allUnitsOnField(gameState).filter(unit => {
+      const ownerUid = ownerUidOf(gameState, unit);
+      return ownerUid === playerState.uid || canPutUnitOntoBattlefield(playerState, unit);
+    });
+    createSelectCardQuery(gameState, playerState.uid, targets, '选择获得控制权的单位', '选择1个单位，获得其控制权。', 1, 1, {
+      sourceCardId: instance.gamecardId,
+      effectId: '102160499_control'
+    }, () => 'UNIT');
+  },
+  onQueryResolve: async (instance, gameState, playerState, selections) => {
+    const target = selections[0] ? AtomicEffectExecutor.findCardById(gameState, selections[0]) : undefined;
+    const ownerUid = target ? ownerUidOf(gameState, target) : undefined;
+    if (!target || !ownerUid || target.cardlocation !== 'UNIT') return;
+    if (ownerUid !== playerState.uid && !canPutUnitOntoBattlefield(playerState, target)) return;
+    if (ownerUid !== playerState.uid) moveCard(gameState, ownerUid, target, 'UNIT', instance, { toPlayerUid: playerState.uid });
+    const moved = AtomicEffectExecutor.findCardById(gameState, target.gamecardId);
+    if (moved) ensureData(moved).controlChangedBy = instance.fullName;
+    appendEndResolution(gameState, playerState.uid, instance, '102160499_control_display_refresh', () => undefined);
+  }
+}];
 
 /**
  * Auto-generated from Card.xlsx + Card2.xlsx.
@@ -32,14 +104,14 @@ const card: Card = {
   godMark: true,
   displayState: 'FRONT_UPRIGHT',
   isExhausted: false,
-  isrush: true,
+  isrush: false,
   canAttack: true,
   feijingMark: false,
   canResetCount: 0,
-  effects: [],
+  effects: cardEffects,
   rarity: 'C',
   availableRarities: ['C'],
-  cardPackage: '特殊',
+  cardPackage: 'BT05',
   uniqueId: null as any,
 };
 

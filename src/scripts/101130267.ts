@@ -1,4 +1,22 @@
-import { Card } from '../types/game';
+import { Card, CardEffect } from '../types/game';
+import { getOpponentUid, moveTopDeckTo } from './BaseUtil';
+
+const cardEffects: CardEffect[] = [{
+  id: '101130267_reset_exile_top',
+  type: 'TRIGGER',
+  triggerLocation: ['UNIT'],
+  triggerEvent: 'CARD_ROTATED',
+  limitCount: 1,
+  description: '1回合1次：这个单位由于卡的效果重置时，将对手卡组顶1张卡放逐。',
+  condition: (_gameState, _playerState, instance, event) =>
+    event?.targetCardId === instance.gamecardId &&
+    event.data?.direction === 'VERTICAL' &&
+    !!event.data?.effectSourceCardId,
+  execute: async (instance, gameState, playerState) => {
+    const opponentUid = getOpponentUid(gameState, playerState.uid);
+    moveTopDeckTo(gameState, opponentUid, 1, 'EXILE', instance);
+  }
+}];
 
 /**
  * Auto-generated from Card.xlsx + Card2.xlsx.
@@ -34,10 +52,10 @@ const card: Card = {
   canAttack: true,
   feijingMark: false,
   canResetCount: 0,
-  effects: [],
+  effects: cardEffects,
   rarity: 'PR',
   availableRarities: ['PR'],
-  cardPackage: '特殊',
+  cardPackage: 'BT04',
   uniqueId: null as any,
 };
 

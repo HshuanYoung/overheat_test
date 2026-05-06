@@ -1,4 +1,34 @@
-import { Card } from '../types/game';
+import { Card, CardEffect } from '../types/game';
+import { AtomicEffectExecutor, addTempDamage, createSelectCardQuery, exhaustCost, nameContains, ownUnits } from './BaseUtil';
+
+const cardEffects: CardEffect[] = [{
+  id: '105110366_steel_damage',
+  type: 'ACTIVATE',
+  triggerLocation: ['UNIT'],
+  description: '你的主要阶段，横置：选择你的1个卡名含有《钢兵》的单位，本回合伤害+2。',
+  cost: exhaustCost,
+  condition: (gameState, playerState, instance) =>
+    playerState.isTurn &&
+    gameState.phase === 'MAIN' &&
+    !instance.isExhausted &&
+    ownUnits(playerState).some(unit => nameContains(unit, '钢兵')),
+  execute: async (instance, gameState, playerState) => {
+    createSelectCardQuery(
+      gameState,
+      playerState.uid,
+      ownUnits(playerState).filter(unit => nameContains(unit, '钢兵')),
+      '选择钢兵单位',
+      '选择你的1个卡名含有《钢兵》的单位，本回合伤害+2。',
+      1,
+      1,
+      { sourceCardId: instance.gamecardId, effectId: '105110366_steel_damage' }
+    );
+  },
+  onQueryResolve: async (instance, gameState, _playerState, selections) => {
+    const target = selections[0] ? AtomicEffectExecutor.findCardById(gameState, selections[0]) : undefined;
+    if (target?.cardlocation === 'UNIT') addTempDamage(target, instance, 2);
+  }
+}];
 
 /**
  * Auto-generated from Card.xlsx + Card2.xlsx.
@@ -34,10 +64,10 @@ const card: Card = {
   canAttack: true,
   feijingMark: false,
   canResetCount: 0,
-  effects: [],
+  effects: cardEffects,
   rarity: 'PR',
   availableRarities: ['PR'],
-  cardPackage: '特殊',
+  cardPackage: 'BT05',
   uniqueId: null as any,
 };
 

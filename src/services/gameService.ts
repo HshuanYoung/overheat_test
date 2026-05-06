@@ -62,6 +62,9 @@ const canUseStoryPaymentSubstitute = (paymentCard: Card | undefined, playingCard
   if (paymentCard.id === '201000132') {
     return playingCard.color === 'WHITE' && (playingCard.acValue || 0) <= 3;
   }
+  if (paymentCard.id === '202000151') {
+    return playingCard.color === 'RED' && (playingCard.acValue || 0) <= 3;
+  }
   if (paymentCard.id === '202060130') {
     return playingCard.faction === '雷霆';
   }

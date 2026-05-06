@@ -210,6 +210,9 @@ export class EventEngine {
           if ((card as any).data?.unaffectedByOpponentCardEffects !== undefined) {
             delete (card as any).data.unaffectedByOpponentCardEffects;
           }
+          if ((card as any).data?.unaffectedByOpponentColorEffects !== undefined) {
+            delete (card as any).data.unaffectedByOpponentColorEffects;
+          }
           delete (card as any).__lockPowerToBaseSourceName;
           if (!card.baseColorReq) {
             card.baseColorReq = { ...(card.colorReq || {}) };
@@ -496,6 +499,13 @@ export class EventEngine {
             description: '控制权已变更'
           });
         }
+        if (card && (card as any).data?.unaffectedByOpponentColorEffects) {
+          if (!card.influencingEffects) card.influencingEffects = [];
+          card.influencingEffects.push({
+            sourceCardName: (card as any).data.unaffectedByOpponentColorEffectsSourceName,
+            description: `不受对手${(card as any).data.unaffectedByOpponentColorEffectsLabel || ''}色卡牌效果影响`
+          });
+        }
         if (card && (card as any).data?.extraNameContainsWitchBy) {
           if (!card.influencingEffects) card.influencingEffects = [];
           card.influencingEffects.push({
@@ -527,6 +537,13 @@ export class EventEngine {
             card.influencingEffects.push({
               sourceCardName: (card as any).data.canAttackExhaustedSourceName || '效果',
               description: '可以攻击对手横置单位'
+            });
+          }
+          if (card && (card as any).data?.canAttackAnyUnit) {
+            if (!card.influencingEffects) card.influencingEffects = [];
+            card.influencingEffects.push({
+              sourceCardName: (card as any).data.canAttackAnyUnitSourceName || '效果',
+              description: '可以攻击对手单位'
             });
           }
       });

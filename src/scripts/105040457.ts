@@ -1,4 +1,26 @@
-import { Card } from '../types/game';
+import { Card, CardEffect } from '../types/game';
+import { addContinuousDamage, addContinuousKeyword, addContinuousPower, ownUnits } from './BaseUtil';
+
+const cardEffects: CardEffect[] = [{
+  id: '105040457_legend_boost',
+  type: 'CONTINUOUS',
+  triggerLocation: ['UNIT'],
+  description: '若你有「Brave Immortal」或「Eternal」和「Guardian Promise」，你的<魔王不死传说>单位+2/+2500并获得【英勇】【歼灭】。',
+  applyContinuous: (gameState, instance) => {
+    const owner = Object.values(gameState.players).find(player => player.unitZone.some(unit => unit?.gamecardId === instance.gamecardId));
+    if (!owner) return;
+    const units = ownUnits(owner);
+    const hasBraveOrEternal = units.some(unit => unit.specialName === 'Brave Immortal' || unit.specialName === 'Eternal');
+    const hasPromise = units.some(unit => unit.specialName === 'Guardian Promise');
+    if (!hasBraveOrEternal || !hasPromise) return;
+    units.filter(unit => unit.faction === '魔王不死传说').forEach(unit => {
+      addContinuousDamage(unit, instance, 2);
+      addContinuousPower(unit, instance, 2500);
+      addContinuousKeyword(unit, instance, 'heroic');
+      addContinuousKeyword(unit, instance, 'annihilation');
+    });
+  }
+}];
 
 /**
  * Auto-generated from Card.xlsx + Card2.xlsx.
@@ -31,15 +53,15 @@ const card: Card = {
   displayState: 'FRONT_UPRIGHT',
   isExhausted: false,
   isrush: false,
-  isAnnihilation: true,
-  isHeroic: true,
+  isAnnihilation: false,
+  isHeroic: false,
   canAttack: true,
   feijingMark: false,
   canResetCount: 0,
-  effects: [],
+  effects: cardEffects,
   rarity: 'PR',
   availableRarities: ['PR'],
-  cardPackage: '特殊',
+  cardPackage: 'BT04',
   uniqueId: null as any,
 };
 

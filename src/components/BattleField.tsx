@@ -570,8 +570,9 @@ export const BattleField: React.FC = () => {
     !!paymentCost &&
     paymentCost > 0 &&
     (
-      (card.id === '201000132' && paymentColor === 'WHITE' && paymentCost <= 3) ||
-      card.id === '202060130'
+      (card.id === '201000132' && paymentColor === 'WHITE' && (pendingPlayCard?.acValue || paymentCost) <= 3) ||
+      (card.id === '202000151' && paymentColor === 'RED' && (pendingPlayCard?.acValue || paymentCost) <= 3) ||
+      (card.id === '202060130' && pendingPlayCard?.faction === '雷霆')
     );
 
   const getHandPaymentValue = (card: Card, paymentColor?: string, paymentCost?: number, excludeCardId?: string) => {

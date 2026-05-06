@@ -1,4 +1,34 @@
-import { Card } from '../types/game';
+import { Card, CardEffect } from '../types/game';
+import { AtomicEffectExecutor, allUnitsOnField, canActivateDefaultTiming, createSelectCardQuery, destroyByEffect, discardHandCost } from './BaseUtil';
+
+const cardEffects: CardEffect[] = [{
+  id: '202000150_destroy_big',
+  type: 'ACTIVATE',
+  triggerLocation: ['PLAY'],
+  erosionBackLimit: [2, 10],
+  description: '创痕2：舍弃1张手牌。之后选择1个力量3500以上的单位，将其破坏。',
+  cost: discardHandCost(1),
+  condition: (gameState, playerState) =>
+    canActivateDefaultTiming(gameState, playerState) &&
+    allUnitsOnField(gameState).some(unit => (unit.power || 0) >= 3500),
+  execute: async (instance, gameState, playerState) => {
+    createSelectCardQuery(
+      gameState,
+      playerState.uid,
+      allUnitsOnField(gameState).filter(unit => (unit.power || 0) >= 3500),
+      '选择破坏的单位',
+      '选择1个力量3500以上的单位，将其破坏。',
+      1,
+      1,
+      { sourceCardId: instance.gamecardId, effectId: '202000150_destroy_big' },
+      () => 'UNIT'
+    );
+  },
+  onQueryResolve: async (instance, gameState, _playerState, selections) => {
+    const target = selections[0] ? AtomicEffectExecutor.findCardById(gameState, selections[0]) : undefined;
+    if (target?.cardlocation === 'UNIT' && (target.power || 0) >= 3500) destroyByEffect(gameState, target, instance);
+  }
+}];
 
 /**
  * Auto-generated from Card.xlsx + Card2.xlsx.
@@ -27,10 +57,10 @@ const card: Card = {
   displayState: 'FRONT_UPRIGHT',
   feijingMark: false,
   canResetCount: 0,
-  effects: [],
+  effects: cardEffects,
   rarity: 'PR',
   availableRarities: ['PR'],
-  cardPackage: '特殊',
+  cardPackage: 'BT05',
   uniqueId: null as any,
 };
 

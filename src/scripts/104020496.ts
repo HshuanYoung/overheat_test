@@ -1,4 +1,36 @@
-import { Card } from '../types/game';
+import { Card, CardEffect } from '../types/game';
+import { AtomicEffectExecutor, allUnitsOnField, createSelectCardQuery, markCannotResetNextStart } from './BaseUtil';
+
+const cardEffects: CardEffect[] = [{
+  id: '104020496_entry_no_reset',
+  type: 'TRIGGER',
+  triggerLocation: ['UNIT'],
+  triggerEvent: 'CARD_ENTERED_ZONE',
+  description: '进入战场时，选择战场上1张ACCESS值2以下的非神蚀单位，下次开始阶段不能重置。',
+  condition: (gameState, _playerState, instance, event) =>
+    event?.sourceCardId === instance.gamecardId &&
+    event.data?.zone === 'UNIT' &&
+    allUnitsOnField(gameState).some(unit => !unit.godMark && (unit.acValue || 0) <= 2),
+  execute: async (instance, gameState, playerState) => {
+    createSelectCardQuery(
+      gameState,
+      playerState.uid,
+      allUnitsOnField(gameState).filter(unit => !unit.godMark && (unit.acValue || 0) <= 2),
+      '选择不能重置的单位',
+      '选择战场上1张ACCESS值2以下的非神蚀单位，下一次开始阶段不能重置。',
+      1,
+      1,
+      { sourceCardId: instance.gamecardId, effectId: '104020496_entry_no_reset' },
+      () => 'UNIT'
+    );
+  },
+  onQueryResolve: async (instance, gameState, _playerState, selections) => {
+    const target = selections[0] ? AtomicEffectExecutor.findCardById(gameState, selections[0]) : undefined;
+    if (target?.cardlocation === 'UNIT' && !target.godMark && (target.acValue || 0) <= 2) {
+      markCannotResetNextStart(target, instance);
+    }
+  }
+}];
 
 /**
  * Auto-generated from Card.xlsx + Card2.xlsx.
@@ -34,10 +66,10 @@ const card: Card = {
   canAttack: true,
   feijingMark: false,
   canResetCount: 0,
-  effects: [],
+  effects: cardEffects,
   rarity: 'PR',
   availableRarities: ['PR'],
-  cardPackage: '特殊',
+  cardPackage: 'BT05',
   uniqueId: null as any,
 };
 

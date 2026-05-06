@@ -1,4 +1,40 @@
-import { Card } from '../types/game';
+import { Card, CardEffect } from '../types/game';
+import { AtomicEffectExecutor, allCardsOnField, destroyByEffect, enteredFromHand, ownItems } from './BaseUtil';
+
+const cardEffects: CardEffect[] = [{
+  id: '105000491_destroy_items',
+  type: 'TRIGGER',
+  triggerLocation: ['UNIT'],
+  triggerEvent: 'CARD_ENTERED_ZONE',
+  description: '从手牌进入战场时，破坏战场上所有道具。若破坏3张以上，可以选择战场1张卡破坏。',
+  condition: (_gameState, _playerState, instance, event) =>
+    event?.sourceCardId === instance.gamecardId &&
+    event.data?.zone === 'UNIT' &&
+    enteredFromHand(instance, event),
+  execute: async (instance, gameState, playerState) => {
+    const items = Object.values(gameState.players).flatMap(player => ownItems(player));
+    items.forEach(item => destroyByEffect(gameState, item, instance));
+    if (items.length < 3) return;
+    const targets = allCardsOnField(gameState).filter(card => card.gamecardId !== instance.gamecardId);
+    if (targets.length === 0) return;
+    gameState.pendingQuery = {
+      id: Math.random().toString(36).substring(7),
+      type: 'SELECT_CARD',
+      playerUid: playerState.uid,
+      options: AtomicEffectExecutor.enrichQueryOptions(gameState, playerState.uid, targets.map(card => ({ card, source: card.cardlocation as any }))),
+      title: '选择破坏的卡',
+      description: '破坏的道具卡有3张以上。你可以选择战场上的1张卡，将其破坏。',
+      minSelections: 0,
+      maxSelections: 1,
+      callbackKey: 'EFFECT_RESOLVE',
+      context: { sourceCardId: instance.gamecardId, effectId: '105000491_destroy_items' }
+    };
+  },
+  onQueryResolve: async (instance, gameState, _playerState, selections) => {
+    const target = selections[0] ? AtomicEffectExecutor.findCardById(gameState, selections[0]) : undefined;
+    if (target && (target.cardlocation === 'UNIT' || target.cardlocation === 'ITEM')) destroyByEffect(gameState, target, instance);
+  }
+}];
 
 /**
  * Auto-generated from Card.xlsx + Card2.xlsx.
@@ -36,10 +72,10 @@ const card: Card = {
   canAttack: true,
   feijingMark: false,
   canResetCount: 0,
-  effects: [],
+  effects: cardEffects,
   rarity: 'PR',
   availableRarities: ['PR'],
-  cardPackage: '特殊',
+  cardPackage: 'BT05',
   uniqueId: null as any,
 };
 

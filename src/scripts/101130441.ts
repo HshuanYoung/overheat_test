@@ -1,5 +1,5 @@
 import { Card, CardEffect } from '../types/game';
-import { AtomicEffectExecutor, addTempPower, canPutUnitOntoBattlefield, createSelectCardQuery, ensureDeckHasCardsForMove, getOpponentUid, getTopDeckCards, isNonGodUnit, moveCard, nameContains, ownUnits, readyByEffect } from './BaseUtil';
+import { AtomicEffectExecutor, addTempPower, canActivateDefaultTiming, canPutUnitOntoBattlefield, createSelectCardQuery, ensureDeckHasCardsForMove, getOpponentUid, getTopDeckCards, isNonGodUnit, moveCard, nameContains, ownUnits, readyByEffect } from './BaseUtil';
 
 const cardEffects: CardEffect[] = [{
   id: '101130441_track_hall_attack',
@@ -27,8 +27,7 @@ const cardEffects: CardEffect[] = [{
   limitCount: 1,
   description: '1回合1次：放逐墓地3张卡，选择战场上1个<圣王国>非神蚀单位，重置并本回合力量+500。',
   condition: (gameState, playerState) =>
-    playerState.isTurn &&
-    gameState.phase === 'MAIN' &&
+    canActivateDefaultTiming(gameState, playerState) &&
     playerState.grave.length >= 3 &&
     ownUnits(playerState).some(unit => unit.faction === '圣王国' && isNonGodUnit(unit)),
   execute: async (instance, gameState, playerState) => {
@@ -64,8 +63,7 @@ const cardEffects: CardEffect[] = [{
   limitCount: 1,
   description: '10+：本回合进行过10次以上卡名含有《殿堂》的单位参与的攻击时，将对手卡组顶5张正面放逐。',
   condition: (gameState, playerState) =>
-    playerState.isTurn &&
-    gameState.phase === 'MAIN' &&
+    canActivateDefaultTiming(gameState, playerState) &&
     (playerState as any).hallAttackCountTurn === gameState.turnCount &&
     Number((playerState as any).hallAttackCount || 0) >= 10,
   execute: async (instance, gameState, playerState) => {

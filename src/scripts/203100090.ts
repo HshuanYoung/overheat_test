@@ -1,4 +1,52 @@
-import { Card } from '../types/game';
+import { Card, CardEffect } from '../types/game';
+import { addTempDamage, ensureData, moveCard, nameContains, ownUnits } from './BaseUtil';
+import { AtomicEffectExecutor } from '../services/AtomicEffectExecutor';
+
+const cardEffects: CardEffect[] = [{
+  id: '203100090_witch_night',
+  type: 'ACTIVATE',
+  triggerLocation: ['PLAY'],
+  erosionBackLimit: [3, 10],
+  limitCount: 1,
+  limitNameType: true,
+  description: '创痕3：主要阶段，你的卡名含有《魔女》的单位本回合伤害+1，并获得战斗破坏送墓时横置回场的能力。',
+  condition: (gameState, playerState) =>
+    playerState.isTurn &&
+    gameState.phase === 'MAIN' &&
+    ownUnits(playerState).some(unit => nameContains(unit, '魔女')),
+  execute: async (instance, gameState, playerState) => {
+    ownUnits(playerState).filter(unit => nameContains(unit, '魔女')).forEach(unit => {
+      addTempDamage(unit, instance, 1);
+      const data = ensureData(unit);
+      data.witchNightReviveTurn = gameState.turnCount;
+      data.witchNightReviveSourceName = instance.fullName;
+    });
+  }
+}, {
+  id: '203100090_witch_revive',
+  type: 'TRIGGER',
+  triggerLocation: ['GRAVE'],
+  triggerEvent: 'CARD_DESTROYED_BATTLE',
+  isGlobal: true,
+  description: '魔女之夜赋予：这个单位被战斗破坏送入墓地时，横置放置到战场。',
+  condition: (gameState, playerState, instance, event) =>
+    !!event?.targetCardId &&
+    playerState.grave.some(card =>
+      card.gamecardId === event.targetCardId &&
+      (card as any).data?.witchNightReviveTurn === gameState.turnCount
+    ) &&
+    playerState.unitZone.some(slot => slot === null),
+  execute: async (instance, gameState, playerState, event) => {
+    const target = playerState.grave.find(card =>
+      card.gamecardId === event?.targetCardId &&
+      (card as any).data?.witchNightReviveTurn === gameState.turnCount
+    );
+    if (!target) return;
+    moveCard(gameState, playerState.uid, target, 'UNIT', instance);
+    const moved = AtomicEffectExecutor.findCardById(gameState, target.gamecardId);
+    if (moved) moved.isExhausted = true;
+  }
+}];
 
 /**
  * Auto-generated from Card.xlsx + Card2.xlsx.
@@ -27,10 +75,10 @@ const card: Card = {
   displayState: 'FRONT_UPRIGHT',
   feijingMark: false,
   canResetCount: 0,
-  effects: [],
+  effects: cardEffects,
   rarity: 'PR',
   availableRarities: ['PR'],
-  cardPackage: '特殊',
+  cardPackage: 'BT04',
   uniqueId: null as any,
 };
 

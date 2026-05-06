@@ -1,4 +1,38 @@
-import { Card } from '../types/game';
+import { Card, CardEffect } from '../types/game';
+import { addContinuousDamage, addContinuousPower, addInfluence, canPutUnitOntoBattlefield, ensureData, moveCard } from './BaseUtil';
+
+const cardEffects: CardEffect[] = [{
+  id: '104000326_draw_put',
+  type: 'TRIGGER',
+  triggerLocation: ['HAND'],
+  triggerEvent: 'CARD_DRAWN',
+  description: '抽到这张卡并展示时，可以将手牌中的这张卡放置到战场上。',
+  condition: (_gameState, playerState, instance, event) =>
+    event?.sourceCardId === instance.gamecardId &&
+    instance.cardlocation === 'HAND' &&
+    canPutUnitOntoBattlefield(playerState, instance),
+  execute: async (instance, gameState, playerState) => {
+    moveCard(gameState, playerState.uid, instance, 'UNIT', instance);
+    const moved = playerState.unitZone.find(unit => unit?.gamecardId === instance.gamecardId);
+    if (moved) {
+      ensureData(moved).diceDrawPutTurn = gameState.turnCount;
+      ensureData(moved).diceDrawSourceName = instance.fullName;
+      addInfluence(moved, instance, '由于自身抽到展示效果进入战场');
+    }
+    gameState.logs.push(`[${instance.fullName}] OverHeat Dice Draw：从手牌放置到战场。`);
+  }
+}, {
+  id: '104000326_draw_put_boost',
+  type: 'CONTINUOUS',
+  triggerLocation: ['UNIT'],
+  description: '由于自身诱发能力进入战场时，这个单位伤害+1、力量+500。',
+  applyContinuous: (gameState, instance) => {
+    if ((instance as any).data?.diceDrawPutTurn === gameState.turnCount) {
+      addContinuousDamage(instance, instance, 1);
+      addContinuousPower(instance, instance, 500);
+    }
+  }
+}];
 
 /**
  * Auto-generated from Card.xlsx + Card2.xlsx.
@@ -35,10 +69,10 @@ const card: Card = {
   canAttack: true,
   feijingMark: false,
   canResetCount: 0,
-  effects: [],
+  effects: cardEffects,
   rarity: 'PR',
   availableRarities: ['PR'],
-  cardPackage: '特殊',
+  cardPackage: 'BT05',
   uniqueId: null as any,
 };
 
