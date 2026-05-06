@@ -199,8 +199,8 @@ const card: Card = {
     effect_104030125_trigger,
     effect_104030125_activate
   ],
-  rarity: 'PR',
-  availableRarities: ['PR', 'R'],
+  rarity: 'R',
+  availableRarities: ['R', 'PR'],
   cardPackage: 'BT02',
   uniqueId: null,
 };

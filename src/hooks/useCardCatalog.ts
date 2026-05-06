@@ -5,9 +5,14 @@ import { isCardVisibleInCatalog } from '../lib/cardCatalogFilters';
 type CardCatalogMode = 'with-effects' | 'no-effects';
 
 const CARD_CATALOG_STORAGE_KEYS: Record<CardCatalogMode, string> = {
-  'with-effects': 'card_catalog_v3_with_effects',
-  'no-effects': 'card_catalog_v3_no_effects'
+  'with-effects': 'card_catalog_v4_with_effects',
+  'no-effects': 'card_catalog_v4_no_effects'
 };
+
+const OLD_CARD_CATALOG_STORAGE_KEYS = [
+  'card_catalog_v3_with_effects',
+  'card_catalog_v3_no_effects'
+];
 
 const cachedCards = new Map<CardCatalogMode, Card[]>();
 const cachedLookup = new Map<CardCatalogMode, Map<string, Card>>();
@@ -34,7 +39,9 @@ function resolveMode(includeEffects: boolean) {
 async function fetchCardCatalog(includeEffects: boolean) {
   const mode = resolveMode(includeEffects);
   const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || '';
-  const res = await fetch(`${BACKEND_URL}/api/cards/meta?includeEffects=${includeEffects ? '1' : '0'}`);
+  const res = await fetch(`${BACKEND_URL}/api/cards/meta?includeEffects=${includeEffects ? '1' : '0'}&catalogVersion=4`, {
+    cache: 'no-store'
+  });
 
   if (!res.ok) {
     throw new Error(`Failed to fetch card catalog: ${res.status}`);
@@ -48,6 +55,7 @@ async function fetchCardCatalog(includeEffects: boolean) {
 
   if (typeof window !== 'undefined') {
     try {
+      OLD_CARD_CATALOG_STORAGE_KEYS.forEach(key => window.sessionStorage.removeItem(key));
       window.sessionStorage.setItem(CARD_CATALOG_STORAGE_KEYS[mode], JSON.stringify(cards));
     } catch {
       // Ignore storage quota / privacy mode failures.
@@ -115,7 +123,24 @@ export function useCardCatalog(options?: { includeEffects?: boolean; enabled?: b
       setCards(cached);
       setLoading(false);
       setError(null);
-      return;
+      if (!enabled) {
+        return;
+      }
+
+      let active = true;
+      fetchCardCatalog(includeEffects)
+        .then(nextCards => {
+          if (active) {
+            setCards(nextCards);
+          }
+        })
+        .catch(err => {
+          console.error('Failed to refresh card catalog:', err);
+        });
+
+      return () => {
+        active = false;
+      };
     }
 
     if (!enabled) {

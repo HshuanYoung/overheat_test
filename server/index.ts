@@ -1141,8 +1141,6 @@ function pickRandom<T>(arr: T[]): T {
     return arr[Math.floor(Math.random() * arr.length)];
 }
 
-const CLIENT_CARD_CATALOG_CACHE = new Map<string, Card[]>();
-
 function serializeCatalogCard(card: Card, includeEffects: boolean): Card {
     return {
         id: card.id,
@@ -1180,22 +1178,15 @@ function serializeCatalogCard(card: Card, includeEffects: boolean): Card {
 }
 
 function getClientCardCatalog(includeEffects: boolean) {
-    const cacheKey = includeEffects ? 'with-effects' : 'no-effects';
-
-    if (!CLIENT_CARD_CATALOG_CACHE.has(cacheKey)) {
-        CLIENT_CARD_CATALOG_CACHE.set(
-            cacheKey,
-            getLiveCardVariations().filter(isCardVisibleInCatalog).map(card => serializeCatalogCard(card, includeEffects))
-        );
-    }
-
-    return CLIENT_CARD_CATALOG_CACHE.get(cacheKey)!;
+    return getLiveCardVariations()
+        .filter(isCardVisibleInCatalog)
+        .map(card => serializeCatalogCard(card, includeEffects));
 }
 
 app.get('/api/cards/meta', async (req, res): Promise<void> => {
     try {
         const includeEffects = req.query.includeEffects === '1';
-        res.setHeader('Cache-Control', 'public, max-age=300');
+        res.setHeader('Cache-Control', 'no-store, max-age=0');
         res.json({ cards: getClientCardCatalog(includeEffects) });
     } catch (err) {
         console.error('[CardsMeta] Failed to build card catalog:', err);

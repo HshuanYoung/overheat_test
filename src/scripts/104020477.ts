@@ -1,8 +1,8 @@
 import { Card, GameState, PlayerState, CardEffect, GameEvent } from '../types/game';
 import { AtomicEffectExecutor } from '../services/AtomicEffectExecutor';
 
-const trigger_1040201197: CardEffect = {
-  id: '1040201197_trigger',
+const trigger_104020477: CardEffect = {
+  id: '104020477_trigger',
   type: 'TRIGGER',
   description: '【诱发】：当这个单位进入单位区时，若对手的单位比你多2个或以上：将侵蚀位前区两张蓝色的正面卡牌送去墓地，之后选择对手单位区中最多两名非神蚀单位返回持有者手牌。',
   triggerLocation: ['UNIT'],
@@ -48,7 +48,7 @@ const trigger_1040201197: CardEffect = {
       callbackKey: 'EFFECT_RESOLVE',
       context: {
         sourceCardId: instance.gamecardId,
-        effectId: '1040201197_trigger',
+        effectId: '104020477_trigger',
         step: 1
       }
     };
@@ -83,7 +83,7 @@ const trigger_1040201197: CardEffect = {
           callbackKey: 'EFFECT_RESOLVE',
           context: {
             sourceCardId: instance.gamecardId,
-            effectId: '1040201197_trigger',
+            effectId: '104020477_trigger',
             step: 2
           }
         };
@@ -109,7 +109,7 @@ const trigger_1040201197: CardEffect = {
 };
 
 const card: Card = {
-  id: '1040201197',
+  id: '104020477',
   fullName: '私服【阿克蒂】',
   specialName: '阿克蒂',
   type: 'UNIT',
@@ -129,7 +129,7 @@ const card: Card = {
   canAttack: true,
   feijingMark: false,
   canResetCount: 0,
-  effects: [trigger_1040201197],
+  effects: [trigger_104020477],
   rarity: 'R',
   availableRarities: ['R'],
   cardPackage: 'BT02',
