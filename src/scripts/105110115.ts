@@ -480,7 +480,7 @@ const card: Card = {
   canResetCount: 0,
   effects: [effect_105110115_stack_top, effect_105110115_reveal_use_top],
   rarity: 'SR',
-  availableRarities: ['SR', 'SER'],
+  availableRarities: ['SR'],
   cardPackage: 'BT01',
   uniqueId: null as any,
 };

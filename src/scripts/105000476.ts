@@ -117,7 +117,7 @@ const card: Card = {
   canResetCount: 0,
   effects: [effect_105000476_continuous, effect_105000476_activate],
   rarity: 'SR',
-  availableRarities: ['SR', 'SER'],
+  availableRarities: ['SR'],
   cardPackage: 'BT03',
   uniqueId: null as any,
 };

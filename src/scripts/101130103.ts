@@ -51,7 +51,7 @@ const card: Card = {
   canResetCount: 0,
   effects: cardEffects,
   rarity: 'U',
-  availableRarities: ['U', 'R'],
+  availableRarities: ['U'],
   cardPackage: 'BT01',
   uniqueId: null as any,
 };

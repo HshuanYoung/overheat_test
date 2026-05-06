@@ -133,7 +133,7 @@ const card: Card = {
     effect_105110114_ten_plus
   ],
   rarity: 'SR',
-  availableRarities: ['SR', 'SER'],
+  availableRarities: ['SR'],
   cardPackage: 'BT01',
   uniqueId: null as any,
 };
