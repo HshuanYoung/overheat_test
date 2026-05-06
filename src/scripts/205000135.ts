@@ -15,8 +15,7 @@ const effect_205000135_activate: CardEffect = {
     return playerState.deck.some(card =>
       card.type === 'UNIT' &&
       card.specialName === loneGodmark.specialName &&
-      card.fullName !== loneGodmark.fullName &&
-      canPutUnitOntoBattlefield(playerState, card)
+      card.fullName !== loneGodmark.fullName
     );
   },
   execute: async (instance, gameState, playerState) => {

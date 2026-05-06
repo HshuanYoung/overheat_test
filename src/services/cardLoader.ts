@@ -25,6 +25,18 @@ export function hydrateCard(card: Card | null) {
   if (!card.baseColorReq) {
     card.baseColorReq = { ...(masterCard?.colorReq || card.colorReq || {}) };
   }
+  if (masterCard) {
+    card.basePower = card.basePower ?? masterCard.basePower ?? masterCard.power;
+    card.baseDamage = card.baseDamage ?? masterCard.baseDamage ?? masterCard.damage;
+    card.baseAcValue = card.baseAcValue ?? masterCard.baseAcValue ?? masterCard.acValue;
+    card.baseIsrush = card.baseIsrush ?? masterCard.baseIsrush ?? masterCard.isrush ?? false;
+    card.baseCanAttack = card.baseCanAttack ?? masterCard.baseCanAttack ?? masterCard.canAttack ?? true;
+    card.baseGodMark = card.baseGodMark ?? masterCard.baseGodMark ?? masterCard.godMark;
+    card.baseCanActivateEffect = card.baseCanActivateEffect ?? masterCard.baseCanActivateEffect ?? masterCard.canActivateEffect ?? true;
+    if (card.isrush === undefined) card.isrush = card.baseIsrush;
+    if (card.canAttack === undefined) card.canAttack = card.baseCanAttack;
+    if (card.godMark === undefined) card.godMark = !!card.baseGodMark;
+  }
   if (masterCard && masterCard.effects) {
     // Re-assign effects to restore functions lost during JSON serialization
     card.effects = masterCard.effects.map((originalEffect, idx) => {

@@ -87,7 +87,7 @@ export const BattleField: React.FC = () => {
   const [selectedQueryIds, setSelectedQueryIds] = useState<string[]>([]);
   const [favoriteBackId, setFavoriteBackId] = useState<string>('default');
   const [showFullLogs, setShowFullLogs] = useState(false);
-  const [viewingZone, setViewingZone] = useState<{ title: string, cards: Card[], type: string, erosionBackIds?: string[], isOpponentZone?: boolean } | null>(null);
+  const [viewingZone, setViewingZone] = useState<{ title: string, type: string, erosionBackIds?: string[], isOpponentZone?: boolean } | null>(null);
   const [isHomeMenuOpen, setIsHomeMenuOpen] = useState(false);
   const [showSurrenderConfirm, setShowSurrenderConfirm] = useState(false);
   const [timer, setTimer] = useState<number>(30);
@@ -834,7 +834,7 @@ export const BattleField: React.FC = () => {
   };
 
   const getAvailableDefenders = () => {
-    return me.unitZone.filter(c => c !== null && !c.isExhausted) as Card[];
+    return me.unitZone.filter(canUnitDefend) as Card[];
   };
 
   const getGraphicOptionMeta = (card: Card) => {

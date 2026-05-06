@@ -255,6 +255,18 @@ export const ServerGameService = {
     if (!card.baseColorReq) {
       card.baseColorReq = { ...(masterCard?.colorReq || card.colorReq || {}) };
     }
+    if (masterCard) {
+      card.basePower = card.basePower ?? masterCard.basePower ?? masterCard.power;
+      card.baseDamage = card.baseDamage ?? masterCard.baseDamage ?? masterCard.damage;
+      card.baseAcValue = card.baseAcValue ?? masterCard.baseAcValue ?? masterCard.acValue;
+      card.baseIsrush = card.baseIsrush ?? masterCard.baseIsrush ?? masterCard.isrush ?? false;
+      card.baseCanAttack = card.baseCanAttack ?? masterCard.baseCanAttack ?? masterCard.canAttack ?? true;
+      card.baseGodMark = card.baseGodMark ?? masterCard.baseGodMark ?? masterCard.godMark;
+      card.baseCanActivateEffect = card.baseCanActivateEffect ?? masterCard.baseCanActivateEffect ?? masterCard.canActivateEffect ?? true;
+      if (card.isrush === undefined) card.isrush = card.baseIsrush;
+      if (card.canAttack === undefined) card.canAttack = card.baseCanAttack;
+      if (card.godMark === undefined) card.godMark = !!card.baseGodMark;
+    }
     if (masterCard && masterCard.effects) {
       // Re-assign effects to restore functions lost during JSON serialization
       card.effects = masterCard.effects.map((originalEffect, idx) => {
@@ -343,6 +355,22 @@ export const ServerGameService = {
     if (gameState.counterStack) {
       gameState.counterStack.forEach(item => {
         if (item.card) ServerGameService.hydrateCard(item.card);
+      });
+    }
+
+    if (gameState.triggeredEffectsQueue) {
+      gameState.triggeredEffectsQueue = gameState.triggeredEffectsQueue.map(record => {
+        if (!record || !record.card) return record;
+
+        ServerGameService.hydrateCard(record.card);
+
+        if (record.card.effects) {
+          const masterEffect = record.card.effects[record.effectIndex];
+          if (masterEffect) {
+            record.effect = { ...record.effect, ...masterEffect };
+          }
+        }
+        return record;
       });
     }
 
@@ -1608,6 +1636,7 @@ export const ServerGameService = {
     if (gameState.counterStack.length === 0) return;
 
     gameState.isResolvingStack = true;
+    (gameState as any).deferTriggeredEffectsUntilCounterStackEnds = true;
     gameState.priorityPlayerId = undefined;
     const isPhaseEndOnly = gameState.counterStack.length === 1 && gameState.counterStack[0].type === 'PHASE_END' && !gameState.counterStack[0].isInterrupted;
     const phaseEndItem = isPhaseEndOnly ? gameState.counterStack[0] : null;
@@ -1616,6 +1645,7 @@ export const ServerGameService = {
       gameState.counterStack.pop();
       gameState.isCountering = 0;
       gameState.isResolvingStack = false;
+      delete (gameState as any).deferTriggeredEffectsUntilCounterStackEnds;
       gameState.priorityPlayerId = undefined;
 
       const nextPhase = phaseEndItem!.nextPhase;
@@ -1846,6 +1876,7 @@ export const ServerGameService = {
     gameState.priorityPlayerId = undefined;
     gameState.currentProcessingItem = null; // Ensure this is cleared
     gameState.phaseTimerStart = Date.now();
+    delete (gameState as any).deferTriggeredEffectsUntilCounterStackEnds;
 
     // After resolving the stack, return to previous phase if it exists
     if (gameState.previousPhase) {
@@ -1889,11 +1920,20 @@ export const ServerGameService = {
 
     ServerGameService.normalizeForcedGuardBattleState(gameState);
     EventEngine.recalculateContinuousEffects(gameState);
-    ServerGameService.checkBattleInterruption(gameState);
+    if (ServerGameService.checkBattleInterruption(gameState)) {
+      await ServerGameService.checkTriggeredEffects(gameState, onUpdate);
+    }
   },
 
   async checkTriggeredEffects(gameState: GameState, onUpdate?: (state: GameState) => Promise<void>) {
-    if (gameState.gameStatus === 2 || gameState.isCountering === 1 || gameState.isResolvingStack || gameState.pendingQuery || gameState.currentProcessingItem) {
+    if (
+      gameState.gameStatus === 2 ||
+      gameState.isCountering === 1 ||
+      gameState.isResolvingStack ||
+      (gameState as any).deferTriggeredEffectsUntilCounterStackEnds ||
+      gameState.pendingQuery ||
+      gameState.currentProcessingItem
+    ) {
       return;
     }
 
@@ -1927,7 +1967,12 @@ export const ServerGameService = {
       }
     } else {
       // Queue is empty, settlement is truly complete
+      const queueLengthBeforeInterrupt = gameState.triggeredEffectsQueue?.length || 0;
       ServerGameService.checkBattleInterruption(gameState);
+      if ((gameState.triggeredEffectsQueue?.length || 0) > queueLengthBeforeInterrupt) {
+        await ServerGameService.checkTriggeredEffects(gameState, onUpdate);
+        return;
+      }
 
       if (gameState.phase === 'START') {
         const currentPlayerId = gameState.playerIds[gameState.currentTurnPlayer];
@@ -2078,6 +2123,7 @@ export const ServerGameService = {
 
       if (currentSelections[0] === 'YES' && unit?.cardlocation === 'UNIT') {
         unit.isExhausted = false;
+        unit.hasAttackedThisTurn = false;
         if (gameState.battleState) {
           gameState.battleState.keepResetUnitIds = Array.from(new Set([...(gameState.battleState.keepResetUnitIds || []), unit.gamecardId]));
         }
@@ -2254,6 +2300,16 @@ export const ServerGameService = {
         effect = sourceCard.effects?.find(e => e.id === effectId);
       }
       if (effect && effect.onQueryResolve) {
+        const previousProcessingItem = gameState.currentProcessingItem;
+        if (!gameState.currentProcessingItem) {
+          gameState.currentProcessingItem = {
+            type: 'EFFECT',
+            card: sourceCard,
+            ownerUid: query.context?.ownerUid || playerUid,
+            effectIndex,
+            timestamp: Date.now()
+          };
+        }
         try {
           gameState.logs.push(`[系统] 正在执行脚本回调 ${effect.id || effectIndex}`);
           await (effect.onQueryResolve as any)(sourceCard, gameState, gameState.players[playerUid], selections, query.context);
@@ -2262,6 +2318,8 @@ export const ServerGameService = {
         } catch (err: any) {
           console.error(`[Error] CRASH in onQueryResolve:`, err);
           gameState.logs.push(`[閿欒] 鑴氭湰鍥炶皟鎵ц宕╂簝: ${err.message}`);
+        } finally {
+          gameState.currentProcessingItem = previousProcessingItem || null;
         }
 
         if (gameState.pendingQuery) {
@@ -3001,22 +3059,21 @@ export const ServerGameService = {
     if (!gameState.battleState.defender) {
       // Direct damage to player
       const totalDamage = attackingUnits.reduce((sum, u) => sum + (u.damage || 0), 0);
-      const finalDamage = defender.isGoddessMode ? totalDamage * 2 : totalDamage;
+      const dealtDamage = ServerGameService.applyDamageToPlayer(gameState, defenderId, totalDamage, 'BATTLE');
 
-      gameState.logs.push(`${attacker.displayName} 对 ${defender.displayName} 造成了 ${finalDamage} 点战斗伤害`);
-
-      EventEngine.dispatchEvent(gameState, {
-        type: 'COMBAT_DAMAGE_CAUSED',
-        playerUid: defenderId,
-        data: {
-          amount: finalDamage,
-          source: 'BATTLE',
-          attackerIds: gameState.battleState.attackers || [],
-          isAlliance: !!gameState.battleState.isAlliance
-        }
-      });
-
-      ServerGameService.applyDamageToPlayer(gameState, defenderId, totalDamage, 'BATTLE');
+      if (dealtDamage > 0) {
+        gameState.logs.push(`${attacker.displayName} 对 ${defender.displayName} 造成了 ${dealtDamage} 点战斗伤害`);
+        EventEngine.dispatchEvent(gameState, {
+          type: 'COMBAT_DAMAGE_CAUSED',
+          playerUid: defenderId,
+          data: {
+            amount: dealtDamage,
+            source: 'BATTLE',
+            attackerIds: gameState.battleState.attackers || [],
+            isAlliance: !!gameState.battleState.isAlliance
+          }
+        });
+      }
     } else {
       // Unit combat
       const defendingUnitId = gameState.battleState!.defender;
@@ -3047,17 +3104,19 @@ export const ServerGameService = {
               // Annihilation Effect
               if (attackingUnit.isAnnihilation) {
                 gameState.logs.push(`【歼灭】效果触发！${attackingUnit.fullName} 对对手造成额外伤害`);
-                EventEngine.dispatchEvent(gameState, {
-                  type: 'COMBAT_DAMAGE_CAUSED',
-                  playerUid: defenderId,
-                  data: {
-                    amount: attackingUnit.damage || 0,
-                    source: 'BATTLE',
-                    attackerIds: [attackingUnit.gamecardId],
-                    isAlliance: !!gameState.battleState?.isAlliance
-                  }
-                });
-                ServerGameService.applyDamageToPlayer(gameState, defenderId, attackingUnit.damage || 0, 'BATTLE');
+                const dealtDamage = ServerGameService.applyDamageToPlayer(gameState, defenderId, attackingUnit.damage || 0, 'BATTLE');
+                if (dealtDamage > 0) {
+                  EventEngine.dispatchEvent(gameState, {
+                    type: 'COMBAT_DAMAGE_CAUSED',
+                    playerUid: defenderId,
+                    data: {
+                      amount: dealtDamage,
+                      source: 'BATTLE',
+                      attackerIds: [attackingUnit.gamecardId],
+                      isAlliance: !!gameState.battleState?.isAlliance
+                    }
+                  });
+                }
               }
 
               if ((attackingUnit as any).data?.resetAfterNextBattleDestroyTurn === gameState.turnCount && gameState.gameStatus !== 2) {
@@ -3228,6 +3287,17 @@ export const ServerGameService = {
 
     // Now set phase back to MAIN or SHENYI if triggered
     if (gameState.phase !== 'SHENYI_CHOICE') {
+      EventEngine.dispatchEvent(gameState, {
+        type: 'BATTLE_ENDED',
+        sourceCard: attackingUnits[0],
+        sourceCardId: attackingUnits[0]?.gamecardId,
+        playerUid: attackerId,
+        data: {
+          attackerIds: gameState.battleState.attackers || [],
+          defenderId: gameState.battleState.defender,
+          isAlliance: !!gameState.battleState.isAlliance
+        }
+      });
       gameState.phase = 'MAIN';
       gameState.phaseTimerStart = Date.now();
       EventEngine.dispatchEvent(gameState, { type: 'PHASE_CHANGED', data: { phase: 'MAIN', reason: 'BATTLE_END' } });
@@ -3261,7 +3331,7 @@ export const ServerGameService = {
 
     if ((player as any).preventAllDamageTurn === gameState.turnCount) {
       gameState.logs.push(`[${(player as any).preventAllDamageSourceName || '伤害防止'}] 防止了 ${player.displayName} 将要受到的 ${damage} 点伤害。`);
-      return;
+      return 0;
     }
 
     if (
@@ -3273,7 +3343,7 @@ export const ServerGameService = {
       delete (player as any).preventBattleDamageUpToTurn;
       delete (player as any).preventBattleDamageUpToAmount;
       delete (player as any).preventBattleDamageUpToSourceName;
-      return;
+      return 0;
     }
 
     let finalAmount = damage;
@@ -3290,7 +3360,7 @@ export const ServerGameService = {
       gameState.gameStatus = 2;
       gameState.winReason = source === 'BATTLE' ? 'DECK_OUT_BATTLE_DAMAGE' : 'DECK_OUT_EFFECT_DAMAGE';
       gameState.winnerId = gameState.playerIds.find(id => id !== playerId);
-      return;
+      return 0;
     }
 
     for (let i = 0; i < finalAmount; i++) {
@@ -3395,6 +3465,7 @@ export const ServerGameService = {
     }
 
     ServerGameService.checkWinConditions(gameState);
+    return finalAmount;
   },
 
   applyAllianceAnnihilationDamage(gameState: GameState, defenderPlayerId: string, survivingUnits: Card[]) {
@@ -3403,17 +3474,19 @@ export const ServerGameService = {
 
     const totalAnnihilationDamage = annihilators.reduce((sum, u) => sum + (u.damage || 0), 0);
     gameState.logs.push(`【歼灭】效果触发！幸存的联军单位造成额外伤害 (${totalAnnihilationDamage})`);
-    EventEngine.dispatchEvent(gameState, {
-      type: 'COMBAT_DAMAGE_CAUSED',
-      playerUid: defenderPlayerId,
-      data: {
-        amount: totalAnnihilationDamage,
-        source: 'BATTLE',
-        attackerIds: annihilators.map(unit => unit.gamecardId),
-        isAlliance: true
-      }
-    });
-    ServerGameService.applyDamageToPlayer(gameState, defenderPlayerId, totalAnnihilationDamage, 'BATTLE');
+    const dealtDamage = ServerGameService.applyDamageToPlayer(gameState, defenderPlayerId, totalAnnihilationDamage, 'BATTLE');
+    if (dealtDamage > 0) {
+      EventEngine.dispatchEvent(gameState, {
+        type: 'COMBAT_DAMAGE_CAUSED',
+        playerUid: defenderPlayerId,
+        data: {
+          amount: dealtDamage,
+          source: 'BATTLE',
+          attackerIds: annihilators.map(unit => unit.gamecardId),
+          isAlliance: true
+        }
+      });
+    }
   },
 
   triggerGoddessTransformation(gameState: GameState, playerId: string) {
@@ -3924,7 +3997,7 @@ export const ServerGameService = {
   },
 
   checkBattleInterruption(gameState: GameState) {
-    if (!gameState.battleState) return;
+    if (!gameState.battleState) return false;
 
     let contextPhase = gameState.phase;
     if (gameState.phase === 'COUNTERING' || gameState.phase === 'SHENYI_CHOICE') {
@@ -3932,7 +4005,7 @@ export const ServerGameService = {
     }
 
     const battlePhases: GamePhase[] = ['BATTLE_DECLARATION', 'DEFENSE_DECLARATION', 'BATTLE_FREE'];
-    if (!battlePhases.includes(contextPhase)) return;
+    if (!battlePhases.includes(contextPhase)) return false;
 
     const turnPlayerId = gameState.playerIds[gameState.currentTurnPlayer];
     const opponentId = gameState.playerIds[gameState.currentTurnPlayer === 0 ? 1 : 0];
@@ -3965,6 +4038,7 @@ export const ServerGameService = {
 
     if (defenderGone || allAttackersGone) {
       gameState.logs.push(`[战斗中止] ${defenderGone ? '防御/目标单位' : '所有攻击单位'} 已离开字段，战斗中止。`);
+      const interruptedBattle = gameState.battleState;
 
       const inConfrontation = gameState.isResolvingStack || (gameState.counterStack && gameState.counterStack.length > 0) || gameState.isCountering > 0;
 
@@ -3990,11 +4064,23 @@ export const ServerGameService = {
       }
 
       gameState.battleState = undefined;
+      EventEngine.dispatchEvent(gameState, {
+        type: 'BATTLE_ENDED',
+        playerUid: turnPlayerId,
+        data: {
+          attackerIds: attackersFound,
+          defenderId: interruptedBattle.defender,
+          isAlliance: !!interruptedBattle.isAlliance,
+          interrupted: true
+        }
+      });
       EventEngine.dispatchEvent(gameState, { type: 'PHASE_CHANGED', data: { phase: 'MAIN', reason: 'BATTLE_INTERRUPTED' } });
+      return true;
     } else if (gameState.battleState.attackers.length !== attackersFound.length) {
       gameState.logs.push(`[战斗继续] 其中一个攻击单位已离开，剩余单位继续攻击。`);
       gameState.battleState.attackers = attackersFound;
     }
+    return false;
   },
 
   async executeTriggeredEffect(
@@ -5004,6 +5090,7 @@ export const ServerGameService = {
           c &&
           !c.isExhausted &&
           !(c as any).battleForbiddenByEffect &&
+          !((c as any).data?.cannotDefendTurn === gameState.turnCount) &&
           !((c as any).data?.cannotAttackOrDefendUntilTurn && (c as any).data.cannotAttackOrDefendUntilTurn >= gameState.turnCount) &&
           (!lockedTargetId || c.gamecardId === lockedTargetId) &&
           (c.power || 0) >= minPower &&

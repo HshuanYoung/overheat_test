@@ -28,7 +28,7 @@ const card: Card = {
   colorReq: { WHITE: 1 },
   faction: '艾柯利普斯',
   acValue: 4,
-  godMark: false,
+  godMark: true,
   displayState: 'FRONT_UPRIGHT',
   feijingMark: false,
   canResetCount: 0,

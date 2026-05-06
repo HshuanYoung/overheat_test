@@ -24,6 +24,7 @@ import {
 } from './registration';
 import { ServerGameService } from './ServerGameService';
 import { PlayerState, Card, GAME_TIMEOUTS, GameState } from '../src/types/game';
+import { EventEngine } from '../src/services/EventEngine';
 import fs from 'fs';
 import path from 'path';
 
@@ -257,6 +258,8 @@ async function syncAndSaveState(gameId: string, gameState: any) {
 
     // Ensure logs exist
     if (!gameState.logs) gameState.logs = [];
+
+    EventEngine.recalculateContinuousEffects(gameState);
 
     // 1. Get or create history for this match
     let history = matchLogHistory.get(gameId) || [];

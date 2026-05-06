@@ -52,7 +52,7 @@ const card: Card = {
   acValue: 3,
   godMark: false,
   displayState: 'FRONT_UPRIGHT',
-  feijingMark: true,
+  feijingMark: false,
   canResetCount: 0,
   effects: cardEffects,
   rarity: 'SR',

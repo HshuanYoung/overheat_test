@@ -4,14 +4,16 @@ import { AtomicEffectExecutor, canPutItemOntoBattlefield, createSelectCardQuery,
 const cardEffects: CardEffect[] = [{
   id: '105000229_enter_leave_item',
   type: 'TRIGGER',
-  triggerLocation: ['UNIT', 'GRAVE', 'EXILE'],
+  triggerLocation: ['UNIT', 'GRAVE', 'EXILE', 'HAND', 'DECK', 'EROSION_FRONT', 'EROSION_BACK'],
   triggerEvent: ['CARD_ENTERED_ZONE', 'CARD_LEFT_FIELD'],
   limitCount: 1,
   limitNameType: true,
   description: '进入战场或从战场离开时，将卡组中1张ACCESS+1以下的黄色道具卡放置到战场上。',
   condition: (_gameState, playerState, instance, event) => {
     const entered = event?.type === 'CARD_ENTERED_ZONE' && event.sourceCardId === instance.gamecardId && event.data?.zone === 'UNIT';
-    const left = event?.type === 'CARD_LEFT_FIELD' && event.sourceCardId === instance.gamecardId && event.data?.sourceZone === 'UNIT';
+    const left = event?.type === 'CARD_LEFT_FIELD' &&
+      (event.sourceCardId === instance.gamecardId || event.data?.previousSourceCardId === instance.gamecardId) &&
+      event.data?.sourceZone === 'UNIT';
     return (entered || left) &&
       playerState.deck.some(card => card.type === 'ITEM' && card.color === 'YELLOW' && (card.acValue || 0) <= 1 && canPutItemOntoBattlefield(playerState, card));
   },

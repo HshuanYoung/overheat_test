@@ -2,18 +2,30 @@ import { Card, CardEffect, GameEvent } from '../types/game';
 import { AtomicEffectExecutor } from '../services/AtomicEffectExecutor';
 import { canPutItemOntoBattlefield, createSelectCardQuery } from './BaseUtil';
 
+const isSelfDestroyedByOwnEffect = (instance: Card, playerState: any, event?: GameEvent) => {
+  if (!event) return false;
+  if (event.type === 'CARD_DESTROYED_EFFECT') {
+    return event.targetCardId === instance.gamecardId &&
+      event.data?.sourcePlayerId === playerState.uid;
+  }
+  return event.type === 'CARD_LEFT_ZONE' &&
+    event.sourceCardId === instance.gamecardId &&
+    event.data?.zone === 'ITEM' &&
+    event.data?.targetZone === 'GRAVE' &&
+    event.data?.isEffect &&
+    event.data?.effectSourcePlayerUid === playerState.uid;
+};
+
 const effect_305000079_trigger: CardEffect = {
   id: '305000079_trigger',
   type: 'TRIGGER',
   triggerLocation: ['GRAVE'],
-  triggerEvent: 'CARD_DESTROYED_EFFECT',
+  triggerEvent: ['CARD_DESTROYED_EFFECT', 'CARD_LEFT_ZONE'],
   isMandatory: true,
   description: 'When this card is destroyed by your card effect and sent to the grave, choose a 幻想舞台的礼帽 from your deck and put it onto the battlefield.',
   condition: (_gameState, playerState, instance, event?: GameEvent) =>
     instance.cardlocation === 'GRAVE' &&
-    event?.type === 'CARD_DESTROYED_EFFECT' &&
-    event.targetCardId === instance.gamecardId &&
-    event.data?.sourcePlayerId === playerState.uid,
+    isSelfDestroyedByOwnEffect(instance, playerState, event),
   execute: async (instance, gameState, playerState) => {
     const candidates = playerState.deck.filter(card =>
       card.id === '305000079' &&

@@ -98,6 +98,7 @@ export class EventEngine {
               const isEventSelf = (event.sourceCard === card) ||
                 (event.sourceCard?.runtimeFingerprint && event.sourceCard.runtimeFingerprint === card.runtimeFingerprint) ||
                 (event.sourceCardId && event.sourceCardId === card.gamecardId) ||
+                (event.data?.previousSourceCardId && event.data.previousSourceCardId === card.gamecardId) ||
                 (event.targetCardId && event.targetCardId === card.gamecardId);
 
               // Guard: For specific card-entry/action events, default to self-trigger unless explicitly global
@@ -594,6 +595,15 @@ export class EventEngine {
           card.influencingEffects.push({
             sourceCardName: lockPowerSource,
             description: '力量值不会变动'
+          });
+        }
+
+        if ((card as any).data?.forcePowerToZeroUntilTurn === gameState.turnCount) {
+          card.power = 0;
+          if (!card.influencingEffects) card.influencingEffects = [];
+          card.influencingEffects.push({
+            sourceCardName: (card as any).data.forcePowerToZeroSourceName || '效果',
+            description: '力量变为0'
           });
         }
       });

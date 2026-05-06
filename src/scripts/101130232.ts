@@ -1,5 +1,5 @@
 import { Card, CardEffect } from '../types/game';
-import { AtomicEffectExecutor, createSelectCardQuery, exileByEffect, getOpponentUid, isFeijingUnit, isNonGodUnit, ownUnits } from './BaseUtil';
+import { AtomicEffectExecutor, canActivateDuringYourTurn, createSelectCardQuery, exileByEffect, getOpponentUid, isFeijingUnit, isNonGodUnit, ownUnits } from './BaseUtil';
 
 const cardEffects: CardEffect[] = [{
   id: '101130232_exile_pair',
@@ -8,7 +8,12 @@ const cardEffects: CardEffect[] = [{
   limitCount: 1,
   limitNameType: true,
   description: '你的回合中，选择你的1个菲晶单位与对手1个非神蚀单位，将它们放逐。',
-  condition: (_gameState, playerState) => playerState.isTurn,
+  condition: (gameState, playerState) => {
+    const opponent = gameState.players[getOpponentUid(gameState, playerState.uid)];
+    return canActivateDuringYourTurn(gameState, playerState) &&
+      ownUnits(playerState).some(isFeijingUnit) &&
+      ownUnits(opponent).some(isNonGodUnit);
+  },
   execute: async (instance, gameState, playerState) => {
     const ownTargets = ownUnits(playerState).filter(isFeijingUnit);
     const opponent = gameState.players[getOpponentUid(gameState, playerState.uid)];
@@ -86,7 +91,7 @@ const card: Card = {
   isExhausted: false,
   isrush: false,
   canAttack: true,
-  feijingMark: true,
+  feijingMark: false,
   canResetCount: 0,
   effects: cardEffects,
   rarity: 'SR',

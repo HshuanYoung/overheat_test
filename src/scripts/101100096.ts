@@ -1,5 +1,5 @@
-import { Card, CardEffect, TriggerLocation } from '../types/game';
-import { AtomicEffectExecutor, addInfluence, createSelectCardQuery, ensureData, erosionCost, moveCard, ownerOf, paymentCost } from './BaseUtil';
+import { Card, CardEffect } from '../types/game';
+import { AtomicEffectExecutor, addInfluence, createSelectCardQuery, erosionCost, moveCard, ownerOf, paymentCost } from './BaseUtil';
 
 const cardEffects: CardEffect[] = [{
     id: '101100096_alliance_protect',
@@ -19,39 +19,25 @@ const cardEffects: CardEffect[] = [{
   }, {
     id: '101100096_reset_after_attack',
     type: 'TRIGGER',
-    triggerEvent: 'PHASE_CHANGED',
+    triggerEvent: 'BATTLE_ENDED',
     triggerLocation: ['UNIT'],
     limitCount: 1,
     description: '此单位参与的攻击结束后，支付1费：将你的所有参战单位重置。',
-    condition: (gameState, _playerState, instance, event) =>
-      event?.data?.phase === 'MAIN' &&
-      Array.isArray(ensureData(instance).lastAllianceAttackIds) &&
-      ensureData(instance).lastAllianceAttackTurn === gameState.turnCount,
+    condition: (_gameState, playerState, instance, event) =>
+      event?.playerUid === playerState.uid &&
+      Array.isArray(event?.data?.attackerIds) &&
+      event.data.attackerIds.includes(instance.gamecardId),
     cost: paymentCost(1, 'WHITE'),
-    execute: async (instance, gameState, playerState) => {
-      const ids = ensureData(instance).lastAllianceAttackIds || [];
+    execute: async (instance, _gameState, playerState, event) => {
+      const ids = event?.data?.attackerIds || [];
       ids.forEach((id: string) => {
         const unit = playerState.unitZone.find(card => card?.gamecardId === id);
         if (unit) {
           unit.isExhausted = false;
+          unit.hasAttackedThisTurn = false;
           addInfluence(unit, instance, '因效果重置');
         }
       });
-      delete ensureData(instance).lastAllianceAttackIds;
-      delete ensureData(instance).lastAllianceAttackTurn;
-    }
-  }, {
-    id: '101100096_track_attack',
-    type: 'TRIGGER',
-    triggerEvent: 'CARD_ATTACK_DECLARED',
-    triggerLocation: ['UNIT'],
-    description: '记录此单位参与的攻击，用于攻击结束重置。',
-    isMandatory: true,
-    isGlobal: true,
-    condition: (_gameState, _playerState, instance, event) => !!event?.data?.attackerIds?.includes(instance.gamecardId),
-    execute: async (instance, gameState, _playerState, event) => {
-      ensureData(instance).lastAllianceAttackIds = event?.data?.attackerIds || [];
-      ensureData(instance).lastAllianceAttackTurn = gameState.turnCount;
     }
   }, {
     id: '101100096_ten_bottom',

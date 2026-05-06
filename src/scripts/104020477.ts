@@ -132,7 +132,7 @@ const card: Card = {
   effects: [trigger_1040201197],
   rarity: 'R',
   availableRarities: ['R'],
-  cardPackage: 'SP01',
+  cardPackage: 'BT02',
   uniqueId: null,
 };
 

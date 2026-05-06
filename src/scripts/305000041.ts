@@ -1,22 +1,40 @@
 import { Card, CardEffect } from '../types/game';
-import { addTempPower, allUnitsOnField, damagePlayerByEffect, getOpponentUid } from './BaseUtil';
+import { addInfluence, allUnitsOnField, damagePlayerByEffect, ensureData, getOpponentUid } from './BaseUtil';
+
+const isSelfDestroyedByEffect = (instance: Card, event?: any) => {
+  if (!event) return false;
+  if (event.type === 'CARD_DESTROYED_EFFECT') {
+    return event.targetCardId === instance.gamecardId;
+  }
+  return event.type === 'CARD_LEFT_ZONE' &&
+    event.sourceCardId === instance.gamecardId &&
+    event.data?.zone === 'ITEM' &&
+    event.data?.targetZone === 'GRAVE' &&
+    event.data?.isEffect;
+};
 
 const cardEffects: CardEffect[] = [{
   id: '305000041_destroyed',
   type: 'TRIGGER',
   triggerLocation: ['GRAVE'],
-  triggerEvent: 'CARD_DESTROYED_EFFECT',
+  triggerEvent: ['CARD_DESTROYED_EFFECT', 'CARD_LEFT_ZONE'],
   limitCount: 1,
   limitNameType: true,
   isMandatory: true,
   description: '这张卡被破坏时，对所有对手造成2点伤害。本回合中，战场上所有非神蚀单位力量变为0。',
   condition: (_gameState, _playerState, instance, event) =>
-    event?.targetCardId === instance.gamecardId,
+    isSelfDestroyedByEffect(instance, event),
   execute: async (instance, gameState, playerState) => {
     await damagePlayerByEffect(gameState, playerState.uid, getOpponentUid(gameState, playerState.uid), 2, instance);
-    allUnitsOnField(gameState)
-      .filter(unit => !unit.godMark)
-      .forEach(unit => addTempPower(unit, instance, -(unit.power || 0)));
+    const affectedUnits = allUnitsOnField(gameState)
+      .filter(unit => !((unit as any).baseGodMark ?? unit.godMark));
+    affectedUnits.forEach(unit => {
+        const data = ensureData(unit);
+        data.forcePowerToZeroUntilTurn = gameState.turnCount;
+        data.forcePowerToZeroSourceName = instance.fullName;
+        unit.power = 0;
+        addInfluence(unit, instance, '本回合力量变为0');
+    });
   }
 }];
 

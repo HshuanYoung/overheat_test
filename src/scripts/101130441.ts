@@ -29,7 +29,7 @@ const cardEffects: CardEffect[] = [{
   condition: (gameState, playerState) =>
     canActivateDefaultTiming(gameState, playerState) &&
     playerState.grave.length >= 3 &&
-    ownUnits(playerState).some(unit => unit.faction === '圣王国' && isNonGodUnit(unit)),
+    ownUnits(playerState).some(unit => unit.isExhausted && unit.faction === '圣王国' && isNonGodUnit(unit)),
   execute: async (instance, gameState, playerState) => {
     createSelectCardQuery(gameState, playerState.uid, playerState.grave, '选择放逐费用', '选择墓地中的3张卡放逐作为费用。', 3, 3, {
       sourceCardId: instance.gamecardId,
@@ -43,7 +43,7 @@ const cardEffects: CardEffect[] = [{
         const card = AtomicEffectExecutor.findCardById(gameState, id);
         if (card?.cardlocation === 'GRAVE') moveCard(gameState, playerState.uid, card, 'EXILE', instance);
       });
-      createSelectCardQuery(gameState, playerState.uid, ownUnits(playerState).filter(unit => unit.faction === '圣王国' && isNonGodUnit(unit)), '选择重置单位', '选择战场上1个<圣王国>非神蚀单位，重置并本回合力量+500。', 1, 1, {
+      createSelectCardQuery(gameState, playerState.uid, ownUnits(playerState).filter(unit => unit.isExhausted && unit.faction === '圣王国' && isNonGodUnit(unit)), '选择重置单位', '选择战场上1个横置的<圣王国>非神蚀单位，重置并本回合力量+500。', 1, 1, {
         sourceCardId: instance.gamecardId,
         effectId: '101130441_reset_boost',
         step: 'TARGET'
@@ -51,7 +51,7 @@ const cardEffects: CardEffect[] = [{
       return;
     }
     const target = selections[0] ? AtomicEffectExecutor.findCardById(gameState, selections[0]) : undefined;
-    if (target?.cardlocation !== 'UNIT') return;
+    if (target?.cardlocation !== 'UNIT' || !target.isExhausted) return;
     readyByEffect(gameState, target, instance);
     addTempPower(target, instance, 500);
   }

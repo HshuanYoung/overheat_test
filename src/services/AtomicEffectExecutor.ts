@@ -749,6 +749,12 @@ export class AtomicEffectExecutor {
       if (this.shouldSkipEffect(gameState, card, sourceCard)) return;
 
       card.isExhausted = direction === 'HORIZONTAL';
+      if (direction === 'VERTICAL') {
+        card.hasAttackedThisTurn = false;
+        if (gameState.battleState) {
+          gameState.battleState.keepResetUnitIds = Array.from(new Set([...(gameState.battleState.keepResetUnitIds || []), card.gamecardId]));
+        }
+      }
       EventEngine.dispatchEvent(gameState, {
         type: 'CARD_ROTATED',
         sourceCard,
@@ -1021,17 +1027,6 @@ export class AtomicEffectExecutor {
         effectSourceCardId: options?.effectSourceCardId,
         previousSourceCardId
       });
-      EventEngine.dispatchMovementSubEvents(gameState, {
-        card,
-        cardOwnerUid: playerUid,
-        fromZone,
-        toZone,
-        isEffect,
-        effectSourcePlayerUid: options?.effectSourcePlayerUid,
-        effectSourceCardId: options?.effectSourceCardId,
-        previousSourceCardId,
-        onlyLeftFieldEvent: true
-      });
     }
 
     if (shouldRefreshAsNewInstance) {
@@ -1194,8 +1189,7 @@ export class AtomicEffectExecutor {
         isEffect,
         effectSourcePlayerUid: options?.effectSourcePlayerUid,
         effectSourceCardId: options?.effectSourceCardId,
-        previousSourceCardId,
-        skipLeftFieldEvent: true
+        previousSourceCardId
       });
     } else {
       this.dispatchMovementEvents(gameState, playerUid, card, fromZone, toZone, isEffect, options);

@@ -99,6 +99,10 @@ export const nameContains = (card: Card, text: string) =>
 
 export const readyByEffect = (gameState: GameState, target: Card, source: Card) => {
   target.isExhausted = false;
+  target.hasAttackedThisTurn = false;
+  if (gameState.battleState) {
+    gameState.battleState.keepResetUnitIds = Array.from(new Set([...(gameState.battleState.keepResetUnitIds || []), target.gamecardId]));
+  }
   EventEngine.dispatchEvent(gameState, {
     type: 'CARD_ROTATED',
     sourceCard: source,
@@ -584,12 +588,12 @@ export const isConfrontationRequestTiming = (gameState: GameState) =>
   (gameState.phase === 'BATTLE_FREE' && !!gameState.battleState?.askConfront);
 
 export const canActivateDefaultTiming = (gameState: GameState, playerState: PlayerState) =>
-  (playerState.isTurn && gameState.phase === 'MAIN') ||
+  (playerState.isTurn && (gameState.phase === 'MAIN' || gameState.phase === 'BATTLE_FREE')) ||
   isConfrontationRequestTiming(gameState);
 
 export const canActivateDuringYourTurn = (gameState: GameState, playerState: PlayerState) =>
   playerState.isTurn &&
-  (gameState.phase === 'MAIN' || isConfrontationRequestTiming(gameState));
+  (gameState.phase === 'MAIN' || gameState.phase === 'BATTLE_FREE' || isConfrontationRequestTiming(gameState));
 
 export const ownUnits = (player: PlayerState) => player.unitZone.filter((card): card is Card => !!card);
 export const ownItems = (player: PlayerState) => player.itemZone.filter((card): card is Card => !!card);
@@ -968,6 +972,14 @@ export const destroyByEffect = (gameState: GameState, target: Card, source: Card
   const uid = ownerUidOf(gameState, target);
   if (!uid) return;
   moveCard(gameState, uid, target, 'GRAVE', source);
+  EventEngine.dispatchEvent(gameState, {
+    type: 'CARD_DESTROYED_EFFECT',
+    targetCardId: target.gamecardId,
+    playerUid: uid,
+    data: {
+      sourcePlayerId: ownerUidOf(gameState, source)
+    }
+  });
   gameState.logs.push(`[${source.fullName}] 破坏了 [${target.fullName}]。`);
 };
 

@@ -103,7 +103,7 @@ const card: Card = {
   effects: [effect_204000145_counter],
   rarity: 'R',
   availableRarities: ['R'],
-  cardPackage: 'SP01',
+  cardPackage: 'BT01',
   uniqueId: null,
 };
 
