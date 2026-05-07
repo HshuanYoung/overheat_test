@@ -2,6 +2,7 @@
   "name": "react-example",
   "private": true,
   "version": "0.0.0",
+  "license": "MIT",
   "type": "module",
   "scripts": {
     "init": "tsx server/init_db.ts && tsx server/init_store.ts && tsx server/seed_admin.ts",
