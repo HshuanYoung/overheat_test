@@ -612,11 +612,24 @@ export class AtomicEffectExecutor {
       // Check for goddess transformation during resolution
       const totalErosion = player.erosionFront.filter(c => c !== null).length + player.erosionBack.filter(c => c !== null).length;
       if (totalErosion >= 10 && !player.isGoddessMode) {
+        (gameState as any).pendingGoddessTransformationDamageSource = source;
+        (gameState as any).pendingGoddessTransformationEffectSourcePlayerUid = dealerPlayerUid;
         if (typeof (GameService as any).triggerGoddessTransformation === 'function') {
           (GameService as any).triggerGoddessTransformation(gameState, targetPlayerUid);
         } else {
           player.isGoddessMode = true;
           gameState.logs.push(`${player.displayName} 进入女神化状态。`);
+          delete (gameState as any).pendingGoddessTransformationDamageSource;
+          delete (gameState as any).pendingGoddessTransformationEffectSourcePlayerUid;
+          EventEngine.dispatchEvent(gameState, {
+            type: 'GODDESS_TRANSFORMATION',
+            playerUid: targetPlayerUid,
+            data: {
+              playerUid: targetPlayerUid,
+              damageSource: source,
+              effectSourcePlayerUid: dealerPlayerUid
+            }
+          });
         }
         // Note: doubling and direct grave destination apply only to damage received thereafter.
       }

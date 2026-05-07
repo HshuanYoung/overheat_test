@@ -1,4 +1,25 @@
-import { Card } from '../types/game';
+import { Card, CardEffect } from '../types/game';
+import { addInfluence, ownerOf } from './BaseUtil';
+
+const cardEffects: CardEffect[] = [{
+  id: '103090247_hand_xenobu_discount',
+  type: 'CONTINUOUS',
+  triggerLocation: ['HAND'],
+  content: 'SELF_HAND_COST',
+  description: '手牌中的这张卡ACCESS值-X，X为你单位区<瑟诺布>单位数量。',
+  applyContinuous: (gameState, instance) => {
+    if (instance.cardlocation !== 'HAND') return;
+    const owner = ownerOf(gameState, instance);
+    if (!owner) return;
+    const xenobuCount = owner.unitZone.filter(unit => unit?.faction === '瑟诺布').length;
+    const base = instance.baseAcValue ?? instance.acValue ?? 0;
+    const next = Math.max(0, base - xenobuCount);
+    if (instance.acValue !== next) {
+      instance.acValue = next;
+      addInfluence(instance, instance, `ACCESS值-${xenobuCount}`);
+    }
+  }
+}];
 
 /**
  * Auto-generated from Card.xlsx + Card2.xlsx.
@@ -10,7 +31,8 @@ import { Card } from '../types/game';
  * ID Source: card-xlsx
  * Keywords: N/A
  * Card Detail:
- * 略
+ * 歼灭
+ * 永续效果：手牌中的这张卡的AC值减少X。X为你单位区的势力为瑟诺布单位数量。
  * TODO: confirm ID / godMark / rarity variants and implement effects.
  */
 const card: Card = {
@@ -34,7 +56,9 @@ const card: Card = {
   canAttack: true,
   feijingMark: false,
   canResetCount: 0,
-  effects: [],
+  isAnnihilation: true,
+  baseAnnihilation: true,
+  effects: cardEffects,
   rarity: 'U',
   availableRarities: ['U'],
   cardPackage: 'BT02',

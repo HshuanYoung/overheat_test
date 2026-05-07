@@ -142,7 +142,7 @@ const trigger_105120254_guard: CardEffect = {
  * ID Source: card-xlsx
  * Keywords: N/A
  * Card Detail:
- * 略
+ * 牛头人盾战士，势力改为永生之乡
  * TODO: confirm ID / godMark / rarity variants and implement effects.
  */
 const card: Card = {

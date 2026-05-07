@@ -258,6 +258,7 @@ export class EventEngine {
             delete (card as any).data.accessTapMinValue;
             delete (card as any).data.accessTapFlexible;
             delete (card as any).data.accessTapValueSourceName;
+            delete (card as any).data.accessTapColor;
             delete (card as any).data.powerIncreaseBonus;
             delete (card as any).data.powerIncreaseBonusSourceName;
             delete (card as any).data.declareAttackDefenseTax;
@@ -482,11 +483,12 @@ export class EventEngine {
           const maxValue = (card as any).data.accessTapValue;
           const minValue = (card as any).data.accessTapMinValue || 1;
           const isFlexible = !!(card as any).data.accessTapFlexible && minValue < maxValue;
+          const colorText = (card as any).data.accessTapColor === 'GREEN' ? '绿色卡' : 'ACCESS';
           card.influencingEffects.push({
             sourceCardName: (card as any).data.accessTapValueSourceName || '效果',
             description: isFlexible
-              ? `横置支付ACCESS时可当作+${minValue}或+${maxValue}`
-              : `横置支付ACCESS时可当作+${maxValue}`
+              ? `横置支付${colorText}时可当作+${minValue}或+${maxValue}`
+              : `横置支付${colorText}时可当作+${maxValue}`
           });
         }
         if (card && (card as any).data?.declareAttackDefenseTax) {

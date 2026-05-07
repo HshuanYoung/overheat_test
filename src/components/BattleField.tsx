@@ -612,21 +612,25 @@ export const BattleField: React.FC = () => {
   const getAccessPaymentMinValue = (card: Card | null | undefined) =>
     card ? Math.max(1, Number((card as any).data?.accessTapMinValue || 1)) : 0;
 
-  const getAccessPaymentValue = (card: Card | null | undefined) =>
-    card ? Math.max(getAccessPaymentMinValue(card), Number((card as any).data?.accessTapValue || 1)) : 0;
+  const getAccessPaymentValue = (card: Card | null | undefined, paymentColor?: string) => {
+    if (!card) return 0;
+    const data = (card as any).data || {};
+    if (data.accessTapColor && data.accessTapColor !== paymentColor) return 1;
+    return Math.max(getAccessPaymentMinValue(card), Number(data.accessTapValue || 1));
+  };
 
-  const getAccessPaymentLabel = (card: Card | null | undefined) => {
+  const getAccessPaymentLabel = (card: Card | null | undefined, paymentColor?: string) => {
     if (!card) return '+0';
     const minValue = getAccessPaymentMinValue(card);
-    const maxValue = getAccessPaymentValue(card);
+    const maxValue = getAccessPaymentValue(card, paymentColor);
     return minValue < maxValue ? `+${minValue}/+${maxValue}` : `+${maxValue}`;
   };
 
-  const getSelectedAccessPaymentValue = (exhaustIds: string[] = paymentSelection.exhaustIds) => {
+  const getSelectedAccessPaymentValue = (exhaustIds: string[] = paymentSelection.exhaustIds, paymentColor?: string) => {
     if (!me) return 0;
     return exhaustIds.reduce((total, gamecardId) => {
       const card = me.unitZone.find(unit => unit?.gamecardId === gamecardId);
-      return total + getAccessPaymentValue(card);
+      return total + getAccessPaymentValue(card, paymentColor);
     }, 0);
   };
 
@@ -642,7 +646,7 @@ export const BattleField: React.FC = () => {
     if (required <= 0) return paymentSelection.erosionFrontIds.length;
     const handValue = getSelectedHandPaymentValue(paymentColor, required, excludeCardId);
     const minValue = handValue + getSelectedAccessPaymentMinValue();
-    const maxValue = handValue + getSelectedAccessPaymentValue();
+    const maxValue = handValue + getSelectedAccessPaymentValue(paymentSelection.exhaustIds, paymentColor);
     return minValue < maxValue ? `${minValue}-${maxValue}` : maxValue;
   };
 
@@ -1582,7 +1586,7 @@ export const BattleField: React.FC = () => {
                           <div className="grid grid-cols-2 gap-3 pb-2 justify-items-center">
                           {me.unitZone.filter(c => c && !c.isExhausted).map((card, i) => {
                             const isSelected = paymentSelection.exhaustIds.includes(card!.gamecardId);
-                            const accessValue = getAccessPaymentLabel(card);
+                            const accessValue = getAccessPaymentLabel(card, pendingPlayCard?.color);
                             return (
                                 <motion.div
                                   key={`${card!.gamecardId}-${i}`}
@@ -2669,7 +2673,7 @@ export const BattleField: React.FC = () => {
                 <div className="grid grid-cols-2 gap-3 pb-2 pt-2 justify-items-center">
                   {me.unitZone.filter(c => c && !c.isExhausted).map((card, i) => {
                     const isSelected = paymentSelection.exhaustIds.includes(card!.gamecardId);
-                    const accessValue = getAccessPaymentLabel(card);
+                    const accessValue = getAccessPaymentLabel(card, game.pendingQuery?.paymentColor);
                     return (
                       <motion.div
                         key={`${card!.gamecardId}-${i}`}

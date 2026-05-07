@@ -114,8 +114,9 @@ export const ServerGameService = {
     return { valid: totalDeficit <= omniColorCount, totalDeficit, omniColorCount };
   },
 
-  hasGlobalDisableAllActivated(gameState: GameState) {
+  hasGlobalDisableAllActivated(gameState: GameState, affectedPlayerUid?: string) {
     return Object.values(gameState.players).some(player =>
+      player.uid !== affectedPlayerUid &&
       [...player.unitZone, ...player.itemZone, ...player.erosionFront]
         .filter((card): card is Card => !!card)
         .some(card =>
@@ -583,7 +584,7 @@ export const ServerGameService = {
     const cardData = (card as any).data || {};
     const pseudoGoddessActive = cardData.pseudoGoddessTenPlusTurn === gameState.turnCount;
     const activatedEffectsDisabled = cardData.pseudoGoddessDisableActivatedTurn === gameState.turnCount;
-    const globalDisableAllActivated = ServerGameService.hasGlobalDisableAllActivated(gameState);
+    const globalDisableAllActivated = ServerGameService.hasGlobalDisableAllActivated(gameState, playerUid);
     const globalDisableErosionRequirementEffects = ServerGameService.hasGlobalDisableErosionRequirementEffects(gameState);
     const effectivePlayer = pseudoGoddessActive ? { ...player, isGoddessMode: true } : player;
     if (!player) return { valid: false, reason: '未找到玩家信息' };
@@ -1266,7 +1267,11 @@ export const ServerGameService = {
       }
 
       const accessMinValue = (card: Card) => Math.max(1, Number((card as any).data?.accessTapMinValue || 1));
-      const accessMaxValue = (card: Card) => Math.max(accessMinValue(card), Number((card as any).data?.accessTapValue || 1));
+      const accessMaxValue = (card: Card) => {
+        const data = (card as any).data || {};
+        if (data.accessTapColor && data.accessTapColor !== cardColor) return 1;
+        return Math.max(accessMinValue(card), Number(data.accessTapValue || 1));
+      };
       const selectedAccessMin = cardsToExhaust.reduce((total, card) => total + accessMinValue(card), 0);
       const selectedAccessMax = cardsToExhaust.reduce((total, card) => total + accessMaxValue(card), 0);
       if (selectedAccessMin > remainingCost) {
@@ -3450,6 +3455,7 @@ export const ServerGameService = {
       // Check for goddess mode transformation
       const totalErosion = player.erosionFront.filter(c => c !== null).length + player.erosionBack.filter(c => c !== null).length;
       if (totalErosion >= 10 && !player.isGoddessMode) {
+        (gameState as any).pendingGoddessTransformationDamageSource = source;
         ServerGameService.triggerGoddessTransformation(gameState, playerId);
         // Note: doubling and direct grave destination apply only to damage received thereafter.
       }
@@ -3498,10 +3504,19 @@ export const ServerGameService = {
 
     player.isGoddessMode = true;
     gameState.logs.push(`${player.displayName} 进入了女神化状态！`);
+    const damageSource = (gameState as any).pendingGoddessTransformationDamageSource;
+    const effectSourcePlayerUid = (gameState as any).pendingGoddessTransformationEffectSourcePlayerUid;
+    delete (gameState as any).pendingGoddessTransformationDamageSource;
+    delete (gameState as any).pendingGoddessTransformationEffectSourcePlayerUid;
 
     EventEngine.dispatchEvent(gameState, {
       type: 'GODDESS_TRANSFORMATION',
-      playerUid: playerId
+      playerUid: playerId,
+      data: {
+        playerUid: playerId,
+        damageSource,
+        effectSourcePlayerUid
+      }
     });
 
     // Shenyi Effect (Interactive)

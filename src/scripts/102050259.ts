@@ -1,4 +1,37 @@
-import { Card } from '../types/game';
+import { Card, CardEffect } from '../types/game';
+import { canPutUnitOntoBattlefield, putUnitOntoField } from './BaseUtil';
+
+const isBloodflameUnit = (card: Card) =>
+  card.type === 'UNIT' && card.fullName.includes('血焰');
+
+const cardEffects: CardEffect[] = [{
+  id: '102050259_disable_opponent_activated',
+  type: 'CONTINUOUS',
+  triggerLocation: ['UNIT'],
+  content: 'DISABLE_ALL_ACTIVATED',
+  description: '你的回合中，你的战场上卡名含有《血焰》的单位有3个以上时，对手不能发动【启】效果。',
+  condition: (_gameState, playerState) =>
+    playerState.isTurn &&
+    playerState.unitZone.filter((unit): unit is Card => !!unit && isBloodflameUnit(unit)).length >= 3
+}, {
+  id: '102050259_goddess_enter',
+  type: 'TRIGGER',
+  triggerEvent: 'GODDESS_TRANSFORMATION',
+  triggerLocation: ['HAND'],
+  erosionTotalLimit: [10, 10],
+  limitCount: 1,
+  limitNameType: true,
+  description: '10+：你的回合中，你由于你的卡的效果伤害进入女神化状态时，可以将这张卡从手牌放置到战场上。',
+  condition: (_gameState, playerState, instance, event) =>
+    playerState.isTurn &&
+    event?.playerUid === playerState.uid &&
+    event.data?.damageSource === 'EFFECT' &&
+    event.data?.effectSourcePlayerUid === playerState.uid &&
+    canPutUnitOntoBattlefield(playerState, instance),
+  execute: async (instance, gameState, playerState) => {
+    putUnitOntoField(gameState, playerState.uid, instance, instance);
+  }
+}];
 
 /**
  * Auto-generated from Card.xlsx + Card2.xlsx.
@@ -10,7 +43,8 @@ import { Card } from '../types/game';
  * ID Source: card-xlsx
  * Keywords: N/A
  * Card Detail:
- * 略
+ * 1.永续效果：你的回合中，你的战场上卡名带有‘血焰’的单位有三个或者以上：对方不能发动启动（activate）效果
+ * 2.诱发效果，卡名一回合一次，侵蚀区数量10，你的回合中，你由于你的卡的效果伤害进入女神化状态时：你可以将这张卡放置到战场上。
  * TODO: confirm ID / godMark / rarity variants and implement effects.
  */
 const card: Card = {
@@ -34,7 +68,7 @@ const card: Card = {
   canAttack: true,
   feijingMark: false,
   canResetCount: 0,
-  effects: [],
+  effects: cardEffects,
   rarity: 'PR',
   availableRarities: ['PR'],
   cardPackage: 'BT04',

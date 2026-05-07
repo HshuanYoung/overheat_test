@@ -1030,9 +1030,15 @@ export const canPayAccessCost = (gameState: GameState, playerState: PlayerState,
   );
 
   let remaining = hasFeijing ? Math.max(0, amount - 3) : amount;
+  const getAccessTapValue = (unit: Card) => {
+    const data = (unit as any).data || {};
+    if (data.accessTapColor && data.accessTapColor !== paymentColor) return 1;
+    return Math.max(1, Number(data.accessTapValue || 1));
+  };
+
   const readyUnitValue = playerState.unitZone
     .filter(unit => unit && !unit.isExhausted)
-    .reduce((total, unit) => total + Math.max(1, Number((unit as any).data?.accessTapValue || 1)), 0);
+    .reduce((total, unit) => total + getAccessTapValue(unit), 0);
   remaining = Math.max(0, remaining - readyUnitValue);
   if (remaining <= 0) return true;
 

@@ -71,7 +71,7 @@ const cardEffects: CardEffect[] = [{
  * ID Source: card-xlsx
  * Keywords: N/A
  * Card Detail:
- * 略
+ * 启动效果，卡名一回合一次，选择我方战场的一张道具卡，支付1费：将被选择的卡破坏，之后选择墓地的两张卡名含有怪盗的卡，将其放置到卡组底
  * TODO: confirm ID / godMark / rarity variants and implement effects.
  */
 const card: Card = {

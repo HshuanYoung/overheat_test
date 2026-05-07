@@ -10,7 +10,7 @@ import { Card } from '../types/game';
  * ID Source: card-xlsx
  * Keywords: N/A
  * Card Detail:
- * 略
+ * N/A
  * TODO: confirm ID / godMark / rarity variants and implement effects.
  */
 const card: Card = {
@@ -32,7 +32,7 @@ const card: Card = {
   isExhausted: false,
   isrush: false,
   canAttack: true,
-  feijingMark: false,
+  feijingMark: true,
   canResetCount: 0,
   effects: [],
   rarity: 'U',

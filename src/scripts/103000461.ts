@@ -1,4 +1,19 @@
-import { Card } from '../types/game';
+import { Card, CardEffect } from '../types/game';
+import { searchDeckEffect } from './BaseUtil';
+
+const cardEffects: CardEffect[] = [{
+  ...searchDeckEffect(
+    '103000461_unit_to_grave_search',
+    '这个单位从单位区送去墓地时，可以选择卡组中1张卡名含有《黄昏的魔女》的单位卡加入手牌。',
+    card => card.type === 'UNIT' && card.fullName.includes('黄昏的魔女')
+  ),
+  triggerEvent: 'CARD_LEFT_ZONE',
+  triggerLocation: ['GRAVE'],
+  condition: (_gameState, _playerState, instance, event) =>
+    event?.sourceCardId === instance.gamecardId &&
+    event.data?.zone === 'UNIT' &&
+    event.data?.targetZone === 'GRAVE'
+}];
 
 /**
  * Auto-generated from Card.xlsx + Card2.xlsx.
@@ -10,7 +25,7 @@ import { Card } from '../types/game';
  * ID Source: card-xlsx
  * Keywords: N/A
  * Card Detail:
- * 略
+ * 诱发效果，这个单位从单位区送去墓地时，选择你的卡组的一张卡名带有‘黄昏的魔女’的单位卡，将其加入手牌
  * TODO: confirm ID / godMark / rarity variants and implement effects.
  */
 const card: Card = {
@@ -34,10 +49,10 @@ const card: Card = {
   canAttack: true,
   feijingMark: false,
   canResetCount: 0,
-  effects: [],
+  effects: cardEffects,
   rarity: 'PR',
   availableRarities: ['PR'],
-  cardPackage: '特BT04',
+  cardPackage: 'BT04',
   uniqueId: null as any,
 };
 

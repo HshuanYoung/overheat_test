@@ -117,9 +117,10 @@ const getEffectivePlayCost = (gameState: GameState | null, player: PlayerState, 
   return baseCost;
 };
 
-const hasGlobalDisableAllActivated = (gameState: GameState | null) => {
+const hasGlobalDisableAllActivated = (gameState: GameState | null, affectedPlayerUid?: string) => {
   if (!gameState) return false;
   return Object.values(gameState.players).some(player =>
+    player.uid !== affectedPlayerUid &&
     [...player.unitZone, ...player.itemZone, ...player.erosionFront]
       .filter((card): card is Card => !!card)
       .some(card =>
@@ -413,7 +414,7 @@ export const GameService = {
     const player = gameState.players[playerUid];
     const pseudoGoddessActive = isPseudoGoddessActiveForCard(gameState, card);
     const activatedEffectsDisabled = (card as any).data?.pseudoGoddessDisableActivatedTurn === gameState.turnCount;
-    const globalDisableAllActivated = hasGlobalDisableAllActivated(gameState);
+    const globalDisableAllActivated = hasGlobalDisableAllActivated(gameState, playerUid);
     const globalDisableErosionRequirementEffects = hasGlobalDisableErosionRequirementEffects(gameState);
     const effectivePlayer = getEffectivePlayerForCard(gameState, player, card);
     if (!player) return { valid: false, reason: 'Player data not found' };
