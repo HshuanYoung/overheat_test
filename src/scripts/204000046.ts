@@ -4,9 +4,10 @@ import { AtomicEffectExecutor } from '../services/AtomicEffectExecutor';
 const effect_204000046_activation: CardEffect = {
   id: 'hensou_protection',
   type: 'ACTIVATE',
+  triggerLocation: ['HAND'],
   description: '【启】选择我方单位区或道具区的一张卡牌。在本回合中，该卡牌下一次成为效果的对象时，该效果不被处理。',
   condition: (gameState: GameState, playerState: PlayerState, instance: Card) => {
-    if (instance.cardlocation === 'EROSION_FRONT' || instance.cardlocation === 'EROSION_BACK') {
+    if (instance.cardlocation !== 'HAND') {
       return false;
     }
     const hasTargets =

@@ -193,7 +193,11 @@ export const BattleField: React.FC = () => {
   const [lastError, setLastError] = useState<string | null>(null);
   const [isPopupHidden, setIsPopupHidden] = useState(false);
   const [dismissedPublicRevealId, setDismissedPublicRevealId] = useState<string | null>(null);
+  const [hoveredPopupCard, setHoveredPopupCard] = useState<Card | null>(null);
   const lastStrategyUpdateRef = useRef<number>(0);
+
+  const getPreviewFullImage = (card: Card) =>
+    card.fullImageUrl || getCardImageUrl(card.id, card.rarity, false, card.availableRarities);
 
 
 
@@ -255,7 +259,9 @@ export const BattleField: React.FC = () => {
       { cards: me.unitZone || [], location: 'UNIT' },
       { cards: me.itemZone || [], location: 'ITEM' },
       { cards: me.erosionFront || [], location: 'EROSION_FRONT' },
+      { cards: me.erosionBack || [], location: 'EROSION_BACK' },
       { cards: me.grave || [], location: 'GRAVE' },
+      { cards: me.exile || [], location: 'EXILE' },
       { cards: me.hand || [], location: 'HAND' }
     ];
 
@@ -715,6 +721,9 @@ export const BattleField: React.FC = () => {
     return minValue < maxValue ? `${minValue}-${maxValue}` : maxValue;
   };
 
+  const getPaymentExcludedExhaustIds = () =>
+    (game.pendingQuery?.context?.paymentOptions?.excludeExhaustUnitIds || []) as string[];
+
   const getEffectiveCardCost = (card: Card, player: PlayerState | null = me) => {
     const baseCost = card.id === '202000080' ? 6 : (card.baseAcValue ?? card.acValue ?? 0);
     const selectedSpiritTarget = paymentSelection.spiritTargetId
@@ -812,7 +821,9 @@ export const BattleField: React.FC = () => {
       { cards: me.unitZone, location: 'UNIT' },
       { cards: me.itemZone, location: 'ITEM' },
       { cards: me.erosionFront, location: 'EROSION_FRONT' },
+      { cards: me.erosionBack, location: 'EROSION_BACK' },
       { cards: me.grave, location: 'GRAVE' },
+      { cards: me.exile, location: 'EXILE' },
       { cards: me.hand, location: 'HAND' }
     ];
 
@@ -1088,8 +1099,88 @@ export const BattleField: React.FC = () => {
     if (e) e.stopPropagation();
 
     // Guided Defense/Confrontation Selection - Just guides, menu handles completion
+    if (isConfronting) {
+      const isCounteringTurn = game.phase === 'COUNTERING' && game.priorityPlayerId === myUid;
+      const isBattleFreeConfrontPrompt =
+        game.phase === 'BATTLE_FREE' &&
+        !!game.battleState?.askConfront &&
+        (
+          (game.battleState.askConfront === 'ASKING_OPPONENT' && !me.isTurn) ||
+          (game.battleState.askConfront === 'ASKING_TURN_PLAYER' && me.isTurn)
+        );
+
+      if (!['unit', 'hand', 'item', 'erosion_front', 'erosion_back', 'grave', 'exile'].includes(zone)) {
+        return;
+      }
+
+      const canPlayInPhase =
+        zone === 'hand' &&
+        card.type === 'STORY' &&
+        (
+          isCounteringTurn ||
+          (game.phase === 'BATTLE_FREE' && (me.isTurn || isBattleFreeConfrontPrompt))
+        ) &&
+        GameService.canPlayCard(game, me, card).canPlay;
+
+      if (canPlayInPhase) {
+        playCardFromHand(card);
+        if (['item', 'grave', 'exile', 'erosion_front', 'erosion_back'].includes(zone)) {
+          setViewingZone(null);
+        }
+        return;
+      }
+
+      const triggerLocation = (
+        zone === 'unit' ? 'UNIT' :
+        zone === 'item' ? 'ITEM' :
+        zone === 'erosion_front' ? 'EROSION_FRONT' :
+        zone === 'erosion_back' ? 'EROSION_BACK' :
+        zone === 'grave' ? 'GRAVE' :
+        zone === 'exile' ? 'EXILE' :
+        'HAND'
+      ) as TriggerLocation;
+
+      const isMyCard = [
+        ...me.unitZone, ...me.itemZone, ...me.erosionFront, ...me.erosionBack, ...me.grave, ...me.exile, ...me.hand
+      ].some(c => c?.gamecardId === card.gamecardId);
+
+      if (isMyCard) {
+        const validEffects = (card.effects || [])
+          .map((effect, effectIndex) => ({ effect, effectIndex }))
+          .filter(({ effect }) =>
+            (effect.type === 'ACTIVATE' || effect.type === 'ACTIVATED') &&
+            GameService.checkEffectLimitsAndReqs(game, myUid, card, effect, triggerLocation).valid
+          );
+
+        if (validEffects.length === 1) {
+          setEffectConfirmation({
+            card,
+            effect: validEffects[0].effect,
+            effectIndex: validEffects[0].effectIndex,
+            triggerLocation
+          });
+          if (['item', 'grave', 'exile', 'erosion_front', 'erosion_back'].includes(zone)) {
+            setViewingZone(null);
+          }
+          return;
+        }
+
+        if (validEffects.length > 1) {
+          setEffectSelection({
+            card,
+            effects: validEffects,
+            triggerLocation
+          });
+          if (['item', 'grave', 'exile', 'erosion_front', 'erosion_back'].includes(zone)) {
+            setViewingZone(null);
+          }
+          return;
+        }
+      }
+    }
+
     if (isSelectingDefender || isConfronting) {
-      if (zone === 'unit' || zone === 'hand' || zone === 'item' || zone === 'erosion_front') {
+      if (['unit', 'hand', 'item', 'erosion_front', 'erosion_back', 'grave', 'exile'].includes(zone)) {
         // Fall through to show action menu
       } else {
         return;
@@ -1163,7 +1254,17 @@ export const BattleField: React.FC = () => {
   const playCardFromHand = async (card: Card) => {
     const isCounteringTurn = game.phase === 'COUNTERING' && game.priorityPlayerId === myUid;
     const isMainTurn = me.isTurn && game.phase === 'MAIN';
-    const isBattleFreeTurn = me.isTurn && game.phase === 'BATTLE_FREE' && card.type === 'STORY';
+    const isBattleFreeConfrontPrompt =
+      game.phase === 'BATTLE_FREE' &&
+      !!game.battleState?.askConfront &&
+      (
+        (game.battleState.askConfront === 'ASKING_OPPONENT' && !me.isTurn) ||
+        (game.battleState.askConfront === 'ASKING_TURN_PLAYER' && me.isTurn)
+      );
+    const isBattleFreeTurn =
+      game.phase === 'BATTLE_FREE' &&
+      card.type === 'STORY' &&
+      (me.isTurn || isBattleFreeConfrontPrompt);
 
     if (!gameId || (!isMainTurn && !isBattleFreeTurn && !isCounteringTurn)) return;
     if (isCounteringTurn && card.type !== 'STORY') return;
@@ -1391,13 +1492,105 @@ export const BattleField: React.FC = () => {
 
         {/* Full Image Overlay for Mulligan */}
         {/* Card Details Overlay - MOVED TO FINAL RETURN */}
+        <AnimatePresence>
+          {cardMenu && (
+            <>
+              <div className="fixed inset-0 z-[1990]" onClick={() => setCardMenu(null)} />
+              <motion.div
+                initial={{ opacity: 0, scale: 0.9, y: 20 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.9, y: 20 }}
+                className={cn(
+                  "fixed z-[2000] flex flex-col gap-3 w-[260px] md:w-40 bg-zinc-900/95 backdrop-blur-xl p-6 md:p-4 rounded-[2rem] md:rounded-3xl border border-white/10 shadow-[0_20px_50px_rgba(0,0,0,0.8)]",
+                  window.innerWidth < 768 ? "left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2" : ""
+                )}
+                style={window.innerWidth < 768 ? {} : {
+                  left: cardMenu.x + 85,
+                  top: cardMenu.y,
+                  transform: 'translate(0, -50%)'
+                }}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="md:hidden w-12 h-1 bg-white/20 rounded-full mb-2 shrink-0" />
+                <div className="md:hidden text-[10px] font-black text-white/40 tracking-[0.2em] mb-2 shrink-0">操作</div>
+                <motion.button
+                  whileHover={{ scale: 1.1 }}
+                  className="px-4 py-3 md:py-1.5 text-[12px] md:text-[10px] font-bold text-white bg-[#9333ea] rounded-full shadow-lg border border-white/20 flex items-center justify-center min-w-[100px] md:min-w-[70px]"
+                  onClick={() => {
+                    setPreviewCard(cardMenu.card);
+                    setCardMenu(null);
+                  }}
+                >
+                  详情
+                </motion.button>
+              </motion.div>
+            </>
+          )}
+        </AnimatePresence>
+
+        <AnimatePresence>
+          {previewCard && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-[2600] bg-black/95 backdrop-blur-md flex items-center justify-center p-4 cursor-pointer"
+              onClick={() => setPreviewCard(null)}
+            >
+              <div className="flex max-h-[90vh] w-full max-w-4xl flex-col gap-5 overflow-y-auto rounded-3xl border border-white/10 bg-zinc-950 p-4 shadow-2xl md:grid md:grid-cols-[320px_1fr] md:p-6" onClick={e => e.stopPropagation()}>
+                <img
+                  src={getPreviewFullImage(previewCard)}
+                  alt={previewCard.fullName}
+                  className="aspect-[3/4] w-full rounded-2xl bg-black/40 object-contain"
+                  draggable={false}
+                  referrerPolicy="no-referrer"
+                />
+                <div className="flex min-h-0 flex-col gap-4 text-white">
+                  <div>
+                    <div className="text-[10px] font-black tracking-[0.2em] text-[#f27d26]">{previewCard.id}</div>
+                    <div className="mt-1 text-2xl font-black italic tracking-tight">{previewCard.fullName}</div>
+                    <div className="mt-2 text-[10px] font-bold tracking-widest text-white/45">
+                      {getCardTypeLabel(previewCard.type)} / {getCardColorLabel(previewCard.color)}
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-3 gap-2">
+                    <div className="rounded-2xl border border-white/5 bg-white/5 p-3 text-center">
+                      <div className="text-[9px] font-black text-white/40">AC</div>
+                      <div className="text-xl font-black">{previewCard.acValue ?? '-'}</div>
+                    </div>
+                    <div className="rounded-2xl border border-white/5 bg-white/5 p-3 text-center">
+                      <div className="text-[9px] font-black text-white/40">力量</div>
+                      <div className="text-xl font-black">{previewCard.type === 'UNIT' ? previewCard.power : '-'}</div>
+                    </div>
+                    <div className="rounded-2xl border border-white/5 bg-white/5 p-3 text-center">
+                      <div className="text-[9px] font-black text-white/40">伤害</div>
+                      <div className="text-xl font-black">{previewCard.type === 'UNIT' ? previewCard.damage : '-'}</div>
+                    </div>
+                  </div>
+                  <KeywordBadges card={previewCard} variant="detail" />
+                  {previewCard.description && (
+                    <div className="rounded-2xl border border-white/5 bg-white/5 p-4 text-sm leading-relaxed text-white/75">
+                      {previewCard.description}
+                    </div>
+                  )}
+                </div>
+                <button
+                  onClick={() => setPreviewCard(null)}
+                  className="rounded-2xl bg-zinc-800 py-3 text-sm font-black text-white transition-all hover:bg-zinc-700 md:col-span-2"
+                >
+                  关闭
+                </button>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
     );
   }
 
   if (game.phase === 'MULLIGAN' && me.mulliganDone) {
     return (
-      <div className="h-screen bg-black flex flex-col items-center justify-center p-8">
+      <div className="h-screen bg-black flex flex-col items-center justify-center p-8 relative" onClick={() => setCardMenu(null)}>
         <div className="w-12 h-12 border-4 border-[#f27d26] border-t-transparent rounded-full animate-spin mb-4" />
         <p className="text-zinc-400 uppercase tracking-widest text-sm">等待对手完成调度...</p>
       </div>
@@ -1470,8 +1663,12 @@ export const BattleField: React.FC = () => {
         maxSelections={1}
         minSelections={(erosionChoice === 'B' || erosionChoice === 'C') ? 1 : 0}
         onCardClick={(card) => setSelectedErosionCardId(card.gamecardId)}
+        onCardHover={setHoveredPopupCard}
         cardBackUrl={cardBackUrl}
-        onHide={() => setIsPopupHidden(true)}
+        onHide={() => {
+          setHoveredPopupCard(null);
+          setIsPopupHidden(true);
+        }}
         isHidden={isPopupHidden}
       >
 
@@ -1513,6 +1710,38 @@ export const BattleField: React.FC = () => {
           </button>
         </div>
       </StandardPopup>
+
+      <AnimatePresence>
+        {hoveredPopupCard && (
+          <motion.div
+            initial={{ opacity: 0, x: 16 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: 16 }}
+            className="pointer-events-none fixed right-4 top-24 z-[1200] hidden w-[300px] rounded-2xl border border-white/10 bg-black/75 p-3 shadow-2xl backdrop-blur-md lg:block"
+          >
+            <div className="overflow-hidden rounded-xl border border-white/10 bg-black/40">
+              <img
+                src={getPreviewFullImage(hoveredPopupCard)}
+                alt={hoveredPopupCard.fullName}
+                className="aspect-[3/4] w-full object-contain"
+                draggable={false}
+                referrerPolicy="no-referrer"
+              />
+            </div>
+            <div className="mt-3">
+              <div className="text-sm font-black text-white">{hoveredPopupCard.fullName}</div>
+              <div className="mt-1 text-[10px] font-bold tracking-widest text-white/45">
+                {hoveredPopupCard.id} · {hoveredPopupCard.type} · {hoveredPopupCard.color}
+              </div>
+              {hoveredPopupCard.description && (
+                <div className="mt-2 text-xs leading-relaxed text-white/70">
+                  {hoveredPopupCard.description}
+                </div>
+              )}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Payment Selection Overlay */}
       <AnimatePresence>
@@ -1767,7 +1996,10 @@ export const BattleField: React.FC = () => {
                   onSurrender={() => setShowSurrenderConfirm(true)}
                   onPhaseClick={() => {
                     const isMyTurn = game.playerIds[game.currentTurnPlayer] === myUid;
-                    if (isMyTurn && ['MAIN', 'BATTLE_DECLARATION', 'BATTLE_FREE'].includes(game.phase)) {
+                    if (isMyTurn && game.phase === 'BATTLE_FREE') {
+                      GameService.advancePhase(gameId!, 'PROPOSE_DAMAGE_CALCULATION');
+                      setShowPhaseMenu(false);
+                    } else if (isMyTurn && ['MAIN', 'BATTLE_DECLARATION'].includes(game.phase)) {
                       setShowPhaseMenu(!showPhaseMenu);
                     } else if (!isMyTurn && game.phase === 'DEFENSE_DECLARATION') {
                       setShowPhaseMenu(!showPhaseMenu);
@@ -1775,6 +2007,33 @@ export const BattleField: React.FC = () => {
                   }}
                   confrontationStrategy={localStrategy}
                   onUpdateStrategy={updateConfrontationStrategy}
+                  canConfront={canConfront}
+                  isConfrontPromptActive={
+                    game.phase === 'BATTLE_FREE' &&
+                    !!game.battleState?.askConfront &&
+                    (
+                      (game.battleState.askConfront === 'ASKING_OPPONENT' && !me.isTurn) ||
+                      (game.battleState.askConfront === 'ASKING_TURN_PLAYER' && me.isTurn)
+                    )
+                  }
+                  isCounteringPromptActive={
+                    game.phase === 'COUNTERING' &&
+                    game.priorityPlayerId === myUid &&
+                    !game.isResolvingStack
+                  }
+                  onStartConfront={() => {
+                    if (game.phase === 'BATTLE_FREE') {
+                      GameService.advancePhase(gameId!, 'CONFIRM_CONFRONTATION');
+                    }
+                    setIsConfronting(true);
+                  }}
+                  onDeclineConfront={() => {
+                    if (game.phase === 'COUNTERING') {
+                      handleResolve();
+                    } else {
+                      GameService.advancePhase(gameId!, 'DECLINE_CONFRONTATION');
+                    }
+                  }}
                   isPopupHidden={isPopupHidden}
                   onExpand={() => setIsPopupHidden(false)}
 
@@ -1875,27 +2134,6 @@ export const BattleField: React.FC = () => {
             </motion.div>
           )}
         </AnimatePresence>
-
-        <StandardPopup
-          isOpen={
-            game.phase === 'COUNTERING' && 
-            game.priorityPlayerId === myUid && 
-            !game.isResolvingStack && 
-            !isConfronting && 
-            (localStrategy === 'ON' || (localStrategy === 'AUTO' && canConfront))
-          }
-          title="对抗响应"
-          description={`请作为 Link ${game.counterStack.length + 1} 响应。你可以选择发动卡牌或效果进行对抗，或选择不对抗直接进入结算。`}
-          mode="double_selection"
-          confirmText="进行对抗"
-          cancelText="不对抗，直接结算"
-          onConfirm={() => setIsConfronting(true)}
-          onCancel={handleResolve}
-          confirmDisabled={!canConfront}
-          cardBackUrl={cardBackUrl}
-          onHide={() => setIsPopupHidden(true)}
-          isHidden={isPopupHidden}
-        />
 
         <AnimatePresence>
           {game.phase === 'COUNTERING' && (game.priorityPlayerId !== myUid || game.isResolvingStack) && (
@@ -2100,12 +2338,14 @@ export const BattleField: React.FC = () => {
                 const canActivateInPhase = isOwnSharedPhase || isBattleFreeConfrontPrompt || isCounteringTurn;
 
                 if (!canActivateInPhase) return null;
-                const isMyCard = [...me.unitZone, ...me.itemZone, ...me.erosionFront, ...me.grave, ...me.hand].some(c => c?.gamecardId === cardMenu.card.gamecardId);
+                const isMyCard = [
+                  ...me.unitZone, ...me.itemZone, ...me.erosionFront, ...me.erosionBack, ...me.grave, ...me.exile, ...me.hand
+                ].some(c => c?.gamecardId === cardMenu.card.gamecardId);
                 if (!isMyCard) return null;
 
                 const latestCard = [
-                  ...me.unitZone, ...me.itemZone, ...me.erosionFront, ...me.grave, ...me.hand,
-                  ...(opponent?.unitZone || []), ...(opponent?.itemZone || []), ...(opponent?.erosionFront || [])
+                  ...me.unitZone, ...me.itemZone, ...me.erosionFront, ...me.erosionBack, ...me.grave, ...me.exile, ...me.hand,
+                  ...(opponent?.unitZone || []), ...(opponent?.itemZone || []), ...(opponent?.erosionFront || []), ...(opponent?.erosionBack || [])
                 ].find(c => c?.gamecardId === cardMenu.card.gamecardId) || cardMenu.card;
 
                 const activateEffects = latestCard.effects?.map((effect, index) => ({ effect, index }))
@@ -2119,6 +2359,8 @@ export const BattleField: React.FC = () => {
                   'item': 'ITEM',
                   'erosion_front': 'EROSION_FRONT',
                   'grave': 'GRAVE',
+                  'exile': 'EXILE',
+                  'erosion_back': 'EROSION_BACK',
                   'hand': 'HAND'
                 };
                 const validEffects = activateEffects.filter(e => {
@@ -2132,7 +2374,15 @@ export const BattleField: React.FC = () => {
                       whileHover={{ scale: 1.1 }}
                       className="px-4 py-3 md:py-1.5 text-[12px] md:text-[10px] font-bold text-white bg-[#22c55e] rounded-full shadow-lg border border-white/20 flex items-center justify-center w-full"
                       onClick={() => {
-                        const triggerLocation = (cardMenu.zone === 'unit' ? 'UNIT' : cardMenu.zone === 'item' ? 'ITEM' : cardMenu.zone === 'erosion_front' ? 'EROSION_FRONT' : cardMenu.zone === 'grave' ? 'GRAVE' : 'HAND') as TriggerLocation;
+                        const triggerLocation = (
+                          cardMenu.zone === 'unit' ? 'UNIT' :
+                          cardMenu.zone === 'item' ? 'ITEM' :
+                          cardMenu.zone === 'erosion_front' ? 'EROSION_FRONT' :
+                          cardMenu.zone === 'erosion_back' ? 'EROSION_BACK' :
+                          cardMenu.zone === 'grave' ? 'GRAVE' :
+                          cardMenu.zone === 'exile' ? 'EXILE' :
+                          'HAND'
+                        ) as TriggerLocation;
                         if (validEffects.length === 1) {
                           setEffectConfirmation({
                             card: latestCard,
@@ -2543,66 +2793,6 @@ export const BattleField: React.FC = () => {
         )}
       </AnimatePresence>
 
-      {/* Standardized Confrontation Popup (Opponent Perspective) */}
-      <div className="fixed inset-0 z-[160] pointer-events-none flex flex-col items-center justify-center">
-        {game.phase === 'BATTLE_FREE' && 
-         game.battleState?.askConfront === 'ASKING_OPPONENT' && 
-         !me.isTurn && 
-         !isConfronting && 
-         (localStrategy === 'ON' || (localStrategy === 'AUTO' && canConfront)) && (
-          <div className="flex flex-col items-center gap-8 pointer-events-auto">
-            <StandardPopup
-              isOpen={true}
-              title="确认对抗"
-              description="对手准备进入伤害结算，你要先进行对抗吗？"
-              mode="double_selection"
-              confirmText="进行对抗"
-              cancelText="放弃对抗"
-              onConfirm={() => {
-                GameService.advancePhase(gameId!, 'CONFIRM_CONFRONTATION');
-                setIsConfronting(true);
-              }}
-              onCancel={() => GameService.advancePhase(gameId!, 'DECLINE_CONFRONTATION')}
-              confirmDisabled={!canConfront}
-              cardBackUrl={cardBackUrl}
-              onHide={() => setIsPopupHidden(true)}
-              isHidden={isPopupHidden}
-            />
-
-          </div>
-        )}
-      </div>
-
-      {/* Standardized Confrontation Popup (Turn Player Perspective) */}
-      <div className="fixed inset-0 z-[160] pointer-events-none flex flex-col items-center justify-center">
-        {game.phase === 'BATTLE_FREE' && 
-         game.battleState?.askConfront === 'ASKING_TURN_PLAYER' && 
-         me.isTurn && 
-         !isConfronting && 
-         (localStrategy === 'ON' || (localStrategy === 'AUTO' && canConfront)) && (
-          <div className="flex flex-col items-center gap-8 pointer-events-auto">
-            <StandardPopup
-              isOpen={true}
-              title="确认对抗"
-              description="对手放弃对抗，你要进行对抗吗？选择“放弃”将直接进入伤害结算。"
-              mode="double_selection"
-              confirmText="进行对抗"
-              cancelText="放弃对抗"
-              onConfirm={() => {
-                GameService.advancePhase(gameId!, 'CONFIRM_CONFRONTATION');
-                setIsConfronting(true);
-              }}
-              onCancel={() => GameService.advancePhase(gameId!, 'DECLINE_CONFRONTATION')}
-              confirmDisabled={!canConfront}
-              cardBackUrl={cardBackUrl}
-              onHide={() => setIsPopupHidden(true)}
-              isHidden={isPopupHidden}
-            />
-
-          </div>
-        )}
-      </div>
-
       {/* Standardized Surrender Confirmation Popup */}
       <StandardPopup
         isOpen={showSurrenderConfirm}
@@ -2735,14 +2925,14 @@ export const BattleField: React.FC = () => {
             )}
 
             {/* Exhaust Section */}
-            {(game.pendingQuery!.paymentCost || 0) > 0 && me.unitZone.some(c => c && !c.isExhausted) && (
+            {(game.pendingQuery!.paymentCost || 0) > 0 && me.unitZone.some(c => c && !c.isExhausted && !getPaymentExcludedExhaustIds().includes(c.gamecardId)) && (
               <div className="flex flex-col gap-3">
                 <div className="flex items-center gap-2 text-green-400 font-black uppercase italic tracking-widest text-sm">
                   <Sword className="w-4 h-4" />
                   横置支付（按单位ACCESS值）
                 </div>
                 <div className="grid grid-cols-2 gap-3 pb-2 pt-2 justify-items-center">
-                  {me.unitZone.filter(c => c && !c.isExhausted).map((card, i) => {
+                  {me.unitZone.filter(c => c && !c.isExhausted && !getPaymentExcludedExhaustIds().includes(c.gamecardId)).map((card, i) => {
                     const isSelected = paymentSelection.exhaustIds.includes(card!.gamecardId);
                     const accessValue = getAccessPaymentLabel(card, game.pendingQuery?.paymentColor);
                     return (

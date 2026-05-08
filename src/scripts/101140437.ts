@@ -1,5 +1,5 @@
 import { Card, CardEffect } from '../types/game';
-import { AtomicEffectExecutor, appendEndResolution, canActivateDefaultTiming, canPutUnitOntoBattlefield, cardsInZones, createSelectCardQuery, getOpponentUid, moveCard, ownUnits } from './BaseUtil';
+import { AtomicEffectExecutor, addInfluence, appendEndResolution, canActivateDefaultTiming, canPutUnitOntoBattlefield, cardsInZones, createSelectCardQuery, ensureData, getOpponentUid, moveCard, ownUnits } from './BaseUtil';
 
 const cardEffects: CardEffect[] = [{
   id: '101140437_god_limit',
@@ -77,13 +77,26 @@ const cardEffects: CardEffect[] = [{
     const target = selections[0] ? AtomicEffectExecutor.findCardById(gameState, selections[0]) : undefined;
     const ownerUid = target ? AtomicEffectExecutor.findCardOwnerKey(gameState, target.gamecardId) : undefined;
     if (!target || !ownerUid) return;
-    moveCard(gameState, ownerUid, target, 'EXILE', instance);
     const exiledId = target.gamecardId;
+    moveCard(gameState, ownerUid, target, 'EXILE', instance);
+    const exiled = AtomicEffectExecutor.findCardById(gameState, exiledId);
+    if (exiled) {
+      const data = ensureData(exiled);
+      data.returnToOwnerFieldAtTurnEndSourceName = instance.fullName;
+      addInfluence(exiled, instance, '回合结束时回到持有者战场');
+    }
     appendEndResolution(gameState, playerState.uid, instance, '101140437_return', async (_source, state) => {
       const exiled = AtomicEffectExecutor.findCardById(state, exiledId);
       if (!exiled || exiled.cardlocation !== 'EXILE') return;
+      const data = ensureData(exiled);
+      delete data.returnToOwnerFieldAtTurnEndSourceName;
       if (!canPutUnitOntoBattlefield(state.players[ownerUid], exiled)) return;
       moveCard(state, ownerUid, exiled, 'UNIT', instance);
+      const returned = AtomicEffectExecutor.findCardById(state, exiledId);
+      if (returned) {
+        returned.isExhausted = false;
+        returned.displayState = 'FRONT_UPRIGHT';
+      }
     });
   }
 }];

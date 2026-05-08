@@ -5,6 +5,7 @@ const effect_104020068_trigger: CardEffect = {
   id: 'aketi_rotation_trigger',
   type: 'TRIGGER',
   triggerEvent: 'CARD_TO_EROSION_FRONT',
+  isMandatory: false,
   description: '【诱发】每回合一次。在你的回合中，当我方卡牌进入侵蚀区域正面时：选择一张非神蚀卡牌，将其横置或竖置。',
   limitCount: 1,
   limitNameType: true,
@@ -156,7 +157,7 @@ const effect_104020068_activate_play: CardEffect = {
   triggerLocation: ['EROSION_FRONT'],
   description: '【启】此卡在侵蚀区域正面时：可以支付AC值使用这张卡。',
   condition: (gameState, playerState, instance) => {
-    if (instance.cardlocation !== 'EROSION_FRONT') return false;
+    if (instance.cardlocation !== 'EROSION_FRONT' || instance.displayState !== 'FRONT_UPRIGHT') return false;
 
     // 1. Basic Turn/Phase/Space check
     if (
@@ -206,38 +207,34 @@ const effect_104020068_activate_play: CardEffect = {
     return true;
   },
   cost: async (gameState, playerState, instance) => {
-    // Collect potential payment sources (Erosion Front cards)
-    const available = playerState.erosionFront.filter(c => c !== null);
-
     gameState.pendingQuery = {
       id: Math.random().toString(36).substring(7),
       type: 'SELECT_PAYMENT',
       playerUid: playerState.uid,
-      paymentCost: instance.acValue,
+      paymentCost: instance.acValue || 0,
       paymentColor: instance.color,
-      options: AtomicEffectExecutor.enrichQueryOptions(gameState, playerState.uid, available.map(c => ({ card: c, source: 'EROSION_FRONT' }))),
+      options: [],
       title: '支付发动代价',
       description: `支付 ${instance.acValue} 点费用以将此卡从侵蚀区域置入战场。`,
       minSelections: 1,
       maxSelections: 1,
-      callbackKey: 'EFFECT_RESOLVE',
+      callbackKey: 'ACTIVATE_COST_RESOLVE',
       context: {
         effectId: 'aketi_play_from_erosion',
+        effectIndex: 2,
         sourceCardId: instance.gamecardId,
-        step: 'COST'
+        activationPlayerUid: playerState.uid
       }
     };
     return true;
   },
-  onQueryResolve: async (instance, gameState, playerState, selections, context) => {
-    if (context.step === 'COST') {
-      await AtomicEffectExecutor.execute(gameState, playerState.uid, {
-        type: 'MOVE_FROM_EROSION',
-        targetFilter: { gamecardId: instance.gamecardId },
-        destinationZone: 'UNIT'
-      }, instance);
-      gameState.logs.push(`[${instance.fullName}] 通过支付费用从侵蚀区域进入了战场。`);
-    }
+  execute: async (instance, gameState, playerState) => {
+    await AtomicEffectExecutor.execute(gameState, playerState.uid, {
+      type: 'MOVE_FROM_EROSION',
+      targetFilter: { gamecardId: instance.gamecardId },
+      destinationZone: 'UNIT'
+    }, instance);
+    gameState.logs.push(`[${instance.fullName}] 通过支付费用从侵蚀区域进入了战场。`);
   }
 };
 

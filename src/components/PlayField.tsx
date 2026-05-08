@@ -1,10 +1,10 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Card, PlayerState, StackItem, GameState, GAME_TIMEOUTS } from '../types/game';
 import { CardComponent } from './Card';
 import { StandardPopup } from './StandardPopup';
 import { Shield, Sword, Zap, Trash2, Flag, BookOpen, Layers, AlertTriangle, Search, Play, X } from 'lucide-react';
-import { cn } from '../lib/utils';
+import { cn, getCardImageUrl } from '../lib/utils';
 
 interface PlayFieldProps {
   player: PlayerState;
@@ -31,6 +31,11 @@ interface PlayFieldProps {
   onPhaseClick?: () => void;
   confrontationStrategy?: 'ON' | 'AUTO' | 'OFF';
   onUpdateStrategy?: (strategy: 'ON' | 'AUTO' | 'OFF') => void;
+  canConfront?: boolean;
+  isConfrontPromptActive?: boolean;
+  isCounteringPromptActive?: boolean;
+  onStartConfront?: () => void;
+  onDeclineConfront?: () => void;
   showPhaseMenu?: boolean;
   isAnyPopupOpen?: boolean;
   isPopupHidden?: boolean;
@@ -42,6 +47,7 @@ const CardSlot: React.FC<{
   label?: string;
   onClick?: (e: React.MouseEvent) => void;
   onPreview?: (card: Card) => void;
+  onHover?: (card: Card | null) => void;
   className?: string;
   isFaceUp?: boolean;
   isExhausted?: boolean;
@@ -57,7 +63,7 @@ const CardSlot: React.FC<{
   slotLabel?: string;
   cardBackUrl?: string;
   isHighlighted?: boolean;
-}> = ({ card, label, onClick, onPreview, className, isFaceUp = true, isExhausted, isSelectedForPayment, isDeck, count = 0, showCount = true, isAttacking, isDefending, isOpponent, isAllianceInitiator, displayMode, slotLabel, cardBackUrl, isHighlighted }) => {
+}> = ({ card, label, onClick, onPreview, onHover, className, isFaceUp = true, isExhausted, isSelectedForPayment, isDeck, count = 0, showCount = true, isAttacking, isDefending, isOpponent, isAllianceInitiator, displayMode, slotLabel, cardBackUrl, isHighlighted }) => {
   // Dynamic height scaling for stack areas (Deck, Grave, Exile)
   const isStackArea = isDeck || label === '墓地' || label === '放逐';
   const numericCount = typeof count === 'number' ? count : 0;
@@ -85,6 +91,8 @@ const CardSlot: React.FC<{
           if (onClick) onClick(e);
           if (!isFaceUp && card && onPreview && !isOpponent) onPreview(card);
         }}
+        onMouseEnter={() => card && isFaceUp && onHover?.(card)}
+        onMouseLeave={() => onHover?.(null)}
         onContextMenu={(e) => {
           e.preventDefault();
           if (card && onPreview && (isFaceUp || !isOpponent)) onPreview(card);
@@ -165,6 +173,7 @@ const PlayerHalf: React.FC<{
   isOpponent?: boolean;
   onCardClick?: (card: Card, zone: string, index?: number, e?: React.MouseEvent) => void;
   onPreviewCard?: (card: Card) => void;
+  onHoverCard?: (card: Card | null) => void;
   onPlayCard?: (card: Card) => void;
   paymentSelection?: { useFeijing: string[], exhaustIds: string[], erosionFrontIds?: string[] };
   pendingPlayCard?: Card | null;
@@ -176,7 +185,7 @@ const PlayerHalf: React.FC<{
   viewingZone?: { title: string, type: string, isOpponentZone?: boolean } | null;
   setViewingZone?: (zone: { title: string, type: string, isOpponentZone?: boolean } | null) => void;
   highlightedCardIds?: Set<string>;
-}> = ({ player, isOpponent, onCardClick, onPreviewCard, onPlayCard, paymentSelection, pendingPlayCard, selectedAttackers, selectedDefender, game, allianceInitiator, cardBackUrl, viewingZone, setViewingZone, highlightedCardIds }) => {
+}> = ({ player, isOpponent, onCardClick, onPreviewCard, onHoverCard, onPlayCard, paymentSelection, pendingPlayCard, selectedAttackers, selectedDefender, game, allianceInitiator, cardBackUrl, viewingZone, setViewingZone, highlightedCardIds }) => {
   if (!player) return null;
   const unitZoneOffsetClass = ""; // Removed horizontal offset to prevent blocking exile area
   const getMobileErosionCount = (playerState: PlayerState): number | string => {
@@ -208,6 +217,7 @@ const PlayerHalf: React.FC<{
               label="墓地" count={player.grave?.length || 0}
               className="border-red-900/30 scale-[0.8] md:scale-100" cardBackUrl={cardBackUrl}
               onClick={() => setViewingZone?.({ title: '墓地', type: 'grave', isOpponentZone: !!isOpponent })}
+              onHover={onHoverCard}
               isFaceUp={true} isOpponent={isOpponent} displayMode="erosion_item"
             />
             <CardSlot
@@ -215,6 +225,7 @@ const PlayerHalf: React.FC<{
               label="放逐" count={player.exile?.length || 0}
               className="border-purple-900/30 scale-[0.8] md:scale-100" cardBackUrl={cardBackUrl}
               onClick={() => setViewingZone?.({ title: '放逐区', type: 'exile', isOpponentZone: !!isOpponent })}
+              onHover={onHoverCard}
               isFaceUp={true} isOpponent={isOpponent} displayMode="erosion_item"
             />
           </>
@@ -226,6 +237,7 @@ const PlayerHalf: React.FC<{
               label="道具区" count={player.itemZone?.filter(Boolean).length || 0}
               className="border-blue-500/30 scale-[0.8] md:scale-100" cardBackUrl={cardBackUrl}
               onClick={() => setViewingZone?.({ title: '道具区', type: 'item', isOpponentZone: !!isOpponent })}
+              onHover={onHoverCard}
               isFaceUp={true}
               isExhausted={!!(player.itemZone?.filter(Boolean).slice(-1)[0] as Card | undefined)?.isExhausted}
               isHighlighted={highlightedCardIds?.has((player.itemZone?.filter(Boolean).slice(-1)[0] as Card | undefined)?.gamecardId || '')}
@@ -305,6 +317,7 @@ const PlayerHalf: React.FC<{
                         {displayCard ? (
                           <CardSlot
                             card={displayCard} isFaceUp={displayCard.isFaceUp} onPreview={displayCard.isFaceUp ? onPreviewCard : undefined}
+                            onHover={onHoverCard}
                             onClick={(e) => onCardClick?.(displayCard, displayCard.isFaceUp ? 'erosion_front' : 'erosion_back', i, e)}
                             isSelectedForPayment={displayCard.isFaceUp && paymentSelection?.erosionFrontIds?.includes(displayCard.gamecardId)}
                             className={displayCard.isFaceUp ? "border-red-600" : "border-red-900/50"}
@@ -331,6 +344,7 @@ const PlayerHalf: React.FC<{
                   <CardSlot
                     key={i} card={unit || null} label={`${6 - i}`}
                     onPreview={onPreviewCard} onClick={(e) => unit && onCardClick?.(unit, 'unit', i, e)}
+                    onHover={onHoverCard}
                     className="scale-[0.9] origin-center md:scale-100"
                     isExhausted={unit ? unit.isExhausted : false}
                     isSelectedForPayment={unit ? paymentSelection?.exhaustIds.includes(unit.gamecardId) : false}
@@ -353,6 +367,7 @@ const PlayerHalf: React.FC<{
                   <CardSlot
                     key={i} card={unit || null} label={`${i + 1}`}
                     onPreview={onPreviewCard} onClick={(e) => unit && onCardClick?.(unit, 'unit', i, e)}
+                    onHover={onHoverCard}
                     className="scale-[0.9] origin-center md:scale-100"
                     isExhausted={unit ? unit.isExhausted : false}
                     isSelectedForPayment={unit ? paymentSelection?.exhaustIds.includes(unit.gamecardId) : false}
@@ -386,6 +401,7 @@ const PlayerHalf: React.FC<{
                             card={displayCard}
                             isFaceUp={displayCard.isFaceUp}
                             onPreview={onPreviewCard}
+                            onHover={onHoverCard}
                             onClick={(e) => onCardClick?.(displayCard, displayCard.isFaceUp ? 'erosion_front' : 'erosion_back', i, e)}
                             isSelectedForPayment={displayCard.isFaceUp && paymentSelection?.erosionFrontIds?.includes(displayCard.gamecardId)}
                             className={displayCard.isFaceUp ? "border-red-600" : "border-red-900/50"}
@@ -427,6 +443,8 @@ const PlayerHalf: React.FC<{
                         bottom: window.innerWidth < 768 ? '5px' : '0px'
                       }}
                       onClick={(e) => onCardClick?.(card, 'hand', i, e)}
+                      onMouseEnter={() => onHoverCard?.(card)}
+                      onMouseLeave={() => onHoverCard?.(null)}
                     >
                       <CardComponent
                         card={card} disableZoom displayMode="hand" cardBackUrl={cardBackUrl}
@@ -455,6 +473,7 @@ const PlayerHalf: React.FC<{
               label="出牌区" count={player.playZone?.length || 0}
               className="border-yellow-500/30 scale-[0.8] md:scale-100" cardBackUrl={cardBackUrl}
               onPreview={onPreviewCard} isOpponent={isOpponent}
+              onHover={onHoverCard}
             />
             <CardSlot
               card={player.erosionFront?.filter(Boolean).slice(-1)[0] || player.erosionBack?.filter(Boolean).slice(-1)[0] || null}
@@ -477,6 +496,7 @@ const PlayerHalf: React.FC<{
               label="道具区" count={player.itemZone?.filter(Boolean).length || 0}
               className="border-blue-500/30 scale-[0.8] md:scale-100" cardBackUrl={cardBackUrl}
               onClick={() => setViewingZone?.({ title: '敌方道具区', type: 'item', isOpponentZone: !!isOpponent })}
+              onHover={onHoverCard}
               isFaceUp={true}
               isExhausted={!!(player.itemZone?.filter(Boolean).slice(-1)[0] as Card | undefined)?.isExhausted}
               isHighlighted={highlightedCardIds?.has((player.itemZone?.filter(Boolean).slice(-1)[0] as Card | undefined)?.gamecardId || '')}
@@ -492,6 +512,7 @@ const PlayerHalf: React.FC<{
               label="放逐" count={player.exile?.length || 0}
               className="border-purple-900/30 scale-[0.8] md:scale-100" cardBackUrl={cardBackUrl}
               onClick={() => setViewingZone?.({ title: '放逐区', type: 'exile', isOpponentZone: !!isOpponent })}
+              onHover={onHoverCard}
               isFaceUp={true} displayMode="erosion_item"
             />
             <CardSlot
@@ -499,6 +520,7 @@ const PlayerHalf: React.FC<{
               label="墓地" count={player.grave?.length || 0}
               className="border-red-900/30 scale-[0.8] md:scale-100" cardBackUrl={cardBackUrl}
               onClick={() => setViewingZone?.({ title: '墓地', type: 'grave', isOpponentZone: !!isOpponent })}
+              onHover={onHoverCard}
               isFaceUp={true} displayMode="erosion_item"
             />
             <CardSlot
@@ -518,9 +540,29 @@ export const PlayField: React.FC<PlayFieldProps> = ({
   selectedDefender, allianceInitiator, timer, cardBackUrl, viewingZone,
   setViewingZone, highlightedCardIds, onShowLogs, onOpenRulebook,
   onSurrender, onPhaseClick, confrontationStrategy, onUpdateStrategy,
+  canConfront, isConfrontPromptActive, isCounteringPromptActive, onStartConfront, onDeclineConfront,
   showPhaseMenu, isAnyPopupOpen, isPopupHidden, onExpand
 }) => {
+  const [hoveredCard, setHoveredCard] = useState<Card | null>(null);
+  const [isDesktop, setIsDesktop] = useState<boolean>(() => typeof window !== 'undefined' ? window.innerWidth >= 1024 : false);
+
+  useEffect(() => {
+    const onResize = () => setIsDesktop(window.innerWidth >= 1024);
+    onResize();
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+
   if (!player || !opponent || !game) return null;
+  const isCurrentPlayer = game.playerIds[game.currentTurnPlayer] === myUid;
+  const phaseLabel =
+    game.phase === 'COUNTERING' ? '对抗' :
+      game.phase === 'MAIN' ? '主要' :
+        game.phase === 'BATTLE_DECLARATION' ? '战斗宣言' :
+          game.phase === 'DEFENSE_DECLARATION' ? '防御宣言' :
+            game.phase === 'BATTLE_FREE' ? (isCurrentPlayer ? '结束战斗自由' : '战斗自由') : game.phase;
+  const getPreviewFullImage = (card: Card) =>
+    card.fullImageUrl || getCardImageUrl(card.id, card.rarity, false, card.availableRarities);
   const viewingZoneOwner = viewingZone?.isOpponentZone ? opponent : player;
   const viewingZoneCards = !viewingZone ? [] : (
     viewingZone.type === 'item' ? ((viewingZoneOwner.itemZone?.filter(Boolean) as Card[]) || []) :
@@ -572,6 +614,30 @@ export const PlayField: React.FC<PlayFieldProps> = ({
         cardBackUrl={cardBackUrl}
         selectedIds={Array.from(highlightedCardIds || [])}
       />
+      {isDesktop && hoveredCard && (
+        <div className="pointer-events-none absolute right-4 top-4 z-[120] hidden w-[300px] rounded-2xl border border-white/10 bg-black/75 p-3 shadow-2xl backdrop-blur-md lg:block">
+          <div className="overflow-hidden rounded-xl border border-white/10 bg-black/40">
+            <img
+              src={getPreviewFullImage(hoveredCard)}
+              alt={hoveredCard.fullName}
+              className="aspect-[3/4] w-full object-contain"
+              draggable={false}
+              referrerPolicy="no-referrer"
+            />
+          </div>
+          <div className="mt-3">
+            <div className="text-sm font-black text-white">{hoveredCard.fullName}</div>
+            <div className="mt-1 text-[10px] font-bold tracking-widest text-white/45">
+              {hoveredCard.id} · {hoveredCard.type} · {hoveredCard.color}
+            </div>
+            {hoveredCard.description && (
+              <div className="mt-2 text-xs leading-relaxed text-white/70">
+                {hoveredCard.description}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
       {/* Opponent Half */}
       <div className="flex-1 min-h-0">
         <PlayerHalf
@@ -579,6 +645,7 @@ export const PlayField: React.FC<PlayFieldProps> = ({
           isOpponent
           onCardClick={onCardClick}
           onPreviewCard={onPreviewCard}
+          onHoverCard={setHoveredCard}
           game={game}
           selectedAttackers={selectedAttackers}
           selectedDefender={selectedDefender}
@@ -600,78 +667,104 @@ export const PlayField: React.FC<PlayFieldProps> = ({
       )}>
         <div className="absolute inset-0 bg-gradient-to-r from-transparent via-[#f27d26]/10 to-transparent border-y border-white/5" />
 
-        <div className="flex items-center gap-2 md:gap-4 bg-zinc-950/80 backdrop-blur-xl border border-white/10 px-4 py-2 rounded-[2rem] shadow-[0_20px_50px_rgba(0,0,0,0.5)]">
-          {/* Round & Surrender */}
-          <div className="flex items-center gap-4">
-            <button
-              onClick={onSurrender}
-              className="p-2.5 rounded-full bg-white/5 hover:bg-red-500/20 text-white/60 hover:text-red-500 transition-all border border-white/5 shadow-inner"
-              title="投降"
-            >
-              <Flag className="w-5 h-5" />
-            </button>
-            <div className="flex flex-col items-center">
-              {/* <span className="text-[10px] font-black text-white/30 uppercase tracking-widest">回合</span> */}
-              <span className="text-xl font-black italic text-[#f27d26]">{game.turnCount}</span>
-            </div>
-          </div>
-
-          <div className="w-px h-8 bg-white/10" />
-
-          {/* Turn Indicator & Timer */}
-          <div className="flex items-center gap-4">
-            <div className={cn(
-              "w-10 h-10 rounded-xl flex items-center justify-center border-2 transition-all shadow-lg",
-              game.playerIds[game.currentTurnPlayer] === myUid
-                ? "bg-red-500/20 border-red-500 shadow-red-500/20"
-                : "bg-blue-500/20 border-blue-500 shadow-blue-500/20"
-            )}>
-              {game.playerIds[game.currentTurnPlayer] === myUid ? <Sword className="w-6 h-6 text-red-500" /> : <Shield className="w-6 h-6 text-blue-500" />}
+        <div className="mx-auto flex w-fit max-w-[calc(100%-0.75rem)] flex-col items-center gap-1 rounded-2xl border border-white/10 bg-zinc-950/80 px-2 py-1 shadow-[0_20px_50px_rgba(0,0,0,0.5)] backdrop-blur-xl md:w-auto md:max-w-full md:flex-row md:gap-4 md:rounded-[2rem] md:px-4 md:py-2">
+          <div className="flex w-fit max-w-full items-center justify-center gap-2 md:w-auto md:gap-4">
+            {/* Round & Surrender */}
+            <div className="flex items-center gap-2 md:gap-4">
+              <button
+                onClick={onSurrender}
+                className="rounded-full border border-white/5 bg-white/5 p-2 text-white/60 shadow-inner transition-all hover:bg-red-500/20 hover:text-red-500 md:p-2.5"
+                title="投降"
+              >
+                <Flag className="h-4 w-4 md:h-5 md:w-5" />
+              </button>
+              <div className="flex flex-col items-center">
+                {/* <span className="text-[10px] font-black text-white/30 uppercase tracking-widest">回合</span> */}
+                <span className="text-lg font-black italic text-[#f27d26] md:text-xl">{game.turnCount}</span>
+              </div>
             </div>
 
-            <div className="flex flex-col min-w-[60px]">
-              {/* <span className="text-[10px] font-black text-white/30 uppercase tracking-widest">倒计时</span> */}
-              <span className={cn(
-                "text-xl font-black tabular-nums italic",
-                (timer || 0) < 30 ? "text-red-500 animate-pulse" : "text-white"
+            <div className="h-7 w-px bg-white/10 md:h-8" />
+
+            {/* Turn Indicator & Timer */}
+            <div className="flex items-center gap-2 md:gap-4">
+              <div className={cn(
+                "flex h-8 w-8 items-center justify-center rounded-xl border-2 shadow-lg transition-all md:h-10 md:w-10",
+                game.playerIds[game.currentTurnPlayer] === myUid
+                  ? "bg-red-500/20 border-red-500 shadow-red-500/20"
+                  : "bg-blue-500/20 border-blue-500 shadow-blue-500/20"
               )}>
-                {timer}s
-              </span>
+                {game.playerIds[game.currentTurnPlayer] === myUid ? <Sword className="h-5 w-5 text-red-500 md:h-6 md:w-6" /> : <Shield className="h-5 w-5 text-blue-500 md:h-6 md:w-6" />}
+              </div>
+
+              <div className="flex min-w-[44px] flex-col md:min-w-[60px]">
+                {/* <span className="text-[10px] font-black text-white/30 uppercase tracking-widest">倒计时</span> */}
+                <span className={cn(
+                  "text-lg font-black italic tabular-nums md:text-xl",
+                  (timer || 0) < 30 ? "text-red-500 animate-pulse" : "text-white"
+                )}>
+                  {timer}s
+                </span>
+              </div>
+            </div>
+
+            <div className="h-7 w-px bg-white/10 md:h-8" />
+
+            {/* Phase transition */}
+            <div
+              className={cn(
+                "relative flex min-w-[132px] flex-col items-center justify-center rounded-xl border border-transparent px-2 py-0.5 text-center transition-all md:min-w-[156px] md:px-4 md:py-1",
+                (isConfrontPromptActive || isCounteringPromptActive)
+                  ? "cursor-default"
+                  : "cursor-pointer hover:bg-white/5",
+                showPhaseMenu && "bg-white/10 border-white/20 shadow-lg",
+                game.phase === 'BATTLE_FREE' && isCurrentPlayer && !isConfrontPromptActive && !isCounteringPromptActive &&
+                  "bg-amber-500/15 border-amber-400/40 shadow-[0_0_24px_rgba(251,191,36,0.35)] animate-pulse"
+              )}
+              onClick={(e) => {
+                if (isConfrontPromptActive || isCounteringPromptActive) return;
+                onPhaseClick?.();
+              }}
+            >
+              {(isConfrontPromptActive || isCounteringPromptActive) ? (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onDeclineConfront?.();
+                  }}
+                  className="absolute inset-[-0.15rem] z-10 flex min-w-[132px] items-center justify-center gap-1.5 rounded-xl border border-sky-400/60 bg-sky-500/25 px-3 py-1.5 text-sky-100 shadow-[0_0_26px_rgba(56,189,248,0.42)] transition-all hover:bg-sky-500/35 active:scale-[0.98] md:inset-[-0.25rem] md:min-w-[156px] md:gap-2 md:px-4 md:py-2"
+                >
+                  <Shield className="h-4 w-4" />
+                  <span className="text-xs font-black italic tracking-widest md:text-sm">
+                    忽略对抗
+                  </span>
+                </button>
+              ) : (
+                <span className={cn(
+                  "flex w-full items-center justify-center gap-1.5 whitespace-nowrap text-center text-[15px] font-black italic uppercase tracking-tight md:gap-2 md:text-xl",
+                  game.phase === 'BATTLE_FREE' && isCurrentPlayer ? "text-amber-200" : "text-white"
+                )}>
+                  {phaseLabel}
+                  <Zap className={cn(
+                    "h-3.5 w-3.5 animate-pulse md:h-4 md:w-4",
+                    game.phase === 'BATTLE_FREE' && isCurrentPlayer ? "text-amber-300" : "text-[#f27d26]"
+                  )} />
+                </span>
+              )}
             </div>
           </div>
 
-          <div className="w-px h-8 bg-white/10" />
-
-          {/* Phase transition */}
-          <div
-            className={cn(
-              "flex flex-col cursor-pointer hover:bg-white/5 px-4 py-1 rounded-xl transition-all border border-transparent",
-              showPhaseMenu && "bg-white/10 border-white/20 shadow-lg"
-            )}
-            onClick={onPhaseClick}
-          >
-            {/* <span className="text-[10px] font-black text-white/30 uppercase tracking-widest">当前阶段</span> */}
-            <span className="text-xl font-black italic text-white uppercase tracking-tight flex items-center gap-2">
-              {game.phase === 'COUNTERING' ? '对抗' :
-                game.phase === 'MAIN' ? '主要' :
-                  game.phase === 'BATTLE_DECLARATION' ? '战斗宣言' :
-                    game.phase === 'DEFENSE_DECLARATION' ? '防御宣言' :
-                      game.phase === 'BATTLE_FREE' ? '战斗自由' : game.phase}
-              <Zap className="w-4 h-4 text-[#f27d26] animate-pulse" />
-            </span>
-          </div>
-
-          <div className="w-px h-8 bg-white/10" />
+          <div className="hidden h-8 w-px bg-white/10 md:block" />
 
           {/* Combat Strategy & Logs */}
-          <div className="flex items-center gap-4">
-            <div className="flex items-center bg-black/40 p-1 rounded-full border border-white/5">
+          <div className="flex w-fit max-w-full items-center justify-center gap-2 md:w-auto md:gap-4">
+            <div className="flex items-center rounded-full border border-white/5 bg-black/40 p-0.5 md:p-1">
               {(['ON', 'AUTO', 'OFF'] as const).map(strategy => (
                 <button
                   key={strategy}
                   onClick={() => onUpdateStrategy?.(strategy)}
                   className={cn(
-                    "px-3 py-1 text-[10px] font-black tracking-widest rounded-full transition-all",
+                    "rounded-full px-2 py-0.5 text-[9px] font-black tracking-widest transition-all md:px-3 md:py-1 md:text-[10px]",
                     confrontationStrategy === strategy
                       ? "bg-[#f27d26] text-black shadow-lg"
                       : "text-white/40 hover:text-white"
@@ -682,29 +775,29 @@ export const PlayField: React.FC<PlayFieldProps> = ({
               ))}
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5 md:gap-2">
               {isPopupHidden && (
                 <button
                   onClick={onExpand}
-                  className="p-2.5 px-4 rounded-full bg-[#f27d26] text-black font-black italic text-[10px] tracking-widest transition-all hover:scale-105 active:scale-95 shadow-[0_0_20px_rgba(242,125,38,0.4)] flex items-center gap-2"
+                  className="flex items-center gap-1.5 rounded-full bg-[#f27d26] px-3 py-1.5 text-[9px] font-black italic tracking-widest text-black shadow-[0_0_20px_rgba(242,125,38,0.4)] transition-all hover:scale-105 active:scale-95 md:gap-2 md:px-4 md:py-2.5 md:text-[10px]"
                 >
-                  <Play className="w-4 h-4 fill-current" />
+                  <Play className="h-3.5 w-3.5 fill-current md:h-4 md:w-4" />
                   展开窗口
                 </button>
               )}
               <button
                 onClick={onOpenRulebook}
-                className="p-2.5 rounded-full bg-white/5 hover:bg-white/10 text-white/60 hover:text-white transition-all border border-white/5 shadow-inner"
+                className="rounded-full border border-white/5 bg-white/5 p-1.5 text-white/60 shadow-inner transition-all hover:bg-white/10 hover:text-white md:p-2.5"
                 title="规则书"
               >
-                <BookOpen className="w-5 h-5" />
+                <BookOpen className="h-4 w-4 md:h-5 md:w-5" />
               </button>
               <button
                 onClick={onShowLogs}
-                className="p-2.5 px-4 rounded-full bg-white/5 hover:bg-[#f27d26]/20 text-white/60 hover:text-[#f27d26] transition-all border border-white/5 shadow-inner flex items-center gap-1.5"
+                className="flex items-center gap-1.5 rounded-full border border-white/5 bg-white/5 px-3 py-1.5 text-white/60 shadow-inner transition-all hover:bg-[#f27d26]/20 hover:text-[#f27d26] md:px-4 md:py-2.5"
                 title="战斗日志"
               >
-                <span className="text-[10px] font-black tracking-widest">LOG</span>
+                <span className="text-[9px] font-black tracking-widest md:text-[10px]">LOG</span>
                 {/* <Layers className="w-4 h-4" /> */}
               </button>
             </div>
@@ -718,6 +811,7 @@ export const PlayField: React.FC<PlayFieldProps> = ({
           player={player}
           onCardClick={onCardClick}
           onPreviewCard={onPreviewCard}
+          onHoverCard={setHoveredCard}
           onPlayCard={onPlayCard}
           paymentSelection={paymentSelection}
           pendingPlayCard={pendingPlayCard}

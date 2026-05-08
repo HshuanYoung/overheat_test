@@ -924,6 +924,19 @@ export const ServerGameService = {
       ServerGameService.checkWinConditions(gameState);
     }
 
+    if (
+      (targetZone === 'EROSION_FRONT' || targetZone === 'EROSION_BACK') &&
+      targetPlayer.erosionFront.filter(c => c !== null).length + targetPlayer.erosionBack.filter(c => c !== null).length >= 10 &&
+      !targetPlayer.isGoddessMode
+    ) {
+      if (options?.isEffect) {
+        (gameState as any).pendingGoddessTransformationDamageSource = 'EFFECT';
+        (gameState as any).pendingGoddessTransformationEffectSourcePlayerUid = options.effectSourcePlayerUid;
+        (gameState as any).pendingGoddessTransformationEffectSourceCardId = options.effectSourceCardId;
+      }
+      ServerGameService.triggerGoddessTransformation(gameState, targetPlayerId);
+    }
+
     return true;
   },
 
@@ -1167,7 +1180,7 @@ export const ServerGameService = {
     return gameState;
   },
 
-  payCost(gameState: GameState, playerId: string, cost: number, paymentSelection: { feijingCardId?: string, exhaustUnitIds?: string[], erosionFrontIds?: string[] }, cardColor?: string, playingCardId?: string): { success: boolean; reason?: string } {
+  payCost(gameState: GameState, playerId: string, cost: number, paymentSelection: { feijingCardId?: string, exhaustUnitIds?: string[], erosionFrontIds?: string[] }, cardColor?: string, playingCardId?: string, options?: { excludeExhaustUnitIds?: string[] }): { success: boolean; reason?: string } {
     const player = gameState.players[playerId];
     const findPlayingCard = () => playingCardId
       ? player.hand.find(c => c.gamecardId === playingCardId) ||
@@ -1255,6 +1268,7 @@ export const ServerGameService = {
       }
 
       const cardsToExhaust: Card[] = [];
+      const excludedExhaustIds = new Set(options?.excludeExhaustUnitIds || []);
       if (paymentSelection.exhaustUnitIds) {
         const seenExhaustUnitIds = new Set<string>();
         for (const uid of paymentSelection.exhaustUnitIds) {
@@ -1263,6 +1277,10 @@ export const ServerGameService = {
             return { success: false, reason: '不能重复选择同一个横置支付单位' };
           }
           seenExhaustUnitIds.add(uid);
+          if (excludedExhaustIds.has(uid)) {
+            if (reservedDeckCard) player.deck.push(reservedDeckCard);
+            return { success: false, reason: '不能横置本次宣言的单位来支付该费用' };
+          }
           const card = [...player.unitZone].find(c => c?.gamecardId === uid && !c.isExhausted && !(c as any).data?.cannotExhaustByEffect);
           if (card) {
             cardsToExhaust.push(card);
@@ -2055,7 +2073,8 @@ export const ServerGameService = {
           paymentCost,
           paymentSelection,
           paymentTarget?.color || query.paymentColor,
-          paymentTargetId
+          paymentTargetId,
+          query.context?.paymentOptions
         );
 
         if (!result.success) {
@@ -3000,7 +3019,10 @@ export const ServerGameService = {
           callbackKey: 'DECLARE_DEFENSE_TAX_PAYMENT',
           paymentCost: defenseTaxAmount,
           paymentColor: unit.color,
-          context: { defenderId }
+          context: {
+            defenderId,
+            paymentOptions: { excludeExhaustUnitIds: [defenderId] }
+          }
         };
         return gameState;
       }
@@ -3542,8 +3564,10 @@ export const ServerGameService = {
     gameState.logs.push(`${player.displayName} 进入了女神化状态！`);
     const damageSource = (gameState as any).pendingGoddessTransformationDamageSource;
     const effectSourcePlayerUid = (gameState as any).pendingGoddessTransformationEffectSourcePlayerUid;
+    const effectSourceCardId = (gameState as any).pendingGoddessTransformationEffectSourceCardId;
     delete (gameState as any).pendingGoddessTransformationDamageSource;
     delete (gameState as any).pendingGoddessTransformationEffectSourcePlayerUid;
+    delete (gameState as any).pendingGoddessTransformationEffectSourceCardId;
 
     EventEngine.dispatchEvent(gameState, {
       type: 'GODDESS_TRANSFORMATION',
@@ -3551,7 +3575,9 @@ export const ServerGameService = {
       data: {
         playerUid: playerId,
         damageSource,
-        effectSourcePlayerUid
+        effectSourcePlayerUid,
+        effectSourceCardId,
+        enteredByEffect: damageSource === 'EFFECT'
       }
     });
 

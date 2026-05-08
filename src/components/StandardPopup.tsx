@@ -27,6 +27,7 @@ interface StandardPopupProps {
   minSelections?: number;
   maxSelections?: number;
   onCardClick?: (card: Card, e?: React.MouseEvent) => void;
+  onCardHover?: (card: Card | null) => void;
   onSelectionComplete?: () => void;
   cardBackUrl?: string;
   
@@ -60,6 +61,7 @@ export const StandardPopup: React.FC<StandardPopupProps> = ({
   minSelections = 0,
   maxSelections = 0,
   onCardClick,
+  onCardHover,
   onSelectionComplete,
   cardBackUrl,
   paymentCost,
@@ -211,6 +213,8 @@ export const StandardPopup: React.FC<StandardPopupProps> = ({
                       onClick={(e) => {
                         onCardClick?.(card, e);
                       }}
+                      onMouseEnter={() => onCardHover?.(card)}
+                      onMouseLeave={() => onCardHover?.(null)}
                       className={cn(
                         "w-full aspect-[3/4] rounded-xl md:rounded-2xl overflow-hidden border-2 transition-all relative shrink-0",
                         isSelected 

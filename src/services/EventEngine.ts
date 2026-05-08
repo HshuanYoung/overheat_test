@@ -379,6 +379,13 @@ export class EventEngine {
             description: '在回合结束时回归战场'
           });
         }
+        if (card && (card as any).data?.returnToOwnerFieldAtTurnEndSourceName) {
+          if (!card.influencingEffects) card.influencingEffects = [];
+          card.influencingEffects.push({
+            sourceCardName: (card as any).data.returnToOwnerFieldAtTurnEndSourceName,
+            description: '回合结束时回到持有者战场'
+          });
+        }
         if (card && (card as any).data?.placedOnOpponentFieldSourceName) {
           if (!card.influencingEffects) card.influencingEffects = [];
           card.influencingEffects.push({

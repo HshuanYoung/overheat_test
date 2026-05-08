@@ -627,7 +627,8 @@ export class AtomicEffectExecutor {
             data: {
               playerUid: targetPlayerUid,
               damageSource: source,
-              effectSourcePlayerUid: dealerPlayerUid
+              effectSourcePlayerUid: dealerPlayerUid,
+              enteredByEffect: source === 'EFFECT'
             }
           });
         }
@@ -1210,6 +1211,35 @@ export class AtomicEffectExecutor {
 
     if (toZone === 'EROSION_BACK') {
       this.checkErosionBackDefeat(gameState);
+    }
+
+    if (
+      (toZone === 'EROSION_FRONT' || toZone === 'EROSION_BACK') &&
+      targetPlayer.erosionFront.filter(c => c !== null).length + targetPlayer.erosionBack.filter(c => c !== null).length >= 10 &&
+      !targetPlayer.isGoddessMode
+    ) {
+      if (isEffect) {
+        (gameState as any).pendingGoddessTransformationDamageSource = 'EFFECT';
+        (gameState as any).pendingGoddessTransformationEffectSourcePlayerUid = options?.effectSourcePlayerUid;
+        (gameState as any).pendingGoddessTransformationEffectSourceCardId = options?.effectSourceCardId;
+      }
+      if (typeof (GameService as any).triggerGoddessTransformation === 'function') {
+        (GameService as any).triggerGoddessTransformation(gameState, toPlayerUid);
+      } else {
+        targetPlayer.isGoddessMode = true;
+        gameState.logs.push(`${targetPlayer.displayName} 进入女神化状态。`);
+        EventEngine.dispatchEvent(gameState, {
+          type: 'GODDESS_TRANSFORMATION',
+          playerUid: toPlayerUid,
+          data: {
+            playerUid: toPlayerUid,
+            damageSource: isEffect ? 'EFFECT' : undefined,
+            effectSourcePlayerUid: options?.effectSourcePlayerUid,
+            effectSourceCardId: options?.effectSourceCardId,
+            enteredByEffect: !!isEffect
+          }
+        });
+      }
     }
   }
 
