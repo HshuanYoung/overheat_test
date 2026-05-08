@@ -1,13 +1,13 @@
 import { Card, CardEffect } from '../types/game';
-import { addContinuousDamage, addContinuousPower, addInfluence, addTempPower, canPayAccessCost, ensureData, paymentCost } from './BaseUtil';
+import { addContinuousDamage, addContinuousPower, addInfluence, addTempPower, canPayAccessCost, ensureData, markCanAttackReadyUnit, paymentCost } from './BaseUtil';
 
 const cardEffects: CardEffect[] = [{
     id: '103000082_base',
     type: 'CONTINUOUS',
-    description: '不能组成联军，也不能成为效果对象；可以攻击对手横置单位。',
+    description: '不能组成联军，也不能成为效果对象；可以攻击对手重置单位。',
     applyContinuous: (_gameState, instance) => {
       ensureData(instance).cannotAllianceByEffect = true;
-      ensureData(instance).canAttackExhausted = true;
+      markCanAttackReadyUnit(instance, instance);
       (instance as any).cannotBeEffectTargetByEffect = true;
       addInfluence(instance, instance, '不能组成联军，也不能成为效果对象');
     }

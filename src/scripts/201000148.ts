@@ -1,4 +1,25 @@
-import { Card } from '../types/game';
+import { Card, CardEffect } from '../types/game';
+import { exileByEffect, getOpponentUid, story } from './BaseUtil';
+
+const duplicatedOpponentCards = (gameState: any, playerState: any) => {
+  const opponent = gameState.players[getOpponentUid(gameState, playerState.uid)];
+  const field = [...opponent.unitZone, ...opponent.itemZone].filter((card): card is Card => !!card);
+  const counts = new Map<string, number>();
+  field.forEach(card => counts.set(card.fullName, (counts.get(card.fullName) || 0) + 1));
+  return field.filter(card => (counts.get(card.fullName) || 0) >= 2);
+};
+
+const cardEffects: CardEffect[] = [story('201000148_exile_duplicates', '若对手场上的卡名相同的卡有2张以上，将那些卡放逐。', async (instance, gameState, playerState) => {
+  duplicatedOpponentCards(gameState, playerState).forEach(card => exileByEffect(gameState, card, instance));
+}, {
+  condition: (gameState, playerState) => duplicatedOpponentCards(gameState, playerState).length > 0
+}), {
+  id: '201000148_payment_substitute',
+  type: 'CONTINUOUS',
+  triggerLocation: ['HAND'],
+  content: 'SELF_HAND_COST',
+  description: '为ACCESS+3以下白色卡支付使用费用时，可以将手牌中的这张卡放逐作为代替。'
+}];
 
 /**
  * Auto-generated from Card.xlsx + Card2.xlsx.
@@ -28,7 +49,7 @@ const card: Card = {
   displayState: 'FRONT_UPRIGHT',
   feijingMark: false,
   canResetCount: 0,
-  effects: [],
+  effects: cardEffects,
   rarity: 'R',
   availableRarities: ['R'],
   cardPackage: 'BT05',

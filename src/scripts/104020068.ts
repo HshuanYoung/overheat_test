@@ -62,6 +62,7 @@ const effect_104020068_trigger: CardEffect = {
 const effect_104020068_activate: CardEffect = {
   id: 'aketi_goddess_bounce',
   type: 'ACTIVATE',
+  triggerLocation: ['UNIT'],
   erosionTotalLimit: [10, 10],
   erosionFrontLimit: [2, 10],
   description: '【启】在女神化状态下，每场比赛一次。选择侵蚀区域两张卡牌转为背面：选择场上最多两张单位或道具卡牌返回持有者手牌。之后，对自己造成2点效果伤害。',
@@ -155,8 +156,16 @@ const effect_104020068_activate_play: CardEffect = {
   triggerLocation: ['EROSION_FRONT'],
   description: '【启】此卡在侵蚀区域正面时：可以支付AC值使用这张卡。',
   condition: (gameState, playerState, instance) => {
+    if (instance.cardlocation !== 'EROSION_FRONT') return false;
+
     // 1. Basic Turn/Phase/Space check
-    if (!playerState.isTurn || gameState.phase !== 'MAIN' || !playerState.unitZone.some(u => u === null)) return false;
+    if (
+      !playerState.isTurn ||
+      gameState.phase !== 'MAIN' ||
+      !playerState.unitZone.some(u => u === null)
+    ) {
+      return false;
+    }
 
     // 2. Same Name Check (Unique Unit)
     if (instance.specialName && playerState.unitZone.some(u => u?.specialName === instance.specialName)) return false;

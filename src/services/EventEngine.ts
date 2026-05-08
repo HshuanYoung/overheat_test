@@ -265,6 +265,7 @@ export class EventEngine {
             delete (card as any).data.declareAttackDefenseTaxSourceName;
             delete (card as any).data.cannotAllianceByEffect;
             delete (card as any).data.canAttackExhausted;
+            delete (card as any).data.canAttackReady;
             delete (card as any).data.cannotExhaustByEffect;
             if ((card as any).data.soulBindItemId) {
               const sourceStillActive = Object.values(gameState.players).some(player =>
@@ -543,6 +544,18 @@ export class EventEngine {
             card.influencingEffects.push({
               sourceCardName: (card as any).data.canAttackExhaustedSourceName || '效果',
               description: '可以攻击对手横置单位'
+            });
+          }
+          if (
+            card &&
+            (card as any).data?.canAttackReadyUntilTurn !== undefined &&
+            (card as any).data.canAttackReadyUntilTurn >= gameState.turnCount
+          ) {
+            (card as any).data.canAttackReady = true;
+            if (!card.influencingEffects) card.influencingEffects = [];
+            card.influencingEffects.push({
+              sourceCardName: (card as any).data.canAttackReadySourceName || '效果',
+              description: '可以攻击对手重置单位'
             });
           }
           if (card && (card as any).data?.canAttackAnyUnit) {

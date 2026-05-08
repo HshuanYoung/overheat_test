@@ -103,6 +103,12 @@ const effect_101000501_return_after_battle: CardEffect = {
     delete data.returnFromExileAfterBattleTurn;
     delete data.returnFromExileAfterBattleOwnerUid;
     moveCard(gameState, ownerUid, instance, 'UNIT', instance);
+    const returned = owner.unitZone.find(card => card?.gamecardId === instance.gamecardId);
+    if (returned) {
+      returned.isExhausted = false;
+      returned.displayState = 'FRONT_UPRIGHT';
+      returned.hasAttackedThisTurn = false;
+    }
   }
 };
 

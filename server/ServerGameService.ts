@@ -241,7 +241,7 @@ export const ServerGameService = {
 
   canUseStoryPaymentSubstitute(paymentCard: Card | undefined, playingCard: Card | undefined, cost?: number, playingCardId?: string) {
     if (!paymentCard || paymentCard.gamecardId === playingCardId || !playingCard || !cost || cost <= 0) return false;
-    if (paymentCard.id === '201000132') {
+    if (paymentCard.id === '201000132' || paymentCard.id === '201000148' || paymentCard.id === '203000146') {
       return playingCard.color === 'WHITE' && (playingCard.acValue || 0) <= 3;
     }
     if (paymentCard.id === '202000151') {
@@ -437,6 +437,10 @@ export const ServerGameService = {
 
   has102050091ExhaustedAttack(card: Card | undefined) {
     return !!card && !!(card as any).data?.canAttackExhausted;
+  },
+
+  hasReadyUnitAttack(card: Card | undefined) {
+    return !!card && !!(card as any).data?.canAttackReady;
   },
 
   get102050091BattleSaveCandidate(gameState: GameState, playerId: string): Card | undefined {
@@ -1222,7 +1226,7 @@ export const ServerGameService = {
         }
         feijingCard = player.hand.find(c =>
           c.gamecardId === paymentSelection.feijingCardId &&
-          (c.feijingMark || c.id === '204000145' || c.id === '205000136' || c.id === '201000132' || c.id === '202000151' || c.id === '202060130')
+          (c.feijingMark || c.id === '204000145' || c.id === '205000136' || c.id === '201000132' || c.id === '201000148' || c.id === '203000146' || c.id === '202000151' || c.id === '202060130')
         );
         if (feijingCard) {
           if (
@@ -2068,7 +2072,7 @@ export const ServerGameService = {
     }
 
     if (query.callbackKey === 'DIKAI_ATTACK_TARGET_CHOICE') {
-      const { attackerIds, isAlliance } = query.context;
+      const { attackerIds, isAlliance, targetMode } = query.context;
       if (currentSelections[0] !== 'YES') {
         await ServerGameService.declareAttack(gameState, playerUid, attackerIds, isAlliance, 'NO_PROMPT', undefined, onUpdate);
         return gameState;
@@ -2076,11 +2080,11 @@ export const ServerGameService = {
 
       const opponentId = gameState.playerIds.find(id => id !== playerUid)!;
       const opponent = gameState.players[opponentId];
-      const candidates = opponent.unitZone.filter((unit): unit is Card =>
-        !!unit &&
-        unit.isExhausted &&
-        !(unit as any).cannotBeAttackTargetByEffect
-      );
+      const candidates = opponent.unitZone.filter((unit): unit is Card => {
+        if (!unit || (unit as any).cannotBeAttackTargetByEffect) return false;
+        if (targetMode === 'READY') return !unit.isExhausted;
+        return unit.isExhausted;
+      });
 
       if (candidates.length === 0) {
         await ServerGameService.declareAttack(gameState, playerUid, attackerIds, isAlliance, 'NO_PROMPT', undefined, onUpdate);
@@ -2097,7 +2101,9 @@ export const ServerGameService = {
           candidates.map(card => ({ card, source: 'UNIT' as TriggerLocation }))
         ),
         title: '选择攻击目标',
-        description: '选择对手的1个横置单位。本次攻击将直接进入战斗自由步骤。',
+        description: targetMode === 'READY'
+          ? '选择对手的1个重置单位。本次攻击将直接进入战斗自由步骤。'
+          : '选择对手的1个横置单位。本次攻击将直接进入战斗自由步骤。',
         minSelections: 1,
         maxSelections: 1,
         callbackKey: 'DIKAI_ATTACK_TARGET_SELECT',
@@ -2740,11 +2746,33 @@ export const ServerGameService = {
       const attackerUnit = player.unitZone.find(unit => unit?.gamecardId === attackerIds[0]);
       const opponentId = gameState.playerIds.find(id => id !== playerId)!;
       const opponent = gameState.players[opponentId];
+      const readyTargets = opponent.unitZone.filter((unit): unit is Card =>
+        !!unit &&
+        !unit.isExhausted &&
+        !(unit as any).cannotBeAttackTargetByEffect
+      );
       const exhaustedTargets = opponent.unitZone.filter((unit): unit is Card =>
         !!unit &&
         unit.isExhausted &&
         !(unit as any).cannotBeAttackTargetByEffect
       );
+
+      if (ServerGameService.hasReadyUnitAttack(attackerUnit) && readyTargets.length > 0) {
+        gameState.pendingQuery = {
+          id: Math.random().toString(36).substring(7),
+          type: 'SELECT_CHOICE',
+          playerUid: playerId,
+          options: [
+            { id: 'YES', label: '攻击重置单位(YES)' },
+            { id: 'NO', label: '不攻击重置单位(NO)' }
+          ],
+          title: '攻击重置单位',
+          description: `[${attackerUnit!.fullName}] 可以攻击对手的重置单位。是否选择攻击重置单位？`,
+          callbackKey: 'DIKAI_ATTACK_TARGET_CHOICE',
+          context: { attackerIds, isAlliance, targetMode: 'READY' }
+        };
+        return gameState;
+      }
 
       if (ServerGameService.has102050091ExhaustedAttack(attackerUnit) && exhaustedTargets.length > 0) {
         gameState.pendingQuery = {
@@ -2758,7 +2786,7 @@ export const ServerGameService = {
           title: '攻击横置单位',
           description: `[${attackerUnit!.fullName}] 可以攻击对手的横置单位。是否选择攻击横置单位？`,
           callbackKey: 'DIKAI_ATTACK_TARGET_CHOICE',
-          context: { attackerIds, isAlliance }
+          context: { attackerIds, isAlliance, targetMode: 'EXHAUSTED' }
         };
         return gameState;
       }
@@ -2805,7 +2833,13 @@ export const ServerGameService = {
             !!targetUnit &&
             targetUnit.isExhausted &&
             ServerGameService.has102050091ExhaustedAttack(unit);
-          if (!canAttackMarkedTarget && !canAttackAnyUnitTarget && !canAttackExhaustedTarget) {
+          const canAttackReadyTarget =
+            !isAlliance &&
+            attackerIds.length === 1 &&
+            !!targetUnit &&
+            !targetUnit.isExhausted &&
+            ServerGameService.hasReadyUnitAttack(unit);
+          if (!canAttackMarkedTarget && !canAttackAnyUnitTarget && !canAttackExhaustedTarget && !canAttackReadyTarget) {
             throw new Error('不能攻击该单位');
           }
         }

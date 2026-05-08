@@ -64,7 +64,7 @@ const canUse205000136AsPaymentSubstitute = (paymentCard: Card | undefined, cardC
 
 const canUseStoryPaymentSubstitute = (paymentCard: Card | undefined, playingCard: Card | undefined, cost?: number, playingCardId?: string) => {
   if (!paymentCard || paymentCard.gamecardId === playingCardId || !playingCard || !cost || cost <= 0) return false;
-  if (paymentCard.id === '201000132') {
+  if (paymentCard.id === '201000132' || paymentCard.id === '201000148' || paymentCard.id === '203000146') {
     return playingCard.color === 'WHITE' && (playingCard.acValue || 0) <= 3;
   }
   if (paymentCard.id === '202000151') {

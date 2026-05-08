@@ -1,5 +1,5 @@
 import { Card, CardEffect } from '../types/game';
-import { AtomicEffectExecutor, addInfluence, createSelectCardQuery, erosionCost, moveCard, ownerOf, paymentCost } from './BaseUtil';
+import { AtomicEffectExecutor, addInfluence, createSelectCardQuery, erosionCost, moveCard, ownerOf, paymentCost, readyByEffect } from './BaseUtil';
 
 const cardEffects: CardEffect[] = [{
     id: '101100096_alliance_protect',
@@ -33,8 +33,8 @@ const cardEffects: CardEffect[] = [{
       ids.forEach((id: string) => {
         const unit = playerState.unitZone.find(card => card?.gamecardId === id);
         if (unit) {
-          unit.isExhausted = false;
-          unit.hasAttackedThisTurn = false;
+          readyByEffect(_gameState, unit, instance);
+          unit.inAllianceGroup = false;
           addInfluence(unit, instance, '因效果重置');
         }
       });

@@ -39,6 +39,71 @@ const getActionTypeLabel = (type?: string | null) => {
   return ACTION_TYPE_LABELS[type] || type.replace(/_/g, ' ');
 };
 
+const getPhaseRequestMeta = (item?: StackItem | null) => {
+  if (!item || item.type !== 'PHASE_END') {
+    return {
+      title: getActionTypeLabel(item?.type),
+      subtitle: '行动请求',
+      Icon: Send,
+      tone: 'orange'
+    };
+  }
+
+  if (item.nextPhase === 'DAMAGE_CALCULATION') {
+    return {
+      title: '结束战斗自由',
+      subtitle: '进入伤害计算',
+      Icon: Sword,
+      tone: 'red'
+    };
+  }
+
+  if (item.nextPhase === 'DISCARD') {
+    return {
+      title: '结束回合',
+      subtitle: '进入结束处理',
+      Icon: Flag,
+      tone: 'blue'
+    };
+  }
+
+  return {
+    title: '阶段切换请求',
+    subtitle: item.nextPhase ? getPhaseLabel(item.nextPhase) : '等待响应',
+    Icon: Send,
+    tone: 'orange'
+  };
+};
+
+const PhaseRequestCard: React.FC<{ item: StackItem; className?: string }> = ({ item, className }) => {
+  const meta = getPhaseRequestMeta(item);
+  const Icon = meta.Icon;
+  const toneClass = meta.tone === 'red'
+    ? 'border-red-400/70 bg-red-950/80 text-red-100 shadow-[0_0_24px_rgba(239,68,68,0.35)]'
+    : meta.tone === 'blue'
+      ? 'border-sky-400/70 bg-sky-950/80 text-sky-100 shadow-[0_0_24px_rgba(56,189,248,0.3)]'
+      : 'border-[#f27d26]/70 bg-zinc-950/90 text-orange-100 shadow-[0_0_24px_rgba(242,125,38,0.28)]';
+
+  return (
+    <div className={cn(
+      'relative flex aspect-[3/4] w-full flex-col items-center justify-center overflow-hidden rounded-xl border-2 p-2 text-center',
+      toneClass,
+      className
+    )}>
+      <div className="absolute inset-0 bg-[linear-gradient(135deg,rgba(255,255,255,0.16),transparent_36%,rgba(255,255,255,0.05))]" />
+      <div className="relative flex h-9 w-9 items-center justify-center rounded-full border border-white/20 bg-black/35 shadow-inner md:h-12 md:w-12">
+        <Icon className="h-5 w-5 md:h-7 md:w-7" />
+      </div>
+      <div className="relative mt-2 text-[10px] font-black leading-tight md:text-sm">
+        {meta.title}
+      </div>
+      <div className="relative mt-1 text-[7px] font-bold uppercase tracking-widest text-white/55 md:text-[9px]">
+        {meta.subtitle}
+      </div>
+    </div>
+  );
+};
+
 const getChoiceIcon = (icon?: string) => {
   switch (icon) {
     case 'draw':
@@ -570,7 +635,7 @@ export const BattleField: React.FC = () => {
     !!paymentCost &&
     paymentCost > 0 &&
     (
-      (card.id === '201000132' && paymentColor === 'WHITE' && (pendingPlayCard?.acValue || paymentCost) <= 3) ||
+      ((card.id === '201000132' || card.id === '201000148' || card.id === '203000146') && paymentColor === 'WHITE' && (pendingPlayCard?.acValue || paymentCost) <= 3) ||
       (card.id === '202000151' && paymentColor === 'RED' && (pendingPlayCard?.acValue || paymentCost) <= 3) ||
       (card.id === '202060130' && pendingPlayCard?.faction === '雷霆')
     );
@@ -1770,6 +1835,8 @@ export const BattleField: React.FC = () => {
                           {getCardIdentity(game, game.currentProcessingItem.ownerUid, game.currentProcessingItem.card).split('|')[1].replace(']', '')}
                         </div>
                       </div>
+                    ) : game.currentProcessingItem.type === 'PHASE_END' ? (
+                      <PhaseRequestCard item={game.currentProcessingItem} className="shadow-2xl" />
                     ) : (
                       <div className="aspect-[3/4] bg-zinc-900 border-2 border-red-500/30 rounded-2xl flex flex-col items-center justify-center p-8 text-center shadow-2xl">
                         <Sword className="w-20 h-20 text-red-500/40 mb-6" />
@@ -2096,18 +2163,18 @@ export const BattleField: React.FC = () => {
               {/* Action: Attack (Red) */}
               {['MAIN', 'BATTLE_DECLARATION'].includes(game.phase) && me.isTurn && game.turnCount !== 1 && cardMenu.zone === 'unit' && (
                 (() => {
-                  const isMyCard = me.unitZone.some(c => c?.gamecardId === cardMenu.card.gamecardId);
-                  if (isMyCard && canUnitAttackNow(cardMenu.card)) {
+                  const latestUnit = me.unitZone.find(c => c?.gamecardId === cardMenu.card.gamecardId);
+                  if (latestUnit && canUnitAttackNow(latestUnit)) {
                     const forcedAttackActive = hasForcedAttackUnits();
-                    const cannotAlliance = forcedAttackActive || !!(cardMenu.card as any).data?.cannotAllianceByEffect;
+                    const cannotAlliance = forcedAttackActive || !!(latestUnit as any).data?.cannotAllianceByEffect;
                     return (
                       <div className="flex flex-col gap-2 md:gap-1 items-center">
-                        {(!cardMenu.card.inAllianceGroup || cannotAlliance) && (
+                        {(!latestUnit.inAllianceGroup || cannotAlliance) && (
                           <motion.button
                             whileHover={{ scale: 1.1 }}
                             className="px-4 py-3 md:py-1.5 text-[12px] md:text-[10px] font-bold text-white bg-[#ef4444] rounded-full shadow-lg border border-white/20 flex items-center justify-center w-full"
                             onClick={() => {
-                              handleDeclareAttack([cardMenu.card.gamecardId], false);
+                              handleDeclareAttack([latestUnit.gamecardId], false);
                               if (['item', 'grave', 'exile', 'erosion_front', 'erosion_back'].includes(cardMenu.zone)) {
                                 setViewingZone(null);
                               }
@@ -2117,11 +2184,11 @@ export const BattleField: React.FC = () => {
                             攻击
                           </motion.button>
                         )}
-                        {!cardMenu.card.inAllianceGroup && !cannotAlliance && <motion.button
+                        {!latestUnit.inAllianceGroup && !cannotAlliance && <motion.button
                           whileHover={{ scale: 1.1 }}
                           className="px-4 py-3 md:py-1.5 text-[12px] md:text-[10px] font-bold text-white bg-[#ef4444] rounded-full shadow-lg border border-white/20 flex items-center justify-center w-full"
                           onClick={() => {
-                            setAllianceTargetSelection(cardMenu.card.gamecardId);
+                            setAllianceTargetSelection(latestUnit.gamecardId);
                             if (['item', 'grave', 'exile', 'erosion_front', 'erosion_back'].includes(cardMenu.zone)) {
                               setViewingZone(null);
                             }
@@ -2438,7 +2505,11 @@ export const BattleField: React.FC = () => {
                   <div key={`${idx}-${item.timestamp}`} className="flex items-center gap-4">
                     <div className="flex flex-col items-center gap-2">
                       <div className="w-16 md:w-24 aspect-[3/4] rounded-xl overflow-hidden border-2 border-white/20 shadow-2xl relative">
-                        {item.card ? <CardComponent card={item.card} disableZoom cardBackUrl={cardBackUrl} /> : <div className="w-full h-full bg-zinc-800" />}
+                        {item.card
+                          ? <CardComponent card={item.card} disableZoom cardBackUrl={cardBackUrl} />
+                          : item.type === 'PHASE_END'
+                            ? <PhaseRequestCard item={item} />
+                            : <div className="w-full h-full bg-zinc-800" />}
                         <div className={cn(
                           "absolute top-1 left-1 px-1.5 py-0.5 rounded text-[8px] font-black italic text-white z-10 shadow-lg",
                           item.ownerUid === myUid ? "bg-blue-600" : "bg-red-600"

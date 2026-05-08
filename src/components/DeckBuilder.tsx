@@ -895,7 +895,6 @@ export const DeckBuilder: React.FC = () => {
                     <span className="text-sm">x{collection[zoomedCard.uniqueId] || 0}</span>
                   </div>
                   <div className="absolute -bottom-4 -left-4 bg-zinc-800 px-4 py-2 rounded-xl border border-white/10 font-black italic shadow-2xl -rotate-6 z-20 flex flex-col items-center">
-                    <span className="text-[10px] opacity-60 text-red-500">卡组内</span>
                     <span>{deckBaseCounts[zoomedCard.id] || 0} / 4</span>
                   </div>
                 </div>

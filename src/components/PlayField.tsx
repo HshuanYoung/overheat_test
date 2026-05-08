@@ -94,9 +94,9 @@ const CardSlot: React.FC<{
           <CardComponent isBack cardBackUrl={cardBackUrl} />
         ) : card ? (
           <div className={cn(
-            "h-full w-full relative transition-[transform,opacity] duration-500",
+            "h-full w-full relative transition-[opacity,filter] duration-500",
             isOpponent && "rotate-180",
-            isExhausted && "opacity-80"
+            isExhausted && "opacity-90"
           )}>
             {isFaceUp ? (
               <CardComponent card={card} className="border-0" isExhausted={isExhausted} statusBorder={isAttacking ? 'red' : isDefending ? 'blue' : undefined} displayMode={displayMode} cardBackUrl={cardBackUrl} isHighlighted={isHighlighted} />

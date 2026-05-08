@@ -55,22 +55,26 @@ const CardComponentImpl: React.FC<CardProps> = ({
   isHighlighted
 }) => {
   if (isBack || !card) {
+    const backExhausted = !!isExhausted;
     return (
       <motion.div
         className={clsx(
           'relative aspect-[3/4] w-full rounded-xl overflow-hidden border-2 border-zinc-700 cursor-default bg-zinc-900 shadow-xl',
+          backExhausted && 'opacity-85 saturate-75',
           className
         )}
       >
-        <img
-          src={cardBackUrl || '/assets/card_bg/default_card_bg.jpg'}
-          alt="卡背"
-          className="absolute inset-0 w-full h-full object-cover"
-          loading="lazy"
-          decoding="async"
-          draggable={false}
-          referrerPolicy="no-referrer"
-        />
+        <div className={clsx('absolute inset-0 transition-transform duration-300', backExhausted && 'rotate-90 scale-75')}>
+          <img
+            src={cardBackUrl || '/assets/card_bg/default_card_bg.jpg'}
+            alt="卡背"
+            className="absolute inset-0 w-full h-full object-cover"
+            loading="lazy"
+            decoding="async"
+            draggable={false}
+            referrerPolicy="no-referrer"
+          />
+        </div>
         <div className="absolute inset-0 bg-black/20" />
       </motion.div>
     );
@@ -97,7 +101,6 @@ const CardComponentImpl: React.FC<CardProps> = ({
   return (
     <motion.div
       initial={false}
-      style={{ rotate: exhausted ? 90 : 0 }}
       whileHover={disableZoom ? undefined : { scale: 1.02, y: -2 }}
       whileTap={disableZoom ? undefined : { scale: 0.98 }}
       onClick={handleCardClick}
@@ -109,10 +112,11 @@ const CardComponentImpl: React.FC<CardProps> = ({
             : 'border-2 border-blue-500 shadow-[0_0_20px_rgba(59,130,246,0.6)]'
           : `${getRarityClass(card.rarity)} border-2`,
         isHighlighted && '!border-yellow-400 !border-2 shadow-[0_0_20px_rgba(250,204,21,1)] z-50 scale-105',
+        exhausted && 'opacity-85 saturate-75 shadow-[inset_0_0_0_2px_rgba(251,191,36,0.35)]',
         className
       )}
     >
-      <div className="absolute inset-0 overflow-hidden rounded-xl">
+      <div className={clsx('absolute inset-0 overflow-hidden rounded-xl transition-transform duration-300', exhausted && 'rotate-90 scale-75')}>
         <img
           src={imageUrl}
           alt={card.fullName || fullImageUrl}

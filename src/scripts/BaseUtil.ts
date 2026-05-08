@@ -144,6 +144,14 @@ export const markCanAttackExhaustedUnit = (target: Card, source: Card) => {
   addInfluence(target, source, '可以攻击对手横置单位');
 };
 
+export const markCanAttackReadyUnit = (target: Card, source: Card) => {
+  const data = ensureData(target);
+  data.canAttackReady = true;
+  data.canAttackReadyUntilTurn = Number.MAX_SAFE_INTEGER;
+  data.canAttackReadySourceName = source.fullName;
+  addInfluence(target, source, '可以攻击对手重置单位');
+};
+
 export const markCanAttackAnyUnit = (target: Card, source: Card) => {
   const data = ensureData(target);
   data.canAttackAnyUnit = true;
