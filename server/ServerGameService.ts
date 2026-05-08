@@ -1066,6 +1066,9 @@ export const ServerGameService = {
 
       // III. Check Erosion space limit (cannot reach 10 total)
       if (remainingCost > 0) {
+        if (player.deck.length < remainingCost) {
+          return { canPlay: false, reason: '卡组数量不足以支付剩余费用' };
+        }
         const totalErosionCount = player.erosionFront.filter(c => c !== null).length +
           player.erosionBack.filter(c => c !== null).length;
         const canUseWindProduction =
@@ -1289,6 +1292,10 @@ export const ServerGameService = {
 
       if (remainingCost > 0) {
         const totalErosion = player.erosionFront.filter(c => c !== null).length + player.erosionBack.filter(c => c !== null).length;
+        if (player.deck.length < remainingCost) {
+          if (reservedDeckCard) player.deck.push(reservedDeckCard);
+          return { success: false, reason: '卡组数量不足以支付剩余费用' };
+        }
         if (
           (player as any).windProductionTurn === gameState.turnCount &&
           remainingCost === 10 - totalErosion
@@ -1325,14 +1332,9 @@ export const ServerGameService = {
         ServerGameService.moveCard(gameState, playerId, fromZone, playerId, use204000145Replacement ? 'EXILE' : 'GRAVE', feijingCard.gamecardId);
       }
       for (let i = 0; i < remainingCost; i++) {
-        // 2. The cards in the damaged deck do not have enough damage value
         if (player.deck.length === 0) {
           if (reservedDeckCard) player.deck.push(reservedDeckCard);
-          gameState.logs.push(`[游戏结束] ${player.displayName} 的卡组中没有足够的卡牌来支付剩余费用，判负。`);
-          gameState.gameStatus = 2;
-          gameState.winReason = 'DECK_OUT_COST';
-          gameState.winnerId = gameState.playerIds.find(id => id !== playerId);
-          return { success: false, reason: 'DECK OUT' };
+          return { success: false, reason: '卡组数量不足以支付剩余费用' };
         }
         const topCard = player.deck.pop();
         if (topCard) {

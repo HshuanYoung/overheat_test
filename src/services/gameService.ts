@@ -386,6 +386,9 @@ export const GameService = {
       remainingCost = Math.max(0, remainingCost - readyUnitsCount);
 
       if (remainingCost > 0) {
+        if (player.deck.length < remainingCost) {
+          return { canPlay: false, reason: 'Not enough cards in deck to pay the remaining cost' };
+        }
         const totalErosionCount = player.erosionFront.filter(cardInZone => cardInZone !== null).length +
           player.erosionBack.filter(cardInZone => cardInZone !== null).length;
         if (totalErosionCount + remainingCost >= 10) {
