@@ -34,8 +34,10 @@ interface PlayFieldProps {
   canConfront?: boolean;
   isConfrontPromptActive?: boolean;
   isCounteringPromptActive?: boolean;
+  isDefensePromptActive?: boolean;
   onStartConfront?: () => void;
   onDeclineConfront?: () => void;
+  onDeclineDefense?: () => void;
   showPhaseMenu?: boolean;
   isAnyPopupOpen?: boolean;
   isPopupHidden?: boolean;
@@ -540,7 +542,7 @@ export const PlayField: React.FC<PlayFieldProps> = ({
   selectedDefender, allianceInitiator, timer, cardBackUrl, viewingZone,
   setViewingZone, highlightedCardIds, onShowLogs, onOpenRulebook,
   onSurrender, onPhaseClick, confrontationStrategy, onUpdateStrategy,
-  canConfront, isConfrontPromptActive, isCounteringPromptActive, onStartConfront, onDeclineConfront,
+  canConfront, isConfrontPromptActive, isCounteringPromptActive, isDefensePromptActive, onStartConfront, onDeclineConfront, onDeclineDefense,
   showPhaseMenu, isAnyPopupOpen, isPopupHidden, onExpand
 }) => {
   const [hoveredCard, setHoveredCard] = useState<Card | null>(null);
@@ -714,7 +716,7 @@ export const PlayField: React.FC<PlayFieldProps> = ({
             <div
               className={cn(
                 "relative flex min-w-[132px] flex-col items-center justify-center rounded-xl border border-transparent px-2 py-0.5 text-center transition-all md:min-w-[156px] md:px-4 md:py-1",
-                (isConfrontPromptActive || isCounteringPromptActive)
+                (isConfrontPromptActive || isCounteringPromptActive || isDefensePromptActive)
                   ? "cursor-default"
                   : "cursor-pointer hover:bg-white/5",
                 showPhaseMenu && "bg-white/10 border-white/20 shadow-lg",
@@ -722,21 +724,25 @@ export const PlayField: React.FC<PlayFieldProps> = ({
                   "bg-amber-500/15 border-amber-400/40 shadow-[0_0_24px_rgba(251,191,36,0.35)] animate-pulse"
               )}
               onClick={(e) => {
-                if (isConfrontPromptActive || isCounteringPromptActive) return;
+                if (isConfrontPromptActive || isCounteringPromptActive || isDefensePromptActive) return;
                 onPhaseClick?.();
               }}
             >
-              {(isConfrontPromptActive || isCounteringPromptActive) ? (
+              {(isConfrontPromptActive || isCounteringPromptActive || isDefensePromptActive) ? (
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
+                    if (isDefensePromptActive) {
+                      onDeclineDefense?.();
+                      return;
+                    }
                     onDeclineConfront?.();
                   }}
                   className="absolute inset-[-0.15rem] z-10 flex min-w-[132px] items-center justify-center gap-1.5 rounded-xl border border-sky-400/60 bg-sky-500/25 px-3 py-1.5 text-sky-100 shadow-[0_0_26px_rgba(56,189,248,0.42)] transition-all hover:bg-sky-500/35 active:scale-[0.98] md:inset-[-0.25rem] md:min-w-[156px] md:gap-2 md:px-4 md:py-2"
                 >
                   <Shield className="h-4 w-4" />
                   <span className="text-xs font-black italic tracking-widest md:text-sm">
-                    忽略对抗
+                    {isDefensePromptActive ? '放弃防御' : '忽略对抗'}
                   </span>
                 </button>
               ) : (

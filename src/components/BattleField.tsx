@@ -146,7 +146,6 @@ export const BattleField: React.FC = () => {
   const [discardSelection, setDiscardSelection] = useState<string[]>([]);
   const [showPhaseMenu, setShowPhaseMenu] = useState(false);
   const [showAttackModal, setShowAttackModal] = useState(false);
-  const [showDefenseModal, setShowDefenseModal] = useState(false);
   const [selectedErosionCardId, setSelectedErosionCardId] = useState<string | null>(null);
   const [erosionChoice, setErosionChoice] = useState<'A' | 'B' | 'C' | null>(null);
   const [selectedQueryIds, setSelectedQueryIds] = useState<string[]>([]);
@@ -183,7 +182,6 @@ export const BattleField: React.FC = () => {
     attacker1: Card;
     attacker2: Card;
   } | null>(null);
-  const [isSelectingDefender, setIsSelectingDefender] = useState(false);
   const [isConfronting, setIsConfronting] = useState(false);
 
   const lastAutoResolveRef = useRef<string | null>(null);
@@ -413,7 +411,6 @@ export const BattleField: React.FC = () => {
   // Reset interaction states when phase or priority changes
   useEffect(() => {
     setIsConfronting(false);
-    setIsSelectingDefender(false);
     setIsPopupHidden(false);
   }, [game?.phase, game?.priorityPlayerId, game?.counterStack.length, game?.isResolvingStack]);
 
@@ -788,6 +785,13 @@ export const BattleField: React.FC = () => {
     if (!game || !me || !myUid) return ids;
     if (game.pendingQuery || game.isResolvingStack || game.currentProcessingItem) return ids;
 
+    if (game.phase === 'DEFENSE_DECLARATION' && !me.isTurn) {
+      me.unitZone.forEach(unit => {
+        if (canCardDefendInCurrentBattle(unit, game)) ids.add(unit.gamecardId);
+      });
+      return ids;
+    }
+
     const isCounteringTurn = game.phase === 'COUNTERING' && game.priorityPlayerId === myUid;
     const isOwnSharedPhase = me.isTurn && ['MAIN', 'BATTLE_DECLARATION', 'BATTLE_FREE'].includes(game.phase);
     const isBattleFreeConfrontPrompt =
@@ -874,11 +878,7 @@ export const BattleField: React.FC = () => {
   };
 
   const canUnitDefend = (card: Card | null) =>
-    !!card &&
-    !card.isExhausted &&
-    !(card as any).battleForbiddenByEffect &&
-    !((card as any).data?.cannotDefendTurn === game.turnCount) &&
-    !((card as any).data?.cannotAttackOrDefendUntilTurn && (card as any).data.cannotAttackOrDefendUntilTurn >= game.turnCount);
+    canCardDefendInCurrentBattle(card);
 
   const getForcedAttackIds = () => {
     const ids = new Set<string>();
@@ -1031,6 +1031,32 @@ export const BattleField: React.FC = () => {
     return '';
   };
 
+  function canCardDefendInCurrentBattle(card: Card | null | undefined, state: GameState | null = game) {
+    if (!card || !state?.battleState) return false;
+    if (card.isExhausted) return false;
+    if ((card as any).battleForbiddenByEffect) return false;
+    if ((card as any).data?.cannotDefendTurn === state.turnCount) return false;
+    if ((card as any).data?.cannotAttackOrDefendUntilTurn && (card as any).data.cannotAttackOrDefendUntilTurn >= state.turnCount) return false;
+
+    const lockedTargetId = state.battleState.defenseLockedToTargetId;
+    if (lockedTargetId && card.gamecardId !== lockedTargetId) return false;
+
+    const minPower = state.battleState.defensePowerRestriction || 0;
+    if (minPower > 0 && (card.power || 0) < minPower) return false;
+
+    const maxPower = state.battleState.defenseMaxPowerRestriction;
+    if (maxPower !== undefined && (card.power || 0) >= maxPower) return false;
+
+    const attackerPlayer = state.players[state.playerIds[state.currentTurnPlayer]];
+    const attackers = (state.battleState.attackers || [])
+      .map(id => attackerPlayer?.unitZone.find(attacker => attacker?.gamecardId === id))
+      .filter(Boolean) as Card[];
+    const minExclusive = Math.max(0, ...attackers.map(attacker => (attacker as any).data?.defenseMinPower || 0));
+    if (minExclusive > 0 && (card.power || 0) <= minExclusive) return false;
+
+    return true;
+  }
+
   const handleDeclareAttack = async (attackers: string[] = selectedAttackers, alliance: boolean = isAlliance) => {
     if (!gameId || attackers.length === 0) return;
     try {
@@ -1049,7 +1075,6 @@ export const BattleField: React.FC = () => {
     try {
       await GameService.declareDefense(gameId, myUid, defenderId);
       setSelectedDefender(null);
-      setShowDefenseModal(false);
     } catch (error: any) {
       setLastError(error.message);
     }
@@ -1179,7 +1204,7 @@ export const BattleField: React.FC = () => {
       }
     }
 
-    if (isSelectingDefender || isConfronting) {
+    if (isConfronting) {
       if (['unit', 'hand', 'item', 'erosion_front', 'erosion_back', 'grave', 'exile'].includes(zone)) {
         // Fall through to show action menu
       } else {
@@ -1224,7 +1249,6 @@ export const BattleField: React.FC = () => {
         return;
       }
     }
-
 
     // Default: Show Action Menu
     const rect = e?.currentTarget?.getBoundingClientRect();
@@ -1301,7 +1325,6 @@ export const BattleField: React.FC = () => {
   const handleResolve = async () => {
     if (!gameId) return;
     try {
-      setIsSelectingDefender(false);
       setIsConfronting(false);
       if (game.phase === 'COUNTERING') {
         await GameService.passConfrontation(gameId);
@@ -2021,6 +2044,13 @@ export const BattleField: React.FC = () => {
                     game.priorityPlayerId === myUid &&
                     !game.isResolvingStack
                   }
+                  isDefensePromptActive={
+                    game.phase === 'DEFENSE_DECLARATION' &&
+                    !me.isTurn &&
+                    !game.pendingQuery &&
+                    !game.isResolvingStack &&
+                    !game.currentProcessingItem
+                  }
                   onStartConfront={() => {
                     if (game.phase === 'BATTLE_FREE') {
                       GameService.advancePhase(gameId!, 'CONFIRM_CONFRONTATION');
@@ -2034,6 +2064,7 @@ export const BattleField: React.FC = () => {
                       GameService.advancePhase(gameId!, 'DECLINE_CONFRONTATION');
                     }
                   }}
+                  onDeclineDefense={() => handleDeclareDefense(undefined)}
                   isPopupHidden={isPopupHidden}
                   onExpand={() => setIsPopupHidden(false)}
 
@@ -2149,47 +2180,6 @@ export const BattleField: React.FC = () => {
                   {game.isResolvingStack ? "正在结算连锁..." : `等待 ${game.players[game.priorityPlayerId!]?.displayName || '对手'} 响应...`}
                 </span>
               </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        {/* Defense Declaration Prompt Overlay (Replacement for Modal) */}
-        <StandardPopup
-          isOpen={game.phase === 'DEFENSE_DECLARATION' && !me.isTurn && !isSelectingDefender}
-          title="防御宣告"
-          description="你要进行防御吗？选择后点击场上单位完成宣告。"
-          mode="double_selection"
-          confirmText="进行防御"
-          cancelText="不进行防御"
-          onConfirm={() => setIsSelectingDefender(true)}
-          onCancel={() => handleDeclareDefense(undefined)}
-          confirmDisabled={!me.unitZone.some(canUnitDefend)}
-          cardBackUrl={cardBackUrl}
-          onHide={() => setIsPopupHidden(true)}
-          isHidden={isPopupHidden}
-        />
-
-        {/* Guided Defense Selection UI */}
-        <AnimatePresence>
-          {isSelectingDefender && (
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: 20 }}
-              className="fixed inset-x-0 top-[15%] z-[140] flex flex-col items-center gap-4 pointer-events-none"
-            >
-              <div className="bg-blue-600/90 border border-blue-400/50 px-8 py-4 rounded-full shadow-[0_0_30px_rgba(37,99,235,0.5)] backdrop-blur-md">
-                <p className="text-white font-black tracking-widest uppercase flex items-center gap-3">
-                  <Shield className="w-5 h-5 animate-pulse" />
-                  请选择一名待机单位进行防御
-                </p>
-              </div>
-              <button
-                onClick={() => setIsSelectingDefender(false)}
-                className="px-8 py-2 bg-zinc-900/80 hover:bg-zinc-800 text-white font-bold rounded-full border border-white/10 pointer-events-auto shadow-lg"
-              >
-                取消选择
-              </button>
             </motion.div>
           )}
         </AnimatePresence>
@@ -2465,7 +2455,6 @@ export const BattleField: React.FC = () => {
                         className="px-4 py-3 md:py-1.5 text-[12px] md:text-[10px] font-bold text-white bg-[#3b82f6] rounded-full shadow-lg border border-white/20 flex items-center justify-center min-w-[100px] md:min-w-[70px]"
                         onClick={() => {
                           handleDeclareDefense(cardMenu.card.gamecardId);
-                          setIsSelectingDefender(false);
                           if (['item', 'grave', 'exile', 'erosion_front', 'erosion_back'].includes(cardMenu.zone)) {
                             setViewingZone(null);
                           }
