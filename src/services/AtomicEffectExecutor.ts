@@ -260,11 +260,11 @@ export class AtomicEffectExecutor {
         break;
 
       case 'DEAL_EFFECT_DAMAGE':
-        if (effect.value) this.dealDamage(gameState, opponentUid, playerUid, effect.value, 'EFFECT', effect.destinationZone);
+        if (effect.value) this.dealDamage(gameState, opponentUid, playerUid, effect.value, 'EFFECT', effect.destinationZone, sourceCard);
         break;
 
       case 'DEAL_COMBAT_DAMAGE':
-        if (effect.value) this.dealDamage(gameState, opponentUid, playerUid, effect.value, 'BATTLE');
+        if (effect.value) this.dealDamage(gameState, opponentUid, playerUid, effect.value, 'BATTLE', undefined, sourceCard);
         break;
 
       case 'DESTROY_CARD':
@@ -326,7 +326,7 @@ export class AtomicEffectExecutor {
         break;
 
       case 'DEAL_EFFECT_DAMAGE_SELF':
-        if (effect.value) this.dealDamage(gameState, playerUid, playerUid, effect.value, 'EFFECT', effect.destinationZone);
+        if (effect.value) this.dealDamage(gameState, playerUid, playerUid, effect.value, 'EFFECT', effect.destinationZone, sourceCard);
         break;
 
       case 'GAIN_KEYWORD':
@@ -475,7 +475,7 @@ export class AtomicEffectExecutor {
     });
   }
 
-  private static dealDamage(gameState: GameState, targetPlayerUid: string, dealerPlayerUid: string, amount: number, source: 'BATTLE' | 'EFFECT', destination?: TriggerLocation) {
+  private static dealDamage(gameState: GameState, targetPlayerUid: string, dealerPlayerUid: string, amount: number, source: 'BATTLE' | 'EFFECT', destination?: TriggerLocation, sourceCard?: Card) {
     const player = gameState.players[targetPlayerUid];
     const dealer = gameState.players[dealerPlayerUid];
 
@@ -651,6 +651,8 @@ export class AtomicEffectExecutor {
 
     EventEngine.dispatchEvent(gameState, {
       type: source === 'BATTLE' ? 'COMBAT_DAMAGE_CAUSED' : 'EFFECT_DAMAGE_CAUSED',
+      sourceCard,
+      sourceCardId: sourceCard?.gamecardId,
       playerUid: targetPlayerUid,
       data: { amount: finalAmount, destination: finalDestination }
     });

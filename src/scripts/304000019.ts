@@ -1,6 +1,7 @@
 import { Card, GameState, PlayerState, CardEffect } from '../types/game';
 import { AtomicEffectExecutor } from '../services/AtomicEffectExecutor';
 import { EventEngine } from '../services/EventEngine';
+import { canPayAccessCost } from './BaseUtil';
 
 const isNonCombat = (gameState: GameState, cardId: string) => {
   const isAttacking = (gameState.battleState?.attackers || []).includes(cardId);
@@ -80,13 +81,16 @@ const handActivationEffect: CardEffect = {
   type: 'ACTIVATE',
   description: '【启】：我方场上存在2个或以上蓝色单位。支付2费用，在手牌中发动：选择我方2个非神蚀单位（不能是战斗中的单位）返回持有者手牌。之后，将这张卡放置在战场上，并选择我方场上一个单位装备。',
   triggerLocation: ['HAND'],
-  condition: (gameState, playerState) => {
+  condition: (gameState, playerState, instance) => {
     const eligibleBlueUnits = playerState.unitZone.filter(u =>
       u && AtomicEffectExecutor.matchesColor(u, 'BLUE') && isNonCombat(gameState, u.gamecardId)
     );
-    return eligibleBlueUnits.length >= 2;
+    return eligibleBlueUnits.length >= 2 && canPayAccessCost(gameState, playerState, 2, instance.color, instance);
   },
   cost: async (gameState, playerState, card) => {
+    if (!canPayAccessCost(gameState, playerState, 2, card.color, card)) {
+      return false;
+    }
     gameState.pendingQuery = {
       id: Math.random().toString(36).substring(7),
       type: 'SELECT_PAYMENT',
@@ -164,11 +168,14 @@ const handActivationEffect: CardEffect = {
 
       gameState.pendingQuery = {
         id: Math.random().toString(36).substring(7),
-        type: 'SELECT_CARD',
+        type: 'SELECT_CHOICE',
         playerUid: playerState.uid,
-        options: units.map(u => ({ card: u, source: 'UNIT' as any })),
-        title: '选择装备目标',
-        description: `请选择一个单位进行装备。`,
+        options: [
+          { id: '__NO_EQUIP__', label: '不装备' },
+          ...units.map(u => ({ id: u.gamecardId, label: u.fullName }))
+        ],
+        title: '是否装备',
+        description: '可以选择不装备，或选择一个单位进行装备。',
         minSelections: 1,
         maxSelections: 1,
         callbackKey: 'ACTIVATE_COST_RESOLVE',
@@ -177,6 +184,12 @@ const handActivationEffect: CardEffect = {
     } else if (context.step === 3) {
       // Step 3: Finalize equipment
       const targetId = selections[0];
+      if (targetId === '__NO_EQUIP__') {
+        card.equipTargetId = undefined;
+        gameState.logs.push(`[效果] ${card.fullName} 进入战场，但未选择装备目标。`);
+        EventEngine.recalculateContinuousEffects(gameState);
+        return;
+      }
       card.equipTargetId = targetId;
       const targetUnit = findCardInUnitZone(gameState, targetId);
       gameState.logs.push(`[效果] ${card.fullName} 装备到了 ${targetUnit?.fullName || '未知单位'}`);

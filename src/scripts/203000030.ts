@@ -1,5 +1,5 @@
 import { Card, CardEffect, TriggerLocation } from '../types/game';
-import { AtomicEffectExecutor, addInfluence, appendEndResolution, canPutUnitOntoBattlefield, createSelectCardQuery, exileByEffect, isNonGodUnit, moveCard, story } from './BaseUtil';
+import { AtomicEffectExecutor, canPutUnitOntoBattlefield, createSelectCardQuery, isNonGodUnit, markExileAtEndOfTurn, moveCard, story } from './BaseUtil';
 
 const cardEffects: CardEffect[] = [story('203000030_revive', '选择墓地中1个力量3000以下的非神蚀单位放置到战场上，回合结束时放逐。', async (instance, gameState, playerState) => {
     const candidates = playerState.grave.filter(card => isNonGodUnit(card) && (card.power || 0) <= 3000 && canPutUnitOntoBattlefield(playerState, card));
@@ -24,11 +24,8 @@ const cardEffects: CardEffect[] = [story('203000030_revive', '选择墓地中1�
     moveCard(gameState, playerState.uid, target, 'UNIT', instance);
     const live = AtomicEffectExecutor.findCardById(gameState, id);
     if (live) {
-      addInfluence(live, instance, '回合结束时放逐');
-      appendEndResolution(gameState, playerState.uid, instance, '203000030_end_exile', (source, state) => {
-        const current = AtomicEffectExecutor.findCardById(state, id);
-        if (current?.cardlocation === 'UNIT') exileByEffect(state, current, source);
-      });
+      live.playedTurn = gameState.turnCount;
+      markExileAtEndOfTurn(gameState, playerState.uid, live, instance, `203000030_end_exile_${id}`);
     }
     }
   })];

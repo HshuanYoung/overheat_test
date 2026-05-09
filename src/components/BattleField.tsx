@@ -868,6 +868,10 @@ export const BattleField: React.FC = () => {
       const itemCount = player.itemZone.filter(Boolean).length;
       return Math.max(0, baseCost - itemCount);
     }
+    if (card.id === '103090247' && player) {
+      const xenobuCount = player.unitZone.filter(unit => unit?.faction === '瑟诺布').length;
+      return Math.max(0, baseCost - xenobuCount);
+    }
     if (card.id === '202000080' && player?.unitZone.some(unit => unit?.isShenyi)) {
       return Math.max(0, baseCost - 4);
     }

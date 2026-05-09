@@ -1150,3 +1150,26 @@ export const appendEndResolution = (
     }
   });
 };
+
+export const markExileAtEndOfTurn = (
+  gameState: GameState,
+  playerUid: string,
+  target: Card,
+  source: Card,
+  id: string,
+  shouldExile: (card: Card, state: GameState) => boolean = card => card.cardlocation === 'UNIT'
+) => {
+  const targetId = target.gamecardId;
+  const data = ensureData(target);
+  data.returnToExileAtEndTurn = gameState.turnCount;
+  data.returnToExileSourceName = source.fullName;
+  data.returnToExileSourceCardId = source.gamecardId;
+  addInfluence(target, source, '回合结束时放逐');
+
+  appendEndResolution(gameState, playerUid, source, id, (resolveSource, state) => {
+    const current = AtomicEffectExecutor.findCardById(state, targetId);
+    if (current?.cardlocation === 'UNIT' && shouldExile(current, state)) {
+      exileByEffect(state, current, resolveSource);
+    }
+  });
+};

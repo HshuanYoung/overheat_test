@@ -4,8 +4,10 @@ import { addInfluence, ensureData, ownUnits, ownerOf } from './BaseUtil';
 const cardEffects: CardEffect[] = [{
     id: '102050091_red_rush',
     type: 'CONTINUOUS',
+    triggerLocation: ['UNIT'],
     description: '你的所有红色神蚀单位获得速攻；此单位可以攻击对手横置单位。',
     applyContinuous: (gameState, instance) => {
+      if (instance.cardlocation !== 'UNIT') return;
       const owner = ownerOf(gameState, instance);
       if (!owner) return;
       ownUnits(owner).filter(unit => unit.color === 'RED' && unit.godMark).forEach(unit => {

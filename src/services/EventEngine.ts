@@ -343,12 +343,14 @@ export class EventEngine {
             });
           }
           const forbiddenAlchemySourceName = (card as any).data?.forbiddenAlchemySourceName;
-          if (card.cardlocation === 'UNIT' && forbiddenAlchemySourceName) {
+          if (
+            card.cardlocation === 'UNIT' &&
+            forbiddenAlchemySourceName &&
+            (card as any).data?.forbiddenAlchemyWillExileAtEndOfTurn === false
+          ) {
             card.influencingEffects.push({
               sourceCardName: forbiddenAlchemySourceName,
-              description: (card as any).data?.forbiddenAlchemyWillExileAtEndOfTurn
-                ? '回合结束时放逐'
-                : '回合结束时不会被放逐'
+              description: '回合结束时不会被放逐'
             });
           }
         }
@@ -384,6 +386,13 @@ export class EventEngine {
           card.influencingEffects.push({
             sourceCardName: (card as any).data.returnToOwnerFieldAtTurnEndSourceName,
             description: '回合结束时回到持有者战场'
+          });
+        }
+        if (card && card.cardlocation === 'UNIT' && (card as any).data?.returnToExileAtEndTurn) {
+          if (!card.influencingEffects) card.influencingEffects = [];
+          card.influencingEffects.push({
+            sourceCardName: (card as any).data.returnToExileSourceName || '卡牌效果',
+            description: '回合结束时放逐'
           });
         }
         if (card && (card as any).data?.placedOnOpponentFieldSourceName) {

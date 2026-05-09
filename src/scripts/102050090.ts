@@ -41,8 +41,6 @@ const cardEffects: CardEffect[] = [{
     description: '10+：进入女神化时，可以从手牌放置到战场，选择最多2个单位伤害+1、力量+1000。',
     condition: (_gameState, playerState, instance, event) =>
       event?.playerUid === playerState.uid &&
-      event.data?.enteredByEffect === true &&
-      event.data?.effectSourcePlayerUid === playerState.uid &&
       canPutUnitOntoBattlefield(playerState, instance),
     cost: erosionCost(1),
     execute: async (instance, gameState, playerState) => {

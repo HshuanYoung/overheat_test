@@ -1,7 +1,7 @@
 import { Card, CardEffect } from '../types/game';
 import { AtomicEffectExecutor } from '../services/AtomicEffectExecutor';
 import { EventEngine } from '../services/EventEngine';
-import { createSelectCardQuery, getTopDeckCards, isAlchemyCard } from './BaseUtil';
+import { createSelectCardQuery, ensureData, getTopDeckCards, isAlchemyCard, markExileAtEndOfTurn } from './BaseUtil';
 
 const effect_205000064_activate: CardEffect = {
   id: '205000064_activate',
@@ -55,41 +55,16 @@ const effect_205000064_activate: CardEffect = {
       ...(moved.temporaryBuffSources || {}),
       rush: instance.fullName
     };
-    (moved as any).data = {
-      ...((moved as any).data || {}),
-      forbiddenAlchemySourceName: instance.fullName,
-      forbiddenAlchemyBanishTurn: gameState.turnCount,
-      forbiddenAlchemyWillExileAtEndOfTurn: !isAlchemyCard(moved)
-    };
+    const data = ensureData(moved);
+    data.forbiddenAlchemySourceName = instance.fullName;
+    data.forbiddenAlchemyBanishTurn = gameState.turnCount;
+    data.forbiddenAlchemyWillExileAtEndOfTurn = !isAlchemyCard(moved);
 
-    (instance as any).data = {
-      ...((instance as any).data || {}),
-      delayedBanishTargetId: moved.gamecardId,
-      delayedBanishTurn: gameState.turnCount
-    };
+    if (!isAlchemyCard(moved)) {
+      markExileAtEndOfTurn(gameState, playerState.uid, moved, instance, `205000064_end_exile_${moved.gamecardId}`);
+    }
 
     EventEngine.recalculateContinuousEffects(gameState);
-  },
-  resolve: async (instance, gameState, playerState) => {
-    const delayedBanishTurn = (instance as any).data?.delayedBanishTurn;
-    if (delayedBanishTurn !== gameState.turnCount && delayedBanishTurn !== gameState.turnCount - 1) return;
-
-    const targetId = (instance as any).data?.delayedBanishTargetId;
-    if (!targetId) return;
-
-    const target = AtomicEffectExecutor.findCardById(gameState, targetId);
-    if (!target || target.cardlocation !== 'UNIT' || isAlchemyCard(target)) return;
-
-    const ownerUid = AtomicEffectExecutor.findCardOwnerKey(gameState, target.gamecardId);
-    if (!ownerUid) return;
-
-    AtomicEffectExecutor.moveCard(gameState, ownerUid, 'UNIT', ownerUid, 'EXILE', target.gamecardId, true, {
-      effectSourcePlayerUid: playerState.uid,
-      effectSourceCardId: instance.gamecardId
-    });
-    gameState.logs.push(`[${instance.fullName}] 在回合结束时放逐了 [${target.fullName}]。`);
-    delete (instance as any).data.delayedBanishTargetId;
-    delete (instance as any).data.delayedBanishTurn;
   }
 };
 

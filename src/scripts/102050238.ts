@@ -5,12 +5,19 @@ const cardEffects: CardEffect[] = [{
   id: '102050238_ileu_damage',
   type: 'TRIGGER',
   triggerLocation: ['UNIT'],
-  triggerEvent: 'COMBAT_DAMAGE_CAUSED',
+  triggerEvent: ['COMBAT_DAMAGE_CAUSED', 'EFFECT_DAMAGE_CAUSED'],
   limitCount: 1,
   limitNameType: true,
   description: '你的<伊列宇王国>单位对对手造成伤害时，可以选择1名对手，给予他2点伤害。',
   condition: (gameState, playerState, _instance, event) => {
     if (event?.playerUid !== getOpponentUid(gameState, playerState.uid)) return false;
+    if (event.type === 'EFFECT_DAMAGE_CAUSED') {
+      const sourceCard = event.sourceCard || (event.sourceCardId ? AtomicEffectExecutor.findCardById(gameState, event.sourceCardId) : undefined);
+      return !!sourceCard &&
+        sourceCard.cardlocation === 'UNIT' &&
+        AtomicEffectExecutor.findCardOwnerKey(gameState, sourceCard.gamecardId) === playerState.uid &&
+        isFaction(sourceCard, '伊列宇王国');
+    }
     const attackerIds = event.data?.attackerIds || [];
     return attackerIds.some((id: string) => {
       const attacker = AtomicEffectExecutor.findCardById(gameState, id);

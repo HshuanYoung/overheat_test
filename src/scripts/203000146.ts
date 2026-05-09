@@ -1,6 +1,6 @@
 import { Card, CardEffect } from '../types/game';
 import { AtomicEffectExecutor } from '../services/AtomicEffectExecutor';
-import { appendEndResolution, canPutUnitOntoBattlefield, createSelectCardQuery, exileByEffect, moveCard, silenceAllEffectsUntil, story } from './BaseUtil';
+import { canPutUnitOntoBattlefield, createSelectCardQuery, markExileAtEndOfTurn, moveCard, silenceAllEffectsUntil, story } from './BaseUtil';
 
 const getRevivePairs = (playerState: any) => {
   if (playerState.unitZone.filter((slot: Card | null) => slot === null).length < 2) return [];
@@ -31,10 +31,10 @@ const getRevivePairs = (playerState: any) => {
 };
 
 const markEndExile = (instance: Card, gameState: any, playerState: any, targetId: string) => {
-  appendEndResolution(gameState, playerState.uid, instance, `203000146_end_exile_${targetId}`, (source, state) => {
-    const current = AtomicEffectExecutor.findCardById(state, targetId);
-    if (current?.cardlocation === 'UNIT') exileByEffect(state, current, source);
-  });
+  const target = AtomicEffectExecutor.findCardById(gameState, targetId);
+  if (target?.cardlocation === 'UNIT') {
+    markExileAtEndOfTurn(gameState, playerState.uid, target, instance, `203000146_end_exile_${targetId}`);
+  }
 };
 
 const cardEffects: CardEffect[] = [story('203000146_double_revive', '只能在你的主要阶段使用。从墓地选择2张同名的非神蚀单位卡放置到战场上，它们本回合失去所有能力，回合结束时放逐。', async (instance, gameState, playerState) => {

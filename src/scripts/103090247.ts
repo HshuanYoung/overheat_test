@@ -14,9 +14,11 @@ const cardEffects: CardEffect[] = [{
     const xenobuCount = owner.unitZone.filter(unit => unit?.faction === '瑟诺布').length;
     const base = instance.baseAcValue ?? instance.acValue ?? 0;
     const next = Math.max(0, base - xenobuCount);
-    if (instance.acValue !== next) {
-      instance.acValue = next;
-      addInfluence(instance, instance, `ACCESS值-${xenobuCount}`);
+    instance.acValue = next;
+    instance.influencingEffects = (instance.influencingEffects || []).filter(effect => effect.sourceCardName !== instance.fullName || !effect.description.startsWith('ACCESS值-'));
+    const discount = base - next;
+    if (discount > 0) {
+      addInfluence(instance, instance, `ACCESS值-${discount}`);
     }
   }
 }];
@@ -45,6 +47,7 @@ const card: Card = {
   colorReq: { GREEN: 3 },
   faction: '瑟诺布',
   acValue: 7,
+  baseAcValue: 7,
   power: 4000,
   basePower: 4000,
   damage: 3,

@@ -94,6 +94,10 @@ const getEffectivePlayCost = (gameState: GameState | null, player: PlayerState, 
     const itemCount = player.itemZone.filter(c => c !== null).length;
     return Math.max(0, baseCost - itemCount);
   }
+  if (card.id === '103090247') {
+    const xenobuCount = player.unitZone.filter(unit => unit?.faction === '瑟诺布').length;
+    return Math.max(0, baseCost - xenobuCount);
+  }
   if (
     (card.id === '201000140' || card.id === '201000040' || card.fullName === '解放之光') &&
     player.exile.some(c => c.id === card.id || c.id === '201000140' || c.id === '201000040' || c.fullName === card.fullName)
