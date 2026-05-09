@@ -16,7 +16,7 @@ const effect_105110467_attack: CardEffect = {
   limitCount: 1,
   limitNameType: true,
   isMandatory: true,
-  description: 'When this unit attacks, shuffle your deck and reveal the top card. Resolve its result, then if it is a god-mark card, ready this unit.',
+  description: '这个单位攻击时，洗切你的卡组并展示卡组顶1张卡。结算其结果，之后若其为神蚀卡，重置这个单位。',
   condition: (_gameState, _playerState, instance, event?: GameEvent) =>
     instance.cardlocation === 'UNIT' &&
     event?.type === 'CARD_ATTACK_DECLARED' &&
@@ -44,8 +44,8 @@ const effect_105110467_attack: CardEffect = {
       gameState,
       playerState.uid,
       targets,
-      'Choose A Unit',
-      'Choose another unit on the battlefield.',
+      '选择单位',
+      '选择战场上另1个单位。',
       1,
       1,
       {
@@ -61,11 +61,11 @@ const effect_105110467_attack: CardEffect = {
       createChoiceQuery(
         gameState,
         _playerState.uid,
-        'Choose Rotation',
-        'Rotate the chosen unit horizontally or vertically.',
+        '选择横置或重置',
+        '选择将该单位横置或重置。',
         [
-          { id: 'HORIZONTAL', label: 'Rotate Horizontal' },
-          { id: 'VERTICAL', label: 'Rotate Vertical' }
+          { id: 'HORIZONTAL', label: '横置' },
+          { id: 'VERTICAL', label: '重置' }
         ],
         {
           sourceCardId: instance.gamecardId,

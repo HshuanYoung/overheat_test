@@ -9,7 +9,7 @@ const effect_105110161_activate: CardEffect = {
   triggerLocation: ['UNIT'],
   limitCount: 1,
   limitNameType: true,
-  description: 'Destroy one allied item, then give one allied unit +1 damage and +500 power this turn.',
+  description: '破坏我方1张道具，之后选择我方1个单位，本回合中其伤害+1、力量+500。',
   condition: (_gameState, playerState) =>
     playerState.itemZone.some(card => card !== null) &&
     playerState.unitZone.some(card => card !== null),
@@ -19,8 +19,8 @@ const effect_105110161_activate: CardEffect = {
       gameState,
       playerState.uid,
       ownItems,
-      'Choose An Item',
-      'Destroy 1 allied item.',
+      '选择道具',
+      '破坏我方1张道具。',
       1,
       1,
       { sourceCardId: instance.gamecardId, effectId: '105110161_activate', step: 'DESTROY_ITEM' }
@@ -40,8 +40,8 @@ const effect_105110161_activate: CardEffect = {
         gameState,
         playerState.uid,
         ownUnits,
-        'Choose A Unit',
-        'Choose 1 allied unit to buff.',
+        '选择单位',
+        '选择我方1个单位强化。',
         1,
         1,
         { sourceCardId: instance.gamecardId, effectId: '105110161_activate', step: 'BUFF_UNIT' }

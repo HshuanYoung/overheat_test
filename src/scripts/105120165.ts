@@ -10,7 +10,7 @@ const effect_105120165_forced_attack: CardEffect = {
   triggerEvent: 'CARD_ENTERED_ZONE',
   limitCount: 1,
   limitNameType: true,
-  description: 'If this unit enters from deck by an alchemy effect, choose an opponent unit. Until the end of that player next turn, it must attack when able.',
+  description: '若这个单位因炼金效果从卡组进入战场，选择对手1个单位。直到该玩家的下个回合结束时，其能攻击则必须攻击。',
   condition: (_gameState, _playerState, instance, event?: GameEvent) =>
     instance.cardlocation === 'UNIT' &&
     event?.type === 'CARD_ENTERED_ZONE' &&
@@ -28,8 +28,8 @@ const effect_105120165_forced_attack: CardEffect = {
       gameState,
       playerState.uid,
       targets,
-      'Choose An Opponent Unit',
-      'Choose 1 opponent unit that will be forced to attack next turn.',
+      '选择对手单位',
+      '选择对手1个单位，使其下回合能攻击则必须攻击。',
       1,
       1,
       { sourceCardId: instance.gamecardId, effectId: '105120165_forced_attack' }

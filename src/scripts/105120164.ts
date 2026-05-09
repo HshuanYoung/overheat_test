@@ -3,7 +3,7 @@ import { Card, CardEffect } from '../types/game';
 const effect_105120164_alchemy_buff: CardEffect = {
   id: '105120164_alchemy_buff',
   type: 'CONTINUOUS',
-  description: 'If this unit entered from deck by an alchemy effect, it becomes 3500 power / 2 damage and gains Rush and Annihilation.',
+  description: '若这个单位因炼金效果从卡组进入战场，其变为力量3500 / 伤害2，并获得【速攻】和【歼灭】。',
   applyContinuous: (_gameState, instance) => {
     if (
       (instance as any).data?.enteredFromDeckByAlchemyTurn === undefined ||

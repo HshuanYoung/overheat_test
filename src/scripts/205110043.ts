@@ -7,7 +7,7 @@ const effect_205110043_activate: CardEffect = {
   type: 'ACTIVATE',
   triggerLocation: ['HAND', 'PLAY'],
   erosionBackLimit: [3, 10],
-  description: 'Scar 3. Choose your unit. This turn it is treated as meeting 10+ requirements and loses activated abilities.',
+  description: '创痕3。选择你的1个单位。本回合中，其视为满足10+条件，且失去启动能力。',
   execute: async (instance, gameState, playerState) => {
     const ownUnits = playerState.unitZone.filter((unit): unit is Card => !!unit);
     if (ownUnits.length === 0) {
@@ -24,8 +24,8 @@ const effect_205110043_activate: CardEffect = {
         playerState.uid,
         ownUnits.map(unit => ({ card: unit, source: 'UNIT' as const }))
       ),
-      title: 'Choose A Unit',
-      description: 'Choose 1 allied unit.',
+      title: '选择单位',
+      description: '选择我方1个单位。',
       minSelections: 1,
       maxSelections: 1,
       callbackKey: 'EFFECT_RESOLVE',

@@ -90,7 +90,7 @@ const trigger_104010122_1: CardEffect = {
           if (!target.influencingEffects) target.influencingEffects = [];
           target.influencingEffects.push({
             sourceCardName: '百濑刀匠',
-            description: '+1 伤害 / +1000 Power (诱发效果)'
+            description: '+1伤害 / +1000力量（诱发效果）'
           });
           
           break;

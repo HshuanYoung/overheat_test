@@ -5,7 +5,7 @@ import { canPutUnitOntoBattlefield } from './BaseUtil';
 const effect_105000446_continuous: CardEffect = {
   id: '105000446_continuous',
   type: 'CONTINUOUS',
-  description: 'Cards revealed by effects of your cards whose names contain 《魔偶》 are treated as god-mark cards.'
+  description: '由你的卡名含有《魔偶》的卡的效果展示的卡视为神蚀卡。'
 };
 
 const effect_105000446_trigger: CardEffect = {
@@ -13,7 +13,7 @@ const effect_105000446_trigger: CardEffect = {
   type: 'TRIGGER',
   triggerLocation: ['DECK'],
   triggerEvent: 'REVEAL_DECK',
-  description: 'When this card is revealed from the top of your deck by an effect of your card whose name contains 《魔偶》, you may put it onto the battlefield.',
+  description: '这张卡因你的卡名含有《魔偶》的卡的效果从卡组顶展示时，你可以将其放置到战场。',
   condition: (_gameState, playerState, instance, event?: GameEvent) =>
     instance.cardlocation === 'DECK' &&
     event?.type === 'REVEAL_DECK' &&

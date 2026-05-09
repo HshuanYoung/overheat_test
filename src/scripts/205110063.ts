@@ -6,7 +6,7 @@ const effect_205110063_item_discount: CardEffect = {
   id: '205110063_item_discount',
   type: 'CONTINUOUS',
   content: 'SELF_HAND_COST',
-  description: 'Your item zone reduces this card AC by 1 for each item, to a minimum of 0.',
+  description: '你的道具区每有1张道具，这张卡AC减少1，最低为0。',
   applyContinuous: (gameState, instance) => {
     const ownerUid = AtomicEffectExecutor.findCardOwnerKey(gameState, instance.gamecardId);
     if (!ownerUid) return;
@@ -25,7 +25,7 @@ const effect_205110063_activate: CardEffect = {
   id: '205110063_activate',
   type: 'ACTIVATE',
   triggerLocation: ['PLAY'],
-  description: 'Choose 1 Valkyrie unit from your deck and put it onto the battlefield.',
+  description: '从你的卡组选择1个‘瓦尔基里’单位放置到战场。',
   condition: (_gameState, playerState) => playerState.unitZone.some(card => card === null) && playerState.deck.some(isValkyrieUnit),
   execute: async (instance, gameState, playerState) => {
     const candidates = playerState.deck.filter(card =>
@@ -38,8 +38,8 @@ const effect_205110063_activate: CardEffect = {
       gameState,
       playerState.uid,
       candidates,
-      'Choose A Valkyrie',
-      'Choose 1 Valkyrie unit from your deck.',
+      '选择‘瓦尔基里’',
+      '从你的卡组选择1个‘瓦尔基里’单位。',
       1,
       1,
       { sourceCardId: instance.gamecardId, effectId: '205110063_activate' },

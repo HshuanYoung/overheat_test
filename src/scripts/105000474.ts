@@ -8,7 +8,7 @@ const effect_105000474_enter: CardEffect = {
   triggerLocation: ['UNIT'],
   triggerEvent: 'CARD_ENTERED_ZONE',
   isMandatory: true,
-  description: 'When this unit enters the battlefield, shuffle your deck and reveal the top card. If it is a god-mark card, choose a player and discard a random card from that player hand.',
+  description: '这个单位进入战场时，洗切你的卡组并展示卡组顶1张卡。若其为神蚀卡，选择1名玩家，随机舍弃该玩家1张手牌。',
   condition: (_gameState, _playerState, instance, event?: GameEvent) =>
     instance.cardlocation === 'UNIT' &&
     event?.type === 'CARD_ENTERED_ZONE' &&
@@ -21,11 +21,11 @@ const effect_105000474_enter: CardEffect = {
     createChoiceQuery(
       gameState,
       playerState.uid,
-      'Choose A Player',
-      'Choose a player to discard a random hand card.',
+      '选择玩家',
+      '选择1名玩家随机舍弃1张手牌。',
       [
-        { id: playerState.uid, label: 'Yourself' },
-        { id: getOpponentUid(gameState, playerState.uid), label: 'Opponent' }
+        { id: playerState.uid, label: '自己' },
+        { id: getOpponentUid(gameState, playerState.uid), label: '对手' }
       ],
       { sourceCardId: instance.gamecardId, effectId: '105000474_enter' }
     );

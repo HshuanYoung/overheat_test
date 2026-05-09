@@ -9,7 +9,7 @@ const effect_105120167_activate: CardEffect = {
   triggerLocation: ['UNIT'],
   limitCount: 1,
   limitNameType: true,
-  description: 'Exhaust this unit, send 2 other allied battlefield cards to grave, then put an alchemy unit from your deck onto the battlefield.',
+  description: '横置这个单位，将其他我方战场上的2张卡送入墓地，之后从卡组将1个炼金单位放置到战场。',
   condition: (_gameState, playerState, instance) => {
     const ownField = [...playerState.unitZone, ...playerState.itemZone].filter(
       (card): card is Card => !!card && card.gamecardId !== instance.gamecardId
@@ -29,8 +29,8 @@ const effect_105120167_activate: CardEffect = {
       gameState,
       playerState.uid,
       ownField,
-      'Choose 2 Cards',
-      'Send 2 other allied battlefield cards to grave.',
+      '选择2张卡',
+      '将其他我方战场上的2张卡送入墓地。',
       2,
       2,
       { sourceCardId: instance.gamecardId, effectId: '105120167_activate', step: 'SEND_FIELD' }
@@ -60,8 +60,8 @@ const effect_105120167_activate: CardEffect = {
         gameState,
         playerState.uid,
         candidates,
-        'Choose A Unit',
-        'Choose 1 alchemy unit from your deck.',
+        '选择单位',
+        '从你的卡组选择1个炼金单位。',
         1,
         1,
         { sourceCardId: instance.gamecardId, effectId: '105120167_activate', step: 'PUT_UNIT' },
@@ -88,7 +88,7 @@ const effect_105120167_last_resort: CardEffect = {
   limitGlobal: true,
   limitNameType: true,
   erosionTotalLimit: [10, 10],
-  description: 'Goddess mode only. Put all cards in your grave on the bottom of your deck. You lose the game at end of turn.',
+  description: '只能在女神化状态发动。将你墓地的所有卡放置到卡组底。回合结束时你输掉游戏。',
   execute: async (instance, gameState, playerState) => {
     const graveCards = [...playerState.grave];
     moveCardsToBottom(gameState, playerState.uid, graveCards, instance);

@@ -8,7 +8,7 @@ const effect_205000135_activate: CardEffect = {
   triggerLocation: ['PLAY'],
   limitCount: 1,
   limitNameType: true,
-  description: 'If you control only 1 god-mark unit, return 1 of your named god-mark units to the deck, then put a different unit with the same special name from your deck onto the battlefield.',
+  description: '若你只控制1个神蚀单位，将你的1个有特殊名称的神蚀单位返回卡组，之后从卡组将1个不同且特殊名称相同的单位放置到战场。',
   condition: (_gameState, playerState) => {
     const loneGodmark = getOnlyGodMarkUnit(playerState);
     if (!loneGodmark?.specialName) return false;
@@ -26,8 +26,8 @@ const effect_205000135_activate: CardEffect = {
       gameState,
       playerState.uid,
       [loneGodmark],
-      'Choose Your Unit',
-      'Choose the named god-mark unit to return to your deck.',
+      '选择你的单位',
+      '选择要返回卡组的有特殊名称的神蚀单位。',
       1,
       1,
       { sourceCardId: instance.gamecardId, effectId: '205000135_activate', step: 'RETURN_UNIT' }
@@ -55,8 +55,8 @@ const effect_205000135_activate: CardEffect = {
       gameState,
       playerState.uid,
       candidates,
-      'Choose A Unit',
-      'Choose 1 unit with the same special name but a different card name.',
+      '选择单位',
+      '选择1个特殊名称相同但卡名不同的单位。',
       1,
       1,
       { sourceCardId: instance.gamecardId, effectId: '205000135_activate', step: 'PUT_UNIT' },
@@ -103,8 +103,8 @@ const card: Card = {
             gameState,
             playerState.uid,
             candidates,
-            'Choose A Unit',
-            'Choose 1 unit with the same special name but a different card name.',
+            '选择单位',
+            '选择1个特殊名称相同但卡名不同的单位。',
             1,
             1,
             { sourceCardId: instance.gamecardId, effectId: '205000135_activate', step: 'PUT_UNIT' },

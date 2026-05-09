@@ -4,7 +4,7 @@ import { isBattlingGodMarkUnit } from './BaseUtil';
 const effect_105110444_continuous: CardEffect = {
   id: '105110444_continuous',
   type: 'CONTINUOUS',
-  description: 'When this unit battles a god-mark unit, it is not destroyed by battle, becomes damage 3, and gains Annihilation during that battle.',
+  description: '这个单位与神蚀单位战斗时，本次战斗中其不会被战斗破坏，伤害变为3，并获得【歼灭】。',
   applyContinuous: (gameState, instance) => {
     if (!isBattlingGodMarkUnit(gameState, instance)) return;
     instance.damage = 3;

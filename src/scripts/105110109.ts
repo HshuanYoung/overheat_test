@@ -39,7 +39,7 @@ const effect_105110109_enter: CardEffect = {
       gameState,
       playerState.uid,
       targets,
-      'Choose An Item',
+      '选择道具',
       '你可以选择1张非神蚀道具卡，将其破坏。',
       0,
       1,

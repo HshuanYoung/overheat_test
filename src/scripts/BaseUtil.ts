@@ -1010,7 +1010,7 @@ export const paymentCost = (amount: number, color?: string): CardEffect['cost'] 
     playerUid: playerState.uid,
     options: [],
     title: '支付费用',
-    description: `支付 ${amount} 费以发动 ${instance.fullName}。`,
+    description: `支付${amount}点费用以发动${instance.fullName}。`,
     minSelections: 1,
     maxSelections: 1,
     callbackKey: 'ACTIVATE_COST_RESOLVE',

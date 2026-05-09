@@ -6,7 +6,7 @@ const effect_205110062_activate: CardEffect = {
   id: '205110062_activate',
   type: 'ACTIVATE',
   triggerLocation: ['PLAY'],
-  description: 'Choose 1 god-mark card on your battlefield and put it on the bottom of your deck. Then choose 1 Truth or Hick unit from your deck and put it onto the battlefield.',
+  description: '选择你战场上1张神蚀卡并放置到卡组底。之后从卡组选择1个「真理」或「希克」单位放置到战场。',
   condition: (_gameState, playerState) =>
     [...playerState.unitZone, ...playerState.itemZone].some(card => card?.godMark) &&
     playerState.deck.some(isTruthOrHickUnit),
@@ -16,8 +16,8 @@ const effect_205110062_activate: CardEffect = {
       gameState,
       playerState.uid,
       ownGodMarks,
-      'Choose A God-Mark Card',
-      'Choose 1 allied god-mark card.',
+      '选择神蚀卡',
+      '选择我方1张神蚀卡。',
       1,
       1,
       { sourceCardId: instance.gamecardId, effectId: '205110062_activate', step: 'BOTTOM_GODMARK' }
@@ -40,8 +40,8 @@ const effect_205110062_activate: CardEffect = {
         gameState,
         playerState.uid,
         candidates,
-        'Choose A Unit',
-        'Choose 1 Truth or Hick unit from your deck.',
+        '选择单位',
+        '从你的卡组选择1个「真理」或「希克」单位。',
         1,
         1,
         { sourceCardId: instance.gamecardId, effectId: '205110062_activate', step: 'PUT_UNIT' },

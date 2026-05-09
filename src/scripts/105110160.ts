@@ -10,7 +10,7 @@ const effect_105110160_disable_erosion_requirement_effects: CardEffect = {
 const effect_105110160_self_protection: CardEffect = {
   id: '105110160_self_protection',
   type: 'CONTINUOUS',
-  description: 'If the opponent is in goddess mode, this unit cannot be destroyed and is unaffected by opponent card effects.',
+  description: '若对手处于女神化状态，这个单位不能被破坏，且不受对手卡牌效果影响。',
   applyContinuous: (gameState, instance) => {
     const ownerUid = Object.keys(gameState.players).find(uid =>
       gameState.players[uid].unitZone.some(card => card?.gamecardId === instance.gamecardId)

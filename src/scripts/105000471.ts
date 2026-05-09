@@ -8,7 +8,7 @@ const effect_105000471_enter: CardEffect = {
   triggerLocation: ['UNIT'],
   triggerEvent: 'CARD_ENTERED_ZONE',
   isMandatory: true,
-  description: 'When this unit enters the battlefield, the opponent may discard 2 cards. If they do, destroy this unit and deal 2 effect damage to you.',
+  description: '这个单位进入战场时，对手可以舍弃2张手牌。若如此做，破坏这个单位，并对你造成2点效果伤害。',
   condition: (_gameState, _playerState, instance, event?: GameEvent) =>
     instance.cardlocation === 'UNIT' &&
     event?.type === 'CARD_ENTERED_ZONE' &&
@@ -22,11 +22,11 @@ const effect_105000471_enter: CardEffect = {
     createChoiceQuery(
       gameState,
       opponentUid,
-      'Discard 2 Cards?',
-      'You may discard 2 cards from your hand.',
+      '舍弃2张手牌？',
+      '你可以舍弃2张手牌。',
       [
-        { id: 'YES', label: 'Discard 2' },
-        { id: 'NO', label: 'Do Not Discard' }
+        { id: 'YES', label: '舍弃2张' },
+        { id: 'NO', label: '不舍弃' }
       ],
       {
         sourceCardId: instance.gamecardId,
@@ -49,8 +49,8 @@ const effect_105000471_enter: CardEffect = {
         gameState,
         discardPlayerUid,
         [...discardPlayer.hand],
-        'Choose 2 Cards',
-        'Choose 2 cards to discard.',
+        '选择2张卡',
+        '选择2张卡舍弃。',
         2,
         2,
         {

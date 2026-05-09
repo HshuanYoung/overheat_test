@@ -7,7 +7,7 @@ const effect_305000074_trigger: CardEffect = {
   type: 'TRIGGER',
   triggerLocation: ['ITEM'],
   triggerEvent: 'PHASE_CHANGED',
-  description: 'At the start of each opponent turn, if you control only 1 god-mark unit, you may look at the top card of the opponent deck and put it on top or bottom.',
+  description: '每个对手回合开始时，若你只控制1个神蚀单位，你可以查看对手卡组顶1张卡，并将其放置到卡组顶或卡组底。',
   condition: (gameState, playerState, instance, event) =>
     instance.cardlocation === 'ITEM' &&
     event?.type === 'PHASE_CHANGED' &&
@@ -23,11 +23,11 @@ const effect_305000074_trigger: CardEffect = {
     createChoiceQuery(
       gameState,
       playerState.uid,
-      'Deck Top Choice',
-      `Top card of opponent deck: ${topCard.fullName}`,
+      '卡组顶选择',
+      `对手卡组顶卡牌：${topCard.fullName}`,
       [
-        { id: 'TOP', label: 'Keep On Top' },
-        { id: 'BOTTOM', label: 'Put On Bottom' }
+        { id: 'TOP', label: '留在卡组顶' },
+        { id: 'BOTTOM', label: '放到卡组底' }
       ],
       {
         sourceCardId: instance.gamecardId,

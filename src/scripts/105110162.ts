@@ -10,7 +10,7 @@ const effect_105110162_goddess_trigger: CardEffect = {
   limitCount: 1,
   limitNameType: true,
   erosionTotalLimit: [10, 10],
-  description: 'When you enter goddess mode, choose a non-god item with AC 3 or less from your deck and put it onto the battlefield.',
+  description: '当你进入女神化时，从卡组选择1张AC为3以下的非神蚀道具放置到战场。',
   condition: (_gameState, playerState, instance, event?: GameEvent) =>
     instance.cardlocation === 'UNIT' &&
     event?.type === 'GODDESS_TRANSFORMATION' &&
@@ -23,8 +23,8 @@ const effect_105110162_goddess_trigger: CardEffect = {
       gameState,
       playerState.uid,
       candidates,
-      'Choose An Item',
-      'Choose 1 non-god item with AC 3 or less from your deck.',
+      '选择道具',
+      '从你的卡组选择1张AC为3以下的非神蚀道具。',
       1,
       1,
       { sourceCardId: instance.gamecardId, effectId: '105110162_goddess_trigger' },

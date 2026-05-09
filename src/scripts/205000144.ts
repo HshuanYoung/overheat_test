@@ -6,7 +6,7 @@ const effect_205000144_activate: CardEffect = {
   id: '205000144_activate',
   type: 'ACTIVATE',
   triggerLocation: ['PLAY'],
-  description: 'Destroy 1 of your items. Then the opponent discards 1 card. If it is a non-god unit, put it onto your battlefield. If they had no hand, mill 3 from the top of their deck.',
+  description: '破坏你的1张道具。之后对手舍弃1张手牌。若其为非神蚀单位，将其放置到你的战场。若其没有手牌，则将其卡组顶3张卡送入墓地。',
   condition: (_gameState, playerState) => playerState.itemZone.some(card => !!card),
   execute: async (instance, gameState, playerState) => {
     const ownItems = playerState.itemZone.filter((card): card is Card => !!card);
@@ -14,8 +14,8 @@ const effect_205000144_activate: CardEffect = {
       gameState,
       playerState.uid,
       ownItems,
-      'Choose An Item',
-      'Choose 1 of your items to destroy.',
+      '选择道具',
+      '选择你的1张道具破坏。',
       1,
       1,
       { sourceCardId: instance.gamecardId, effectId: '205000144_activate', step: 'DESTROY_ITEM' }
@@ -43,8 +43,8 @@ const effect_205000144_activate: CardEffect = {
         gameState,
         opponentUid,
         [...opponent.hand],
-        'Discard A Card',
-        'Choose 1 card from your hand to discard.',
+        '舍弃卡牌',
+        '选择1张手牌舍弃。',
         1,
         1,
         {

@@ -7,7 +7,7 @@ const effect_205000064_activate: CardEffect = {
   id: '205000064_activate',
   type: 'ACTIVATE',
   triggerLocation: ['HAND', 'PLAY'],
-  description: 'Reveal the top 3 cards of your deck. Choose a non-god unit from among them, put it onto the battlefield, and it gains Rush. At end of turn, if it is not an alchemy unit, banish it.',
+  description: '展示你的卡组顶3张卡。从其中选择1个非神蚀单位放置到战场，其获得【速攻】。回合结束时，若其不是炼金单位，将其放逐。',
   execute: async (instance, gameState, playerState) => {
     const revealed = getTopDeckCards(playerState, 3);
     if (revealed.length > 0) {
@@ -31,8 +31,8 @@ const effect_205000064_activate: CardEffect = {
       gameState,
       playerState.uid,
       candidates,
-      'Choose A Unit',
-      'Choose 1 non-god unit from the top 3 cards of your deck.',
+      '选择单位',
+      '从你的卡组顶3张卡中选择1个非神蚀单位。',
       1,
       1,
       { sourceCardId: instance.gamecardId, effectId: '205000064_activate' },

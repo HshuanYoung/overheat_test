@@ -7,7 +7,7 @@ const effect_205000134_activate: CardEffect = {
   id: '205000134_activate',
   type: 'ACTIVATE',
   triggerLocation: ['PLAY'],
-  description: 'Shuffle your deck and reveal the top card. If it is a unit, exhaust an opponent non-god battlefield card. If it is a god-mark card, return an opponent non-god battlefield card to hand.',
+  description: '洗切你的卡组并展示卡组顶1张卡。若其为单位，横置对手战场上1张非神蚀卡。若其为神蚀卡，将对手战场上1张非神蚀卡返回手牌。',
   execute: async (instance, gameState, playerState) => {
     const revealedCard = (await shuffleAndRevealTopCards(gameState, playerState.uid, 1, instance))[0];
     if (!revealedCard) return;
@@ -24,8 +24,8 @@ const effect_205000134_activate: CardEffect = {
         gameState,
         playerState.uid,
         targets,
-        'Choose A Card',
-        'Choose 1 opponent non-god card to exhaust.',
+        '选择卡牌',
+        '选择对手1张非神蚀卡横置。',
         1,
         1,
         {
@@ -42,8 +42,8 @@ const effect_205000134_activate: CardEffect = {
       gameState,
       playerState.uid,
       targets,
-      'Choose A Card',
-      'Choose 1 opponent non-god card to return to hand.',
+      '选择卡牌',
+      '选择对手1张非神蚀卡返回手牌。',
       1,
       1,
       { sourceCardId: instance.gamecardId, effectId: '205000134_activate', step: 'BOUNCE' }
@@ -63,8 +63,8 @@ const effect_205000134_activate: CardEffect = {
         gameState,
         playerState.uid,
         targets,
-        'Choose A Card',
-        'Choose 1 opponent non-god card to return to hand.',
+        '选择卡牌',
+        '选择对手1张非神蚀卡返回手牌。',
         1,
         1,
         { sourceCardId: instance.gamecardId, effectId: '205000134_activate', step: 'BOUNCE' }

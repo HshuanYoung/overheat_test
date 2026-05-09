@@ -12,7 +12,7 @@ const effect_305000017_activate: CardEffect = {
   id: '305000017_activate',
   type: 'ACTIVATE',
   triggerLocation: ['ITEM'],
-  description: 'Pay 1 and exhaust this item. Choose your unit. If it would be destroyed this turn, return it to hand instead.',
+  description: '支付1点费用并横置这个道具。选择你的1个单位。本回合中，若其将被破坏，改为将其返回手牌。',
   condition: (_gameState, playerState, instance) => {
     return !instance.isExhausted && playerState.unitZone.some(unit => unit !== null);
   },
@@ -22,8 +22,8 @@ const effect_305000017_activate: CardEffect = {
       type: 'SELECT_PAYMENT',
       playerUid: playerState.uid,
       options: [],
-      title: `Pay Cost: ${instance.id}`,
-      description: 'Pay 1 cost.',
+      title: `支付费用：${instance.id}`,
+      description: '支付1点费用。',
       minSelections: 1,
       maxSelections: 1,
       callbackKey: 'EFFECT_RESOLVE',
@@ -55,7 +55,7 @@ const effect_305000017_activate: CardEffect = {
           playerState.uid,
           ownUnits.map(unit => ({ card: unit, source: 'UNIT' as const }))
         ),
-        title: 'Choose A Unit',
+        title: '选择单位',
         description: '选择一个单位，这个单位本回合如果要被破坏，改为返回手牌。',
         minSelections: 1,
         maxSelections: 1,

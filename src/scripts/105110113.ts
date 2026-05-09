@@ -48,7 +48,7 @@ const effect_105110113_use_erosion_item: CardEffect = {
       gameState,
       playerState.uid,
       targets,
-      'Choose An Item Card',
+      '选择道具卡',
       '选择1张来自侵蚀区的道具卡，支付其ACCESS费用来使用。',
       1,
       1,
@@ -73,8 +73,8 @@ const effect_105110113_use_erosion_item: CardEffect = {
           type: 'SELECT_PAYMENT',
           playerUid: playerState.uid,
           options: [],
-          title: `Pay Cost: ${target.fullName}`,
-          description: `Pay ${target.acValue} cost to use this item card from your erosion zone.`,
+          title: `支付费用：${target.fullName}`,
+          description: `支付${target.acValue}点费用以从侵蚀区使用这张道具卡。`,
           minSelections: 1,
           maxSelections: 1,
           callbackKey: 'EFFECT_RESOLVE',
@@ -141,8 +141,8 @@ const effect_105110113_reveal_top: CardEffect = {
     createChoiceQuery(
       gameState,
       playerState.uid,
-      'Deck Top Choice',
-      `Revealed card: ${revealed.fullName}`,
+      '卡组顶选择',
+      `展示的卡：${revealed.fullName}`,
       [
         { id: 'TOP', label: '置顶' },
         { id: 'BOTTOM', label: '置底' }

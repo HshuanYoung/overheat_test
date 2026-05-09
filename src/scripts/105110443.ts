@@ -4,7 +4,7 @@ import { isBattlingGodMarkUnit } from './BaseUtil';
 const effect_105110443_continuous: CardEffect = {
   id: '105110443_continuous',
   type: 'CONTINUOUS',
-  description: 'When this unit battles a god-mark unit, it gets +2000 power during that battle.',
+  description: '这个单位与神蚀单位战斗时，本次战斗中其力量+2000。',
   applyContinuous: (gameState, instance) => {
     if (!isBattlingGodMarkUnit(gameState, instance)) return;
     instance.power = (instance.power || 0) + 2000;

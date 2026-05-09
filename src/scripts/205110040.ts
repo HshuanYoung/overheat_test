@@ -10,7 +10,7 @@ const effect_205110040_activate: CardEffect = {
   id: '205110040_activate',
   type: 'ACTIVATE',
   triggerLocation: ['HAND', 'PLAY'],
-  description: 'Reveal an opponent hand, then that opponent discards a non-unit card.',
+  description: '展示对手手牌，之后该对手舍弃1张非单位卡。',
   condition: (gameState, playerState) => {
     const opponentUid = gameState.playerIds.find(id => id !== playerState.uid);
     return !!opponentUid && gameState.players[opponentUid].hand.length > 0;
@@ -41,8 +41,8 @@ const effect_205110040_activate: CardEffect = {
         opponentUid,
         discardableCards.map(card => ({ card, source: 'HAND' as const }))
       ),
-      title: 'Discard A Card',
-      description: 'Choose 1 non-unit card from your hand to discard.',
+      title: '舍弃卡牌',
+      description: '从你的手牌中选择1张非单位卡舍弃。',
       minSelections: 1,
       maxSelections: 1,
       callbackKey: 'EFFECT_RESOLVE',

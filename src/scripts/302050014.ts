@@ -202,7 +202,7 @@ const card: Card = {
     {
       id: 'continuous_rush',
       type: 'CONTINUOUS',
-      description: '装备此卡的单位：获得【速攻】（Rush）。',
+      description: '装备此卡的单位：获得【速攻】。',
       applyContinuous: applyContinuousRush
     },
     goddessTriggerEffect

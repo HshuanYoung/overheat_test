@@ -5,7 +5,7 @@ import { addInfluence, createSelectCardQuery, getOpponentUid } from './BaseUtil'
 const effect_105000476_continuous: CardEffect = {
   id: '105000476_continuous',
   type: 'CONTINUOUS',
-  description: 'If the opponent has 2 or fewer hand cards, this unit gains Heroic and Shenyi.',
+  description: '若对手手牌为2张以下，这个单位获得【英勇】和【神依】。',
   applyContinuous: (gameState, instance) => {
     const ownerUid = AtomicEffectExecutor.findCardOwnerKey(gameState, instance.gamecardId);
     if (!ownerUid) return;
@@ -26,7 +26,7 @@ const effect_105000476_activate: CardEffect = {
   triggerLocation: ['UNIT'],
   limitCount: 1,
   limitNameType: true,
-  description: 'Main phase only. If the opponent has 3 or more hand cards, destroy 1 of your items. Then that opponent discards 1 card and takes 1 damage.',
+  description: '只能在主要阶段发动。若对手手牌为3张以上，破坏你的1张道具。之后该对手舍弃1张手牌并受到1点伤害。',
   condition: (gameState, playerState) => {
     const opponent = gameState.players[getOpponentUid(gameState, playerState.uid)];
     return gameState.phase === 'MAIN' && !!opponent && opponent.hand.length >= 3 && playerState.itemZone.some(card => !!card);
@@ -37,8 +37,8 @@ const effect_105000476_activate: CardEffect = {
       gameState,
       playerState.uid,
       ownItems,
-      'Choose An Item',
-      'Choose 1 of your items to destroy.',
+      '选择道具',
+      '选择你的1张道具破坏。',
       1,
       1,
       { sourceCardId: instance.gamecardId, effectId: '105000476_activate', step: 'DESTROY_ITEM' }
@@ -65,8 +65,8 @@ const effect_105000476_activate: CardEffect = {
         gameState,
         opponentUid,
         [...opponent.hand],
-        'Discard A Card',
-        'Choose 1 card from your hand to discard.',
+        '舍弃卡牌',
+        '选择1张手牌舍弃。',
         1,
         1,
         { sourceCardId: instance.gamecardId, effectId: '105000476_activate', step: 'OPPONENT_DISCARD' },

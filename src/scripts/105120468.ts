@@ -9,7 +9,7 @@ const effect_105120468_activate: CardEffect = {
   limitCount: 1,
   limitGlobal: true,
   limitNameType: true,
-  description: 'Once per game, if this unit entered the battlefield from the deck, banish 1 card on the battlefield.',
+  description: '每局游戏一次，若这个单位从卡组进入战场，放逐战场上1张卡。',
   condition: (gameState, _playerState, instance) =>
     instance.cardlocation === 'UNIT' &&
     (instance as any).data?.lastMovedFromZone === 'DECK' &&
@@ -20,8 +20,8 @@ const effect_105120468_activate: CardEffect = {
       gameState,
       playerState.uid,
       getBattlefieldCards(gameState),
-      'Choose A Card',
-      'Choose 1 battlefield card to banish.',
+      '选择卡牌',
+      '选择战场上1张卡放逐。',
       1,
       1,
       { sourceCardId: instance.gamecardId, effectId: '105120468_activate' }

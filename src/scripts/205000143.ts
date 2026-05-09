@@ -6,7 +6,7 @@ const effect_205000143_activate: CardEffect = {
   id: '205000143_activate',
   type: 'ACTIVATE',
   triggerLocation: ['PLAY'],
-  description: 'Main phase only. Send 1 of your units to grave, then put a non-god unit from your deck onto the battlefield with AC 1 greater.',
+  description: '只能在主要阶段发动。将你的1个单位送入墓地，之后从卡组将1个AC多1的非神蚀单位放置到战场。',
   condition: (gameState, playerState) =>
     (gameState.phase === 'MAIN' || gameState.previousPhase === 'MAIN') &&
     playerState.unitZone.some(unit => !!unit) &&
@@ -17,8 +17,8 @@ const effect_205000143_activate: CardEffect = {
       gameState,
       playerState.uid,
       targets,
-      'Choose A Unit',
-      'Choose 1 of your units to send to the grave.',
+      '选择单位',
+      '选择你的1个单位送入墓地。',
       1,
       1,
       { sourceCardId: instance.gamecardId, effectId: '205000143_activate', step: 'SEND_UNIT' }
@@ -45,8 +45,8 @@ const effect_205000143_activate: CardEffect = {
         gameState,
         playerState.uid,
         candidates,
-        'Choose A Unit',
-        'Choose 1 non-god unit from your deck.',
+        '选择单位',
+        '从你的卡组选择1个非神蚀单位。',
         1,
         1,
         { sourceCardId: instance.gamecardId, effectId: '205000143_activate', step: 'PUT_UNIT' },

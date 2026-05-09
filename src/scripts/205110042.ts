@@ -7,7 +7,7 @@ const effect_205110042_activate: CardEffect = {
   limitCount: 1,
   limitNameType: true,
   triggerLocation: ['HAND', 'PLAY'],
-  description: 'Main phase only. Each player discards all cards in hand, then draws the same amount.',
+  description: '只能在主要阶段发动。各玩家舍弃全部手牌，之后抽等量的卡。',
   condition: (gameState, playerState, instance) =>
     instance.cardlocation === 'PLAY' ||
     (gameState.phase === 'MAIN' && playerState.isTurn),

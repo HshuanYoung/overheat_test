@@ -24,7 +24,7 @@ const trigger_104020462_exhaust_targets: CardEffect = {
   isMandatory: false,
   limitCount: 1,
   limitNameType: true,
-  description: '【诱发】【卡名一回合一次】你的单位区有4个或者以上的“九尾商会联盟”的单位，这个单位攻击宣言时：你可以选择是否发动：选择对手的最多2个ACESS+4以下的非神蚀单位，将他们横置。',
+  description: '【诱发】【卡名一回合一次】你的单位区有4个或者以上的“九尾商会联盟”的单位，这个单位攻击宣言时：你可以选择是否发动：选择对手的最多2个ACCESS+4以下的非神蚀单位，将他们横置。',
   condition: (gameState: GameState, playerState: PlayerState, instance: Card, event?: GameEvent) => {
     if (event?.type !== 'CARD_ATTACK_DECLARED') return false;
     if (event.sourceCardId !== instance.gamecardId) return false;

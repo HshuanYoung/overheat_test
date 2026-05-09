@@ -18,7 +18,7 @@ const getTruthGodmarkCards = (playerState: any) => {
 const effect_105110445_limit: CardEffect = {
   id: '105110445_limit',
   type: 'CONTINUOUS',
-  description: 'You can only have 1 god-mark unit on the battlefield.',
+  description: '你的战场上只能存在1个神蚀单位。',
   limitGodmarkCount: 1
 };
 
@@ -27,7 +27,7 @@ const effect_105110445_end: CardEffect = {
   type: 'TRIGGER',
   triggerEvent: 'TURN_END' as any,
   triggerLocation: ['UNIT'],
-  description: 'At the end of your turn, you may draw up to X cards. X is the number of different item types you control.',
+  description: '你的回合结束时，你可以抽最多X张卡。X为你控制的不同道具种类数量。',
   condition: (_gameState, playerState, instance) =>
     instance.cardlocation === 'UNIT' &&
     playerState.isTurn &&
@@ -37,8 +37,8 @@ const effect_105110445_end: CardEffect = {
     createChoiceQuery(
       gameState,
       playerState.uid,
-      'Choose Draw Count',
-      `Choose a number from 0 to ${maxDraw}.`,
+      '选择抽牌数量',
+      `选择0到${maxDraw}之间的数量。`,
       Array.from({ length: maxDraw + 1 }, (_, idx) => ({ id: String(idx), label: String(idx) })),
       { sourceCardId: instance.gamecardId, effectId: '105110445_end' }
     );
@@ -56,7 +56,7 @@ const effect_105110445_activate: CardEffect = {
   triggerLocation: ['UNIT'],
   limitCount: 1,
   limitNameType: true,
-  description: 'Main phase only. Banish 2 Truth god-mark cards from your hand, deck, and/or grave. Put 1 non-god card with AC up to X from your deck onto the battlefield. X is the number of different item types you control.',
+  description: '只能在主要阶段发动。从你的手牌、卡组和/或墓地放逐2张「真实」神蚀卡。从卡组将1张AC为X以下的非神蚀卡放置到战场。X为你控制的不同道具种类数量。',
   condition: (gameState, playerState) =>
     gameState.phase === 'MAIN' &&
     countItemTypes(playerState) > 0 &&
@@ -67,8 +67,8 @@ const effect_105110445_activate: CardEffect = {
       gameState,
       playerState.uid,
       truthCards.map(entry => entry.card),
-      'Choose 2 Truth Cards',
-      'Choose 2 Truth god-mark cards from your hand, deck, and/or grave to banish.',
+      '选择2张真实卡',
+      '从你的手牌、卡组和/或墓地选择2张「真实」神蚀卡放逐。',
       2,
       2,
       { sourceCardId: instance.gamecardId, effectId: '105110445_activate', step: 'BANISH_COST' },
@@ -96,8 +96,8 @@ const effect_105110445_activate: CardEffect = {
         gameState,
         playerState.uid,
         candidates,
-        'Choose A Card',
-        `Choose 1 non-god card with AC ${maxAc} or less from your deck.`,
+        '选择卡牌',
+        `从你的卡组选择1张AC为${maxAc}以下的非神蚀卡。`,
         1,
         1,
         { sourceCardId: instance.gamecardId, effectId: '105110445_activate', step: 'PUT_CARD' },

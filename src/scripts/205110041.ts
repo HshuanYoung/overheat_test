@@ -5,7 +5,7 @@ const effect_205110041_activate: CardEffect = {
   id: '205110041_activate',
   type: 'ACTIVATE',
   triggerLocation: ['HAND', 'PLAY'],
-  description: 'Interrupt the current battle if one of your units is participating.',
+  description: '若你的单位正在参战，中止当前战斗。',
   condition: (gameState, playerState) => {
     if (!gameState.battleState) return false;
 

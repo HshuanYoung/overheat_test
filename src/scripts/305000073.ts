@@ -5,7 +5,7 @@ import { canPutUnitOntoBattlefield, createSelectCardQuery } from './BaseUtil';
 const effect_305000073_continuous: CardEffect = {
   id: '305000073_continuous',
   type: 'CONTINUOUS',
-  description: 'Units put onto the battlefield by this item effect are unaffected by opponent card effects, become 4000 power / 4 damage, and gain Heroic and Annihilation.',
+  description: '因这个道具的效果放置到战场的单位不受对手卡牌效果影响，变为力量4000 / 伤害4，并获得【英勇】和【歼灭】。',
   applyContinuous: (gameState, instance) => {
     const ownerUid = AtomicEffectExecutor.findCardOwnerKey(gameState, instance.gamecardId);
     if (!ownerUid) return;
@@ -27,7 +27,7 @@ const effect_305000073_continuous: CardEffect = {
       if (!unit.influencingEffects) unit.influencingEffects = [];
       unit.influencingEffects.push({
         sourceCardName: instance.fullName,
-        description: 'Mystery Workshop buff: 4000 power / 4 damage / Heroic / Annihilation / unaffected by opponent card effects.'
+        description: '神秘工坊加成：力量4000 / 伤害4 / 英勇 / 歼灭 / 不受对手卡牌效果影响。'
       });
     });
   }
@@ -39,7 +39,7 @@ const effect_305000073_activate: CardEffect = {
   triggerLocation: ['ITEM'],
   limitCount: 1,
   limitGlobal: true,
-  description: 'Once per game: exhaust this item, send 3 of your units that were put from deck onto the battlefield to the grave, then put an alchemy unit from your deck onto the battlefield.',
+  description: '每局游戏一次：横置这个道具，将你的3个从卡组放置到战场的单位送入墓地，之后从卡组将1个炼金单位放置到战场。',
   condition: (_gameState, playerState, instance) =>
     !instance.isExhausted &&
     playerState.unitZone.filter(unit => unit && (unit as any).data?.lastMovedFromZone === 'DECK').length >= 3 &&
@@ -57,8 +57,8 @@ const effect_305000073_activate: CardEffect = {
       gameState,
       playerState.uid,
       targets,
-      'Choose 3 Units',
-      'Choose 3 of your units that were put from your deck onto the battlefield.',
+      '选择3个单位',
+      '选择你的3个从卡组放置到战场的单位。',
       3,
       3,
       { sourceCardId: instance.gamecardId, effectId: '305000073_activate', step: 'SEND_UNITS' }
@@ -85,8 +85,8 @@ const effect_305000073_activate: CardEffect = {
         gameState,
         playerState.uid,
         candidates,
-        'Choose An Alchemy Unit',
-        'Choose 1 unit whose name contains 《炼金》 from your deck.',
+        '选择炼金单位',
+        '从你的卡组选择1个卡名含有《炼金》的单位。',
         1,
         1,
         { sourceCardId: instance.gamecardId, effectId: '305000073_activate', step: 'PUT_UNIT' },

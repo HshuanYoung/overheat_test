@@ -5,7 +5,7 @@ import { canPutUnitOntoBattlefield } from './BaseUtil';
 const effect_105000472_virtual_godmark: CardEffect = {
   id: '105000472_virtual_godmark',
   type: 'CONTINUOUS',
-  description: 'In your deck, this card is also treated as a god-mark card.'
+  description: '在你的卡组中，这张卡也视为神蚀卡。'
 };
 
 const effect_105000472_reveal: CardEffect = {
@@ -13,7 +13,7 @@ const effect_105000472_reveal: CardEffect = {
   type: 'TRIGGER',
   triggerLocation: ['DECK'],
   triggerEvent: 'REVEAL_DECK',
-  description: 'When this card is revealed from the top of your deck, you may put it onto the battlefield.',
+  description: '这张卡从卡组顶展示时，你可以将其放置到战场。',
   condition: (_gameState, playerState, instance, event?: GameEvent) =>
     instance.cardlocation === 'DECK' &&
     event?.type === 'REVEAL_DECK' &&

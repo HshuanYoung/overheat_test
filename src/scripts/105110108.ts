@@ -30,7 +30,7 @@ const effect_105110108_activate: CardEffect = {
     createChoiceQuery(
       gameState,
       playerState.uid,
-      'Declare A Name',
+      '宣言卡名',
       '宣言一个卡名',
       options,
       {
@@ -56,7 +56,7 @@ const effect_105110108_activate: CardEffect = {
       createChoiceQuery(
         gameState,
         playerState.uid,
-        'Resolve Match',
+        '结算命中',
         '宣言的名称匹配。是否将2张卡从墓地放到卡组底？',
         [
           { id: 'YES', label: '是' },
@@ -79,7 +79,7 @@ const effect_105110108_activate: CardEffect = {
         gameState,
         playerState.uid,
         [...playerState.grave],
-        'Choose 2 Cards',
+        '选择2张卡',
         '选择2张卡放回卡组底',
         2,
         2,

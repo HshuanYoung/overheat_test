@@ -8,7 +8,7 @@ const effect_105120168_enter: CardEffect = {
   triggerLocation: ['UNIT'],
   triggerEvent: 'CARD_ENTERED_ZONE',
   isMandatory: true,
-  description: 'When this unit enters the battlefield, put up to 2 alchemy cards other than Elmont from your grave on the bottom of your deck, then draw 1.',
+  description: '这个单位进入战场时，将你墓地最多2张「艾尔蒙特」以外的炼金卡放置到卡组底，之后抽1张卡。',
   condition: (_gameState, playerState, instance, event?: GameEvent) =>
     instance.cardlocation === 'UNIT' &&
     event?.type === 'CARD_ENTERED_ZONE' &&
@@ -22,8 +22,8 @@ const effect_105120168_enter: CardEffect = {
       gameState,
       playerState.uid,
       candidates,
-      'Choose Grave Cards',
-      'Choose 2 alchemy cards from your grave to place on the bottom of your deck.',
+      '选择墓地卡',
+      '从你的墓地选择2张炼金卡放置到卡组底。',
       2,
       2,
       { sourceCardId: instance.gamecardId, effectId: '105120168_enter' }
@@ -45,15 +45,15 @@ const effect_105120168_activate: CardEffect = {
   limitCount: 1,
   limitNameType: true,
   erosionTotalLimit: [3, 5],
-  description: 'Main phase only. Discard 1 hand card, reveal the top card of your deck, and if it is a non-god unit or item with AC 3 or less, put it onto the battlefield.',
+  description: '只能在主要阶段发动。舍弃1张手牌，展示你的卡组顶1张卡，若其为AC为3以下的非神蚀单位或道具，将其放置到战场。',
   condition: (gameState, playerState) => gameState.phase === 'MAIN' && playerState.hand.length > 0,
   cost: async (gameState, playerState, instance) => {
     createSelectCardQuery(
       gameState,
       playerState.uid,
       [...playerState.hand],
-      'Discard A Card',
-      'Discard 1 hand card.',
+      '舍弃卡牌',
+      '舍弃1张手牌。',
       1,
       1,
       { sourceCardId: instance.gamecardId, effectId: '105120168_activate', step: 'DISCARD_COST' },

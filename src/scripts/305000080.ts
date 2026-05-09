@@ -6,7 +6,7 @@ const effect_305000080_activate: CardEffect = {
   id: '305000080_activate',
   type: 'ACTIVATE',
   triggerLocation: ['ITEM'],
-  description: 'Exhaust the equipped unit: reveal the top card of your deck. You may add it to your hand, then put 1 hand card on the bottom of your deck.',
+  description: '横置装备单位：展示你的卡组顶1张卡。你可以将其加入手牌，之后将1张手牌放置到卡组底。',
   condition: (gameState, playerState, instance) => {
     const target = findUnitOnBattlefield(gameState, instance.equipTargetId);
     return instance.cardlocation === 'ITEM' && !!target && !target.isExhausted && playerState.deck.length > 0;
@@ -29,11 +29,11 @@ const effect_305000080_activate: CardEffect = {
     createChoiceQuery(
       gameState,
       playerState.uid,
-      'Add The Revealed Card?',
-      `Reveal ${topCard.fullName}. You may add it to your hand.`,
+      '将展示的卡加入手牌？',
+      `展示${topCard.fullName}。你可以将其加入手牌。`,
       [
-        { id: 'YES', label: 'Add To Hand' },
-        { id: 'NO', label: 'Leave It There' }
+        { id: 'YES', label: '加入手牌' },
+        { id: 'NO', label: '留在原处' }
       ],
       {
         sourceCardId: instance.gamecardId,
@@ -57,8 +57,8 @@ const effect_305000080_activate: CardEffect = {
         gameState,
         playerState.uid,
         [...playerState.hand],
-        'Choose A Hand Card',
-        'Choose 1 hand card to place on the bottom of your deck.',
+        '选择手牌',
+        '选择1张手牌放置到卡组底。',
         1,
         1,
         {

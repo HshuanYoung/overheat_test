@@ -7,7 +7,7 @@ const effect_105000469_enter: CardEffect = {
   type: 'TRIGGER',
   triggerLocation: ['UNIT'],
   triggerEvent: 'CARD_ENTERED_ZONE',
-  description: 'When this unit enters the battlefield, you may put a hat item from your deck onto the battlefield. Its abilities are invalid there, and at end of turn put it on the bottom of your deck.',
+  description: '这个单位进入战场时，你可以从卡组将1张礼帽道具放置到战场。其场上能力无效，回合结束时将其放置到卡组底。',
   condition: (_gameState, _playerState, instance, event?: GameEvent) =>
     instance.cardlocation === 'UNIT' &&
     event?.type === 'CARD_ENTERED_ZONE' &&
@@ -25,8 +25,8 @@ const effect_105000469_enter: CardEffect = {
       gameState,
       playerState.uid,
       candidates,
-      'Choose A Hat Item',
-      'You may choose 1 hat item from your deck.',
+      '选择礼帽道具',
+      '你可以从卡组选择1张礼帽道具。',
       0,
       1,
       { sourceCardId: instance.gamecardId, effectId: '105000469_enter' },

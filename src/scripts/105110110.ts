@@ -68,7 +68,7 @@ const effect_105110110_enter: CardEffect = {
           disabledReason: card.type !== 'ITEM' ? '只有道具卡可以被选择' : undefined
         }))
       ),
-      title: 'Inspect Top 3 Cards',
+      title: '查看卡组顶3张',
       description: '检视你的卡组顶的3张卡。你可以选择1张道具卡加入手牌，或提交而不选择。',
       minSelections: 0,
       maxSelections: 1,
@@ -103,7 +103,7 @@ const effect_105110110_enter: CardEffect = {
         gameState,
         playerState.uid,
         remainingCards,
-        'Order Remaining Cards',
+        '排列剩余卡牌',
         '将剩余的卡以任意顺序放置到卡组顶。',
         remainingCards.length,
         remainingCards.length,

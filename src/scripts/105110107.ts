@@ -42,7 +42,7 @@ const effect_105110107_enter: CardEffect = {
       gameState,
       playerState.uid,
       targets,
-      'Choose An Item',
+      '选择道具',
       '选择1张道具卡，将其放置到卡组顶。',
       1,
       1,

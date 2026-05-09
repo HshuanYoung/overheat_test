@@ -83,7 +83,7 @@ const card: Card = {
   colorReq: { YELLOW: 2 },
   faction: '无',
   acValue: 2,
-  godMark: false,
+  godMark: true,
   displayState: 'FRONT_UPRIGHT',
   feijingMark: false,
   canResetCount: 0,

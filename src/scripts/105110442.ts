@@ -6,7 +6,7 @@ import { wasPlayedFromHand } from './BaseUtil';
 const effect_105110442_continuous: CardEffect = {
   id: '105110442_continuous',
   type: 'CONTINUOUS',
-  description: 'If you control only 1 god-mark unit and its AC is 5 or more, that unit gets +1 damage and +500 power.',
+  description: '若你只控制1个神蚀单位且其AC为5以上，那个单位伤害+1、力量+500。',
   applyContinuous: (_gameState, instance) => {
     const ownerUid = AtomicEffectExecutor.findCardOwnerKey(_gameState, instance.gamecardId);
     if (!ownerUid) return;
@@ -25,7 +25,7 @@ const effect_105110442_enter: CardEffect = {
   triggerLocation: ['UNIT'],
   triggerEvent: 'CARD_ENTERED_ZONE',
   isMandatory: true,
-  description: 'When this unit enters the battlefield from hand, if you control only 1 god-mark unit, look at the top 3 cards of your deck and add 1 to your hand, then shuffle.',
+  description: '这个单位从手牌进入战场时，若你只控制1个神蚀单位，查看你的卡组顶3张卡，将其中1张加入手牌，之后洗切卡组。',
   condition: (_gameState, playerState, instance, event?: GameEvent) =>
     instance.cardlocation === 'UNIT' &&
     event?.type === 'CARD_ENTERED_ZONE' &&
@@ -41,8 +41,8 @@ const effect_105110442_enter: CardEffect = {
       gameState,
       playerState.uid,
       topCards,
-      'Choose A Card',
-      'Choose 1 of the top 3 cards of your deck to add to your hand.',
+      '选择卡牌',
+      '从你的卡组顶3张卡中选择1张加入手牌。',
       1,
       1,
       { sourceCardId: instance.gamecardId, effectId: '105110442_enter' },

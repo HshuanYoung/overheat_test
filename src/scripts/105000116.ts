@@ -4,7 +4,7 @@ import { AtomicEffectExecutor } from '../services/AtomicEffectExecutor';
 const effect_105000116_continuous: CardEffect = {
   id: '105000116_continuous',
   type: 'CONTINUOUS',
-  description: 'If you control an item, this unit gets +1 damage and +1000 power.',
+  description: '若你控制道具，这个单位伤害+1、力量+1000。',
   applyContinuous: (gameState, instance) => {
     const ownerUid = AtomicEffectExecutor.findCardOwnerKey(gameState, instance.gamecardId);
     if (!ownerUid) return;

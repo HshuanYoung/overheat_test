@@ -6,7 +6,7 @@ const effect_205000141_activate: CardEffect = {
   id: '205000141_activate',
   type: 'ACTIVATE',
   triggerLocation: ['PLAY'],
-  description: 'Send 1 of your ready units to grave. Then you may put up to 2 same-name non-god units from your deck onto the battlefield with the same color and AC 2 less.',
+  description: '将你的1个重置状态单位送入墓地。之后你可以从卡组将最多2个同名、同色且AC少2的非神蚀单位放置到战场。',
   condition: (_gameState, playerState) =>
     playerState.unitZone.some(unit => unit && !unit.isExhausted),
   execute: async (instance, gameState, playerState) => {
@@ -15,8 +15,8 @@ const effect_205000141_activate: CardEffect = {
       gameState,
       playerState.uid,
       readyUnits,
-      'Choose A Ready Unit',
-      'Choose 1 ready unit to send to the grave.',
+      '选择重置状态单位',
+      '选择1个重置状态单位送入墓地。',
       1,
       1,
       { sourceCardId: instance.gamecardId, effectId: '205000141_activate', step: 'SEND_UNIT' }
@@ -45,8 +45,8 @@ const effect_205000141_activate: CardEffect = {
         gameState,
         playerState.uid,
         candidates,
-        'Choose The First Unit',
-        'Choose up to 1 unit to put onto the battlefield.',
+        '选择第一个单位',
+        '选择最多1个单位放置到战场。',
         0,
         1,
         {
@@ -84,8 +84,8 @@ const effect_205000141_activate: CardEffect = {
         gameState,
         playerState.uid,
         remainingCopies,
-        'Choose The Second Unit',
-        'You may choose 1 more card with the same name.',
+        '选择第二个单位',
+        '你可以再选择1张同名卡。',
         0,
         1,
         {

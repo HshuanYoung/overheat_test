@@ -88,7 +88,7 @@ const effect_105110112_activate: CardEffect = {
     createChoiceQuery(
       gameState,
       playerState.uid,
-      'Choose An Effect',
+      '选择效果',
       '选择1项效果并执行。之后，这个单位失去这个【启】能力。',
       optionList,
       {
@@ -133,7 +133,7 @@ const effect_105110112_activate: CardEffect = {
           gameState,
           playerState.uid,
           [...playerState.hand],
-          'Choose A Card To Discard',
+          '选择要舍弃的卡',
           '选择1张手牌舍弃。',
           1,
           1,
@@ -189,7 +189,7 @@ const effect_105110112_activate: CardEffect = {
         gameState,
         playerState.uid,
         weakUnits,
-        'Choose A Unit',
+        '选择单位',
         '选择1个力量1500以下的单位，将其破坏。',
         1,
         1,
@@ -228,7 +228,7 @@ const effect_105110112_activate: CardEffect = {
 const effect_105110112_lost_display: CardEffect = {
   id: '105110112_lost_display',
   type: 'CONTINUOUS',
-  description: '使用过【启】效果后，在 influenced by 中显示已失去此能力。',
+  description: '使用过【启】效果后，在影响来源中显示已失去此能力。',
   applyContinuous: (_gameState, instance) => {
     if (!hasLostActivate(instance)) return;
     addInfluence(instance, instance, '已使用效果，失去此能力');

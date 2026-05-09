@@ -65,7 +65,7 @@ const effect_105110114_ten_plus: CardEffect = {
   id: '105110114_ten_plus',
   type: 'CONTINUOUS',
   erosionTotalLimit: [10, 10],
-  description: '10+: This unit gets +2 damage and +1500 power.',
+  description: '10+：这个单位伤害+2、力量+1500。',
   applyContinuous: (gameState, instance) => {
     const ownerUid = AtomicEffectExecutor.findCardOwnerKey(gameState, instance.gamecardId);
     if (!ownerUid) return;

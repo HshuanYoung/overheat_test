@@ -6,7 +6,7 @@ const effect_305110029_activate: CardEffect = {
   id: '305110029_activate',
   type: 'ACTIVATE',
   triggerLocation: ['ITEM'],
-  description: 'Exhaust this item. Choose 1 unit on the battlefield. It gets +1 damage and +500 power this turn.',
+  description: '横置这个道具。选择战场上1个单位。本回合中，其伤害+1、力量+500。',
   condition: (_gameState, _playerState, instance) => !instance.isExhausted,
   execute: async (instance, gameState, playerState) => {
     await AtomicEffectExecutor.execute(gameState, playerState.uid, {
@@ -21,8 +21,8 @@ const effect_305110029_activate: CardEffect = {
       gameState,
       playerState.uid,
       units,
-      'Choose A Unit',
-      'Choose 1 unit on the battlefield.',
+      '选择单位',
+      '选择战场上1个单位。',
       1,
       1,
       { sourceCardId: instance.gamecardId, effectId: '305110029_activate' }

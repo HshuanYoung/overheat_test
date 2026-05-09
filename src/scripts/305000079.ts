@@ -22,7 +22,7 @@ const effect_305000079_trigger: CardEffect = {
   triggerLocation: ['GRAVE'],
   triggerEvent: ['CARD_DESTROYED_EFFECT', 'CARD_LEFT_ZONE'],
   isMandatory: true,
-  description: 'When this card is destroyed by your card effect and sent to the grave, choose a 幻想舞台的礼帽 from your deck and put it onto the battlefield.',
+  description: '这张卡被你的卡牌效果破坏并送入墓地时，从你的卡组选择1张「幻想舞台的礼帽」放置到战场。',
   condition: (_gameState, playerState, instance, event?: GameEvent) =>
     instance.cardlocation === 'GRAVE' &&
     isSelfDestroyedByOwnEffect(instance, playerState, event),
@@ -37,8 +37,8 @@ const effect_305000079_trigger: CardEffect = {
       gameState,
       playerState.uid,
       candidates,
-      'Choose A Hat',
-      'Choose 1 幻想舞台的礼帽 from your deck.',
+      '选择礼帽',
+      '从你的卡组选择1张「幻想舞台的礼帽」。',
       1,
       1,
       { sourceCardId: instance.gamecardId, effectId: '305000079_trigger' },

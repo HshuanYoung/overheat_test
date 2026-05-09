@@ -10,7 +10,7 @@ const effect_105000470_enter: CardEffect = {
   limitCount: 1,
   limitNameType: true,
   isMandatory: true,
-  description: 'When this unit enters the battlefield, shuffle your deck and reveal the top card. If it is a god-mark card, return 1 unit on the battlefield to its owner hand.',
+  description: '这个单位进入战场时，洗切你的卡组并展示卡组顶1张卡。若其为神蚀卡，将战场上1个单位返回持有者手牌。',
   condition: (_gameState, _playerState, instance, event?: GameEvent) =>
     instance.cardlocation === 'UNIT' &&
     event?.type === 'CARD_ENTERED_ZONE' &&
@@ -27,8 +27,8 @@ const effect_105000470_enter: CardEffect = {
       gameState,
       playerState.uid,
       targets,
-      'Choose A Unit',
-      'Choose 1 unit on the battlefield to return to hand.',
+      '选择单位',
+      '选择战场上1个单位返回手牌。',
       1,
       1,
       { sourceCardId: instance.gamecardId, effectId: '105000470_enter' }

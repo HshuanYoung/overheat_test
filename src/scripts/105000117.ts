@@ -5,7 +5,7 @@ const effect_105000117_continuous: CardEffect = {
   id: '105000117_continuous',
   type: 'CONTINUOUS',
   content: 'SELF_HAND_COST',
-  description: 'If you control no units and have no face-up erosion cards, this card becomes AC 0 in your hand.',
+  description: '若你没有控制单位且侵蚀区没有正面卡，手牌中的这张卡AC变为0。',
   applyContinuous: (gameState, instance) => {
     if (instance.cardlocation !== 'HAND') return;
 

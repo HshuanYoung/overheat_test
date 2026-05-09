@@ -6,7 +6,7 @@ const effect_205110061_activate: CardEffect = {
   id: '205110061_activate',
   type: 'ACTIVATE',
   triggerLocation: ['PLAY'],
-  description: 'Choose up to 3 cards from your hand and discard them. If exactly 3 were discarded, choose up to 4 cards with matching names from your deck and add them to your hand.',
+  description: '从你的手牌中选择最多3张卡并舍弃。若正好舍弃了3张，从卡组选择最多4张同名卡加入手牌。',
   execute: async (instance, gameState, playerState) => {
     if (playerState.hand.length === 0) return;
 
@@ -14,8 +14,8 @@ const effect_205110061_activate: CardEffect = {
       gameState,
       playerState.uid,
       [...playerState.hand],
-      'Discard Cards',
-      'Choose up to 3 cards from your hand to discard.',
+      '舍弃卡牌',
+      '从你的手牌中选择最多3张卡舍弃。',
       0,
       Math.min(3, playerState.hand.length),
       { sourceCardId: instance.gamecardId, effectId: '205110061_activate', step: 'DISCARD' },
@@ -52,8 +52,8 @@ const effect_205110061_activate: CardEffect = {
       gameState,
       playerState.uid,
       candidates,
-      'Choose Cards',
-      'Choose up to 4 cards with the same names as the discarded cards from your deck.',
+      '选择卡牌',
+      '从你的卡组中选择最多4张与舍弃的卡同名的卡。',
       0,
       Math.min(4, candidates.length),
       { sourceCardId: instance.gamecardId, effectId: '205110061_activate', step: 'SEARCH' },

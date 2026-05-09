@@ -7,7 +7,7 @@ const effect_305120030_activate: CardEffect = {
   id: '305120030_activate',
   type: 'ACTIVATE',
   triggerLocation: ['ITEM'],
-  description: 'Main phase only. Discard 1 yellow hand card and exhaust this item. Send 1 allied unit to grave, then put a unit with the same color and AC +1 from your deck onto the battlefield.',
+  description: '只能在主要阶段发动。舍弃1张黄色手牌并横置这个道具。将我方1个单位送入墓地，之后从卡组将1个同色且AC多1的单位放置到战场。',
   condition: (gameState, playerState, instance) =>
     gameState.phase === 'MAIN' &&
     !instance.isExhausted &&
@@ -19,8 +19,8 @@ const effect_305120030_activate: CardEffect = {
       gameState,
       playerState.uid,
       yellowHand,
-      'Discard A Yellow Card',
-      'Discard 1 yellow hand card.',
+      '舍弃黄色卡',
+      '舍弃1张黄色手牌。',
       1,
       1,
       { sourceCardId: instance.gamecardId, effectId: '305120030_activate', step: 'DISCARD' },
@@ -44,8 +44,8 @@ const effect_305120030_activate: CardEffect = {
         gameState,
         playerState.uid,
         ownUnits,
-        'Choose A Unit',
-        'Send 1 allied unit to grave.',
+        '选择单位',
+        '将我方1个单位送入墓地。',
         1,
         1,
         { sourceCardId: instance.gamecardId, effectId: '305120030_activate', step: 'SEND_UNIT' }
@@ -76,8 +76,8 @@ const effect_305120030_activate: CardEffect = {
         gameState,
         playerState.uid,
         candidates,
-        'Choose A Unit',
-        'Choose 1 matching unit from your deck.',
+        '选择单位',
+        '从你的卡组选择1个符合条件的单位。',
         1,
         1,
         { sourceCardId: instance.gamecardId, effectId: '305120030_activate', step: 'PUT_UNIT' },

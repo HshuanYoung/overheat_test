@@ -5,7 +5,7 @@ import { createSelectCardQuery, getOpponentUid } from './BaseUtil';
 const effect_105000475_temp: CardEffect = {
   id: '105000475_temp',
   type: 'CONTINUOUS',
-  description: 'This unit gains Shenyi this turn if its enter effect discarded a unit.',
+  description: '若这个单位的入场效果舍弃了单位卡，本回合中这个单位获得【神依】。',
   applyContinuous: (gameState, instance) => {
     if ((instance as any).data?.bt03Y09BuffTurn !== gameState.turnCount) return;
     instance.isShenyi = true;
@@ -18,7 +18,7 @@ const effect_105000475_enter: CardEffect = {
   triggerLocation: ['UNIT'],
   triggerEvent: 'CARD_ENTERED_ZONE',
   isMandatory: true,
-  description: 'When this unit enters the battlefield, you may destroy your item. Then the opponent discards 1 card. If it was a unit, this unit gains Rush and Shenyi this turn. Otherwise all players take 1 damage.',
+  description: '这个单位进入战场时，你可以破坏你的1张道具。之后对手舍弃1张手牌。若舍弃的是单位卡，本回合中这个单位获得【速攻】和【神依】；否则双方玩家各受到1点伤害。',
   condition: (_gameState, _playerState, instance, event?: GameEvent) =>
     instance.cardlocation === 'UNIT' &&
     event?.type === 'CARD_ENTERED_ZONE' &&
@@ -31,8 +31,8 @@ const effect_105000475_enter: CardEffect = {
         gameState,
         playerState.uid,
         ownItems,
-        'Choose Up To 1 Item',
-        'You may choose 1 of your items to destroy.',
+        '选择最多1张道具',
+        '你可以选择你的1张道具破坏。',
         0,
         1,
         { sourceCardId: instance.gamecardId, effectId: '105000475_enter', step: 'DESTROY_ITEM' }
@@ -48,8 +48,8 @@ const effect_105000475_enter: CardEffect = {
       gameState,
       opponentUid,
       [...opponent.hand],
-      'Discard A Card',
-      'Choose 1 card from your hand to discard.',
+      '舍弃卡牌',
+      '选择1张手牌舍弃。',
       1,
       1,
       { sourceCardId: instance.gamecardId, effectId: '105000475_enter', step: 'OPPONENT_DISCARD' },
@@ -73,8 +73,8 @@ const effect_105000475_enter: CardEffect = {
         gameState,
         opponentUid,
         [...opponent.hand],
-        'Discard A Card',
-        'Choose 1 card from your hand to discard.',
+        '舍弃卡牌',
+        '选择1张手牌舍弃。',
         1,
         1,
         { sourceCardId: instance.gamecardId, effectId: '105000475_enter', step: 'OPPONENT_DISCARD' },

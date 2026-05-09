@@ -5,7 +5,7 @@ import { canPutUnitOntoBattlefield, createSelectCardQuery } from './BaseUtil';
 const effect_205000136_substitute: CardEffect = {
   id: '205000136_substitute',
   type: 'CONTINUOUS',
-  description: 'You may banish this card from your hand as a payment substitute when paying for yellow cards with AC 3 or less.'
+  description: '支付AC为3以下的黄色卡费用时，你可以从手牌将这张卡放逐作为支付替代。'
 };
 
 const effect_205000136_activate: CardEffect = {
@@ -13,7 +13,7 @@ const effect_205000136_activate: CardEffect = {
   type: 'ACTIVATE',
   triggerLocation: ['PLAY'],
   erosionBackLimit: [1, 10],
-  description: 'Scratch 1. Main phase only. Put 1 unit from your deck onto the battlefield, deal yourself damage equal to its AC, then end this turn.',
+  description: '创痕1。只能在主要阶段发动。从你的卡组将1个单位放置到战场，对自己造成等同于其AC的伤害，之后结束本回合。',
   condition: (gameState, playerState) =>
     gameState.phase === 'MAIN' &&
     playerState.deck.some(card => card.type === 'UNIT' && canPutUnitOntoBattlefield(playerState, card)),
@@ -23,8 +23,8 @@ const effect_205000136_activate: CardEffect = {
       gameState,
       playerState.uid,
       candidates,
-      'Choose A Unit',
-      'Choose 1 unit from your deck to put onto the battlefield.',
+      '选择单位',
+      '从你的卡组选择1个单位放置到战场。',
       1,
       1,
       { sourceCardId: instance.gamecardId, effectId: '205000136_activate' },

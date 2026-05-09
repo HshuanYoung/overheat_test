@@ -9,7 +9,7 @@ const effect_305110028_revive: CardEffect = {
   limitCount: 1,
   limitNameType: true,
   isMandatory: true,
-  description: 'At end of turn, if this card is in your grave and it was sent there from your battlefield by a card effect this turn, put it back onto the battlefield.',
+  description: '回合结束时，若这张卡在你的墓地，且本回合中其是从你的战场被卡牌效果送入墓地的，将其放置回战场。',
   condition: (gameState, _playerState, instance) =>
     instance.cardlocation === 'GRAVE' &&
     (instance as any).data?.sentToGraveFromFieldByEffectTurn === gameState.turnCount,

@@ -8,7 +8,7 @@ const effect_105110163_story_ping: CardEffect = {
   triggerEvent: 'EFFECT_ACTIVATED',
   isGlobal: true,
   isMandatory: true,
-  description: 'Whenever a player resolves a story card effect, deal 2 effect damage to that story card controller.',
+  description: '每当玩家结算故事卡效果时，对该故事卡的控制者造成2点效果伤害。',
   condition: (gameState, _playerState, instance, event?: GameEvent) => {
     const playedCard = event?.sourceCard || (event?.sourceCardId ? AtomicEffectExecutor.findCardById(gameState, event.sourceCardId) : undefined);
     return (

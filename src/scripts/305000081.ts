@@ -4,7 +4,7 @@ import { findUnitOnBattlefield, universalEquipEffect } from './BaseUtil';
 const effect_305000081_continuous: CardEffect = {
   id: '305000081_continuous',
   type: 'CONTINUOUS',
-  description: 'The equipped unit cannot participate in battle, cannot become an attack target, and cannot become the target of unit-card abilities.',
+  description: '装备单位不能参与战斗，不能成为攻击目标，且不能成为单位卡能力的对象。',
   applyContinuous: (gameState, instance) => {
     const target = findUnitOnBattlefield(gameState, instance.equipTargetId);
     if (!target) {
@@ -20,7 +20,7 @@ const effect_305000081_continuous: CardEffect = {
     if (!target.influencingEffects) target.influencingEffects = [];
     target.influencingEffects.push({
       sourceCardName: instance.fullName,
-      description: 'Cannot participate in battle, cannot be attack target, and ignores unit-card targeting.'
+      description: '不能参与战斗，不能成为攻击目标，且不会成为单位卡效果的对象。'
     });
   }
 };

@@ -9,7 +9,7 @@ const effect_105000169_trigger: CardEffect = {
   triggerEvent: 'CARD_DESTROYED_BATTLE',
   limitCount: 1,
   limitNameType: true,
-  description: 'When this unit is destroyed by battle, you may pay 1 with a yellow requirement. If you do, the opponent discards 1 hand card of their choice.',
+  description: '这个单位被战斗破坏时，你可以支付1点费用。若如此做，对手选择自己的1张手牌舍弃。',
   condition: (gameState, playerState, instance, event?: GameEvent) => {
     if (event?.type !== 'CARD_DESTROYED_BATTLE' || event.targetCardId !== instance.gamecardId) return false;
     const opponentUid = getOpponentUid(gameState, playerState.uid);
@@ -21,8 +21,8 @@ const effect_105000169_trigger: CardEffect = {
       type: 'SELECT_PAYMENT',
       playerUid: playerState.uid,
       options: [],
-      title: 'Pay Cost',
-      description: 'Pay 1 cost to resolve this trigger.',
+      title: '支付费用',
+      description: '支付1点费用以结算这个诱发效果。',
       minSelections: 1,
       maxSelections: 1,
       callbackKey: 'ACTIVATE_COST_RESOLVE',
@@ -44,8 +44,8 @@ const effect_105000169_trigger: CardEffect = {
       gameState,
       opponentUid,
       [...opponent.hand],
-      'Choose A Card To Discard',
-      'Choose 1 hand card to discard.',
+      '选择要舍弃的卡',
+      '选择1张手牌舍弃。',
       1,
       1,
       { sourceCardId: instance.gamecardId, effectId: '105000169_trigger', targetUid: opponentUid },

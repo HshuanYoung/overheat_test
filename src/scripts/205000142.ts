@@ -7,7 +7,7 @@ const effect_205000142_activate: CardEffect = {
   type: 'ACTIVATE',
   triggerLocation: ['PLAY'],
   erosionBackLimit: [2, 10],
-  description: 'Scratch 2. Add 1 card from the top 7 cards of your deck to your hand. If you control Truth, search any 1 card instead. Then shuffle your deck.',
+  description: '创痕2。从你的卡组顶7张卡中将1张卡加入手牌。若你控制「真实」，改为检索任意1张卡。之后洗切卡组。',
   execute: async (instance, gameState, playerState) => {
     if (hasTruthUnit(playerState)) {
       if (playerState.deck.length === 0) return;
@@ -15,8 +15,8 @@ const effect_205000142_activate: CardEffect = {
         gameState,
         playerState.uid,
         [...playerState.deck],
-        'Choose A Card',
-        'Choose 1 card from your deck to add to your hand.',
+        '选择卡牌',
+        '从你的卡组选择1张卡加入手牌。',
         1,
         1,
         { sourceCardId: instance.gamecardId, effectId: '205000142_activate', step: 'SEARCH_ANY' },
@@ -32,8 +32,8 @@ const effect_205000142_activate: CardEffect = {
       gameState,
       playerState.uid,
       revealed,
-      'Choose A Card',
-      'Choose 1 of the revealed cards to add to your hand.',
+      '选择卡牌',
+      '从展示的卡中选择1张加入手牌。',
       1,
       1,
       { sourceCardId: instance.gamecardId, effectId: '205000142_activate', step: 'REVEAL_TOP' },

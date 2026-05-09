@@ -5,7 +5,7 @@ import { createSelectCardQuery, getBattlefieldUnits } from './BaseUtil';
 const effect_105000473_virtual_godmark: CardEffect = {
   id: '105000473_virtual_godmark',
   type: 'CONTINUOUS',
-  description: 'In your deck, this card is also treated as a god-mark card.'
+  description: '在你的卡组中，这张卡也视为神蚀卡。'
 };
 
 const effect_105000473_reveal: CardEffect = {
@@ -16,7 +16,7 @@ const effect_105000473_reveal: CardEffect = {
   limitCount: 1,
   limitNameType: true,
   isMandatory: true,
-  description: 'When this card is revealed from the top of your deck, choose up to 2 units. This turn they get +1 damage, +500 power, and Rush.',
+  description: '这张卡从卡组顶展示时，选择最多2个单位。本回合中，它们伤害+1、力量+500，并获得【速攻】。',
   condition: (_gameState, playerState, instance, event?: GameEvent) =>
     event?.type === 'REVEAL_DECK' &&
     event.playerUid === playerState.uid &&
@@ -30,8 +30,8 @@ const effect_105000473_reveal: CardEffect = {
       gameState,
       playerState.uid,
       targets,
-      'Choose Up To 2 Units',
-      'Choose up to 2 units to buff this turn.',
+      '选择最多2个单位',
+      '选择最多2个单位，本回合中将其强化。',
       0,
       Math.min(2, targets.length),
       { sourceCardId: instance.gamecardId, effectId: '105000473_reveal' }
