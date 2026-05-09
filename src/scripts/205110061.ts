@@ -1,28 +1,77 @@
 import { Card, CardEffect } from '../types/game';
 import { AtomicEffectExecutor } from '../services/AtomicEffectExecutor';
-import { createSelectCardQuery, moveCard } from './BaseUtil';
+import { createChoiceQuery, createSelectCardQuery, moveCard } from './BaseUtil';
+
+const shuffleCards = <T>(cards: T[]) => {
+  const shuffled = [...cards];
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+  }
+  return shuffled;
+};
+
+const getSearchableNames = (deck: Card[]) =>
+  Array.from(
+    new Set(
+      deck
+        .map(card => card.fullName)
+        .filter((name): name is string => !!name)
+    )
+  ).sort((a, b) => a.localeCompare(b, 'zh-CN'));
 
 const effect_205110061_activate: CardEffect = {
   id: '205110061_activate',
   type: 'ACTIVATE',
   triggerLocation: ['PLAY'],
-  description: '从你的手牌中选择最多3张卡并舍弃。若正好舍弃了3张，从卡组选择最多4张同名卡加入手牌。',
+  description: '随机舍弃你的最多3张手牌。若正好舍弃了3张，可以从卡组选择最多4张同名卡加入手牌。',
   execute: async (instance, gameState, playerState) => {
     if (playerState.hand.length === 0) return;
 
-    createSelectCardQuery(
+    const discardCount = Math.min(3, playerState.hand.length);
+    const discarded = shuffleCards(playerState.hand).slice(0, discardCount);
+    discarded.forEach(card => moveCard(gameState, playerState.uid, card, 'GRAVE', instance));
+    gameState.logs.push(`[${instance.fullName}] 随机舍弃了 ${discardCount} 张手牌。`);
+
+    if (discardCount !== 3) return;
+
+    const names = getSearchableNames(playerState.deck);
+    if (names.length === 0) return;
+
+    createChoiceQuery(
       gameState,
       playerState.uid,
-      [...playerState.hand],
-      '舍弃卡牌',
-      '从你的手牌中选择最多3张卡舍弃。',
-      0,
-      Math.min(3, playerState.hand.length),
-      { sourceCardId: instance.gamecardId, effectId: '205110061_activate', step: 'DISCARD' },
-      () => 'HAND'
+      '选择卡名',
+      '选择要从卡组加入手牌的卡名，或选择不检索。',
+      [
+        { id: '__NONE__', label: '不检索' },
+        ...names.map(name => ({ id: name, label: name }))
+      ],
+      { sourceCardId: instance.gamecardId, effectId: '205110061_activate', step: 'CHOOSE_NAME' }
     );
   },
   onQueryResolve: async (instance, gameState, playerState, selections, context) => {
+    if (context?.step === 'CHOOSE_NAME') {
+      const selectedName = selections[0];
+      if (!selectedName || selectedName === '__NONE__') return;
+
+      const candidates = playerState.deck.filter(card => card.fullName === selectedName);
+      if (candidates.length === 0) return;
+
+      createSelectCardQuery(
+        gameState,
+        playerState.uid,
+        candidates,
+        '选择卡牌',
+        `从你的卡组中选择最多4张「${selectedName}」加入手牌。`,
+        0,
+        Math.min(4, candidates.length),
+        { sourceCardId: instance.gamecardId, effectId: '205110061_activate', step: 'SEARCH' },
+        () => 'DECK'
+      );
+      return;
+    }
+
     if (context?.step === 'SEARCH') {
       for (const selectedId of selections) {
         await AtomicEffectExecutor.execute(gameState, playerState.uid, {
@@ -36,29 +85,6 @@ const effect_205110061_activate: CardEffect = {
       }, instance);
       return;
     }
-
-    const discarded = selections
-      .map(id => playerState.hand.find(card => card.gamecardId === id))
-      .filter((card): card is Card => !!card);
-
-    discarded.forEach(card => moveCard(gameState, playerState.uid, card, 'GRAVE', instance));
-    if (discarded.length !== 3) return;
-
-    const discardedNames = new Set(discarded.map(card => card.fullName));
-    const candidates = playerState.deck.filter(card => discardedNames.has(card.fullName));
-    if (candidates.length === 0) return;
-
-    createSelectCardQuery(
-      gameState,
-      playerState.uid,
-      candidates,
-      '选择卡牌',
-      '从你的卡组中选择最多4张与舍弃的卡同名的卡。',
-      0,
-      Math.min(4, candidates.length),
-      { sourceCardId: instance.gamecardId, effectId: '205110061_activate', step: 'SEARCH' },
-      () => 'DECK'
-    );
   }
 };
 
