@@ -261,6 +261,15 @@ export interface PlayerState {
   isFirst: boolean;
   displayName: string;
   mulliganDone: boolean;
+  mulliganReveal?: {
+    id: string;
+    replacedCount: number;
+    cards: Card[];
+    createdAt: number;
+    animationMs: number;
+    holdMs: number;
+    allPlayersDone?: boolean;
+  };
   hasExhaustedThisTurn: string[];
   isGoddessMode?: boolean;
   isHandPublic?: number;
@@ -328,6 +337,8 @@ export interface EffectQuery {
 }
 
 export type GamePhase =
+  | 'RPS'
+  | 'FIRST_PLAYER_CHOICE'
   | 'START'
   | 'DRAW'
   | 'EROSION'
@@ -376,8 +387,26 @@ export interface GameState {
   winnerId?: string;
   winSourceCardName?: string;
   logs: string[];
+  mode?: string;
+  status?: string;
+  roomCode?: string;
   players: {
     [uid: string]: PlayerState;
+  };
+  rps?: {
+    round: number;
+    startedAt: number;
+    timeoutMs: number;
+    choices: Record<string, 'ROCK' | 'PAPER' | 'SCISSORS'>;
+    winnerUid?: string;
+    chooserUid?: string;
+  };
+  firstPlayerChoice?: {
+    chooserUid: string;
+    winnerUid?: string;
+    source: 'RPS' | 'PRACTICE';
+    startedAt: number;
+    timeoutMs: number;
   };
   battleState?: {
     attackers: string[]; // gamecardIds
@@ -401,6 +430,7 @@ export interface GameState {
   previousPhase?: GamePhase;
   pendingQuery?: EffectQuery;
   pendingShenyi?: PendingShenyi;
+  mulliganRevealStartedAt?: number;
   turnTimerLimit?: number; // Total seconds for turn timer (180-999)
   publicReveal?: {
     id: string;

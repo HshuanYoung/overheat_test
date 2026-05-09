@@ -5330,7 +5330,8 @@ export const ServerGameService = {
     return array;
   },
 
-  async createPracticeGameState(deck: Card[], playerUid: string, playerName: string, turnTimerLimit?: number): Promise<GameState> {
+  async createPracticeGameState(deck: Card[], playerUid: string | number, playerName: string, turnTimerLimit?: number): Promise<GameState> {
+    const playerUidStr = playerUid.toString();
     const initializedDeck = deck.map(card => ({
       ...card,
       baseColorReq: card.baseColorReq ?? { ...(card.colorReq || {}) },
@@ -5354,7 +5355,7 @@ export const ServerGameService = {
     }));
 
     const myState: PlayerState = {
-      uid: playerUid,
+      uid: playerUidStr,
       displayName: playerName,
       deck: ServerGameService.assignGameCardIds(ServerGameService.shuffle([...initializedDeck])),
       hand: [],
@@ -5401,36 +5402,34 @@ export const ServerGameService = {
       const c2 = botState.deck.pop(); if (c2) { c2.cardlocation = 'HAND'; botState.hand.push(c2); }
     }
 
-    const firstIdx = Math.floor(Math.random() * 2) as 0 | 1;
-    myState.isFirst = firstIdx === 0;
-    botState.isFirst = firstIdx === 1;
-
     const gameState: GameState = {
       gameId: "temp",
-      phase: 'MULLIGAN',
-      currentTurnPlayer: firstIdx,
+      phase: 'FIRST_PLAYER_CHOICE',
+      currentTurnPlayer: 0,
       turnCount: 0,
       isCountering: 0,
       counterStack: [],
       passCount: 0,
-      playerIds: [playerUid, 'BOT_PLAYER'],
+      playerIds: [playerUidStr, 'BOT_PLAYER'],
       gameStatus: 1,
-      logs: ['练习赛开始。由 AI 作为对手。'],
+      logs: ['练习赛开始。请选择先攻或后攻。'],
       players: {
-        [playerUid]: myState,
+        [playerUidStr]: myState,
         'BOT_PLAYER': botState
       },
       mode: 'practice',
       phaseTimerStart: 0,
+      firstPlayerChoice: {
+        chooserUid: playerUidStr,
+        source: 'PRACTICE',
+        startedAt: Date.now(),
+        timeoutMs: 30000
+      },
       turnTimerLimit,
       triggeredEffectsQueue: [],
       pendingResolutions: [],
       effectUsage: {}
     };
-
-    // Correctly set isTurn for the initial player
-    const firstPlayerUid = gameState.playerIds[firstIdx];
-    gameState.players[firstPlayerUid].isTurn = true;
 
     return gameState;
   },
@@ -5459,26 +5458,24 @@ export const ServerGameService = {
       const c2 = p2.deck.pop(); if (c2) { c2.cardlocation = 'HAND'; p2.hand.push(c2); }
     }
 
-    const firstIdx = Math.floor(Math.random() * 2) as 0 | 1;
-    p1.isFirst = firstIdx === 0;
-    p2.isFirst = firstIdx === 1;
-
     const gameState: GameState = {
-      gameId: "match", phase: 'MULLIGAN', currentTurnPlayer: firstIdx, turnCount: 0, isCountering: 0, counterStack: [],
+      gameId: "match", phase: 'RPS', currentTurnPlayer: 0, turnCount: 0, isCountering: 0, counterStack: [],
       passCount: 0,
-      playerIds: [uid1, uid2], gameStatus: 1, logs: ['匹配成功。对局开始。'],
+      playerIds: [uid1, uid2], gameStatus: 1, logs: ['匹配成功。开始猜拳决定先后攻选择权。'],
       players: { [uid1]: p1, [uid2]: p2 },
       mode: 'match',
+      rps: {
+        round: 1,
+        startedAt: Date.now(),
+        timeoutMs: 30000,
+        choices: {}
+      },
       phaseTimerStart: 0,
       turnTimerLimit,
       triggeredEffectsQueue: [],
       pendingResolutions: [],
       effectUsage: {}
     };
-
-    // Correctly set isTurn for the initial player
-    const firstPlayerUid = gameState.playerIds[firstIdx];
-    gameState.players[firstPlayerUid].isTurn = true;
 
     return gameState;
   },

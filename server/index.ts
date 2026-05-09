@@ -197,6 +197,190 @@ function triggerBotIfNeeded(gameState: any, gameId: string) {
     }
 }
 
+type RpsChoice = 'ROCK' | 'PAPER' | 'SCISSORS';
+
+const RPS_LABELS: Record<RpsChoice, string> = {
+    ROCK: '石头',
+    PAPER: '布',
+    SCISSORS: '剪刀'
+};
+const RPS_CHOICES: RpsChoice[] = ['ROCK', 'PAPER', 'SCISSORS'];
+const PREGAME_DECISION_TIMEOUT_MS = 30000;
+
+function createRpsState(round = 1) {
+    return {
+        round,
+        startedAt: Date.now(),
+        timeoutMs: PREGAME_DECISION_TIMEOUT_MS,
+        choices: {}
+    };
+}
+
+function getRpsWinner(choiceA: RpsChoice, choiceB: RpsChoice): RpsChoice | null {
+    if (choiceA === choiceB) return null;
+    if (
+        (choiceA === 'ROCK' && choiceB === 'SCISSORS') ||
+        (choiceA === 'SCISSORS' && choiceB === 'PAPER') ||
+        (choiceA === 'PAPER' && choiceB === 'ROCK')
+    ) {
+        return choiceA;
+    }
+    return choiceB;
+}
+
+function enterMulliganPhase(gameState: any, reason: string) {
+    gameState.phase = 'MULLIGAN';
+    gameState.phaseTimerStart = Date.now();
+    gameState.rps = undefined;
+    gameState.firstPlayerChoice = undefined;
+    gameState.logs.push(reason);
+}
+
+function setFirstPlayer(gameState: any, firstUid: string) {
+    const firstUidStr = firstUid.toString();
+    const firstIdx = gameState.playerIds.findIndex((uid: string) => uid.toString() === firstUidStr);
+    if (firstIdx === -1) throw new Error('Invalid first player');
+    gameState.currentTurnPlayer = firstIdx as 0 | 1;
+    gameState.playerIds.forEach((uid: string, index: number) => {
+        const player = gameState.players[uid] || gameState.players[uid.toString()];
+        if (!player) return;
+        player.isFirst = index === firstIdx;
+        player.isTurn = false;
+    });
+}
+
+function beginFirstPlayerChoice(gameState: any, chooserUid: string, source: 'RPS' | 'PRACTICE') {
+    gameState.phase = 'FIRST_PLAYER_CHOICE';
+    gameState.phaseTimerStart = Date.now();
+    gameState.firstPlayerChoice = {
+        chooserUid,
+        winnerUid: source === 'RPS' ? chooserUid : undefined,
+        source,
+        startedAt: Date.now(),
+        timeoutMs: PREGAME_DECISION_TIMEOUT_MS
+    };
+}
+
+function submitRpsChoice(gameState: any, playerUid: string, choice: RpsChoice) {
+    if (gameState.phase !== 'RPS') throw new Error('当前不在猜拳阶段');
+    if (!gameState.playerIds.includes(playerUid)) throw new Error('玩家不在此对局中');
+    if (!['ROCK', 'PAPER', 'SCISSORS'].includes(choice)) throw new Error('无效的猜拳选择');
+
+    if (!gameState.rps) gameState.rps = createRpsState(1);
+    if (gameState.rps.choices[playerUid]) return;
+
+    gameState.rps.choices[playerUid] = choice;
+    const [uidA, uidB] = gameState.playerIds;
+    const choiceA = gameState.rps.choices[uidA];
+    const choiceB = gameState.rps.choices[uidB];
+    if (!choiceA || !choiceB) return;
+
+    const winningChoice = getRpsWinner(choiceA, choiceB);
+    if (!winningChoice) {
+        gameState.logs.push(`猜拳第 ${gameState.rps.round} 轮：双方都出了${RPS_LABELS[choiceA]}，平局重开。`);
+        gameState.rps = createRpsState((gameState.rps.round || 1) + 1);
+        return;
+    }
+
+    const winnerUid = winningChoice === choiceA ? uidA : uidB;
+    gameState.rps.winnerUid = winnerUid;
+    gameState.rps.chooserUid = winnerUid;
+    gameState.logs.push(`猜拳第 ${gameState.rps.round} 轮：${gameState.players[uidA].displayName} 出${RPS_LABELS[choiceA]}，${gameState.players[uidB].displayName} 出${RPS_LABELS[choiceB]}。${gameState.players[winnerUid].displayName} 获胜。`);
+    beginFirstPlayerChoice(gameState, winnerUid, 'RPS');
+}
+
+function decideRpsTimeout(gameState: any) {
+    if (gameState.phase !== 'RPS' || !gameState.rps) return;
+    const [uidA, uidB] = gameState.playerIds;
+    const choiceA = gameState.rps.choices?.[uidA];
+    const choiceB = gameState.rps.choices?.[uidB];
+
+    if (choiceA && choiceB) return;
+
+    let winnerUid: string;
+    if (choiceA && !choiceB) {
+        winnerUid = uidA;
+        gameState.logs.push(`${gameState.players[uidB]?.displayName || '玩家'} 猜拳超时，${gameState.players[uidA]?.displayName || '玩家'} 获胜。`);
+    } else if (!choiceA && choiceB) {
+        winnerUid = uidB;
+        gameState.logs.push(`${gameState.players[uidA]?.displayName || '玩家'} 猜拳超时，${gameState.players[uidB]?.displayName || '玩家'} 获胜。`);
+    } else {
+        winnerUid = Math.random() < 0.5 ? uidA : uidB;
+        gameState.logs.push(`双方猜拳超时，系统随机判定 ${gameState.players[winnerUid]?.displayName || '玩家'} 获胜。`);
+    }
+
+    gameState.rps.winnerUid = winnerUid;
+    gameState.rps.chooserUid = winnerUid;
+    beginFirstPlayerChoice(gameState, winnerUid, 'RPS');
+}
+
+function beginRpsPhase(gameState: any, reason: string) {
+    gameState.phase = 'RPS';
+    gameState.phaseTimerStart = Date.now();
+    gameState.rps = createRpsState(1);
+    gameState.playerIds.forEach((uid: string) => {
+        if (gameState.players[uid]) gameState.players[uid].isTurn = false;
+    });
+    gameState.logs.push(reason);
+}
+
+function chooseFirstPlayer(gameState: any, chooserUid: string, firstUid: string) {
+    if (gameState.phase !== 'FIRST_PLAYER_CHOICE') throw new Error('当前不在先后攻选择阶段');
+    const normalizedChooserUid = chooserUid?.toString();
+    const normalizedFirstUid = firstUid?.toString();
+    if (gameState.firstPlayerChoice?.chooserUid?.toString() !== normalizedChooserUid) throw new Error('只有猜拳胜者可以选择先后攻');
+    if (!gameState.playerIds.some((uid: string) => uid.toString() === normalizedFirstUid)) throw new Error('无效的先攻玩家');
+
+    setFirstPlayer(gameState, normalizedFirstUid);
+    const chooserKey = gameState.playerIds.find((uid: string) => uid.toString() === normalizedChooserUid) || normalizedChooserUid;
+    const chooser = gameState.players[chooserKey] || gameState.players[normalizedChooserUid];
+    const choiceText = normalizedFirstUid === normalizedChooserUid ? '先攻' : '后攻';
+    enterMulliganPhase(gameState, `${chooser.displayName} 选择${choiceText}。开始调度阶段。`);
+}
+
+function decideFirstPlayerChoiceTimeout(gameState: any) {
+    if (gameState.phase !== 'FIRST_PLAYER_CHOICE') return;
+    const chooserUid = gameState.firstPlayerChoice?.chooserUid || gameState.playerIds[0];
+    const opponentUid = gameState.playerIds.find((uid: string) => uid !== chooserUid) || chooserUid;
+    gameState.logs.push(`${gameState.players[chooserUid]?.displayName || '玩家'} 选择先后攻超时，默认选择后攻。`);
+    chooseFirstPlayer(gameState, chooserUid, opponentUid);
+}
+
+async function finishMulliganAfterReveal(gameId: string, expectedStartedAt: number) {
+    setTimeout(async () => {
+        await withGameLock(gameId, async () => {
+            const rows = await pool.query('SELECT state FROM games WHERE id = ?', [gameId]);
+            if (rows.length === 0) return;
+
+            const gameState = typeof rows[0].state === 'string' ? JSON.parse(rows[0].state) : rows[0].state;
+            ServerGameService.hydrateGameState(gameState);
+
+            if (
+                gameState.phase !== 'MULLIGAN' ||
+                gameState.mulliganRevealStartedAt !== expectedStartedAt ||
+                !Object.values(gameState.players || {}).every((p: any) => p.mulliganDone)
+            ) {
+                return;
+            }
+
+            gameState.phase = 'START';
+            gameState.turnCount = 1;
+            delete gameState.mulliganRevealStartedAt;
+
+            const currentUid = gameState.playerIds[gameState.currentTurnPlayer];
+            gameState.playerIds.forEach((uid: string) => {
+                gameState.players[uid].isTurn = (uid === currentUid);
+                if (gameState.players[uid]?.mulliganReveal) {
+                    delete gameState.players[uid].mulliganReveal;
+                }
+            });
+
+            gameState.logs.push(`调度结束。第 1 回合开始，由 ${gameState.players[currentUid].displayName} 先行。`);
+            await advancePhase(gameState, gameId, currentUid);
+        });
+    }, 3600);
+}
+
 async function saveMatchLog(gameState: any, gameId?: string) {
     if (gameState.gameStatus !== 2 || gameState.logsSaved) return;
     if (gameState.mode !== 'friend' && gameState.mode !== 'match') return;
@@ -345,6 +529,16 @@ setInterval(async () => {
                     activePlayerUid = gameState.priorityPlayerId;
                 } else if (gameState.phase === 'DISCARD') {
                     activePlayerUid = gameState.playerIds[gameState.currentTurnPlayer];
+                } else if (gameState.phase === 'RPS') {
+                    const rpsElapsed = now - (gameState.rps?.startedAt || gameState.phaseTimerStart || now);
+                    if (rpsElapsed >= (gameState.rps?.timeoutMs || PREGAME_DECISION_TIMEOUT_MS)) {
+                        decideRpsTimeout(gameState);
+                    }
+                } else if (gameState.phase === 'FIRST_PLAYER_CHOICE') {
+                    const choiceElapsed = now - (gameState.firstPlayerChoice?.startedAt || gameState.phaseTimerStart || now);
+                    if (choiceElapsed >= (gameState.firstPlayerChoice?.timeoutMs || PREGAME_DECISION_TIMEOUT_MS)) {
+                        decideFirstPlayerChoiceTimeout(gameState);
+                    }
                 } else if (gameState.phase === 'MULLIGAN') {
                     // Special case: decrement for all who haven't finished
                     Object.values(gameState.players).forEach((p: any) => {
@@ -1586,13 +1780,17 @@ io.on('connection', (socket) => {
 
                 // Start the phase timer if it hasn't started yet and players are ready
                 const initializedCount = Object.keys(gameState.players).length;
-                const isInitial = gameState.phase === 'INIT' || gameState.phase === 'MULLIGAN';
+                const isInitial = gameState.phase === 'INIT' || gameState.phase === 'RPS' || gameState.phase === 'FIRST_PLAYER_CHOICE' || gameState.phase === 'MULLIGAN';
                 if (isInitial && initializedCount >= 2 && (gameState.phase === 'INIT' || !gameState.phaseTimerStart || gameState.phaseTimerStart === 0)) {
                     if (gameState.phase === 'INIT') {
-                        // console.log(`[Socket] Game ${gameId} entering MULLIGAN phase`);
-                        gameState.phase = 'MULLIGAN';
+                        if (gameState.mode === 'practice') {
+                            const humanUid = gameState.playerIds.find((uid: string) => uid !== 'BOT_PLAYER') || userIdStr;
+                            beginFirstPlayerChoice(gameState, humanUid, 'PRACTICE');
+                            gameState.logs.push('练习赛开始。请选择先攻或后攻。');
+                        } else {
+                            beginRpsPhase(gameState, '所有玩家已准备就绪。开始猜拳决定先后攻选择权。');
+                        }
                         gameState.status = 'ACTIVE';
-                        gameState.logs.push('所有玩家已准备就绪。开始调度阶段。');
                     }
                     gameState.phaseTimerStart = Date.now();
                     await syncAndSaveState(gameId, gameState);
@@ -1632,9 +1830,17 @@ io.on('connection', (socket) => {
                     await syncAndSaveState(gameId, state);
                 };
 
-                if (action === 'MULLIGAN') {
+                if (action === 'RPS_CHOICE') {
+                    submitRpsChoice(gameState, myUid, payload?.choice);
+                } else if (action === 'CHOOSE_FIRST_PLAYER') {
+                    chooseFirstPlayer(gameState, myUid, payload?.firstPlayerUid);
+                } else if (action === 'MULLIGAN') {
+                    if (gameState.phase !== 'MULLIGAN') return;
                     const selectedIds: string[] = payload || [];
                     if (player.mulliganDone) return;
+
+                    const revealId = `${myUid}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+                    const replacedCount = selectedIds.length;
 
                     if (selectedIds.length > 0) {
                         const cardsToSwap = player.hand.filter((c: any) => selectedIds.includes(c.gamecardId));
@@ -1663,20 +1869,28 @@ io.on('connection', (socket) => {
                         gameState.logs.push(`${player.displayName} 接受了初始手牌。`);
                     }
 
+                    player.mulliganReveal = {
+                        id: revealId,
+                        replacedCount,
+                        cards: player.hand.map((card: Card) => ({ ...card })),
+                        createdAt: Date.now(),
+                        animationMs: 1600,
+                        holdMs: 2000
+                    };
                     player.mulliganDone = true;
 
                     const allDone = Object.values(gameState.players).every((p: any) => p.mulliganDone);
                     if (allDone) {
-                        gameState.phase = 'START';
-                        gameState.turnCount = 1;
-
-                        const currentUid = gameState.playerIds[gameState.currentTurnPlayer];
+                        const startedAt = Date.now();
+                        gameState.mulliganRevealStartedAt = startedAt;
                         gameState.playerIds.forEach((uid: string) => {
-                            gameState.players[uid].isTurn = (uid === currentUid);
+                            if (gameState.players[uid]?.mulliganReveal) {
+                                gameState.players[uid].mulliganReveal.allPlayersDone = true;
+                            }
                         });
 
-                        gameState.logs.push(`调度结束。第 1 回合开始，由 ${gameState.players[currentUid].displayName} 先行。`);
-                        await advancePhase(gameState, gameId, myUid, socket);
+                        await syncAndSaveState(gameId, gameState);
+                        finishMulliganAfterReveal(gameId, startedAt);
                         return;
                     }
                 } else if (action === 'PLAY_CARD') {

@@ -14,7 +14,7 @@ import { PlayField } from './PlayField';
 import { Rulebook } from './Rulebook';
 import { motion, AnimatePresence } from 'motion/react';
 import { StandardPopup } from './StandardPopup';
-import { Flag, Trophy, Frown, Home, Sword, Shield, Zap, LogOut, BookOpen, Send, Loader2, Trash2, X, Play, Search, ChevronRight, ShieldCheck, Layers, Sparkles, Flame, AlertTriangle, RotateCcw, Undo2, Hand, PackagePlus } from 'lucide-react';
+import { Flag, Trophy, Frown, Home, Sword, Shield, Zap, LogOut, BookOpen, Send, Loader2, Trash2, X, Play, Search, ChevronRight, ShieldCheck, Layers, Sparkles, Flame, AlertTriangle, RotateCcw, Undo2, Hand, PackagePlus, Scissors, Circle, FileText } from 'lucide-react';
 import { cn, getCardColorLabel, getCardImageUrl, getCardIdentity, getCardTypeLabel, getLocationLabel, getPhaseLabel } from '../lib/utils';
 import { KeywordBadges } from './KeywordBadges';
 
@@ -104,6 +104,109 @@ const PhaseRequestCard: React.FC<{ item: StackItem; className?: string }> = ({ i
   );
 };
 
+const MulliganRevealOverlay: React.FC<{
+  reveal?: PlayerState['mulliganReveal'];
+  cardBackUrl: string;
+  onPreview: (card: Card) => void;
+}> = ({ reveal, cardBackUrl, onPreview }) => {
+  if (!reveal) return null;
+
+  const hasNewCards = reveal.cards.length > 0;
+  const title = reveal.allPlayersDone ? '调度完成' : '调度替换';
+  const subtitle = reveal.allPlayersDone
+    ? '双方调度已完成，即将开始对局'
+    : '查看调度后的全部手牌';
+
+  return (
+    <AnimatePresence>
+      <motion.div
+        key={reveal.id}
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        className="fixed inset-0 z-[2400] flex items-center justify-center bg-black/[0.82] p-4 backdrop-blur-xl"
+      >
+        <motion.div
+          initial={{ scale: 0.96, y: 24 }}
+          animate={{ scale: 1, y: 0 }}
+          exit={{ scale: 0.98, y: -12 }}
+          className="flex w-full max-w-5xl flex-col items-center gap-6 text-center"
+        >
+          <div className="space-y-2">
+            <div className="inline-flex items-center gap-2 rounded-full border border-[#f27d26]/35 bg-[#f27d26]/10 px-4 py-2 text-[10px] font-black tracking-widest text-[#f27d26]">
+              <PackagePlus className="h-4 w-4" />
+              {reveal.replacedCount > 0 ? `替换 ${reveal.replacedCount} 张` : '保留手牌'}
+            </div>
+            <h2 className="text-3xl font-black italic tracking-tight text-white md:text-5xl">{title}</h2>
+            <p className="text-xs font-bold tracking-[0.24em] text-white/45 md:text-sm">{subtitle}</p>
+          </div>
+
+          {hasNewCards ? (
+            <div className="grid w-full grid-cols-2 place-items-center gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+              {reveal.cards.map((card, index) => (
+                <motion.button
+                  key={`${reveal.id}-${card.gamecardId}`}
+                  type="button"
+                  initial={{ opacity: 0, x: -80, rotateY: 180, scale: 0.82 }}
+                  animate={{ opacity: 1, x: 0, rotateY: 0, scale: 1 }}
+                  transition={{
+                    delay: index * 0.14,
+                    duration: 0.62,
+                    type: 'spring',
+                    stiffness: 150,
+                    damping: 18
+                  }}
+                  className="group relative isolate w-28 rounded-xl outline-none md:w-36"
+                  onClick={() => onPreview(card)}
+                >
+                  <motion.div
+                    initial={{ y: -28, opacity: 0.6 }}
+                    animate={{ y: 0, opacity: 1 }}
+                    transition={{ delay: index * 0.14 + 0.16, duration: 0.35 }}
+                    className="absolute -left-4 top-4 z-0 w-28 rotate-[-10deg] opacity-70 md:w-36"
+                  >
+                    <CardComponent isBack cardBackUrl={cardBackUrl} disableZoom />
+                  </motion.div>
+                  <div className="relative z-10">
+                    <CardComponent card={card} cardBackUrl={cardBackUrl} displayMode="hand" disableZoom />
+                  </div>
+                  <div className="mt-2 line-clamp-1 text-[10px] font-black text-white/70 transition-colors group-hover:text-white">
+                    {card.fullName}
+                  </div>
+                </motion.button>
+              ))}
+            </div>
+          ) : (
+            <motion.div
+              initial={{ opacity: 0, y: 18 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="rounded-2xl border border-white/10 bg-white/5 px-8 py-6 text-sm font-bold tracking-widest text-white/65"
+            >
+              调度后没有可显示的手牌
+            </motion.div>
+          )}
+
+          {reveal.allPlayersDone && (
+            <motion.div
+              initial={{ opacity: 0, scaleX: 0.6 }}
+              animate={{ opacity: 1, scaleX: 1 }}
+              transition={{ delay: 1.35, duration: 0.3 }}
+              className="h-1 w-44 overflow-hidden rounded-full bg-white/10"
+            >
+              <motion.div
+                initial={{ width: '0%' }}
+                animate={{ width: '100%' }}
+                transition={{ delay: 1.6, duration: 2, ease: 'linear' }}
+                className="h-full rounded-full bg-[#f27d26]"
+              />
+            </motion.div>
+          )}
+        </motion.div>
+      </motion.div>
+    </AnimatePresence>
+  );
+};
+
 const getChoiceIcon = (icon?: string) => {
   switch (icon) {
     case 'draw':
@@ -124,6 +227,12 @@ const CONFRONTATION_STRATEGY_LABELS: Record<'ON' | 'AUTO' | 'OFF', string> = {
   AUTO: '自动',
   OFF: '全关'
 };
+
+const RPS_OPTIONS = [
+  { id: 'ROCK' as const, label: '石头', Icon: Circle },
+  { id: 'SCISSORS' as const, label: '剪刀', Icon: Scissors },
+  { id: 'PAPER' as const, label: '布', Icon: FileText }
+];
 
 export const BattleField: React.FC = () => {
   const { gameId } = useParams<{ gameId: string }>();
@@ -193,6 +302,7 @@ export const BattleField: React.FC = () => {
   const [dismissedPublicRevealId, setDismissedPublicRevealId] = useState<string | null>(null);
   const [hoveredPopupCard, setHoveredPopupCard] = useState<Card | null>(null);
   const lastStrategyUpdateRef = useRef<number>(0);
+  const [pregameNow, setPregameNow] = useState(Date.now());
 
   const getPreviewFullImage = (card: Card) =>
     card.fullImageUrl || getCardImageUrl(card.id, card.rarity, false, card.availableRarities);
@@ -204,6 +314,13 @@ export const BattleField: React.FC = () => {
   const opponent = useMemo(() => (game && opponentUid) ? game.players[opponentUid] : null, [game, opponentUid]);
   const confrontationStrategy = (me?.confrontationStrategy || 'AUTO') as 'ON' | 'AUTO' | 'OFF';
   const [localStrategy, setLocalStrategy] = useState<'ON' | 'AUTO' | 'OFF'>(confrontationStrategy);
+  const activeMulliganReveal = game?.phase === 'MULLIGAN' ? me?.mulliganReveal : undefined;
+
+  useEffect(() => {
+    if (game?.phase !== 'RPS' && game?.phase !== 'FIRST_PLAYER_CHOICE') return;
+    const interval = window.setInterval(() => setPregameNow(Date.now()), 250);
+    return () => window.clearInterval(interval);
+  }, [game?.phase]);
 
   // Sync local strategy with server state when it arrives, but ignore if we just updated it locally
   useEffect(() => {
@@ -1325,10 +1442,29 @@ export const BattleField: React.FC = () => {
     setIsMulliganSubmitting(true);
     try {
       await GameService.performMulligan(gameId, selectedMulligan);
+      setSelectedMulligan([]);
     } catch (error) {
       console.error(error);
     } finally {
       setIsMulliganSubmitting(false);
+    }
+  };
+
+  const handleRpsChoice = async (choice: 'ROCK' | 'PAPER' | 'SCISSORS') => {
+    if (!gameId) return;
+    try {
+      await GameService.submitRpsChoice(gameId, choice);
+    } catch (error: any) {
+      setLastError(error.message);
+    }
+  };
+
+  const handleChooseFirstPlayer = async (firstPlayerUid: string) => {
+    if (!gameId) return;
+    try {
+      await GameService.chooseFirstPlayer(gameId, firstPlayerUid);
+    } catch (error: any) {
+      setLastError(error.message);
     }
   };
 
@@ -1475,6 +1611,113 @@ export const BattleField: React.FC = () => {
     }
   };
 
+  if (game.phase === 'RPS') {
+    const myChoice = myUid ? game.rps?.choices?.[myUid.toString()] : undefined;
+    const round = game.rps?.round || 1;
+    const remainingMs = Math.max(0, (game.rps?.timeoutMs || 30000) - (pregameNow - (game.rps?.startedAt || pregameNow)));
+    const remainingSeconds = Math.ceil(remainingMs / 1000);
+    return (
+      <div className="h-screen bg-black flex flex-col items-center justify-center p-6 text-center">
+        <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-[#f27d26]/35 bg-[#f27d26]/10 px-4 py-2 text-[10px] font-black tracking-widest text-[#f27d26]">
+          第 {round} 轮
+        </div>
+        <h2 className="text-3xl md:text-5xl font-black italic text-white tracking-tight">猜拳决定选择权</h2>
+        <p className="mt-3 max-w-lg text-xs md:text-sm font-bold tracking-[0.2em] text-white/45">
+          猜拳获胜的人决定本局先攻或后攻
+        </p>
+        <div className="mt-5 text-4xl font-black tabular-nums text-white md:text-5xl">
+          {remainingSeconds}
+          <span className="ml-2 text-sm font-bold text-white/35">秒</span>
+        </div>
+
+        <div className="mt-10 grid grid-cols-3 gap-3 md:gap-5">
+          {RPS_OPTIONS.map(({ id, label, Icon }) => (
+            <motion.button
+              key={id}
+              whileHover={!myChoice ? { y: -6, scale: 1.03 } : undefined}
+              whileTap={!myChoice ? { scale: 0.98 } : undefined}
+              disabled={!!myChoice}
+              onClick={() => handleRpsChoice(id)}
+              className={cn(
+                "flex h-32 w-24 flex-col items-center justify-center gap-3 rounded-2xl border text-white transition-all md:h-44 md:w-36",
+                myChoice === id
+                  ? "border-[#f27d26] bg-[#f27d26]/20 shadow-[0_0_30px_rgba(242,125,38,0.28)]"
+                  : "border-white/10 bg-white/5 hover:border-white/25 hover:bg-white/10",
+                myChoice && myChoice !== id && "opacity-35"
+              )}
+            >
+              <Icon className="h-9 w-9 md:h-12 md:w-12" />
+              <span className="text-sm md:text-base font-black tracking-widest">{label}</span>
+            </motion.button>
+          ))}
+        </div>
+
+        <p className="mt-8 text-xs font-bold tracking-widest text-zinc-500">
+          {myChoice ? '已出拳，等待对手...' : '请选择你的出拳'}
+        </p>
+      </div>
+    );
+  }
+
+  if (game.phase === 'FIRST_PLAYER_CHOICE') {
+    const chooserUid = game.firstPlayerChoice?.chooserUid;
+    const isChooser = myUid?.toString() === chooserUid?.toString();
+    const chooserName = chooserUid ? game.players[chooserUid]?.displayName : '玩家';
+    const otherUid = myUid ? game.playerIds.find(uid => uid.toString() !== myUid.toString())?.toString() : undefined;
+    const firstSelfUid = myUid?.toString();
+    const firstOpponentUid = otherUid;
+    const remainingMs = Math.max(0, (game.firstPlayerChoice?.timeoutMs || 30000) - (pregameNow - (game.firstPlayerChoice?.startedAt || pregameNow)));
+    const remainingSeconds = Math.ceil(remainingMs / 1000);
+
+    return (
+      <div className="h-screen bg-black flex flex-col items-center justify-center p-6 text-center">
+        <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-sky-400/35 bg-sky-400/10 px-4 py-2 text-[10px] font-black tracking-widest text-sky-200">
+          先后攻选择
+        </div>
+        <h2 className="text-3xl md:text-5xl font-black italic text-white tracking-tight">
+          {isChooser ? '选择先攻或后攻' : `等待 ${chooserName} 选择`}
+        </h2>
+        <p className="mt-3 max-w-lg text-xs md:text-sm font-bold tracking-[0.2em] text-white/45">
+          {game.firstPlayerChoice?.source === 'PRACTICE' ? '练习模式由玩家决定先后攻' : '猜拳胜者决定本局先攻或后攻'}
+        </p>
+        <div className="mt-5 text-4xl font-black tabular-nums text-white md:text-5xl">
+          {remainingSeconds}
+          <span className="ml-2 text-sm font-bold text-white/35">秒</span>
+        </div>
+
+        {isChooser && firstSelfUid && firstOpponentUid ? (
+          <div className="mt-10 grid grid-cols-1 gap-4 md:grid-cols-2">
+            <motion.button
+              whileHover={{ y: -4, scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
+              onClick={() => handleChooseFirstPlayer(firstSelfUid)}
+              className="flex w-64 flex-col items-center gap-3 rounded-2xl border border-[#f27d26]/45 bg-[#f27d26]/15 px-8 py-7 text-white shadow-[0_0_26px_rgba(242,125,38,0.18)]"
+            >
+              <Sword className="h-9 w-9 text-[#f27d26]" />
+              <span className="text-xl font-black">我先攻</span>
+              <span className="text-xs font-bold text-white/45">第 1 回合由你开始</span>
+            </motion.button>
+            <motion.button
+              whileHover={{ y: -4, scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
+              onClick={() => handleChooseFirstPlayer(firstOpponentUid)}
+              className="flex w-64 flex-col items-center gap-3 rounded-2xl border border-sky-400/45 bg-sky-400/15 px-8 py-7 text-white shadow-[0_0_26px_rgba(56,189,248,0.16)]"
+            >
+              <Shield className="h-9 w-9 text-sky-200" />
+              <span className="text-xl font-black">我后攻</span>
+              <span className="text-xs font-bold text-white/45">第 1 回合由对手开始</span>
+            </motion.button>
+          </div>
+        ) : (
+          <div className="mt-10 flex flex-col items-center gap-4">
+            <div className="h-12 w-12 rounded-full border-4 border-[#f27d26] border-t-transparent animate-spin" />
+            <p className="text-xs font-bold tracking-widest text-zinc-500">等待选择完成...</p>
+          </div>
+        )}
+      </div>
+    );
+  }
+
   if (game.phase === 'MULLIGAN' && !me.mulliganDone) {
     return (
       <div className="h-screen bg-black flex flex-col items-center justify-center p-8">
@@ -1619,6 +1862,11 @@ export const BattleField: React.FC = () => {
             </motion.div>
           )}
         </AnimatePresence>
+        <MulliganRevealOverlay
+          reveal={activeMulliganReveal}
+          cardBackUrl={cardBackUrl}
+          onPreview={setPreviewCard}
+        />
       </div>
     );
   }
@@ -1626,8 +1874,35 @@ export const BattleField: React.FC = () => {
   if (game.phase === 'MULLIGAN' && me.mulliganDone) {
     return (
       <div className="h-screen bg-black flex flex-col items-center justify-center p-8 relative" onClick={() => setCardMenu(null)}>
+        <MulliganRevealOverlay
+          reveal={activeMulliganReveal}
+          cardBackUrl={cardBackUrl}
+          onPreview={setPreviewCard}
+        />
+        <AnimatePresence>
+          {previewCard && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-[2600] bg-black/95 backdrop-blur-md flex items-center justify-center p-4 cursor-pointer"
+              onClick={() => setPreviewCard(null)}
+            >
+              <img
+                src={getPreviewFullImage(previewCard)}
+                alt={previewCard.fullName}
+                className="max-h-[92vh] max-w-[92vw] rounded-2xl bg-black/40 object-contain shadow-2xl"
+                draggable={false}
+                referrerPolicy="no-referrer"
+                onClick={e => e.stopPropagation()}
+              />
+            </motion.div>
+          )}
+        </AnimatePresence>
         <div className="w-12 h-12 border-4 border-[#f27d26] border-t-transparent rounded-full animate-spin mb-4" />
-        <p className="text-zinc-400 uppercase tracking-widest text-sm">等待对手完成调度...</p>
+        <p className="text-zinc-400 uppercase tracking-widest text-sm">
+          {activeMulliganReveal ? '等待双方调度完成...' : '等待对手完成调度...'}
+        </p>
       </div>
     );
   }

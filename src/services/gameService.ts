@@ -198,6 +198,14 @@ export const GameService = {
     socket.emit('gameAction', { gameId, action: 'MULLIGAN', payload: cardIds });
   },
 
+  async submitRpsChoice(gameId: string, choice: 'ROCK' | 'PAPER' | 'SCISSORS') {
+    socket.emit('gameAction', { gameId, action: 'RPS_CHOICE', payload: { choice } });
+  },
+
+  async chooseFirstPlayer(gameId: string, firstPlayerUid: string) {
+    socket.emit('gameAction', { gameId, action: 'CHOOSE_FIRST_PLAYER', payload: { firstPlayerUid } });
+  },
+
   async playCard(gameId: string, playerId: string, cardId: string, paymentSelection: any) {
     socket.emit('gameAction', { gameId, action: 'PLAY_CARD', payload: { cardId, paymentSelection } });
   },

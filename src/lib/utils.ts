@@ -33,6 +33,8 @@ const CARD_COLOR_LABELS: Record<string, string> = {
 };
 
 const PHASE_LABELS: Record<string, string> = {
+  RPS: '猜拳阶段',
+  FIRST_PLAYER_CHOICE: '先后攻选择',
   START: '开始阶段',
   DRAW: '抽牌阶段',
   EROSION: '侵蚀阶段',
