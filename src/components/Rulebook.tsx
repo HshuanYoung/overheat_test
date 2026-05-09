@@ -5,9 +5,11 @@ import { X, Book, Shield, Sword, Zap, AlertTriangle } from 'lucide-react';
 interface RulebookProps {
   isOpen: boolean;
   onClose: () => void;
+  onHide?: () => void;
+  isHidden?: boolean;
 }
 
-export const Rulebook: React.FC<RulebookProps> = ({ isOpen, onClose }) => {
+export const Rulebook: React.FC<RulebookProps> = ({ isOpen, onClose, onHide, isHidden = false }) => {
   return (
     <AnimatePresence>
       {isOpen && (
@@ -15,16 +17,25 @@ export const Rulebook: React.FC<RulebookProps> = ({ isOpen, onClose }) => {
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          className="fixed inset-0 z-[3000] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 overflow-y-auto"
+          className={`fixed inset-0 z-[3000] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 overflow-y-auto transition-all duration-300 ${isHidden ? 'pointer-events-none invisible opacity-0' : 'pointer-events-auto visible opacity-100'}`}
         >
           <motion.div
             initial={{ scale: 0.9, y: 20 }}
-            animate={{ scale: 1, y: 0 }}
+            animate={isHidden ? { scale: 0.95, y: 24, opacity: 0 } : { scale: 1, y: 0, opacity: 1 }}
             exit={{ scale: 0.9, y: 20 }}
             className="relative w-full max-w-4xl bg-[#1a1a1a] border border-[#f27d26]/30 rounded-2xl shadow-2xl overflow-hidden"
           >
             {/* Header */}
             <div className="sticky top-0 z-10 flex items-center justify-between px-4 md:px-8 py-4 md:py-6 bg-[#1a1a1a] border-b border-[#f27d26]/20">
+              {onHide && (
+                <button
+                  onClick={onHide}
+                  className="mr-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-[10px] font-black tracking-widest text-white/60 transition-colors hover:bg-white/10 hover:text-white"
+                  title="隐藏窗口以查看战场"
+                >
+                  隐藏
+                </button>
+              )}
               <div className="flex items-center gap-2 md:gap-3">
                 <Book className="w-5 h-5 md:w-6 md:h-6 text-[#f27d26]" />
                 <h2 className="text-lg md:text-2xl font-bold tracking-tighter text-white uppercase italic">

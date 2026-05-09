@@ -41,6 +41,7 @@ interface PlayFieldProps {
   showPhaseMenu?: boolean;
   isAnyPopupOpen?: boolean;
   isPopupHidden?: boolean;
+  onHidePopup?: () => void;
   onExpand?: () => void;
 }
 
@@ -543,7 +544,7 @@ export const PlayField: React.FC<PlayFieldProps> = ({
   setViewingZone, highlightedCardIds, onShowLogs, onOpenRulebook,
   onSurrender, onPhaseClick, confrontationStrategy, onUpdateStrategy,
   canConfront, isConfrontPromptActive, isCounteringPromptActive, isDefensePromptActive, onStartConfront, onDeclineConfront, onDeclineDefense,
-  showPhaseMenu, isAnyPopupOpen, isPopupHidden, onExpand
+  showPhaseMenu, isAnyPopupOpen, isPopupHidden, onHidePopup, onExpand
 }) => {
   const [hoveredCard, setHoveredCard] = useState<Card | null>(null);
   const [isDesktop, setIsDesktop] = useState<boolean>(() => typeof window !== 'undefined' ? window.innerWidth >= 1024 : false);
@@ -615,6 +616,8 @@ export const PlayField: React.FC<PlayFieldProps> = ({
         }}
         cardBackUrl={cardBackUrl}
         selectedIds={Array.from(highlightedCardIds || [])}
+        onHide={onHidePopup}
+        isHidden={isPopupHidden}
       />
       {isDesktop && hoveredCard && (
         <div className="pointer-events-none absolute right-4 top-4 z-[120] hidden w-[300px] rounded-2xl border border-white/10 bg-black/75 p-3 shadow-2xl backdrop-blur-md lg:block">
@@ -675,7 +678,8 @@ export const PlayField: React.FC<PlayFieldProps> = ({
             <div className="flex items-center gap-2 md:gap-4">
               <button
                 onClick={onSurrender}
-                className="rounded-full border border-white/5 bg-white/5 p-2 text-white/60 shadow-inner transition-all hover:bg-red-500/20 hover:text-red-500 md:p-2.5"
+                disabled={isPopupHidden}
+                className="rounded-full border border-white/5 bg-white/5 p-2 text-white/60 shadow-inner transition-all hover:bg-red-500/20 hover:text-red-500 disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:bg-white/5 disabled:hover:text-white/60 md:p-2.5"
                 title="投降"
               >
                 <Flag className="h-4 w-4 md:h-5 md:w-5" />
@@ -724,12 +728,14 @@ export const PlayField: React.FC<PlayFieldProps> = ({
                   "bg-amber-500/15 border-amber-400/40 shadow-[0_0_24px_rgba(251,191,36,0.35)] animate-pulse"
               )}
               onClick={(e) => {
+                if (isPopupHidden) return;
                 if (isConfrontPromptActive || isCounteringPromptActive || isDefensePromptActive) return;
                 onPhaseClick?.();
               }}
             >
               {(isConfrontPromptActive || isCounteringPromptActive || isDefensePromptActive) ? (
                 <button
+                  disabled={isPopupHidden}
                   onClick={(e) => {
                     e.stopPropagation();
                     if (isDefensePromptActive) {
@@ -738,7 +744,7 @@ export const PlayField: React.FC<PlayFieldProps> = ({
                     }
                     onDeclineConfront?.();
                   }}
-                  className="absolute inset-[-0.15rem] z-10 flex min-w-[132px] items-center justify-center gap-1.5 rounded-xl border border-sky-400/60 bg-sky-500/25 px-3 py-1.5 text-sky-100 shadow-[0_0_26px_rgba(56,189,248,0.42)] transition-all hover:bg-sky-500/35 active:scale-[0.98] md:inset-[-0.25rem] md:min-w-[156px] md:gap-2 md:px-4 md:py-2"
+                  className="absolute inset-[-0.15rem] z-10 flex min-w-[132px] items-center justify-center gap-1.5 rounded-xl border border-sky-400/60 bg-sky-500/25 px-3 py-1.5 text-sky-100 shadow-[0_0_26px_rgba(56,189,248,0.42)] transition-all hover:bg-sky-500/35 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:bg-sky-500/25 md:inset-[-0.25rem] md:min-w-[156px] md:gap-2 md:px-4 md:py-2"
                 >
                   <Shield className="h-4 w-4" />
                   <span className="text-xs font-black italic tracking-widest md:text-sm">
@@ -769,8 +775,9 @@ export const PlayField: React.FC<PlayFieldProps> = ({
                 <button
                   key={strategy}
                   onClick={() => onUpdateStrategy?.(strategy)}
+                  disabled={isPopupHidden}
                   className={cn(
-                    "rounded-full px-2 py-0.5 text-[9px] font-black tracking-widest transition-all md:px-3 md:py-1 md:text-[10px]",
+                    "rounded-full px-2 py-0.5 text-[9px] font-black tracking-widest transition-all disabled:cursor-not-allowed disabled:opacity-35 md:px-3 md:py-1 md:text-[10px]",
                     confrontationStrategy === strategy
                       ? "bg-[#f27d26] text-black shadow-lg"
                       : "text-white/40 hover:text-white"
@@ -793,14 +800,16 @@ export const PlayField: React.FC<PlayFieldProps> = ({
               )}
               <button
                 onClick={onOpenRulebook}
-                className="rounded-full border border-white/5 bg-white/5 p-1.5 text-white/60 shadow-inner transition-all hover:bg-white/10 hover:text-white md:p-2.5"
+                disabled={isPopupHidden}
+                className="rounded-full border border-white/5 bg-white/5 p-1.5 text-white/60 shadow-inner transition-all hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:bg-white/5 disabled:hover:text-white/60 md:p-2.5"
                 title="规则书"
               >
                 <BookOpen className="h-4 w-4 md:h-5 md:w-5" />
               </button>
               <button
                 onClick={onShowLogs}
-                className="flex items-center gap-1.5 rounded-full border border-white/5 bg-white/5 px-3 py-1.5 text-white/60 shadow-inner transition-all hover:bg-[#f27d26]/20 hover:text-[#f27d26] md:px-4 md:py-2.5"
+                disabled={isPopupHidden}
+                className="flex items-center gap-1.5 rounded-full border border-white/5 bg-white/5 px-3 py-1.5 text-white/60 shadow-inner transition-all hover:bg-[#f27d26]/20 hover:text-[#f27d26] disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:bg-white/5 disabled:hover:text-white/60 md:px-4 md:py-2.5"
                 title="战斗日志"
               >
                 <span className="text-[9px] font-black tracking-widest md:text-[10px]">LOG</span>

@@ -1123,6 +1123,18 @@ export const BattleField: React.FC = () => {
   const handleCardClick = (card: Card, zone: string, index?: number, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
 
+    if (isPopupHidden) {
+      const rect = e?.currentTarget?.getBoundingClientRect();
+      setCardMenu({
+        card,
+        zone,
+        index,
+        x: rect ? (rect.left + rect.width / 2) : (window.innerWidth / 2),
+        y: rect ? (rect.top - 10) : (window.innerHeight / 2 - 100)
+      });
+      return;
+    }
+
     // Guided Defense/Confrontation Selection - Just guides, menu handles completion
     if (isConfronting) {
       const isCounteringTurn = game.phase === 'COUNTERING' && game.priorityPlayerId === myUid;
@@ -1773,9 +1785,19 @@ export const BattleField: React.FC = () => {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[60] bg-black/90 backdrop-blur-md flex items-center justify-center"
+            className={cn(
+              "fixed inset-0 z-[60] flex items-center justify-center bg-black/90 backdrop-blur-md transition-all duration-300",
+              isPopupHidden ? "pointer-events-none invisible opacity-0" : "pointer-events-auto visible opacity-100"
+            )}
           >
-            <div className="max-w-2xl w-[95vw] md:w-full bg-zinc-900/90 border border-white/10 rounded-[2rem] flex flex-col items-center gap-3 md:gap-4 p-4 md:p-6 overflow-y-auto max-h-[90vh] shadow-2xl">
+            <div className="relative max-w-2xl w-[95vw] md:w-full bg-zinc-900/90 border border-white/10 rounded-[2rem] flex flex-col items-center gap-3 md:gap-4 p-4 md:p-6 overflow-y-auto max-h-[90vh] shadow-2xl">
+              <button
+                onClick={() => setIsPopupHidden(true)}
+                className="absolute left-4 top-4 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-[10px] font-black tracking-widest text-white/60 transition-colors hover:bg-white/10 hover:text-white"
+                title="隐藏窗口以查看战场"
+              >
+                隐藏
+              </button>
               <div className="text-center">
                 <h3 className="text-lg md:text-2xl font-black italic text-[#f27d26] tracking-tighter mb-1">支付费用</h3>
                 <div className="flex items-center justify-center gap-4">
@@ -2066,10 +2088,27 @@ export const BattleField: React.FC = () => {
                   }}
                   onDeclineDefense={() => handleDeclareDefense(undefined)}
                   isPopupHidden={isPopupHidden}
+                  onHidePopup={() => setIsPopupHidden(true)}
                   onExpand={() => setIsPopupHidden(false)}
 
                   showPhaseMenu={showPhaseMenu}
-                  isAnyPopupOpen={!!previewCard || !!viewingZone || isRulebookOpen || !!game.pendingQuery || game.phase === 'EROSION' || game.phase === 'DISCARD' || game.phase === 'END' || !!pendingPlayCard}
+                  isAnyPopupOpen={
+                    !!previewCard ||
+                    !!viewingZone ||
+                    isRulebookOpen ||
+                    !!game.pendingQuery ||
+                    game.phase === 'EROSION' ||
+                    game.phase === 'DISCARD' ||
+                    game.phase === 'END' ||
+                    !!pendingPlayCard ||
+                    !!effectSelection ||
+                    !!effectConfirmation ||
+                    !!allianceConfirmation ||
+                    showPhaseMenu ||
+                    showFullLogs ||
+                    !!interruptionNotice ||
+                    showSurrenderConfirm
+                  }
                 />
               )}
             </div>
@@ -2237,6 +2276,8 @@ export const BattleField: React.FC = () => {
           }}
           confirmText="确认弃置"
           cardBackUrl={cardBackUrl}
+          onHide={() => setIsPopupHidden(true)}
+          isHidden={isPopupHidden}
         />
 
         {/* Standardized Shenyi Choice Popup */}
@@ -2251,13 +2292,20 @@ export const BattleField: React.FC = () => {
           onConfirm={() => handleShenyiChoice('CONFIRM_SHENYI')}
           onCancel={() => handleShenyiChoice('DECLINE_SHENYI')}
           cardBackUrl={cardBackUrl}
+          onHide={() => setIsPopupHidden(true)}
+          isHidden={isPopupHidden}
         />
 
 
 
       </div >
       {/* Rulebook Overlay */}
-      < Rulebook isOpen={isRulebookOpen} onClose={() => setIsRulebookOpen(false)} />
+      < Rulebook
+        isOpen={isRulebookOpen}
+        onClose={() => setIsRulebookOpen(false)}
+        onHide={() => setIsPopupHidden(true)}
+        isHidden={isPopupHidden}
+      />
 
       {/* Card Action Menu */}
       {/* Unified Card Action Menu */}
@@ -2283,7 +2331,7 @@ export const BattleField: React.FC = () => {
               <div className="md:hidden w-12 h-1 bg-white/20 rounded-full mb-2 shrink-0" />
               <div className="md:hidden text-[10px] font-black text-white/40 tracking-[0.2em] mb-2 shrink-0">操作</div>
               {/* Action: Play (Yellow) */}
-              {(() => {
+              {!isPopupHidden && (() => {
                 const isCounteringTurn = game.phase === 'COUNTERING' && game.priorityPlayerId === myUid;
                 const isMainTurn = me.isTurn && game.phase === 'MAIN';
                 const isBattleFreeTurn = me.isTurn && game.phase === 'BATTLE_FREE' && cardMenu.card.type === 'STORY';
@@ -2313,7 +2361,7 @@ export const BattleField: React.FC = () => {
               })()}
 
               {/* Action: Activate Effect (Green) */}
-              {(() => {
+              {!isPopupHidden && (() => {
                 const isCounteringTurn = game.phase === 'COUNTERING' && game.priorityPlayerId === myUid;
                 const isOwnSharedPhase =
                   me.isTurn &&
@@ -2401,7 +2449,7 @@ export const BattleField: React.FC = () => {
               })()}
 
               {/* Action: Attack (Red) */}
-              {['MAIN', 'BATTLE_DECLARATION'].includes(game.phase) && me.isTurn && game.turnCount !== 1 && cardMenu.zone === 'unit' && (
+              {!isPopupHidden && ['MAIN', 'BATTLE_DECLARATION'].includes(game.phase) && me.isTurn && game.turnCount !== 1 && cardMenu.zone === 'unit' && (
                 (() => {
                   const latestUnit = me.unitZone.find(c => c?.gamecardId === cardMenu.card.gamecardId);
                   if (latestUnit && canUnitAttackNow(latestUnit)) {
@@ -2445,7 +2493,7 @@ export const BattleField: React.FC = () => {
               )}
 
               {/* Action: Defend (Blue) */}
-              {game.phase === 'DEFENSE_DECLARATION' && opponent?.isTurn && cardMenu.zone === 'unit' && (
+              {!isPopupHidden && game.phase === 'DEFENSE_DECLARATION' && opponent?.isTurn && cardMenu.zone === 'unit' && (
                 (() => {
                   const isMyCard = me.unitZone.some(c => c?.gamecardId === cardMenu.card.gamecardId);
                   if (isMyCard && canUnitDefend(cardMenu.card)) {
@@ -2470,7 +2518,7 @@ export const BattleField: React.FC = () => {
               )}
 
               {/* Action: Discard (Special Phase) */}
-              {game.phase === 'DISCARD' && cardMenu.zone === 'hand' && me.isTurn && (
+              {!isPopupHidden && game.phase === 'DISCARD' && cardMenu.zone === 'hand' && me.isTurn && (
                 <motion.button
                   whileHover={{ scale: 1.1, x: -3 }}
                   className="px-3 py-1 text-[9px] font-black tracking-tighter text-red-50 bg-red-600 rounded-full shadow-[0_0_15px_rgba(220,38,38,0.4)] flex items-center gap-2 border border-red-400/50"
@@ -2526,6 +2574,8 @@ export const BattleField: React.FC = () => {
         }}
         onCancel={() => setAllianceConfirmation(null)}
         cardBackUrl={cardBackUrl}
+        onHide={() => setIsPopupHidden(true)}
+        isHidden={isPopupHidden}
       />
 
       {/* Alliance Target Selection Overlay */}
@@ -2558,18 +2608,28 @@ export const BattleField: React.FC = () => {
         {effectSelection && (
           <motion.div
             initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
+            animate={{ opacity: isPopupHidden ? 0 : 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[160] bg-black/80 backdrop-blur-md flex items-center justify-center p-8"
+            className={cn(
+              "fixed inset-0 z-[160] flex items-center justify-center bg-black/80 p-8 backdrop-blur-md transition-all duration-300",
+              isPopupHidden ? "pointer-events-none invisible" : "pointer-events-auto visible"
+            )}
             onClick={() => setEffectSelection(null)}
           >
             <motion.div
               initial={{ scale: 0.95, y: 20 }}
               animate={{ scale: 1, y: 0 }}
               exit={{ scale: 0.95, y: 20 }}
-              className="bg-zinc-900 border border-white/10 rounded-2xl max-w-2xl w-full p-4 md:p-8 shadow-2xl overflow-y-auto max-h-[90vh]"
+              className="relative bg-zinc-900 border border-white/10 rounded-2xl max-w-2xl w-full p-4 md:p-8 shadow-2xl overflow-y-auto max-h-[90vh]"
               onClick={(e) => e.stopPropagation()}
             >
+              <button
+                onClick={() => setIsPopupHidden(true)}
+                className="absolute left-4 top-4 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-[10px] font-black tracking-widest text-white/60 transition-colors hover:bg-white/10 hover:text-white"
+                title="隐藏窗口以查看战场"
+              >
+                隐藏
+              </button>
               <h3 className="text-xl md:text-2xl font-black italic text-red-500 mb-4 md:mb-6 uppercase tracking-tighter">选择要发动的效果</h3>
               <div className="space-y-4">
                 {effectSelection.effects.map((e, i) => (
@@ -2620,18 +2680,28 @@ export const BattleField: React.FC = () => {
         {effectConfirmation && (
           <motion.div
             initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
+            animate={{ opacity: isPopupHidden ? 0 : 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[170] bg-black/80 backdrop-blur-md flex items-center justify-center p-8"
+            className={cn(
+              "fixed inset-0 z-[170] flex items-center justify-center bg-black/80 p-8 backdrop-blur-md transition-all duration-300",
+              isPopupHidden ? "pointer-events-none invisible" : "pointer-events-auto visible"
+            )}
             onClick={() => setEffectConfirmation(null)}
           >
             <motion.div
               initial={{ scale: 0.95, y: 20 }}
               animate={{ scale: 1, y: 0 }}
               exit={{ scale: 0.95, y: 20 }}
-              className="bg-zinc-900 border border-red-500/30 rounded-2xl max-w-xl w-full p-5 md:p-8 shadow-[0_0_50px_rgba(220,38,38,0.15)] overflow-y-auto max-h-[90vh]"
+              className="relative bg-zinc-900 border border-red-500/30 rounded-2xl max-w-xl w-full p-5 md:p-8 shadow-[0_0_50px_rgba(220,38,38,0.15)] overflow-y-auto max-h-[90vh]"
               onClick={(e) => e.stopPropagation()}
             >
+              <button
+                onClick={() => setIsPopupHidden(true)}
+                className="absolute left-4 top-4 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-[10px] font-black tracking-widest text-white/60 transition-colors hover:bg-white/10 hover:text-white"
+                title="隐藏窗口以查看战场"
+              >
+                隐藏
+              </button>
               <h3 className="text-xl md:text-2xl font-black italic text-red-500 mb-4 md:mb-6 uppercase tracking-tighter flex items-center gap-3">
                 <Zap className="w-6 h-6" />
                 确认效果
@@ -2876,6 +2946,8 @@ export const BattleField: React.FC = () => {
         onConfirm={() => GameService.submitQueryChoice(gameId!, game.pendingQuery!.id, ['YES'])}
         onCancel={() => GameService.submitQueryChoice(gameId!, game.pendingQuery!.id, ['NO'])}
         cardBackUrl={cardBackUrl}
+        onHide={() => setIsPopupHidden(true)}
+        isHidden={isPopupHidden}
       >
         {normalizedPendingQueryType === 'SELECT_PAYMENT' && (
           <div className="flex flex-col gap-8 w-full max-w-4xl max-h-[50vh] overflow-y-auto p-4 custom-scrollbar">
@@ -3058,9 +3130,12 @@ export const BattleField: React.FC = () => {
         {showPhaseMenu && (
           <motion.div
             initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
+            animate={{ opacity: isPopupHidden ? 0 : 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[500] flex items-center justify-center p-6 bg-black/60 backdrop-blur-md"
+            className={cn(
+              "fixed inset-0 z-[500] flex items-center justify-center bg-black/60 p-6 backdrop-blur-md transition-all duration-300",
+              isPopupHidden ? "pointer-events-none invisible" : "pointer-events-auto visible"
+            )}
             onClick={() => setShowPhaseMenu(false)}
           >
             <motion.div
@@ -3070,6 +3145,13 @@ export const BattleField: React.FC = () => {
               className="bg-zinc-900 border border-white/10 p-12 rounded-[3.5rem] shadow-[0_40px_100px_rgba(0,0,0,0.8),0_0_50px_rgba(242,125,38,0.1)] flex flex-col items-center gap-10 max-w-sm w-full relative overflow-hidden"
               onClick={(e) => e.stopPropagation()}
             >
+              <button
+                onClick={() => setIsPopupHidden(true)}
+                className="absolute left-6 top-6 z-20 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-[10px] font-black tracking-widest text-white/60 transition-colors hover:bg-white/10 hover:text-white"
+                title="隐藏窗口以查看战场"
+              >
+                隐藏
+              </button>
               {/* Premium Glow effects */}
               <div className="absolute -top-32 -right-32 w-64 h-64 bg-[#f27d26]/10 blur-[100px] rounded-full" />
               <div className="absolute -bottom-32 -left-32 w-64 h-64 bg-red-600/10 blur-[100px] rounded-full" />
@@ -3288,9 +3370,12 @@ export const BattleField: React.FC = () => {
         {interruptionNotice && (
           <motion.div
             initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
+            animate={{ opacity: isPopupHidden ? 0 : 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[1000] bg-black/80 backdrop-blur-md flex items-center justify-center p-6"
+            className={cn(
+              "fixed inset-0 z-[1000] flex items-center justify-center bg-black/80 p-6 backdrop-blur-md transition-all duration-300",
+              isPopupHidden ? "pointer-events-none invisible" : "pointer-events-auto visible"
+            )}
           >
             <motion.div
               initial={{ scale: 0.9, opacity: 0, y: 20 }}
@@ -3298,6 +3383,13 @@ export const BattleField: React.FC = () => {
               exit={{ scale: 0.9, opacity: 0, y: 20 }}
               className="max-w-md w-full bg-zinc-900 border border-white/10 rounded-[2rem] p-8 shadow-2xl flex flex-col items-center gap-6 text-center relative overflow-hidden"
             >
+              <button
+                onClick={() => setIsPopupHidden(true)}
+                className="absolute left-4 top-4 z-10 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-[10px] font-black tracking-widest text-white/60 transition-colors hover:bg-white/10 hover:text-white"
+                title="隐藏窗口以查看战场"
+              >
+                隐藏
+              </button>
               <div className="absolute top-0 inset-x-0 h-1 bg-gradient-to-r from-red-500 via-orange-500 to-red-500" />
 
               <div className="w-16 h-16 rounded-2xl bg-orange-500/10 flex items-center justify-center border border-orange-500/20">
@@ -3331,11 +3423,14 @@ export const BattleField: React.FC = () => {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[2600] bg-black/95 backdrop-blur-md flex flex-col md:flex-row items-center justify-center p-4 md:p-12 cursor-pointer"
+            className={cn(
+              "fixed inset-0 z-[2600] flex flex-col items-center justify-center bg-black/95 p-4 backdrop-blur-md md:flex-row md:p-12 transition-all duration-300",
+              "pointer-events-auto visible cursor-pointer"
+            )}
             onClick={() => setPreviewCard(null)}
           >
             <div
-              className="w-full max-w-5xl max-h-[calc(100vh-2rem)] md:max-h-[calc(100vh-6rem)] bg-zinc-900/50 border border-white/10 rounded-3xl overflow-hidden flex flex-col md:flex-row shadow-2xl animate-in fade-in zoom-in duration-300 pointer-events-auto"
+              className="relative w-full max-w-5xl max-h-[calc(100vh-2rem)] md:max-h-[calc(100vh-6rem)] bg-zinc-900/50 border border-white/10 rounded-3xl overflow-hidden flex flex-col md:flex-row shadow-2xl animate-in fade-in zoom-in duration-300 pointer-events-auto"
               onClick={e => e.stopPropagation()}
             >
               {/* Left: Card Name & Image */}
@@ -3487,15 +3582,25 @@ export const BattleField: React.FC = () => {
           <motion.div
             key="battle-logs"
             initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
+            animate={{ opacity: isPopupHidden ? 0 : 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[2000] bg-black/90 backdrop-blur-xl flex items-center justify-center p-4"
+            className={cn(
+              "fixed inset-0 z-[2000] flex items-center justify-center bg-black/90 p-4 backdrop-blur-xl transition-all duration-300",
+              isPopupHidden ? "pointer-events-none invisible" : "pointer-events-auto visible"
+            )}
             onClick={() => setShowFullLogs(false)}
           >
             <div
               className="max-w-2xl w-full bg-zinc-900 border border-white/10 rounded-[2.5rem] flex flex-col p-8 md:p-12 gap-8 shadow-[0_0_100px_rgba(242,125,38,0.1)] relative"
               onClick={e => e.stopPropagation()}
             >
+              <button
+                onClick={() => setIsPopupHidden(true)}
+                className="absolute left-6 top-6 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-[10px] font-black tracking-widest text-white/60 transition-colors hover:bg-white/10 hover:text-white"
+                title="隐藏窗口以查看战场"
+              >
+                隐藏
+              </button>
               <div className="flex items-center justify-between">
                 <div className="flex flex-col">
                   <span className="text-[10px] font-black text-[#f27d26] uppercase tracking-[0.4em]">记录</span>
