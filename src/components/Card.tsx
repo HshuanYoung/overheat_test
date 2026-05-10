@@ -19,6 +19,7 @@ interface CardProps {
   displayMode?: 'deck' | 'unit' | 'erosion_item' | 'hand' | 'none';
   cardBackUrl?: string;
   isHighlighted?: boolean;
+  hideKeywords?: boolean;
 }
 
 const getRarityClass = (rarity: Rarity) => {
@@ -52,7 +53,8 @@ const CardComponentImpl: React.FC<CardProps> = ({
   statusBorder,
   displayMode,
   cardBackUrl,
-  isHighlighted
+  isHighlighted,
+  hideKeywords = false
 }) => {
   if (isBack || !card) {
     const backExhausted = !!isExhausted;
@@ -129,9 +131,11 @@ const CardComponentImpl: React.FC<CardProps> = ({
         <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-black/40" />
       </div>
 
-      <div className="absolute top-0.5 right-0.5 md:top-1 md:right-1 z-10 flex flex-col items-end gap-0.5">
-        <KeywordBadges card={card} />
-      </div>
+      {!hideKeywords && (
+        <div className="absolute top-0.5 right-0.5 md:top-1 md:right-1 z-10 flex flex-col items-end gap-0.5">
+          <KeywordBadges card={card} />
+        </div>
+      )}
 
       {showAC && (
         <div className="absolute top-0.5 left-0.5 md:top-1 md:left-1 z-10">

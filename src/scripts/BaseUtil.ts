@@ -657,6 +657,8 @@ export const putUnitOntoField = (
   if (moved) {
     moved.isExhausted = !!options?.exhausted;
     moved.displayState = 'FRONT_UPRIGHT';
+    moved.playedTurn = gameState.turnCount;
+    moved.hasAttackedThisTurn = false;
   }
   return true;
 };
@@ -960,6 +962,7 @@ export const dealUnpreventableSelfDamage = (gameState: GameState, playerUid: str
     if (!card) continue;
     card.cardlocation = player.isGoddessMode ? 'GRAVE' : 'EROSION_FRONT';
     card.displayState = 'FRONT_UPRIGHT';
+    card.isExhausted = false;
     if (player.isGoddessMode) {
       player.grave.push(card);
     } else {

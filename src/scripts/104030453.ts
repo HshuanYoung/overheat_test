@@ -34,6 +34,12 @@ const trigger_104030453_buff: CardEffect = {
       ...((instance as any).data || {}),
       erosionEntryBuffActive: true
     };
+    instance.temporaryRush = true;
+    instance.isrush = true;
+    instance.temporaryBuffSources = {
+      ...(instance.temporaryBuffSources || {}),
+      rush: instance.fullName
+    };
 
     gameState.logs.push(`[${instance.fullName}] 触发：从侵蚀区登场，获得+1/+1000与【速攻】。`);
   }
@@ -50,7 +56,12 @@ const continuous_104030453_buff: CardEffect = {
 
     instance.power = (instance.power || 0) + 1000;
     instance.damage = (instance.damage || 0) + 1;
+    instance.temporaryRush = true;
     instance.isrush = true;
+    instance.temporaryBuffSources = {
+      ...(instance.temporaryBuffSources || {}),
+      rush: instance.fullName
+    };
 
     if (!instance.influencingEffects) instance.influencingEffects = [];
     instance.influencingEffects.push({

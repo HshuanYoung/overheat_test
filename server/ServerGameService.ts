@@ -342,12 +342,14 @@ export const ServerGameService = {
       player.erosionFront.forEach(card => {
         if (card) {
           card.cardlocation = 'EROSION_FRONT';
+          card.isExhausted = false;
           ServerGameService.hydrateCard(card);
         }
       });
       player.erosionBack.forEach(card => {
         if (card) {
           card.cardlocation = 'EROSION_BACK';
+          card.isExhausted = false;
           ServerGameService.hydrateCard(card);
         }
       });
@@ -781,6 +783,11 @@ export const ServerGameService = {
 
     if (!card) return false;
 
+    if (targetZone === 'GRAVE' && (card.id === '201000140' || card.id === '201000040' || card.fullName === '解放之光')) {
+      targetZone = 'EXILE';
+      gameState.logs.push(`[替换效果] [${card.fullName}] 将要被送入墓地，改为放逐。`);
+    }
+
     if (!(card as any).data) {
       (card as any).data = {};
     }
@@ -837,6 +844,7 @@ export const ServerGameService = {
     }
 
     if (targetZone === 'EROSION_FRONT' || targetZone === 'EROSION_BACK') {
+      card.isExhausted = false;
       const currentErosion = targetPlayer.erosionFront.filter(c => c !== null).length + targetPlayer.erosionBack.filter(c => c !== null).length;
       if (currentErosion >= 10) {
         gameState.logs.push(`[侵蚀区已满] ${card.fullName} 因侵蚀区已达10张改为送入墓地。`);
@@ -1362,6 +1370,7 @@ export const ServerGameService = {
         if (topCard) {
           topCard.cardlocation = 'EROSION_FRONT';
           topCard.displayState = 'FRONT_UPRIGHT';
+          topCard.isExhausted = false;
           const emptyIndex = player.erosionFront.findIndex(c => c === null);
           if (emptyIndex !== -1) {
             player.erosionFront[emptyIndex] = topCard;
@@ -3482,16 +3491,29 @@ export const ServerGameService = {
         }
       }
 
+      if (loopDestination === 'GRAVE' && (card.id === '201000140' || card.id === '201000040' || card.fullName === '解放之光')) {
+        loopDestination = 'EXILE';
+        gameState.logs.push(`[替换效果] [${card.fullName}] 将要被送入墓地，改为放逐。`);
+      }
+
       if (loopDestination === 'EROSION_FRONT') {
         const currentErosion = player.erosionFront.filter(c => c !== null).length + player.erosionBack.filter(c => c !== null).length;
         if (currentErosion >= 10) {
-          card.cardlocation = 'GRAVE';
-          card.displayState = 'FRONT_UPRIGHT';
-          player.grave.push(card);
-          gameState.logs.push(`[侵蚀区已满] ${card.fullName} 因侵蚀区已达10张改为送入墓地。`);
+          if (card.id === '201000140' || card.id === '201000040' || card.fullName === '解放之光') {
+            card.cardlocation = 'EXILE';
+            card.displayState = 'FRONT_UPRIGHT';
+            player.exile.push(card);
+            gameState.logs.push(`[替换效果] [${card.fullName}] 将要被送入墓地，改为放逐。`);
+          } else {
+            card.cardlocation = 'GRAVE';
+            card.displayState = 'FRONT_UPRIGHT';
+            player.grave.push(card);
+            gameState.logs.push(`[侵蚀区已满] ${card.fullName} 因侵蚀区已达10张改为送入墓地。`);
+          }
         } else {
           card.cardlocation = 'EROSION_FRONT';
           card.displayState = 'FRONT_UPRIGHT';
+          card.isExhausted = false;
           const emptyIdx = player.erosionFront.findIndex(c => c === null);
           if (emptyIdx !== -1) player.erosionFront[emptyIdx] = card;
           else player.erosionFront.push(card);
@@ -4795,6 +4817,7 @@ export const ServerGameService = {
         const topCard = player.deck.pop()!;
         topCard.cardlocation = 'EROSION_BACK';
         topCard.displayState = 'FRONT_FACEDOWN';
+        topCard.isExhausted = false;
         const emptyIndex = player.erosionBack.findIndex(c => c === null);
         if (emptyIndex !== -1) {
           player.erosionBack[emptyIndex] = topCard;

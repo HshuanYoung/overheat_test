@@ -1,6 +1,6 @@
 import { Card, CardEffect, GameState, PlayerState, TriggerLocation } from '../types/game';
 import { AtomicEffectExecutor } from '../services/AtomicEffectExecutor';
-import { addInfluence, createChoiceQuery, createSelectCardQuery, getBattlefieldUnits } from './BaseUtil';
+import { addInfluence, canActivateDefaultTiming, createChoiceQuery, createSelectCardQuery, getBattlefieldUnits } from './BaseUtil';
 
 const EFFECT_ID = '105110112_activate';
 
@@ -67,8 +67,7 @@ const effect_105110112_activate: CardEffect = {
   triggerLocation: ['UNIT'],
   description: '从下列效果选择一个，执行后这个单位失去这个【启】能力：\n◆抽1张卡。\n◆选择1名玩家，给予他1点伤害。\n◆选择你的1张手牌舍弃，选择1个〖力量1500〗以下的单位，将其破坏。',
   condition: (gameState, playerState, instance) =>
-    playerState.isTurn &&
-    gameState.phase === 'MAIN' &&
+    canActivateDefaultTiming(gameState, playerState) &&
     instance.cardlocation === 'UNIT' &&
     !hasLostActivate(instance),
   execute: async (instance, gameState, playerState) => {

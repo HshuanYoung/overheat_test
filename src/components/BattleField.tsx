@@ -1723,9 +1723,21 @@ export const BattleField: React.FC = () => {
   }
 
   if (game.phase === 'MULLIGAN' && !me.mulliganDone) {
+    const firstPlayerName = game.playerIds.map(uid => game.players[uid]).find(player => player?.isFirst)?.displayName || '先攻玩家';
+    const roleLabel = me.isFirst ? '你是先攻' : '你是后攻';
+    const roleDescription = me.isFirst ? '第 1 回合由你开始' : `第 1 回合由 ${firstPlayerName} 开始`;
     return (
       <div className="h-screen bg-black flex flex-col items-center justify-center p-8">
         <h2 className="text-2xl md:text-4xl font-black italic text-[#f27d26] mb-2 md:mb-4 tracking-tighter">调度阶段</h2>
+        <div className={cn(
+          "mb-4 inline-flex items-center gap-2 rounded-full border px-4 py-2 text-[10px] font-black tracking-widest",
+          me.isFirst ? "border-[#f27d26]/40 bg-[#f27d26]/10 text-[#f27d26]" : "border-sky-400/40 bg-sky-400/10 text-sky-200"
+        )}>
+          {me.isFirst ? <Sword className="h-4 w-4" /> : <Shield className="h-4 w-4" />}
+          {roleLabel}
+          <span className="text-white/35">/</span>
+          <span className="text-white/55">{roleDescription}</span>
+        </div>
         <p className="text-zinc-400 mb-8 md:mb-12 tracking-[0.2em] md:tracking-[0.3em] text-[10px] md:text-sm text-center">选择需要重抽的卡牌。</p>
 
         <div className="flex flex-wrap justify-center gap-4 md:gap-6 mb-12 max-w-full overflow-x-auto px-4">
@@ -1876,6 +1888,9 @@ export const BattleField: React.FC = () => {
   }
 
   if (game.phase === 'MULLIGAN' && me.mulliganDone) {
+    const firstPlayerName = game.playerIds.map(uid => game.players[uid]).find(player => player?.isFirst)?.displayName || '先攻玩家';
+    const roleLabel = me.isFirst ? '你是先攻' : '你是后攻';
+    const roleDescription = me.isFirst ? '第 1 回合由你开始' : `第 1 回合由 ${firstPlayerName} 开始`;
     return (
       <div className="h-screen bg-black flex flex-col items-center justify-center p-8 relative" onClick={() => setCardMenu(null)}>
         <MulliganRevealOverlay
@@ -1904,6 +1919,15 @@ export const BattleField: React.FC = () => {
           )}
         </AnimatePresence>
         <div className="w-12 h-12 border-4 border-[#f27d26] border-t-transparent rounded-full animate-spin mb-4" />
+        <div className={cn(
+          "mb-4 inline-flex items-center gap-2 rounded-full border px-4 py-2 text-[10px] font-black tracking-widest",
+          me.isFirst ? "border-[#f27d26]/40 bg-[#f27d26]/10 text-[#f27d26]" : "border-sky-400/40 bg-sky-400/10 text-sky-200"
+        )}>
+          {me.isFirst ? <Sword className="h-4 w-4" /> : <Shield className="h-4 w-4" />}
+          {roleLabel}
+          <span className="text-white/35">/</span>
+          <span className="text-white/55">{roleDescription}</span>
+        </div>
         <p className="text-zinc-400 uppercase tracking-widest text-sm">
           {activeMulliganReveal ? '等待双方调度完成...' : '等待对手完成调度...'}
         </p>

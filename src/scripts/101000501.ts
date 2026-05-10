@@ -7,6 +7,34 @@ const battlePhases = new Set(['BATTLE_DECLARATION', 'DEFENSE_DECLARATION', 'BATT
 const isBattlePhase = (gameState: any) => battlePhases.has(gameState.phase) ||
   (gameState.phase === 'COUNTERING' && battlePhases.has(gameState.previousPhase));
 
+const battleHasEnded = (gameState: any) =>
+  !gameState.battleState &&
+  (
+    gameState.phase === 'MAIN' ||
+    gameState.phase === 'BATTLE_END' ||
+    gameState.previousPhase === 'MAIN' ||
+    gameState.previousPhase === undefined ||
+    !battlePhases.has(gameState.previousPhase)
+  );
+
+const returnFromBattleExile = (instance: Card, gameState: any, playerState: any) => {
+  const data = (instance as any).data || {};
+  const ownerUid = data.returnFromExileAfterBattleOwnerUid || playerState.uid;
+  const owner = gameState.players[ownerUid];
+  if (!owner || !canPutUnitOntoBattlefield(owner, instance)) return false;
+
+  delete data.returnFromExileAfterBattleTurn;
+  delete data.returnFromExileAfterBattleOwnerUid;
+  moveCard(gameState, ownerUid, instance, 'UNIT', instance);
+  const returned = owner.unitZone.find((card: Card | null) => card?.gamecardId === instance.gamecardId);
+  if (returned) {
+    returned.isExhausted = false;
+    returned.displayState = 'FRONT_UPRIGHT';
+    returned.hasAttackedThisTurn = false;
+  }
+  return true;
+};
+
 const effect_101000501_turn_end: CardEffect = {
   id: '101000501_turn_end',
   type: 'TRIGGER',
@@ -67,12 +95,24 @@ const effect_101000501_battle_exile_return: CardEffect = {
     ),
   cost: discardHandCost(1, card => card.type === 'UNIT' && card.color === 'WHITE'),
   execute: async (instance, gameState, playerState) => {
-    (instance as any).data = {
-      ...((instance as any).data || {}),
+    const liveSelf = playerState.unitZone.find(card => card?.gamecardId === instance.gamecardId);
+    if (!liveSelf) {
+      gameState.logs.push(`[${instance.fullName}] 结算时已不在单位区，效果不处理。`);
+      return;
+    }
+
+    (liveSelf as any).data = {
+      ...((liveSelf as any).data || {}),
       returnFromExileAfterBattleTurn: gameState.turnCount,
       returnFromExileAfterBattleOwnerUid: playerState.uid
     };
-    moveCard(gameState, playerState.uid, instance, 'EXILE', instance);
+    moveCard(gameState, playerState.uid, liveSelf, 'EXILE', liveSelf);
+
+    const exiledSelf = playerState.exile.find(card => card?.gamecardId === liveSelf.gamecardId);
+    if (exiledSelf && battleHasEnded(gameState)) {
+      gameState.logs.push(`[${exiledSelf.fullName}] 结算时战斗阶段已经结束，立即回到战场。`);
+      returnFromBattleExile(exiledSelf, gameState, playerState);
+    }
   }
 };
 
@@ -80,7 +120,7 @@ const effect_101000501_return_after_battle: CardEffect = {
   id: '101000501_return_after_battle',
   type: 'TRIGGER',
   triggerLocation: ['EXILE'],
-  triggerEvent: ['BATTLE_ENDED', 'PHASE_CHANGED'] as any,
+  triggerEvent: 'BATTLE_ENDED' as any,
   isMandatory: true,
   limitCount: 1,
   description: '这个战斗阶段结束时，将被这个效果放逐的这张卡放置到战场上。',
@@ -92,23 +132,10 @@ const effect_101000501_return_after_battle: CardEffect = {
     ) {
       return false;
     }
-    return event?.type === 'BATTLE_ENDED' || (event?.type === 'PHASE_CHANGED' && event.data?.phase === 'MAIN');
+    return event?.type === 'BATTLE_ENDED';
   },
   execute: async (instance, gameState, playerState) => {
-    const data = (instance as any).data || {};
-    const ownerUid = data.returnFromExileAfterBattleOwnerUid || playerState.uid;
-    const owner = gameState.players[ownerUid];
-    if (!owner || !canPutUnitOntoBattlefield(owner, instance)) return;
-
-    delete data.returnFromExileAfterBattleTurn;
-    delete data.returnFromExileAfterBattleOwnerUid;
-    moveCard(gameState, ownerUid, instance, 'UNIT', instance);
-    const returned = owner.unitZone.find(card => card?.gamecardId === instance.gamecardId);
-    if (returned) {
-      returned.isExhausted = false;
-      returned.displayState = 'FRONT_UPRIGHT';
-      returned.hasAttackedThisTurn = false;
-    }
+    returnFromBattleExile(instance, gameState, playerState);
   }
 };
 

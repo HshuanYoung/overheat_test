@@ -6,21 +6,24 @@ const cardEffects: CardEffect[] = [{
     type: 'TRIGGER',
     triggerEvent: 'COMBAT_DAMAGE_CAUSED',
     triggerLocation: ['UNIT'],
+    isMandatory: false,
     description: '给予对手战斗伤害时，可以从卡组将1张<伊列宇王国>神蚀卡加入手牌。之后给予你1点伤害。',
-    condition: (gameState, playerState, instance, event) => event?.playerUid !== playerState.uid && gameState.battleState?.attackers?.includes(instance.gamecardId),
+    condition: (_gameState, playerState, instance, event) => {
+      const attackerIds = event?.data?.attackerIds || [];
+      return event?.playerUid !== playerState.uid &&
+        attackerIds.includes(instance.gamecardId) &&
+        playerState.deck.some(card => card.faction === '伊列宇王国' && card.godMark);
+    },
     execute: async (instance, gameState, playerState) => {
       const candidates = playerState.deck.filter(card => card.faction === '伊列宇王国' && card.godMark);
-      if (candidates.length === 0) {
-        await damagePlayerByEffect(gameState, playerState.uid, playerState.uid, 1, instance);
-        return;
-      }
+      if (candidates.length === 0) return;
       createSelectCardQuery(
         gameState,
         playerState.uid,
         candidates,
         '选择加入手牌的卡',
         '选择你的卡组中的1张<伊列宇王国>神蚀卡，将其加入手牌。',
-        0,
+        1,
         1,
         { sourceCardId: instance.gamecardId, effectId: '102050089_damage_search' },
         () => 'DECK'

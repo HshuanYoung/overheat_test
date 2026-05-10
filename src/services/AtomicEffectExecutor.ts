@@ -586,16 +586,29 @@ export class AtomicEffectExecutor {
         }
       }
 
+      if (loopDestination === 'GRAVE' && (card.id === '201000140' || card.id === '201000040' || card.fullName === '解放之光')) {
+        loopDestination = 'EXILE';
+        gameState.logs.push(`[替换效果] [${card.fullName}] 将要被送入墓地，改为放逐。`);
+      }
+
       card.displayState = 'FRONT_UPRIGHT';
       card.cardlocation = loopDestination;
 
       if (loopDestination === 'EROSION_FRONT') {
+        card.isExhausted = false;
         const currentErosion = player.erosionFront.filter(c => c !== null).length + player.erosionBack.filter(c => c !== null).length;
         if (currentErosion >= 10) {
-          loopDestination = 'GRAVE';
-          card.cardlocation = 'GRAVE';
-          player.grave.push(card);
-          gameState.logs.push(`[侵蚀区已满] ${card.fullName} 因侵蚀区已达10张改为送入墓地。`);
+          if (card.id === '201000140' || card.id === '201000040' || card.fullName === '解放之光') {
+            loopDestination = 'EXILE';
+            card.cardlocation = 'EXILE';
+            player.exile.push(card);
+            gameState.logs.push(`[替换效果] [${card.fullName}] 将要被送入墓地，改为放逐。`);
+          } else {
+            loopDestination = 'GRAVE';
+            card.cardlocation = 'GRAVE';
+            player.grave.push(card);
+            gameState.logs.push(`[侵蚀区已满] ${card.fullName} 因侵蚀区已达10张改为送入墓地。`);
+          }
         } else {
           const emptyIndex = player.erosionFront.findIndex(c => c === null);
           if (emptyIndex !== -1) player.erosionFront[emptyIndex] = card;
@@ -1011,6 +1024,11 @@ export class AtomicEffectExecutor {
 
     if (!card) return;
 
+    if (toZone === 'GRAVE' && (card.id === '201000140' || card.id === '201000040' || card.fullName === '解放之光')) {
+      toZone = 'EXILE';
+      gameState.logs.push(`[替换效果] [${card.fullName}] 将要被送入墓地，改为放逐。`);
+    }
+
     if (!(card as any).data) {
       (card as any).data = {};
     }
@@ -1121,6 +1139,7 @@ export class AtomicEffectExecutor {
     }
 
     if ((toZone === 'EROSION_FRONT' || toZone === 'EROSION_BACK')) {
+      card.isExhausted = false;
       const currentErosion = targetPlayer.erosionFront.filter(c => c !== null).length + targetPlayer.erosionBack.filter(c => c !== null).length;
       if (currentErosion >= 10) {
         gameState.logs.push(`[侵蚀区已满] ${card.fullName} 因侵蚀区已达10张改为送入墓地。`);
@@ -1302,6 +1321,7 @@ export class AtomicEffectExecutor {
       // b. Update Card State
       targetCard.displayState = 'BACK_UPRIGHT';
       targetCard.cardlocation = 'EROSION_BACK';
+      targetCard.isExhausted = false;
 
       // c. Shift existing back cards (Move 0->1, 1->2... up to 9)
       for (let i = 9; i > 0; i--) {

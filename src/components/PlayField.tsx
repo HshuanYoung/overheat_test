@@ -3,7 +3,8 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Card, PlayerState, StackItem, GameState, GAME_TIMEOUTS } from '../types/game';
 import { CardComponent } from './Card';
 import { StandardPopup } from './StandardPopup';
-import { Shield, Sword, Zap, Trash2, Flag, BookOpen, Layers, AlertTriangle, Search, Play, X } from 'lucide-react';
+import { KeywordBadges } from './KeywordBadges';
+import { Shield, Sword, Zap, Trash2, Flag, BookOpen, Layers, AlertTriangle, Search, Play, X, Hand } from 'lucide-react';
 import { cn, getCardImageUrl } from '../lib/utils';
 
 interface PlayFieldProps {
@@ -110,7 +111,7 @@ const CardSlot: React.FC<{
             isExhausted && "opacity-90"
           )}>
             {isFaceUp ? (
-              <CardComponent card={card} className="border-0" isExhausted={isExhausted} statusBorder={isAttacking ? 'red' : isDefending ? 'blue' : undefined} displayMode={displayMode} cardBackUrl={cardBackUrl} isHighlighted={isHighlighted} />
+              <CardComponent card={card} className="border-0" isExhausted={isExhausted} statusBorder={isAttacking ? 'red' : isDefending ? 'blue' : undefined} displayMode={displayMode} cardBackUrl={cardBackUrl} isHighlighted={isHighlighted} hideKeywords={isOpponent} />
             ) : (
               <CardComponent isBack className="border-0" isExhausted={isExhausted} cardBackUrl={cardBackUrl} />
             )}
@@ -129,6 +130,12 @@ const CardSlot: React.FC<{
             isOpponent ? "bottom-1 left-1 rotate-180" : "top-1 left-1"
           )}>
             {slotLabel}
+          </div>
+        )}
+
+        {card && isFaceUp && isOpponent && (
+          <div className="pointer-events-none absolute bottom-0.5 right-0.5 z-20 md:bottom-1 md:right-1">
+            <KeywordBadges card={card} />
           </div>
         )}
 
@@ -170,6 +177,36 @@ const CardSlot: React.FC<{
   );
 };
 
+const HandZoneSlot: React.FC<{
+  count: number;
+  isOpponent?: boolean;
+  isPublic?: boolean;
+  onClick?: () => void;
+}> = ({ count, isOpponent, isPublic, onClick }) => (
+  <button
+    type="button"
+    onClick={onClick}
+    disabled={!onClick}
+    className={cn(
+      "relative flex aspect-[3/4] w-16 flex-col items-center justify-center rounded-md border border-white/10 bg-black/45 text-white shadow-lg transition-all md:w-24",
+      onClick ? "cursor-pointer hover:border-[#f27d26]/60 hover:bg-[#f27d26]/10 hover:text-[#f27d26]" : "cursor-default",
+      isOpponent && "rotate-180"
+    )}
+    title={isPublic ? "查看公开手牌" : "查看手牌"}
+  >
+    <Hand className="h-6 w-6 md:h-8 md:w-8" />
+    <span className="mt-1 text-[10px] font-black tracking-widest md:text-xs">手牌</span>
+    <span className="absolute -right-2 -top-2 flex h-7 min-w-7 items-center justify-center rounded-full border border-white/20 bg-zinc-950 px-2 text-sm font-black text-white shadow-xl">
+      {count}
+    </span>
+    {isPublic && (
+      <span className="absolute bottom-1 rounded-full bg-[#f27d26]/90 px-2 py-0.5 text-[8px] font-black text-black">
+        公开
+      </span>
+    )}
+  </button>
+);
+
 
 const PlayerHalf: React.FC<{
   player: PlayerState;
@@ -198,6 +235,15 @@ const PlayerHalf: React.FC<{
     return totalCount > 0 ? `${totalCount}(${backCount})` : 0;
   };
   const erosionSlotLabels = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10'];
+  const shouldUseHandSlot = (player.hand?.length || 0) > 9;
+  const openHandZone = () => {
+    if (isOpponent && !player.isHandPublic) return;
+    setViewingZone?.({
+      title: isOpponent ? (player.isHandPublic ? '敌方公开手牌' : '敌方手牌') : '手牌',
+      type: 'hand',
+      isOpponentZone: !!isOpponent
+    });
+  };
 
 
   return (
@@ -281,23 +327,26 @@ const PlayerHalf: React.FC<{
             {/* Opponent Hand Area */}
             <div className="flex items-center justify-center px-1 md:px-0 mb-1 md:mb-2">
               <div className="flex-1 h-14 md:h-20 flex items-center justify-center gap-1 overflow-x-auto bg-black/20 rounded-lg border border-white/5 custom-scrollbar">
-                {player.hand?.map((card, i) => (
-                  <div
-                    key={i}
-                    className={cn(
-                      "w-10 md:w-[76.8px] aspect-[3/4] -ml-4 md:-ml-[38.4px] first:ml-0 shadow-lg drop-shadow-md transition-all shrink-0",
-                      !!player.isHandPublic ? "cursor-pointer hover:scale-110 z-10" : "",
-                      isOpponent && "rotate-180"
-                    )}
-                    onClick={() => !!player.isHandPublic && onPreviewCard?.(card)}
-                  >
-                    {!!player.isHandPublic ? (
-                      <CardComponent card={card} disableZoom displayMode="hand" cardBackUrl={cardBackUrl} />
-                    ) : (
+                {shouldUseHandSlot || player.isHandPublic ? (
+                  <HandZoneSlot
+                    count={player.hand?.length || 0}
+                    isOpponent={isOpponent}
+                    isPublic={!!player.isHandPublic}
+                    onClick={player.isHandPublic ? openHandZone : undefined}
+                  />
+                ) : (
+                  player.hand?.map((card, i) => (
+                    <div
+                      key={i}
+                      className={cn(
+                        "w-10 md:w-[76.8px] aspect-[3/4] -ml-4 md:-ml-[38.4px] first:ml-0 shadow-lg drop-shadow-md transition-all shrink-0",
+                        isOpponent && "rotate-180"
+                      )}
+                    >
                       <CardComponent isBack cardBackUrl={cardBackUrl} />
-                    )}
-                  </div>
-                ))}
+                    </div>
+                  ))
+                )}
               </div>
             </div>
 
@@ -429,7 +478,9 @@ const PlayerHalf: React.FC<{
 
             <div className="flex items-center justify-center px-1 md:px-0 mt-1 md:mt-2">
               <div className="flex-1 h-14 md:h-36 flex items-center justify-center gap-0.5 overflow-visible bg-black/20 rounded-lg border border-white/5 relative">
-                {player.hand?.map((card, i) => {
+                {shouldUseHandSlot ? (
+                  <HandZoneSlot count={player.hand?.length || 0} onClick={openHandZone} />
+                ) : player.hand?.map((card, i) => {
                   const total = player.hand.length;
                   const middle = (total - 1) / 2;
                   const offset = i - middle;
@@ -569,6 +620,7 @@ export const PlayField: React.FC<PlayFieldProps> = ({
   const viewingZoneOwner = viewingZone?.isOpponentZone ? opponent : player;
   const viewingZoneCards = !viewingZone ? [] : (
     viewingZone.type === 'item' ? ((viewingZoneOwner.itemZone?.filter(Boolean) as Card[]) || []) :
+    viewingZone.type === 'hand' ? (viewingZoneOwner.hand || []) :
     viewingZone.type === 'grave' ? (viewingZoneOwner.grave || []) :
     viewingZone.type === 'exile' ? (viewingZoneOwner.exile || []) :
     viewingZone.type === 'erosion'
@@ -595,17 +647,22 @@ export const PlayField: React.FC<PlayFieldProps> = ({
         cardMeta={Object.fromEntries(
           viewingZoneCards.map(card => {
             const isFaceDown = viewingZone?.type === 'erosion' && viewingZoneErosionBackIds.includes(card.gamecardId);
+            const isHiddenOpponentHand = viewingZone?.type === 'hand' && viewingZone?.isOpponentZone && !viewingZoneOwner.isHandPublic;
             return [
               card.gamecardId || card.id,
               {
                 zoneLabel: isFaceDown ? '侵蚀区背面' : viewingZone?.title,
-                isFaceDown
+                isFaceDown: isFaceDown || isHiddenOpponentHand
               }
             ];
           })
         )}
         onCardClick={(card, e) => {
           if (onCardClick && viewingZone) {
+            if (viewingZone.type === 'hand' && viewingZone.isOpponentZone) {
+              onPreviewCard?.(card);
+              return;
+            }
             const isHiddenErosionBack = viewingZone.type === 'erosion' && viewingZoneErosionBackIds.includes(card.gamecardId);
             const clickZone = viewingZone.type === 'erosion' ? (isHiddenErosionBack ? 'erosion_back' : 'erosion_front') : viewingZone.type;
             const index = viewingZoneCards.findIndex(c => c.gamecardId === card.gamecardId);
