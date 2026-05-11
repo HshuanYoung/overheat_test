@@ -803,25 +803,33 @@ export const DeckBuilder: React.FC = () => {
               </span>
             </div>
           </div>
-          <div className="flex items-center gap-2 md:gap-4 overflow-x-auto pb-2 md:pb-0">
+          <div className="grid w-full grid-cols-2 gap-2 md:flex md:w-auto md:items-center md:gap-4">
             <button
               onClick={() => setShowLibrary(true)}
-              className="lg:flex hidden items-center gap-2 px-6 py-2 bg-zinc-900 hover:bg-zinc-800 border border-white/5 rounded-full transition-all text-zinc-400"
+              className="hidden items-center justify-center gap-2 rounded-full border border-white/5 bg-zinc-900 px-4 py-2 text-zinc-400 transition-all hover:bg-zinc-800 lg:flex lg:px-6"
             >
               <Search className="w-4 h-4" />
               <span className="text-[10px] font-black uppercase tracking-widest whitespace-nowrap">搜索卡牌</span>
             </button>
             <button
               onClick={() => setShowLibrary(true)}
-              className="lg:hidden flex items-center gap-2 px-6 py-2 bg-zinc-900 hover:bg-zinc-800 border border-white/5 rounded-full transition-all text-zinc-400"
+              className="flex items-center justify-center gap-2 rounded-full border border-white/5 bg-zinc-900 px-4 py-2 text-zinc-400 transition-all hover:bg-zinc-800 lg:hidden"
             >
               <Search className="w-4 h-4" />
               <span className="text-[10px] font-black uppercase tracking-widest whitespace-nowrap">搜索卡牌</span>
             </button>
-            <div className="flex gap-2">
+            <button
+              onClick={handleSave}
+              disabled={saving}
+              className="flex items-center justify-center gap-2 rounded-full bg-red-600 px-4 py-2 text-[10px] font-black italic tracking-tighter shadow-[0_0_20px_rgba(220,38,38,0.3)] transition-all hover:bg-red-700 disabled:opacity-60 md:order-last md:px-8 md:text-sm"
+            >
+              {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+              <span className="whitespace-nowrap">保存卡组</span>
+            </button>
+            <div className="col-span-2 grid grid-cols-4 gap-2 md:col-span-1 md:flex">
               <button
                 onClick={sortDeck}
-                className="flex items-center gap-2 px-6 py-2 bg-zinc-900 hover:bg-zinc-800 border border-white/5 rounded-full transition-all text-zinc-400 hover:text-white group"
+                className="flex items-center justify-center gap-1.5 rounded-full border border-white/5 bg-zinc-900 px-3 py-2 text-zinc-400 transition-all hover:bg-zinc-800 hover:text-white md:gap-2 md:px-6"
                 title="排序卡组"
               >
                 <ListFilter className="w-4 h-4 group-hover:scale-110" />
@@ -829,7 +837,7 @@ export const DeckBuilder: React.FC = () => {
               </button>
               <button
                 onClick={shuffleDeck}
-                className="flex items-center gap-2 px-6 py-2 bg-zinc-900 hover:bg-zinc-800 border border-white/5 rounded-full transition-all text-zinc-400 hover:text-white group"
+                className="flex items-center justify-center gap-1.5 rounded-full border border-white/5 bg-zinc-900 px-3 py-2 text-zinc-400 transition-all hover:bg-zinc-800 hover:text-white md:gap-2 md:px-6"
                 title="洗切卡组"
               >
                 <Shuffle className="w-4 h-4 group-hover:rotate-180 transition-transform duration-500" />
@@ -841,7 +849,7 @@ export const DeckBuilder: React.FC = () => {
                   setShowImportModal(true);
                 }}
                 disabled={!catalogRefs.length}
-                className="flex items-center gap-2 px-6 py-2 bg-zinc-900 hover:bg-zinc-800 border border-white/5 rounded-full transition-all text-zinc-400 hover:text-white group"
+                className="flex items-center justify-center gap-1.5 rounded-full border border-white/5 bg-zinc-900 px-3 py-2 text-zinc-400 transition-all hover:bg-zinc-800 hover:text-white disabled:opacity-60 md:gap-2 md:px-6"
                 title="导入卡组"
               >
                 <Upload className="w-4 h-4 group-hover:-translate-y-0.5 transition-transform" />
@@ -853,21 +861,13 @@ export const DeckBuilder: React.FC = () => {
                   void handleShareDeck();
                 }}
                 disabled={!catalogRefs.length}
-                className="flex items-center gap-2 px-6 py-2 bg-zinc-900 hover:bg-zinc-800 border border-white/5 rounded-full transition-all text-zinc-400 hover:text-white group"
+                className="flex items-center justify-center gap-1.5 rounded-full border border-white/5 bg-zinc-900 px-3 py-2 text-zinc-400 transition-all hover:bg-zinc-800 hover:text-white disabled:opacity-60 md:gap-2 md:px-6"
                 title="分享卡组"
               >
                 <Share2 className="w-4 h-4 group-hover:scale-110" />
                 <span className="text-[10px] font-black uppercase tracking-widest">分享</span>
               </button>
             </div>
-            <button
-              onClick={handleSave}
-              disabled={saving}
-              className="px-6 md:px-8 py-2 bg-red-600 hover:bg-red-700 rounded-full font-black italic text-[10px] md:text-sm tracking-tighter flex items-center gap-2 transition-all shadow-[0_0_20px_rgba(220,38,38,0.3)] shrink-0"
-            >
-              {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-              <span className="whitespace-nowrap">保存卡组</span>
-            </button>
           </div>
         </div>
 
