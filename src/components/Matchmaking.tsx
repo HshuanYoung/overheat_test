@@ -1,7 +1,7 @@
 import { getAuthUser, getAuthToken, socket } from '../socket';
 import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { Loader2, ArrowLeft, Swords, X } from 'lucide-react';
+import { Loader2, ArrowLeft, Swords, X, ChevronDown, Check } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '../lib/utils';
 import { validateDeckForBattle } from '../lib/deckValidation';
@@ -13,6 +13,7 @@ export const Matchmaking: React.FC = () => {
   const [selectedDeckId, setSelectedDeckId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [searching, setSearching] = useState(false);
+  const [deckDropdownOpen, setDeckDropdownOpen] = useState(false);
   const [searchTimer, setSearchTimer] = useState(0);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const pollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -205,6 +206,72 @@ export const Matchmaking: React.FC = () => {
   const formatTime = (seconds: number) =>
     `${Math.floor(seconds / 60).toString().padStart(2, '0')}:${(seconds % 60).toString().padStart(2, '0')}`;
 
+  const renderDeckDropdown = () => (
+    <div className="relative mb-8">
+      <button
+        type="button"
+        onClick={() => setDeckDropdownOpen(open => !open)}
+        className={cn(
+          'flex w-full items-center justify-between rounded-xl border px-5 py-4 text-left transition-all',
+          selectedDeckValidation.valid ? 'border-zinc-700 bg-zinc-950/70' : 'border-red-500/40 bg-red-950/20'
+        )}
+      >
+        <div>
+          <div className="text-base font-black text-white">{selectedDeck?.name || '请选择卡组'}</div>
+          <div className="mt-1 text-xs font-bold text-zinc-500">
+            {selectedDeck ? `${selectedDeck.cards.length} 张卡牌` : '匹配前需要选择合法卡组'}
+          </div>
+        </div>
+        <ChevronDown className={cn('h-5 w-5 text-zinc-500 transition-transform', deckDropdownOpen && 'rotate-180')} />
+      </button>
+
+      <AnimatePresence>
+        {deckDropdownOpen && (
+          <motion.div
+            initial={{ opacity: 0, y: -6 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -6 }}
+            className="absolute left-0 right-0 top-full z-20 mt-2 max-h-80 overflow-y-auto rounded-xl border border-zinc-800 bg-zinc-950 p-2 shadow-2xl"
+          >
+            {myDecks.map((deck, index) => {
+              const validation = validateDeckForBattle(deck);
+              const active = selectedDeckId === deck.id;
+              return (
+                <button
+                  key={deck.id || `deck-${index}`}
+                  type="button"
+                  onClick={() => {
+                    setSelectedDeckId(deck.id);
+                    setDeckDropdownOpen(false);
+                  }}
+                  className={cn(
+                    'mb-1 flex w-full items-center justify-between rounded-lg px-3 py-3 text-left transition-colors',
+                    active ? 'bg-red-600/20 text-white' : 'hover:bg-white/5',
+                    !validation.valid && 'opacity-60'
+                  )}
+                >
+                  <div>
+                    <div className="text-sm font-bold">{deck.name}</div>
+                    <div className={cn('mt-1 text-[10px] font-bold', validation.valid ? 'text-zinc-500' : 'text-red-400')}>
+                      {validation.valid ? `${deck.cards.length} 张卡牌` : validation.error}
+                    </div>
+                  </div>
+                  {active && <Check className="h-4 w-4 text-red-400" />}
+                </button>
+              );
+            })}
+            {myDecks.length === 0 && (
+              <div className="p-6 text-center text-sm text-zinc-500">
+                还没有卡组
+                <Link to="/deck-builder" className="ml-2 text-red-500 hover:underline">去创建</Link>
+              </div>
+            )}
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+
   if (loading) {
     return (
       <div className="pt-24 flex items-center justify-center min-h-screen bg-black">
@@ -265,37 +332,7 @@ export const Matchmaking: React.FC = () => {
         {!searching && (
           <>
             <h2 className="text-sm font-bold text-zinc-500 uppercase tracking-widest mb-4">选择你的卡组</h2>
-            <div className="grid grid-cols-1 gap-3 mb-8">
-              {myDecks.map((deck, index) => (
-                <motion.div
-                  key={deck.id || `deck-${index}`}
-                  whileHover={{ scale: 1.01 }}
-                  onClick={() => setSelectedDeckId(deck.id)}
-                  className={cn(
-                    'p-5 rounded-xl border-2 cursor-pointer transition-all flex items-center justify-between',
-                    selectedDeckId === deck.id
-                      ? 'border-red-600 bg-red-900/15 shadow-[0_0_20px_rgba(220,38,38,0.15)]'
-                      : 'border-zinc-800 bg-zinc-900/30 hover:border-zinc-700'
-                  )}
-                >
-                  <div>
-                    <p className="font-bold text-lg">{deck.name}</p>
-                    <p className="text-xs text-zinc-500">{deck.cards.length} 张卡牌</p>
-                  </div>
-                  {selectedDeckId === deck.id && (
-                    <div className="w-6 h-6 rounded-full bg-red-600 flex items-center justify-center">
-                      <div className="w-2 h-2 rounded-full bg-white" />
-                    </div>
-                  )}
-                </motion.div>
-              ))}
-              {myDecks.length === 0 && (
-                <div className="p-12 border-2 border-dashed border-zinc-800 rounded-2xl text-center text-zinc-500">
-                  <p>还没有卡组</p>
-                  <Link to="/deck-builder" className="mt-2 text-red-500 text-sm hover:underline block">去创建一个卡组</Link>
-                </div>
-              )}
-            </div>
+            {renderDeckDropdown()}
 
             {selectedDeckId && !selectedDeckValidation.valid && (
               <div className="mb-6 p-3 rounded-xl border border-red-500/30 bg-red-900/20 text-red-300 text-sm">

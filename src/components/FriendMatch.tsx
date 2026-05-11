@@ -17,6 +17,7 @@ interface FriendLobby {
   spectatorIds: string[];
   participantIds: string[];
   hostUid?: string;
+  participantNames?: Record<string, string>;
   friendDeckSelections: Record<string, string>;
   friendReady: Record<string, boolean>;
   status: string;
@@ -53,6 +54,10 @@ export const FriendMatch: React.FC = () => {
   const isPlayerSeat = mySeat === 'player1' || mySeat === 'player2';
   const isReady = !!(myUid && lobby?.friendReady?.[myUid]);
   const isHost = !!(myUid && lobby?.hostUid?.toString() === myUid);
+  const displayNameFor = (uid?: string | null) => {
+    if (!uid) return '空位';
+    return lobby?.participantNames?.[uid] || uid;
+  };
 
   const clearPoll = () => {
     if (pollRef.current) {
@@ -333,8 +338,8 @@ export const FriendMatch: React.FC = () => {
         </div>
 
         <div className="mb-4 rounded-xl bg-black/30 px-4 py-3">
-          <div className="text-[10px] font-black tracking-widest text-zinc-500">玩家 ID</div>
-          <div className="mt-1 break-all font-mono text-sm text-white">{uid || '空位'}</div>
+          <div className="text-[10px] font-black tracking-widest text-zinc-500">玩家</div>
+          <div className="mt-1 break-all text-sm font-bold text-white">{displayNameFor(uid)}</div>
           {uid && uid === lobby?.hostUid && <div className="mt-2 text-[10px] font-black text-amber-400">房主</div>}
         </div>
 
@@ -515,8 +520,8 @@ export const FriendMatch: React.FC = () => {
                   </AnimatePresence>
                 </div>
                 <div className="rounded-xl bg-black/30 px-4 py-3">
-                  <div className="text-[10px] font-black tracking-widest text-zinc-500">房主 ID</div>
-                  <div className="mt-1 max-w-44 truncate font-mono text-sm text-white">{lobby.hostUid || '-'}</div>
+                  <div className="text-[10px] font-black tracking-widest text-zinc-500">房主</div>
+                  <div className="mt-1 max-w-44 truncate text-sm font-bold text-white">{displayNameFor(lobby.hostUid)}</div>
                 </div>
               </div>
             </div>
@@ -543,7 +548,7 @@ export const FriendMatch: React.FC = () => {
                   {lobby.spectatorIds.map(uid => (
                     <div key={uid} className="flex items-center gap-2 rounded-xl bg-black/30 px-4 py-3">
                       <UserRound className="h-4 w-4 text-sky-300" />
-                      <span className="break-all font-mono text-sm">{uid}</span>
+                      <span className="break-all text-sm font-bold">{displayNameFor(uid)}</span>
                       {uid === lobby.hostUid && <span className="ml-auto text-[10px] font-black text-amber-400">房主</span>}
                     </div>
                   ))}

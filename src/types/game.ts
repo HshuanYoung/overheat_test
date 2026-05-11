@@ -393,6 +393,7 @@ export interface GameState {
   participantIds?: string[];
   spectatorIds?: string[];
   hostUid?: string;
+  participantNames?: Record<string, string>;
   friendDeckSelections?: Record<string, string>;
   friendReady?: Record<string, boolean>;
   players: {
