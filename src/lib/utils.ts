@@ -53,7 +53,7 @@ const PHASE_LABELS: Record<string, string> = {
 export function getCardImageUrl(
   cardId: string,
   rarity: string,
-  thumbnail: boolean = false,
+  _thumbnail: boolean = false,
   availableRarities: string[] = []
 ) {
   const rarityUpper = (rarity || 'C').toUpperCase();
@@ -61,10 +61,6 @@ export function getCardImageUrl(
   const hasMultipleRarities = normalizedRarities.length > 1;
   const baseRarity = normalizedRarities[0];
   const rarityPath = hasMultipleRarities && rarityUpper !== baseRarity ? `/${rarityUpper}` : '';
-
-  if (thumbnail) {
-    return `/pics${rarityPath}/thumbnail/${cardId}.jpg`;
-  }
 
   return `/pics${rarityPath}/${cardId}.jpg`;
 }

@@ -83,8 +83,8 @@ const CardComponentImpl: React.FC<CardProps> = ({
   }
 
   const isNegativeCost = card.acValue < 0;
-  const imageUrl = card.imageUrl || getCardImageUrl(card.id, card.rarity, true, card.availableRarities);
   const fullImageUrl = card.fullImageUrl || getCardImageUrl(card.id, card.rarity, false, card.availableRarities);
+  const imageUrl = fullImageUrl;
   const exhausted = isExhausted ?? !!card.isExhausted;
   const showStats = displayMode !== 'erosion_item' && displayMode !== 'none';
   const showAC = showStats && (displayMode === 'hand' || displayMode === 'deck' || displayMode === 'erosion_item');

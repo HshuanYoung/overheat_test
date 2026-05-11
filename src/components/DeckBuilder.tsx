@@ -819,7 +819,7 @@ export const DeckBuilder: React.FC = () => {
                     className="w-16 h-24 rounded-lg overflow-hidden flex-shrink-0 shadow-lg cursor-zoom-in"
                     onClick={() => setZoomedCard(card)}
                   >
-                    <img src={getCardImageUrl(card.id, card.rarity, true, card.availableRarities)} className={cn("w-full h-full object-cover", !isOwned && "brightness-[0.4]")} loading="lazy" decoding="async" />
+                    <img src={getCardImageUrl(card.id, card.rarity, false, card.availableRarities)} className={cn("w-full h-full object-cover", !isOwned && "brightness-[0.4]")} loading="lazy" decoding="async" />
                   </div>
                   <div className="flex-1 min-w-0">
                     <h4 className="font-black italic text-sm truncate">{card.fullName}</h4>
