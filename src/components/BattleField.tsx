@@ -1266,6 +1266,21 @@ export const BattleField: React.FC = () => {
     }
   };
 
+  const closeViewingZoneForCardAction = (zone: string) => {
+    if (!viewingZone) return;
+    if (viewingZone.type === 'hand' && zone === 'hand') {
+      setViewingZone(null);
+      return;
+    }
+    if (viewingZone.type === 'erosion' && ['erosion_front', 'erosion_back'].includes(zone)) {
+      setViewingZone(null);
+      return;
+    }
+    if (['item', 'grave', 'exile'].includes(zone)) {
+      setViewingZone(null);
+    }
+  };
+
 
 
   const handleCardClick = (card: Card, zone: string, index?: number, e?: React.MouseEvent) => {
@@ -1314,9 +1329,7 @@ export const BattleField: React.FC = () => {
 
       if (canPlayInPhase) {
         playCardFromHand(card);
-        if (['item', 'grave', 'exile', 'erosion_front', 'erosion_back'].includes(zone)) {
-          setViewingZone(null);
-        }
+        closeViewingZoneForCardAction(zone);
         return;
       }
 
@@ -1349,9 +1362,7 @@ export const BattleField: React.FC = () => {
             effectIndex: validEffects[0].effectIndex,
             triggerLocation
           });
-          if (['item', 'grave', 'exile', 'erosion_front', 'erosion_back'].includes(zone)) {
-            setViewingZone(null);
-          }
+          closeViewingZoneForCardAction(zone);
           return;
         }
 
@@ -1361,9 +1372,7 @@ export const BattleField: React.FC = () => {
             effects: validEffects,
             triggerLocation
           });
-          if (['item', 'grave', 'exile', 'erosion_front', 'erosion_back'].includes(zone)) {
-            setViewingZone(null);
-          }
+          closeViewingZoneForCardAction(zone);
           return;
         }
       }
@@ -2720,9 +2729,7 @@ export const BattleField: React.FC = () => {
                         className="px-4 py-3 md:py-1.5 text-[12px] md:text-[10px] font-bold text-black bg-[#facc15] rounded-full shadow-lg border border-white/20 flex items-center justify-center w-full"
                         onClick={() => {
                           playCardFromHand(cardMenu.card);
-                          if (['item', 'grave', 'exile', 'erosion_front', 'erosion_back'].includes(cardMenu.zone)) {
-                            setViewingZone(null);
-                          }
+                          closeViewingZoneForCardAction(cardMenu.zone);
                           setCardMenu(null);
                         }}
                       >
@@ -2809,9 +2816,7 @@ export const BattleField: React.FC = () => {
                             triggerLocation
                           });
                         }
-                        if (['item', 'grave', 'exile', 'erosion_front', 'erosion_back'].includes(cardMenu.zone)) {
-                          setViewingZone(null);
-                        }
+                        closeViewingZoneForCardAction(cardMenu.zone);
                         setCardMenu(null);
                       }}
                     >
@@ -2837,9 +2842,7 @@ export const BattleField: React.FC = () => {
                             className="px-4 py-3 md:py-1.5 text-[12px] md:text-[10px] font-bold text-white bg-[#ef4444] rounded-full shadow-lg border border-white/20 flex items-center justify-center w-full"
                             onClick={() => {
                               handleDeclareAttack([latestUnit.gamecardId], false);
-                              if (['item', 'grave', 'exile', 'erosion_front', 'erosion_back'].includes(cardMenu.zone)) {
-                                setViewingZone(null);
-                              }
+                              closeViewingZoneForCardAction(cardMenu.zone);
                               setCardMenu(null);
                             }}
                           >
@@ -2851,9 +2854,7 @@ export const BattleField: React.FC = () => {
                           className="px-4 py-3 md:py-1.5 text-[12px] md:text-[10px] font-bold text-white bg-[#ef4444] rounded-full shadow-lg border border-white/20 flex items-center justify-center w-full"
                           onClick={() => {
                             setAllianceTargetSelection(latestUnit.gamecardId);
-                            if (['item', 'grave', 'exile', 'erosion_front', 'erosion_back'].includes(cardMenu.zone)) {
-                              setViewingZone(null);
-                            }
+                            closeViewingZoneForCardAction(cardMenu.zone);
                             setCardMenu(null);
                           }}
                         >
@@ -2877,9 +2878,7 @@ export const BattleField: React.FC = () => {
                         className="px-4 py-3 md:py-1.5 text-[12px] md:text-[10px] font-bold text-white bg-[#3b82f6] rounded-full shadow-lg border border-white/20 flex items-center justify-center min-w-[100px] md:min-w-[70px]"
                         onClick={() => {
                           handleDeclareDefense(cardMenu.card.gamecardId);
-                          if (['item', 'grave', 'exile', 'erosion_front', 'erosion_back'].includes(cardMenu.zone)) {
-                            setViewingZone(null);
-                          }
+                          closeViewingZoneForCardAction(cardMenu.zone);
                           setCardMenu(null);
                         }}
                       >
@@ -2898,9 +2897,7 @@ export const BattleField: React.FC = () => {
                   className="px-3 py-1 text-[9px] font-black tracking-tighter text-red-50 bg-red-600 rounded-full shadow-[0_0_15px_rgba(220,38,38,0.4)] flex items-center gap-2 border border-red-400/50"
                   onClick={() => {
                     handleDiscardCard(cardMenu.card.gamecardId);
-                    if (['item', 'grave', 'exile', 'erosion_front', 'erosion_back'].includes(cardMenu.zone)) {
-                      setViewingZone(null);
-                    }
+                    closeViewingZoneForCardAction(cardMenu.zone);
                     setCardMenu(null);
                   }}
                 >
@@ -2915,7 +2912,6 @@ export const BattleField: React.FC = () => {
                 className="px-4 py-3 md:py-1.5 text-[12px] md:text-[10px] font-bold text-white bg-[#9333ea] rounded-full shadow-lg border border-white/20 flex items-center justify-center min-w-[100px] md:min-w-[70px]"
                 onClick={() => {
                   setPreviewCard(cardMenu.card);
-                  setCardMenu(null);
                 }}
               >
                 详情

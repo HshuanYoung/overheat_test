@@ -4,7 +4,7 @@ import { Card, PlayerState, StackItem, GameState, GAME_TIMEOUTS } from '../types
 import { CardComponent } from './Card';
 import { StandardPopup } from './StandardPopup';
 import { KeywordBadges } from './KeywordBadges';
-import { Shield, Sword, Zap, Trash2, Flag, BookOpen, Layers, AlertTriangle, Search, Play, X, Hand, LogOut } from 'lucide-react';
+import { Shield, Sword, Zap, Trash2, Flag, BookOpen, Layers, AlertTriangle, Search, Play, X, LogOut } from 'lucide-react';
 import { cn, getCardImageUrl } from '../lib/utils';
 
 interface PlayFieldProps {
@@ -189,17 +189,16 @@ const HandZoneSlot: React.FC<{
     onClick={onClick}
     disabled={!onClick}
     className={cn(
-      "relative flex aspect-[3/4] w-16 flex-col items-center justify-center rounded-md border border-white/10 bg-black/45 text-white shadow-lg transition-all md:w-24",
+      "group relative flex aspect-[3/4] w-16 flex-col items-center justify-center rounded-md border border-white/10 bg-black/45 text-white shadow-lg transition-all md:w-24",
       onClick ? "cursor-pointer hover:border-[#f27d26]/60 hover:bg-[#f27d26]/10 hover:text-[#f27d26]" : "cursor-default",
       isOpponent && "rotate-180"
     )}
     title={isPublic ? "查看公开手牌" : "查看手牌"}
   >
-    <Hand className="h-6 w-6 md:h-8 md:w-8" />
-    <span className="mt-1 text-[10px] font-black tracking-widest md:text-xs">手牌</span>
-    <span className="absolute -right-2 -top-2 flex h-7 min-w-7 items-center justify-center rounded-full border border-white/20 bg-zinc-950 px-2 text-sm font-black text-white shadow-xl">
+    <span className="text-3xl font-black leading-none text-white drop-shadow-[0_4px_10px_rgba(0,0,0,0.85)] transition-transform group-hover:scale-105 md:text-5xl">
       {count}
     </span>
+    <span className="mt-0.5 text-[9px] font-black tracking-widest text-white/70 md:mt-1 md:text-[11px]">手牌</span>
     {isPublic && (
       <span className="absolute bottom-1 rounded-full bg-[#f27d26]/90 px-2 py-0.5 text-[8px] font-black text-black">
         公开
@@ -688,7 +687,7 @@ export const PlayField: React.FC<PlayFieldProps> = ({
           }
         }}
         cardBackUrl={cardBackUrl}
-        selectedIds={Array.from(highlightedCardIds || [])}
+        highlightedIds={Array.from(highlightedCardIds || [])}
         onHide={onHidePopup}
         isHidden={isPopupHidden}
       />

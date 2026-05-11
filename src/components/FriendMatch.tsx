@@ -394,7 +394,7 @@ export const FriendMatch: React.FC = () => {
           </button>
           <div>
             <h1 className="text-xl font-black italic uppercase tracking-tighter md:text-3xl">好友约战</h1>
-            <p className="text-[10px] font-bold leading-none tracking-widest text-zinc-500 md:text-sm">等待房间 / 对战席 / 观众席</p>
+            <p className="text-[10px] font-bold leading-none tracking-widest text-zinc-500 md:text-sm">对局等待中</p>
           </div>
         </div>
 

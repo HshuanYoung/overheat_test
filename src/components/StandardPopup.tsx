@@ -24,6 +24,7 @@ interface StandardPopupProps {
   cards?: Card[];
   cardMeta?: Record<string, { ownerName?: string; slotLabel?: string; zoneLabel?: string; isMine?: boolean; isFaceDown?: boolean }>;
   selectedIds?: string[];
+  highlightedIds?: string[];
   minSelections?: number;
   maxSelections?: number;
   onCardClick?: (card: Card, e?: React.MouseEvent) => void;
@@ -58,6 +59,7 @@ export const StandardPopup: React.FC<StandardPopupProps> = ({
   cards = [],
   cardMeta = {},
   selectedIds = [],
+  highlightedIds = [],
   minSelections = 0,
   maxSelections = 0,
   onCardClick,
@@ -217,6 +219,7 @@ export const StandardPopup: React.FC<StandardPopupProps> = ({
                       onMouseLeave={() => onCardHover?.(null)}
                       className={cn(
                         "w-full aspect-[3/4] rounded-xl md:rounded-2xl overflow-hidden border-2 transition-all relative shrink-0",
+                        highlightedIds.includes(card.gamecardId) && "z-20 !border-yellow-400 ring-2 ring-yellow-400 shadow-[0_0_20px_rgba(250,204,21,0.95)]",
                         isSelected 
                           ? "border-[#f27d26] shadow-[0_0_30px_rgba(242,125,38,0.4)] scale-105" 
                           : cn("border-white/5 opacity-80 hover:opacity-100", "cursor-pointer")
