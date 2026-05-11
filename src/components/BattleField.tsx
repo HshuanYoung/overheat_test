@@ -241,6 +241,7 @@ export const BattleField: React.FC = () => {
   const authUser = useMemo(() => getAuthUser(), []);
   const myUid = useMemo(() => authUser?.uid, [authUser]);
   const deckId = useMemo(() => location.state?.deckId || localStorage.getItem(`deck_${gameId}`), [gameId, location.state?.deckId]);
+  const seat = useMemo<'player' | 'spectator'>(() => location.state?.seat === 'spectator' ? 'spectator' : 'player', [location.state?.seat]);
 
   const [game, setGame] = useState<GameState | null>(null);
   const [isRulebookOpen, setIsRulebookOpen] = useState(false);
@@ -302,6 +303,7 @@ export const BattleField: React.FC = () => {
   const [dismissedPublicRevealId, setDismissedPublicRevealId] = useState<string | null>(null);
   const [hoveredPopupCard, setHoveredPopupCard] = useState<Card | null>(null);
   const lastStrategyUpdateRef = useRef<number>(0);
+  const lastJoinEmitRef = useRef<number>(0);
   const [pregameNow, setPregameNow] = useState(Date.now());
 
   const getPreviewFullImage = (card: Card) =>
@@ -309,12 +311,15 @@ export const BattleField: React.FC = () => {
 
 
 
-  const me = useMemo(() => (game && myUid) ? game.players[myUid.toString()] : null, [game, myUid]);
-  const opponentUid = useMemo(() => (game && myUid) ? Object.keys(game.players).find(uid => uid.toString() !== myUid.toString()) : null, [game, myUid]);
+  const isSpectator = seat === 'spectator' || (!!game && !!myUid && !game.players[myUid.toString()] && (game.spectatorIds || []).map(String).includes(myUid.toString()));
+  const spectatorAnchorUid = useMemo(() => game?.playerIds?.[0]?.toString(), [game?.playerIds]);
+  const effectiveMyUid = isSpectator ? spectatorAnchorUid : myUid;
+  const me = useMemo(() => (game && effectiveMyUid) ? game.players[effectiveMyUid.toString()] : null, [game, effectiveMyUid]);
+  const opponentUid = useMemo(() => (game && effectiveMyUid) ? game.playerIds.find(uid => uid.toString() !== effectiveMyUid.toString()) || null : null, [game, effectiveMyUid]);
   const opponent = useMemo(() => (game && opponentUid) ? game.players[opponentUid] : null, [game, opponentUid]);
   const confrontationStrategy = (me?.confrontationStrategy || 'AUTO') as 'ON' | 'AUTO' | 'OFF';
   const [localStrategy, setLocalStrategy] = useState<'ON' | 'AUTO' | 'OFF'>(confrontationStrategy);
-  const activeMulliganReveal = game?.phase === 'MULLIGAN' ? me?.mulliganReveal : undefined;
+  const activeMulliganReveal = !isSpectator && game?.phase === 'MULLIGAN' ? me?.mulliganReveal : undefined;
 
   useEffect(() => {
     if (game?.phase !== 'RPS' && game?.phase !== 'FIRST_PLAYER_CHOICE') return;
@@ -331,7 +336,7 @@ export const BattleField: React.FC = () => {
 
 
   const canActivateCardEffect = (card: Card | null | undefined, location: TriggerLocation) => {
-    if (!game || !myUid || !card) return false;
+    if (isSpectator || !game || !myUid || !card) return false;
     if (card.type === 'STORY' && location === 'HAND') return false;
 
     return !!card.effects?.some((effect) =>
@@ -341,7 +346,7 @@ export const BattleField: React.FC = () => {
   };
 
   const canConfront = useMemo(() => {
-    if (!game || !me || !myUid) return false;
+    if (isSpectator || !game || !me || !myUid) return false;
     if (game.pendingQuery || game.isResolvingStack || game.currentProcessingItem) return false;
 
     const isCounteringTurn = game.phase === 'COUNTERING' && game.priorityPlayerId === myUid;
@@ -383,7 +388,7 @@ export const BattleField: React.FC = () => {
     return activationZones.some(({ cards, location }) =>
       cards.some(card => canActivateCardEffect(card, location))
     );
-  }, [game, me, myUid]);
+  }, [game, me, myUid, isSpectator]);
 
 
 
@@ -472,7 +477,7 @@ export const BattleField: React.FC = () => {
 
   // Universal Visual Timer Logic - Stabilized with gameRef
   useEffect(() => {
-    if (!gameId || !myUid) return;
+    if (!gameId || !myUid || isSpectator) return;
 
     const updateTimer = () => {
       const game = gameRef.current;
@@ -504,10 +509,10 @@ export const BattleField: React.FC = () => {
 
     const interval = setInterval(updateTimer, 500);
     return () => clearInterval(interval);
-  }, [gameId, myUid]);
+  }, [gameId, myUid, isSpectator]);
 
   useEffect(() => {
-    if (!game || !gameId) return;
+    if (isSpectator || !game || !gameId) return;
     
     // OFF Strategy: Always auto-pass
     // AUTO Strategy: Auto-pass ONLY if no cards/effects available
@@ -523,7 +528,7 @@ export const BattleField: React.FC = () => {
         GameService.advancePhase(gameId, 'DECLINE_CONFRONTATION');
       }
     }
-  }, [game?.phase, game?.priorityPlayerId, game?.battleState?.askConfront, localStrategy, canConfront]);
+  }, [game?.phase, game?.priorityPlayerId, game?.battleState?.askConfront, localStrategy, canConfront, isSpectator]);
 
   // Reset interaction states when phase or priority changes
   useEffect(() => {
@@ -608,20 +613,22 @@ export const BattleField: React.FC = () => {
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible' && gameId && myUid) {
         console.log('[BattleField] App visible, re-joining game...');
-        socket.emit('joinGame', { gameId, uid: myUid });
+        socket.emit('joinGame', { gameId, uid: myUid, seat });
       }
     };
     document.addEventListener('visibilitychange', handleVisibilityChange);
     return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
-  }, [gameId, myUid]);
+  }, [gameId, myUid, seat]);
 
   // Join game effect
   useEffect(() => {
-    if (!gameId || !deckId || gameId === 'undefined') return;
+    if (!gameId || gameId === 'undefined') return;
+    if (seat === 'player' && !deckId && !gameId.startsWith('friend_')) return;
 
     const performJoin = () => {
       console.log('[BattleField] Emitting joinGame:', gameId);
-      socket.emit('joinGame', { gameId, deckId });
+      lastJoinEmitRef.current = Date.now();
+      socket.emit('joinGame', { gameId, deckId, seat });
     };
 
     const token = localStorage.getItem('token');
@@ -639,9 +646,29 @@ export const BattleField: React.FC = () => {
 
     return () => {
       console.log('[BattleField] Emitting leaveGame:', gameId);
-      socket.emit('leaveGame', gameId);
+      if (!gameId.startsWith('friend_')) {
+        socket.emit('leaveGame', gameId);
+      } else {
+        socket.emit('leaveGameRoom', gameId);
+      }
     };
-  }, [gameId, deckId]);
+  }, [gameId, deckId, seat]);
+
+  useEffect(() => {
+    if (!gameId || !gameId.startsWith('friend_')) return;
+    if (!myUid || seat !== 'player') return;
+    if (me && opponent) return;
+    if (seat === 'player' && !deckId && !gameId.startsWith('friend_')) return;
+
+    const timeout = window.setTimeout(() => {
+      if (Date.now() - lastJoinEmitRef.current < 1200) return;
+      console.log('[BattleField] Friend game missing player state, requesting resync:', gameId);
+      lastJoinEmitRef.current = Date.now();
+      socket.emit('joinGame', { gameId, deckId, seat });
+    }, 1500);
+
+    return () => window.clearTimeout(timeout);
+  }, [gameId, myUid, seat, deckId, me, opponent]);
 
   // Clear query selection when query changes
   useEffect(() => {
@@ -715,7 +742,7 @@ export const BattleField: React.FC = () => {
   }, [effectSelection]);
 
   const handleSurrender = async () => {
-    if (!gameId) return;
+    if (isSpectator || !gameId) return;
     try {
       socket.emit('gameAction', { gameId, action: 'SURRENDER', payload: {} });
       setShowPhaseMenu(false);
@@ -842,7 +869,7 @@ export const BattleField: React.FC = () => {
     const baseCost = card.id === '202000080' ? 6 : (card.baseAcValue ?? card.acValue ?? 0);
     const selectedSpiritTarget = paymentSelection.spiritTargetId
       ? Object.values(game?.players || {})
-        .flatMap(playerState => playerState.unitZone)
+        .flatMap(playerState => (playerState as PlayerState).unitZone)
         .find(unit => unit?.gamecardId === paymentSelection.spiritTargetId)
       : undefined;
     if (
@@ -903,7 +930,7 @@ export const BattleField: React.FC = () => {
 
   const highlightedCardIds = useMemo(() => {
     const ids = new Set<string>();
-    if (!game || !me || !myUid) return ids;
+    if (isSpectator || !game || !me || !myUid) return ids;
     if (game.pendingQuery || game.isResolvingStack || game.currentProcessingItem) return ids;
 
     if (game.phase === 'DEFENSE_DECLARATION' && !me.isTurn) {
@@ -964,7 +991,7 @@ export const BattleField: React.FC = () => {
     });
 
     return ids;
-  }, [game, me, myUid]);
+  }, [game, me, myUid, isSpectator]);
 
 
 
@@ -977,7 +1004,7 @@ export const BattleField: React.FC = () => {
 
 
 
-  if (!game || !myUid || !me) {
+  if (!game || !myUid || !me || !opponent) {
     return (
       <div className="h-screen bg-black flex flex-col items-center justify-center p-8 text-center bg-[radial-gradient(circle_at_center,_#111_0%,_#000_100%)]">
         <div className="w-12 h-12 border-4 border-[#f27d26] border-t-transparent rounded-full animate-spin mb-6" />
@@ -1244,6 +1271,11 @@ export const BattleField: React.FC = () => {
   const handleCardClick = (card: Card, zone: string, index?: number, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
 
+    if (isSpectator) {
+      setPreviewCard(card);
+      return;
+    }
+
     if (isPopupHidden) {
       const rect = e?.currentTarget?.getBoundingClientRect();
       setCardMenu({
@@ -1463,6 +1495,13 @@ export const BattleField: React.FC = () => {
     }
   };
 
+  const handleSpectatorExit = () => {
+    if (gameId) {
+      socket.emit('leaveGameRoom', gameId);
+    }
+    navigate('/');
+  };
+
   const handleChooseFirstPlayer = async (firstPlayerUid: string) => {
     if (!gameId) return;
     try {
@@ -1634,38 +1673,44 @@ export const BattleField: React.FC = () => {
           <span className="ml-2 text-sm font-bold text-white/35">秒</span>
         </div>
 
-        <div className="mt-10 grid grid-cols-3 gap-3 md:gap-5">
-          {RPS_OPTIONS.map(({ id, label, Icon }) => (
-            <motion.button
-              key={id}
-              whileHover={!myChoice ? { y: -6, scale: 1.03 } : undefined}
-              whileTap={!myChoice ? { scale: 0.98 } : undefined}
-              disabled={!!myChoice}
-              onClick={() => handleRpsChoice(id)}
-              className={cn(
-                "flex h-32 w-24 flex-col items-center justify-center gap-3 rounded-2xl border text-white transition-all md:h-44 md:w-36",
-                myChoice === id
-                  ? "border-[#f27d26] bg-[#f27d26]/20 shadow-[0_0_30px_rgba(242,125,38,0.28)]"
-                  : "border-white/10 bg-white/5 hover:border-white/25 hover:bg-white/10",
-                myChoice && myChoice !== id && "opacity-35"
-              )}
-            >
-              <Icon className="h-9 w-9 md:h-12 md:w-12" />
-              <span className="text-sm md:text-base font-black tracking-widest">{label}</span>
-            </motion.button>
-          ))}
-        </div>
+        {!isSpectator ? (
+          <>
+            <div className="mt-10 grid grid-cols-3 gap-3 md:gap-5">
+              {RPS_OPTIONS.map(({ id, label, Icon }) => (
+                <motion.button
+                  key={id}
+                  whileHover={!myChoice ? { y: -6, scale: 1.03 } : undefined}
+                  whileTap={!myChoice ? { scale: 0.98 } : undefined}
+                  disabled={!!myChoice}
+                  onClick={() => handleRpsChoice(id)}
+                  className={cn(
+                    "flex h-32 w-24 flex-col items-center justify-center gap-3 rounded-2xl border text-white transition-all md:h-44 md:w-36",
+                    myChoice === id
+                      ? "border-[#f27d26] bg-[#f27d26]/20 shadow-[0_0_30px_rgba(242,125,38,0.28)]"
+                      : "border-white/10 bg-white/5 hover:border-white/25 hover:bg-white/10",
+                    myChoice && myChoice !== id && "opacity-35"
+                  )}
+                >
+                  <Icon className="h-9 w-9 md:h-12 md:w-12" />
+                  <span className="text-sm md:text-base font-black tracking-widest">{label}</span>
+                </motion.button>
+              ))}
+            </div>
 
-        <p className="mt-8 text-xs font-bold tracking-widest text-zinc-500">
-          {myChoice ? '已出拳，等待对手...' : '请选择你的出拳'}
-        </p>
+            <p className="mt-8 text-xs font-bold tracking-widest text-zinc-500">
+              {myChoice ? '已出拳，等待对手...' : '请选择你的出拳'}
+            </p>
+          </>
+        ) : (
+          <p className="mt-10 text-xs font-bold tracking-widest text-zinc-500">观众席正在等待双方出拳...</p>
+        )}
       </div>
     );
   }
 
   if (game.phase === 'FIRST_PLAYER_CHOICE') {
     const chooserUid = game.firstPlayerChoice?.chooserUid;
-    const isChooser = myUid?.toString() === chooserUid?.toString();
+    const isChooser = !isSpectator && myUid?.toString() === chooserUid?.toString();
     const chooserName = chooserUid ? game.players[chooserUid]?.displayName : '玩家';
     const otherUid = myUid ? game.playerIds.find(uid => uid.toString() !== myUid.toString())?.toString() : undefined;
     const firstSelfUid = myUid?.toString();
@@ -1723,6 +1768,19 @@ export const BattleField: React.FC = () => {
   }
 
   if (game.phase === 'MULLIGAN' && !me.mulliganDone) {
+    if (isSpectator) {
+      const firstPlayerName = game.playerIds.map(uid => game.players[uid]).find(player => player?.isFirst)?.displayName || '先攻玩家';
+      return (
+        <div className="h-screen bg-black flex flex-col items-center justify-center p-8 text-center">
+          <div className="w-12 h-12 border-4 border-[#f27d26] border-t-transparent rounded-full animate-spin mb-4" />
+          <h2 className="text-2xl md:text-4xl font-black italic text-[#f27d26] mb-3 tracking-tighter">调度阶段</h2>
+          <p className="text-zinc-400 uppercase tracking-widest text-sm">
+            观众席正在等待双方调度完成，先攻玩家：{firstPlayerName}
+          </p>
+        </div>
+      );
+    }
+
     const firstPlayerName = game.playerIds.map(uid => game.players[uid]).find(player => player?.isFirst)?.displayName || '先攻玩家';
     const roleLabel = me.isFirst ? '你是先攻' : '你是后攻';
     const roleDescription = me.isFirst ? '第 1 回合由你开始' : `第 1 回合由 ${firstPlayerName} 开始`;
@@ -1988,8 +2046,8 @@ export const BattleField: React.FC = () => {
       </AnimatePresence>
 
       {/* Standardized Erosion Phase Popup */}
-      <StandardPopup
-        isOpen={game.phase === 'EROSION' && me.isTurn && me.erosionFront.some(c => c !== null && c.displayState === 'FRONT_UPRIGHT')}
+      {!isSpectator && <StandardPopup
+        isOpen={!isSpectator && game.phase === 'EROSION' && me.isTurn && me.erosionFront.some(c => c !== null && c.displayState === 'FRONT_UPRIGHT')}
         title="侵蚀阶段"
         description="选择如何处理正面朝上的侵蚀卡"
         mode={erosionChoice === 'B' || erosionChoice === 'C' ? 'card_selection' : 'double_selection'}
@@ -2047,7 +2105,7 @@ export const BattleField: React.FC = () => {
             <div className="text-[10px] md:text-xs text-zinc-500">选择一张加入手牌，其余送墓，并从牌库放置一张到侵蚀区背面</div>
           </button>
         </div>
-      </StandardPopup>
+      </StandardPopup>}
 
       <AnimatePresence>
         {hoveredPopupCard && (
@@ -2140,7 +2198,7 @@ export const BattleField: React.FC = () => {
                 {/* Right: Selection Area */}
                 <div className="flex flex-col gap-8">
                   {(pendingPlayCard.id === '203000075' || pendingPlayCard.id === '203000076') && Object.values(game?.players || {})
-                    .flatMap(playerState => playerState.unitZone)
+                    .flatMap(playerState => (playerState as PlayerState).unitZone)
                     .some(unit => unit?.id === '103080185') && (
                     <div className="flex flex-col gap-3">
                       <div className="flex items-center gap-2 text-emerald-300 font-black uppercase italic tracking-widest text-sm">
@@ -2157,7 +2215,7 @@ export const BattleField: React.FC = () => {
                         >
                           不预选对象<br />按原费用支付
                         </button>
-                        {Object.values(game?.players || {}).flatMap(playerState => playerState.unitZone).filter(unit => unit?.id === '103080185').map(unit => {
+                        {Object.values(game?.players || {}).flatMap(playerState => (playerState as PlayerState).unitZone).filter(unit => unit?.id === '103080185').map(unit => {
                           const isSelected = paymentSelection.spiritTargetId === unit!.gamecardId;
                           return (
                             <motion.div
@@ -2331,6 +2389,7 @@ export const BattleField: React.FC = () => {
                   pendingPlayCard={pendingPlayCard}
                   stack={game.counterStack || []}
                   myUid={myUid}
+                  isSpectator={isSpectator}
                   selectedAttackers={selectedAttackers}
                   selectedDefender={selectedDefender || undefined}
                   allianceInitiator={allianceTargetSelection || undefined}
@@ -2341,8 +2400,15 @@ export const BattleField: React.FC = () => {
                   highlightedCardIds={highlightedCardIds}
                   onShowLogs={() => setShowFullLogs(true)}
                   onOpenRulebook={() => setIsRulebookOpen(true)}
-                  onSurrender={() => setShowSurrenderConfirm(true)}
+                  onSurrender={() => {
+                    if (isSpectator) {
+                      handleSpectatorExit();
+                      return;
+                    }
+                    setShowSurrenderConfirm(true);
+                  }}
                   onPhaseClick={() => {
+                    if (isSpectator) return;
                     const isMyTurn = game.playerIds[game.currentTurnPlayer] === myUid;
                     if (isMyTurn && game.phase === 'BATTLE_FREE') {
                       GameService.advancePhase(gameId!, 'PROPOSE_DAMAGE_CALCULATION');
@@ -2357,6 +2423,7 @@ export const BattleField: React.FC = () => {
                   onUpdateStrategy={updateConfrontationStrategy}
                   canConfront={canConfront}
                   isConfrontPromptActive={
+                    !isSpectator &&
                     game.phase === 'BATTLE_FREE' &&
                     !!game.battleState?.askConfront &&
                     (
@@ -2365,11 +2432,13 @@ export const BattleField: React.FC = () => {
                     )
                   }
                   isCounteringPromptActive={
+                    !isSpectator &&
                     game.phase === 'COUNTERING' &&
                     game.priorityPlayerId === myUid &&
                     !game.isResolvingStack
                   }
                   isDefensePromptActive={
+                    !isSpectator &&
                     game.phase === 'DEFENSE_DECLARATION' &&
                     !me.isTurn &&
                     !game.pendingQuery &&
@@ -2399,18 +2468,20 @@ export const BattleField: React.FC = () => {
                     !!previewCard ||
                     !!viewingZone ||
                     isRulebookOpen ||
-                    !!game.pendingQuery ||
-                    game.phase === 'EROSION' ||
-                    game.phase === 'DISCARD' ||
-                    game.phase === 'END' ||
-                    !!pendingPlayCard ||
-                    !!effectSelection ||
-                    !!effectConfirmation ||
-                    !!allianceConfirmation ||
-                    showPhaseMenu ||
+                    (!isSpectator && (
+                      !!game.pendingQuery ||
+                      game.phase === 'EROSION' ||
+                      game.phase === 'DISCARD' ||
+                      game.phase === 'END' ||
+                      !!pendingPlayCard ||
+                      !!effectSelection ||
+                      !!effectConfirmation ||
+                      !!allianceConfirmation ||
+                      showPhaseMenu
+                    )) ||
                     showFullLogs ||
                     !!interruptionNotice ||
-                    showSurrenderConfirm
+                    (!isSpectator && showSurrenderConfirm)
                   }
                 />
               )}
@@ -2509,7 +2580,7 @@ export const BattleField: React.FC = () => {
         </AnimatePresence>
 
         <AnimatePresence>
-          {game.phase === 'COUNTERING' && (game.priorityPlayerId !== myUid || game.isResolvingStack) && (
+          {!isSpectator && game.phase === 'COUNTERING' && (game.priorityPlayerId !== myUid || game.isResolvingStack) && (
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
@@ -2527,7 +2598,7 @@ export const BattleField: React.FC = () => {
         </AnimatePresence>
 
         <AnimatePresence>
-          {game.phase === 'DEFENSE_DECLARATION' && me.isTurn && (
+          {!isSpectator && game.phase === 'DEFENSE_DECLARATION' && me.isTurn && (
             <motion.div
               key="waiting-defense"
               initial={{ opacity: 0 }}
@@ -2554,7 +2625,7 @@ export const BattleField: React.FC = () => {
         </AnimatePresence>
 
         <StandardPopup
-          isOpen={game.phase === 'DISCARD' && me.uid === getAuthUser()?.uid && me.isTurn && me.hand.length > 6}
+          isOpen={!isSpectator && game.phase === 'DISCARD' && me.uid === getAuthUser()?.uid && me.isTurn && me.hand.length > 6}
           title="请选择弃牌"
           description={`你的手牌超过 6 张，请选择要弃置的卡牌（当前：${me.hand.length}，需弃置：${me.hand.length - 6}）`}
           mode="card_selection"
@@ -2585,7 +2656,7 @@ export const BattleField: React.FC = () => {
 
         {/* Standardized Shenyi Choice Popup */}
         <StandardPopup
-          isOpen={game.phase === 'SHENYI_CHOICE' && game.pendingShenyi && game.pendingShenyi.playerUid === myUid}
+          isOpen={!isSpectator && game.phase === 'SHENYI_CHOICE' && game.pendingShenyi && game.pendingShenyi.playerUid === myUid}
           title="女神之辉：神依"
           description="你已进入女神化状态。是否触发【神依】效果，将指定单位重置为竖直状态？"
           mode="double_selection"
@@ -2603,7 +2674,7 @@ export const BattleField: React.FC = () => {
 
       </div >
       {/* Rulebook Overlay */}
-      < Rulebook
+      <Rulebook
         isOpen={isRulebookOpen}
         onClose={() => setIsRulebookOpen(false)}
         onHide={() => setIsPopupHidden(true)}
@@ -2752,7 +2823,7 @@ export const BattleField: React.FC = () => {
               })()}
 
               {/* Action: Attack (Red) */}
-              {!isPopupHidden && ['MAIN', 'BATTLE_DECLARATION'].includes(game.phase) && me.isTurn && game.turnCount !== 1 && cardMenu.zone === 'unit' && (
+              {!isSpectator && !isPopupHidden && ['MAIN', 'BATTLE_DECLARATION'].includes(game.phase) && me.isTurn && game.turnCount !== 1 && cardMenu.zone === 'unit' && (
                 (() => {
                   const latestUnit = me.unitZone.find(c => c?.gamecardId === cardMenu.card.gamecardId);
                   if (latestUnit && canUnitAttackNow(latestUnit)) {
@@ -2796,7 +2867,7 @@ export const BattleField: React.FC = () => {
               )}
 
               {/* Action: Defend (Blue) */}
-              {!isPopupHidden && game.phase === 'DEFENSE_DECLARATION' && opponent?.isTurn && cardMenu.zone === 'unit' && (
+              {!isSpectator && !isPopupHidden && game.phase === 'DEFENSE_DECLARATION' && opponent?.isTurn && cardMenu.zone === 'unit' && (
                 (() => {
                   const isMyCard = me.unitZone.some(c => c?.gamecardId === cardMenu.card.gamecardId);
                   if (isMyCard && canUnitDefend(cardMenu.card)) {
@@ -2821,7 +2892,7 @@ export const BattleField: React.FC = () => {
               )}
 
               {/* Action: Discard (Special Phase) */}
-              {!isPopupHidden && game.phase === 'DISCARD' && cardMenu.zone === 'hand' && me.isTurn && (
+              {!isSpectator && !isPopupHidden && game.phase === 'DISCARD' && cardMenu.zone === 'hand' && me.isTurn && (
                 <motion.button
                   whileHover={{ scale: 1.1, x: -3 }}
                   className="px-3 py-1 text-[9px] font-black tracking-tighter text-red-50 bg-red-600 rounded-full shadow-[0_0_15px_rgba(220,38,38,0.4)] flex items-center gap-2 border border-red-400/50"
@@ -2858,7 +2929,7 @@ export const BattleField: React.FC = () => {
 
       {/* Standardized Alliance Confirmation Popup */}
       <StandardPopup
-        isOpen={!!allianceConfirmation}
+        isOpen={!!(!isSpectator && allianceConfirmation)}
         onClose={() => setAllianceConfirmation(null)}
         title="确认联军宣告"
         description="是否宣告这两个单位进行联军攻击？"
@@ -3053,7 +3124,7 @@ export const BattleField: React.FC = () => {
 
       {/* Global Confrontation Chain Overlay (Above Popups) */}
       <AnimatePresence>
-        {((game.phase === 'BATTLE_FREE' && game.battleState?.askConfront) || game.phase === 'COUNTERING' || isConfronting) && 
+        {!isSpectator && ((game.phase === 'BATTLE_FREE' && game.battleState?.askConfront) || game.phase === 'COUNTERING' || isConfronting) && 
          (game.counterStack.length > 0 || game.battleState?.attackerCardId) && (
           <motion.div
             initial={{ opacity: 0, y: -50 }}
@@ -3074,7 +3145,8 @@ export const BattleField: React.FC = () => {
                     <div className="flex flex-col items-center gap-2">
                       <div className="w-16 md:w-24 aspect-[3/4] rounded-xl overflow-hidden border-2 border-red-500 shadow-[0_0_20px_rgba(239,68,68,0.3)] relative">
                         {(() => {
-                          const attacker = [...game.players[game.battleState.attackerUid!].unitZone, ...game.players[game.battleState.attackerUid!].itemZone].find(c => c?.gamecardId === game.battleState!.attackerCardId);
+                          const attackerUid = (game.battleState as any).attackerUid || game.playerIds[game.currentTurnPlayer];
+                          const attacker = [...(game.players[attackerUid]?.unitZone || []), ...(game.players[attackerUid]?.itemZone || [])].find(c => c?.gamecardId === game.battleState!.attackerCardId);
                           return attacker ? <CardComponent card={attacker} disableZoom cardBackUrl={cardBackUrl} /> : <div className="w-full h-full bg-zinc-800" />;
                         })()}
                         <div className="absolute top-1 left-1 px-1.5 py-0.5 bg-red-600 rounded text-[8px] font-black italic text-white z-10 shadow-lg">
@@ -3082,7 +3154,7 @@ export const BattleField: React.FC = () => {
                         </div>
                       </div>
                       <span className="text-[8px] font-bold text-red-400 uppercase">
-                        {game.battleState.attackerUid === myUid ? "我方" : "对方"}
+                        {((game.battleState as any).attackerUid || game.playerIds[game.currentTurnPlayer]) === myUid ? "我方" : isSpectator ? "攻击方" : "对方"}
                       </span>
                     </div>
 
@@ -3092,7 +3164,8 @@ export const BattleField: React.FC = () => {
                         <div className="flex flex-col items-center gap-2">
                           <div className="w-16 md:w-24 aspect-[3/4] rounded-xl overflow-hidden border-2 border-blue-500 shadow-[0_0_20px_rgba(59,130,246,0.3)] relative">
                             {(() => {
-                              const defender = [...game.players[game.battleState!.defenderUid!].unitZone].find(c => c?.gamecardId === game.battleState!.defenderCardId);
+                              const defenderUid = (game.battleState as any).defenderUid || game.playerIds[game.currentTurnPlayer === 0 ? 1 : 0];
+                              const defender = [...(game.players[defenderUid]?.unitZone || [])].find(c => c?.gamecardId === game.battleState!.defenderCardId);
                               return defender ? <CardComponent card={defender} disableZoom cardBackUrl={cardBackUrl} /> : <div className="w-full h-full bg-zinc-800" />;
                             })()}
                             <div className="absolute top-1 left-1 px-1.5 py-0.5 bg-blue-600 rounded text-[8px] font-black italic text-white z-10 shadow-lg">
@@ -3100,7 +3173,7 @@ export const BattleField: React.FC = () => {
                             </div>
                           </div>
                           <span className="text-[8px] font-bold text-blue-400 uppercase">
-                            {game.battleState.defenderUid === myUid ? "我方" : "对方"}
+                            {((game.battleState as any).defenderUid || game.playerIds[game.currentTurnPlayer === 0 ? 1 : 0]) === myUid ? "我方" : isSpectator ? "防御方" : "对方"}
                           </span>
                         </div>
                       </div>
@@ -3157,7 +3230,7 @@ export const BattleField: React.FC = () => {
 
       {/* Standardized Surrender Confirmation Popup */}
       <StandardPopup
-        isOpen={showSurrenderConfirm}
+        isOpen={!isSpectator && showSurrenderConfirm}
         onClose={() => setShowSurrenderConfirm(false)}
         title="确认投降"
         description="你确定要投降吗？这会立即结束当前对局。"
@@ -3177,7 +3250,7 @@ export const BattleField: React.FC = () => {
 
       {/* Waiting for Opponent Query Overlay */}
       <AnimatePresence>
-        {game.pendingQuery && game.pendingQuery.playerUid !== myUid && (
+        {!isSpectator && game.pendingQuery && game.pendingQuery.playerUid !== myUid && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -3196,7 +3269,7 @@ export const BattleField: React.FC = () => {
 
       {/* Standardized My Pending Query Popup */}
       <StandardPopup
-        isOpen={!!(game.pendingQuery && game.pendingQuery.playerUid === myUid)}
+        isOpen={!!(!isSpectator && game.pendingQuery && game.pendingQuery.playerUid === myUid)}
         title={game.pendingQuery?.title || ''}
         description={game.pendingQuery?.description || ''}
         mode={
@@ -3590,7 +3663,32 @@ export const BattleField: React.FC = () => {
 
       {/* Game Over Modal */}
       <AnimatePresence>
-        {game?.gameStatus === 2 && (
+        {game?.gameStatus === 2 && isSpectator && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[1000] bg-black/80 backdrop-blur-xl flex items-center justify-center p-6"
+          >
+            <div className="max-w-md w-full rounded-[2rem] border border-white/10 bg-zinc-950 p-8 text-center shadow-2xl">
+              <Trophy className="mx-auto mb-5 h-12 w-12 text-[#f27d26]" />
+              <h2 className="text-3xl font-black italic tracking-tight text-white">对局已结束</h2>
+              <p className="mt-3 text-sm font-bold tracking-widest text-zinc-500">
+                胜者：{game.winnerId ? game.players[game.winnerId]?.displayName || game.winnerId : '未知'}
+              </p>
+              <button
+                onClick={() => navigate('/')}
+                className="mt-8 w-full rounded-2xl bg-white px-8 py-4 text-sm font-black italic tracking-widest text-black transition-all hover:bg-zinc-200"
+              >
+                返回主页
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {game?.gameStatus === 2 && !isSpectator && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}

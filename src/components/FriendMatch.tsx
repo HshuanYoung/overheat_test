@@ -1,39 +1,79 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Plus, LogIn, Loader2, Copy, Check } from 'lucide-react';
-import { motion } from 'framer-motion';
+import { ArrowLeft, Plus, LogIn, Loader2, Copy, Check, Eye, Swords, ChevronDown, UserRound, UsersRound, Clock3 } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '../lib/utils';
 import { validateDeckForBattle } from '../lib/deckValidation';
 import { getAuthToken, getAuthUser } from '../socket';
 import { Deck } from '../types/game';
 
+type LobbySeat = 'player1' | 'player2' | 'spectator';
+
+interface FriendLobby {
+  gameId: string;
+  roomCode: string;
+  turnTimerLimit?: number;
+  playerIds: [string | null, string | null];
+  spectatorIds: string[];
+  participantIds: string[];
+  hostUid?: string;
+  friendDeckSelections: Record<string, string>;
+  friendReady: Record<string, boolean>;
+  status: string;
+  started: boolean;
+  mySeat: LobbySeat;
+}
+
 export const FriendMatch: React.FC = () => {
   const navigate = useNavigate();
-  const [mode, setMode] = useState<'select' | 'create' | 'join'>('select');
+  const [mode, setMode] = useState<'select' | 'join' | 'lobby'>('select');
   const [myDecks, setMyDecks] = useState<Deck[]>([]);
-  const [selectedDeckId, setSelectedDeckId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [joining, setJoining] = useState(false);
   const [roomCode, setRoomCode] = useState('');
-  const [createdRoomCode, setCreatedRoomCode] = useState('');
   const [copied, setCopied] = useState(false);
-  const [waitingForOpponent, setWaitingForOpponent] = useState(false);
-  const [createdGameId, setCreatedGameId] = useState('');
   const [error, setError] = useState('');
   const [turnTime, setTurnTime] = useState(300);
+  const [lobby, setLobby] = useState<FriendLobby | null>(null);
+  const [deckDropdownOpen, setDeckDropdownOpen] = useState(false);
+  const [timerPopoverOpen, setTimerPopoverOpen] = useState(false);
+  const [savingTimer, setSavingTimer] = useState(false);
   const pollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || '';
   const token = getAuthToken();
+  const authUser = useMemo(() => getAuthUser(), []);
+  const myUid = authUser?.uid?.toString();
+
+  const mySeat = lobby?.mySeat;
+  const selectedDeckId = myUid && lobby?.friendDeckSelections ? lobby.friendDeckSelections[myUid] : undefined;
   const selectedDeck = myDecks.find(deck => deck.id === selectedDeckId) || null;
   const selectedDeckValidation = validateDeckForBattle(selectedDeck);
+  const isPlayerSeat = mySeat === 'player1' || mySeat === 'player2';
+  const isReady = !!(myUid && lobby?.friendReady?.[myUid]);
+  const isHost = !!(myUid && lobby?.hostUid?.toString() === myUid);
 
   const clearPoll = () => {
     if (pollRef.current) {
       clearTimeout(pollRef.current);
       pollRef.current = null;
     }
+  };
+
+  const enterBattle = (targetLobby: FriendLobby) => {
+    const seat = targetLobby.mySeat === 'player1' || targetLobby.mySeat === 'player2' ? 'player' : 'spectator';
+    const deckId = myUid ? targetLobby.friendDeckSelections?.[myUid] : undefined;
+    navigate(`/battle/${targetLobby.gameId}`, {
+      state: seat === 'player' ? { seat, deckId } : { seat }
+    });
+  };
+
+  const applyLobby = (nextLobby: FriendLobby) => {
+    setLobby(nextLobby);
+    setRoomCode(nextLobby.roomCode || '');
+    setMode('lobby');
+    if (nextLobby.started) enterBattle(nextLobby);
   };
 
   useEffect(() => {
@@ -49,7 +89,6 @@ export const FriendMatch: React.FC = () => {
         });
         const data = await res.json();
         setMyDecks(data.decks || []);
-        if (data.decks?.length > 0) setSelectedDeckId(data.decks[0].id);
       } catch (e) {
         console.error(e);
       } finally {
@@ -59,76 +98,50 @@ export const FriendMatch: React.FC = () => {
 
     loadDecks();
     void import('./BattleField');
-
     return () => clearPoll();
   }, [BACKEND_URL, token]);
 
   useEffect(() => {
-    if (!waitingForOpponent || !createdGameId) return;
+    clearPoll();
+    if (mode !== 'lobby' || !lobby?.gameId) return;
 
-    const pollFriendRoomStatus = async () => {
+    const poll = async () => {
       try {
-        const res = await fetch(`${BACKEND_URL}/api/games/friend/${createdGameId}/status`, {
+        const res = await fetch(`${BACKEND_URL}/api/games/friend/${lobby.gameId}/status`, {
           headers: { Authorization: `Bearer ${token}` }
         });
-
-        if (!res.ok) {
-          schedulePoll(1200);
-          return;
-        }
-
         const data = await res.json();
-        if (data.joined) {
-          clearPoll();
-          navigate(`/battle/${createdGameId}`, { state: { deckId: selectedDeckId } });
-          return;
+        if (res.ok && !data.error) {
+          applyLobby(data);
         }
-
-        schedulePoll(800);
       } catch (e) {
-        console.error('[FriendMatch] Poll error:', e);
-        schedulePoll(1500);
+        console.error('[FriendMatch] Lobby poll error:', e);
+      } finally {
+        pollRef.current = setTimeout(poll, 1000);
       }
     };
 
-    const schedulePoll = (delayMs: number) => {
-      clearPoll();
-      pollRef.current = setTimeout(() => {
-        void pollFriendRoomStatus();
-      }, delayMs);
-    };
-
-    void pollFriendRoomStatus();
-
+    pollRef.current = setTimeout(poll, 800);
     return () => clearPoll();
-  }, [waitingForOpponent, createdGameId, navigate, selectedDeckId, BACKEND_URL, token]);
+  }, [mode, lobby?.gameId, BACKEND_URL, token]);
+
+  const requestLobby = async (url: string, body?: any) => {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: body ? JSON.stringify(body) : undefined
+    });
+    const data = await res.json();
+    if (!res.ok || data.error) throw new Error(data.error || '操作失败');
+    applyLobby(data);
+    return data as FriendLobby;
+  };
 
   const handleCreateRoom = async () => {
-    if (!selectedDeckValidation.valid) {
-      alert(selectedDeckValidation.error || '请选择合法的卡组');
-      return;
-    }
-
     setCreating(true);
     setError('');
     try {
-      const res = await fetch(`${BACKEND_URL}/api/games/friend`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          deckId: selectedDeckId,
-          turnTimerLimit: turnTime
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok || data.error) {
-        setError(data.error || '创建房间失败');
-        return;
-      }
-
-      setCreatedRoomCode(data.roomCode);
-      setCreatedGameId(data.gameId);
-      setWaitingForOpponent(true);
+      await requestLobby(`${BACKEND_URL}/api/games/friend`);
     } catch (e: any) {
       setError(e.message || '创建房间失败');
     } finally {
@@ -137,11 +150,8 @@ export const FriendMatch: React.FC = () => {
   };
 
   const handleJoinRoom = async () => {
-    if (!selectedDeckValidation.valid) {
-      alert(selectedDeckValidation.error || '请选择合法的卡组');
-      return;
-    }
-    if (!roomCode || roomCode.length < 6) {
+    const code = roomCode.trim();
+    if (!code || code.length < 6) {
       setError('请输入有效的房间码');
       return;
     }
@@ -149,19 +159,7 @@ export const FriendMatch: React.FC = () => {
     setJoining(true);
     setError('');
     try {
-      const res = await fetch(`${BACKEND_URL}/api/games/friend/join`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ roomCode, deckId: selectedDeckId }),
-      });
-      const data = await res.json();
-      if (!res.ok || data.error) {
-        setError(data.error || '加入房间失败');
-        setJoining(false);
-        return;
-      }
-
-      navigate(`/battle/${data.gameId}`, { state: { deckId: selectedDeckId } });
+      await requestLobby(`${BACKEND_URL}/api/games/friend/join`, { roomCode: code });
     } catch (e: any) {
       setError(e.message || '加入房间失败');
     } finally {
@@ -169,10 +167,209 @@ export const FriendMatch: React.FC = () => {
     }
   };
 
+  const switchSeat = async (seat: LobbySeat) => {
+    if (!lobby || lobby.mySeat === seat) return;
+    setError('');
+    try {
+      await requestLobby(`${BACKEND_URL}/api/games/friend/${lobby.gameId}/seat`, { seat });
+      setDeckDropdownOpen(false);
+    } catch (e: any) {
+      setError(e.message || '切换席位失败');
+    }
+  };
+
+  const chooseDeck = async (deckId: string) => {
+    if (!lobby) return;
+    setError('');
+    try {
+      await requestLobby(`${BACKEND_URL}/api/games/friend/${lobby.gameId}/deck`, { deckId });
+      setDeckDropdownOpen(false);
+    } catch (e: any) {
+      setError(e.message || '选择卡组失败');
+    }
+  };
+
+  const toggleReady = async () => {
+    if (!lobby || !isPlayerSeat) return;
+    if (!selectedDeckValidation.valid) {
+      setError(selectedDeckValidation.error || '请选择合法的卡组');
+      return;
+    }
+
+    setError('');
+    try {
+      await requestLobby(`${BACKEND_URL}/api/games/friend/${lobby.gameId}/ready`, { ready: !isReady });
+    } catch (e: any) {
+      setError(e.message || '准备失败');
+    }
+  };
+
+  const saveTurnTimer = async () => {
+    if (!lobby || !isHost) return;
+    setSavingTimer(true);
+    setError('');
+    try {
+      await requestLobby(`${BACKEND_URL}/api/games/friend/${lobby.gameId}/timer`, { turnTimerLimit: turnTime });
+      setTimerPopoverOpen(false);
+    } catch (e: any) {
+      setError(e.message || '修改时间失败');
+    } finally {
+      setSavingTimer(false);
+    }
+  };
+
   const copyCode = () => {
-    navigator.clipboard.writeText(createdRoomCode);
+    if (!lobby?.roomCode && !roomCode) return;
+    navigator.clipboard.writeText(lobby?.roomCode || roomCode);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleBack = () => {
+    if (mode === 'select') {
+      navigate('/');
+      return;
+    }
+    if (mode === 'lobby') {
+      clearPoll();
+      if (lobby?.gameId) {
+        fetch(`${BACKEND_URL}/api/games/friend/${lobby.gameId}/leave`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }
+        }).catch(e => console.error('[FriendMatch] Leave lobby error:', e));
+      }
+      setLobby(null);
+    }
+    setMode('select');
+    setError('');
+    setTimerPopoverOpen(false);
+  };
+
+  const renderDeckDropdown = () => {
+    if (!isPlayerSeat) return null;
+
+    return (
+      <div className="relative">
+        <button
+          type="button"
+          onClick={() => setDeckDropdownOpen(open => !open)}
+          className={cn(
+            'flex w-full items-center justify-between rounded-xl border px-4 py-3 text-left transition-all',
+            selectedDeckValidation.valid ? 'border-zinc-700 bg-zinc-950/70' : 'border-red-500/40 bg-red-950/20'
+          )}
+        >
+          <div>
+            <div className="text-sm font-black text-white">{selectedDeck?.name || '请选择卡组'}</div>
+            <div className="mt-1 text-[10px] font-bold tracking-widest text-zinc-500">
+              {selectedDeck ? `${selectedDeck.cards.length} 张卡牌` : '对战玩家需要准备卡组'}
+            </div>
+          </div>
+          <ChevronDown className={cn('h-5 w-5 text-zinc-500 transition-transform', deckDropdownOpen && 'rotate-180')} />
+        </button>
+
+        <AnimatePresence>
+          {deckDropdownOpen && (
+            <motion.div
+              initial={{ opacity: 0, y: -6 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -6 }}
+              className="absolute left-0 right-0 top-full z-20 mt-2 max-h-72 overflow-y-auto rounded-xl border border-zinc-800 bg-zinc-950 p-2 shadow-2xl"
+            >
+              {myDecks.map(deck => {
+                const validation = validateDeckForBattle(deck);
+                const active = selectedDeckId === deck.id;
+                return (
+                  <button
+                    key={deck.id}
+                    type="button"
+                    onClick={() => chooseDeck(deck.id)}
+                    className={cn(
+                      'mb-1 flex w-full items-center justify-between rounded-lg px-3 py-3 text-left transition-colors',
+                      active ? 'bg-red-600/20 text-white' : 'hover:bg-white/5',
+                      !validation.valid && 'opacity-60'
+                    )}
+                  >
+                    <div>
+                      <div className="text-sm font-bold">{deck.name}</div>
+                      <div className={cn('mt-1 text-[10px] font-bold', validation.valid ? 'text-zinc-500' : 'text-red-400')}>
+                        {validation.valid ? `${deck.cards.length} 张卡牌` : validation.error}
+                      </div>
+                    </div>
+                    {active && <Check className="h-4 w-4 text-red-400" />}
+                  </button>
+                );
+              })}
+              {myDecks.length === 0 && (
+                <div className="p-6 text-center text-sm text-zinc-500">
+                  还没有卡组
+                  <button onClick={() => navigate('/deck-builder')} className="ml-2 text-red-500 hover:underline">去创建</button>
+                </div>
+              )}
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+    );
+  };
+
+  const renderSeatCard = (seat: 'player1' | 'player2', title: string, uid: string | null) => {
+    const occupied = !!uid;
+    const mine = uid === myUid;
+    const deckId = uid ? lobby?.friendDeckSelections?.[uid] : undefined;
+    const deck = myDecks.find(d => d.id === deckId);
+    const ready = !!(uid && lobby?.friendReady?.[uid]);
+    const canSwitch = !!lobby && !lobby.started && (!occupied || mine);
+
+    return (
+      <div className={cn('rounded-2xl border p-5', mine ? 'border-red-500/70 bg-red-950/20' : 'border-zinc-800 bg-zinc-900/35')}>
+        <div className="mb-4 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Swords className="h-5 w-5 text-red-500" />
+            <h3 className="font-black italic">{title}</h3>
+          </div>
+          <span className={cn('rounded-full px-3 py-1 text-[10px] font-black', ready ? 'bg-emerald-500/20 text-emerald-300' : 'bg-zinc-800 text-zinc-400')}>
+            {ready ? '已准备' : '未准备'}
+          </span>
+        </div>
+
+        <div className="mb-4 rounded-xl bg-black/30 px-4 py-3">
+          <div className="text-[10px] font-black tracking-widest text-zinc-500">玩家 ID</div>
+          <div className="mt-1 break-all font-mono text-sm text-white">{uid || '空位'}</div>
+          {uid && uid === lobby?.hostUid && <div className="mt-2 text-[10px] font-black text-amber-400">房主</div>}
+        </div>
+
+        {mine ? (
+          <div className="space-y-3">
+            {renderDeckDropdown()}
+            {selectedDeckId && !selectedDeckValidation.valid && (
+              <div className="rounded-lg border border-red-500/30 bg-red-950/25 p-3 text-xs text-red-300">
+                {selectedDeckValidation.error}
+              </div>
+            )}
+            <button
+              onClick={toggleReady}
+              disabled={!selectedDeckValidation.valid}
+              className="w-full rounded-xl bg-red-600 px-4 py-3 text-sm font-black text-white transition-colors hover:bg-red-500 disabled:opacity-50"
+            >
+              {isReady ? '取消准备' : '准备'}
+            </button>
+          </div>
+        ) : (
+          <div className="text-xs font-bold tracking-widest text-zinc-500">
+            {deck ? `已选择：${deck.name}` : occupied ? '等待选择卡组' : '等待玩家加入'}
+          </div>
+        )}
+
+        {canSwitch && !mine && (
+          <button
+            onClick={() => switchSeat(seat)}
+            className="mt-4 w-full rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-xs font-black text-white transition-colors hover:bg-white/10"
+          >
+            切换到{title}
+          </button>
+        )}
+      </div>
+    );
   };
 
   if (loading) {
@@ -185,167 +382,188 @@ export const FriendMatch: React.FC = () => {
 
   return (
     <div className="pt-20 px-8 min-h-screen bg-black text-white pb-20">
-      <div className="max-w-3xl mx-auto">
-        <div className="flex items-center gap-3 md:gap-4 mb-6 md:mb-10 px-2 md:px-0">
-          <button
-            onClick={() => waitingForOpponent ? setWaitingForOpponent(false) : mode === 'select' ? navigate('/') : setMode('select')}
-            className="p-2 rounded-full bg-zinc-900 hover:bg-zinc-800 transition-colors shrink-0"
-          >
-            <ArrowLeft className="w-5 h-5 md:w-6 md:h-6" />
+      <div className="mx-auto max-w-5xl">
+        <div className="mb-6 flex items-center gap-3 px-2 md:mb-10 md:gap-4 md:px-0">
+          <button onClick={handleBack} className="shrink-0 rounded-full bg-zinc-900 p-2 transition-colors hover:bg-zinc-800">
+            <ArrowLeft className="h-5 w-5 md:h-6 md:w-6" />
           </button>
           <div>
-            <h1 className="text-xl md:text-3xl font-black italic tracking-tighter uppercase">好友约战</h1>
-            <p className="text-zinc-500 text-[10px] md:text-sm font-bold tracking-widest leading-none">私人对战房间</p>
+            <h1 className="text-xl font-black italic uppercase tracking-tighter md:text-3xl">好友约战</h1>
+            <p className="text-[10px] font-bold leading-none tracking-widest text-zinc-500 md:text-sm">等待房间 / 对战席 / 观众席</p>
           </div>
         </div>
 
-        {waitingForOpponent && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-center py-8 md:py-16">
-            <Loader2 className="w-10 h-10 md:w-12 md:h-12 animate-spin text-red-500 mx-auto mb-6" />
-            <h2 className="text-xl md:text-2xl font-black italic tracking-tighter mb-4 md:mb-6 uppercase">等待对手加入...</h2>
-            <div className="inline-flex flex-col md:flex-row items-center gap-3 bg-zinc-900/50 border border-zinc-800 rounded-2xl px-6 md:px-8 py-4 md:py-6 mb-4 w-full md:w-auto">
-              <span className="text-zinc-500 text-[10px] md:text-sm font-bold tracking-widest leading-none">房间码：</span>
-              <div className="flex items-center gap-3">
-                <span className="text-2xl md:text-4xl font-mono font-black tracking-[0.2em] md:tracking-[0.3em] text-amber-400">{createdRoomCode}</span>
-                <button onClick={copyCode} className="p-2 hover:bg-zinc-800 rounded-lg transition-colors">
-                  {copied ? <Check className="w-5 h-5 md:w-6 md:h-6 text-green-500" /> : <Copy className="w-5 h-5 md:w-6 md:h-6 text-zinc-500" />}
-                </button>
-              </div>
-            </div>
-            <p className="text-zinc-600 text-[10px] md:text-sm font-bold tracking-widest">请将房间码发送给你的好友</p>
-          </motion.div>
-        )}
-
-        {!waitingForOpponent && mode === 'select' && (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
+        {mode === 'select' && (
+          <div className="mb-8 grid grid-cols-1 gap-4 md:grid-cols-2">
             <motion.div
               whileHover={{ scale: 1.02 }}
               whileTap={{ scale: 0.98 }}
-              onClick={() => setMode('create')}
-              className="p-6 md:p-8 rounded-2xl bg-gradient-to-br from-red-900/10 to-zinc-900 border border-zinc-800 hover:border-red-600/50 cursor-pointer text-center transition-all group"
+              onClick={handleCreateRoom}
+              className="group cursor-pointer rounded-2xl border border-zinc-800 bg-gradient-to-br from-red-900/10 to-zinc-900 p-8 text-center transition-all hover:border-red-600/50"
             >
-              <div className="w-12 h-12 md:w-16 md:h-16 rounded-full bg-red-600/10 group-hover:bg-red-600 flex items-center justify-center mx-auto mb-3 md:mb-4 transition-colors">
-                <Plus className="w-6 h-6 md:w-8 md:h-8" />
+              <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-red-600/10 transition-colors group-hover:bg-red-600">
+                {creating ? <Loader2 className="h-8 w-8 animate-spin" /> : <Plus className="h-8 w-8" />}
               </div>
-              <h3 className="text-lg md:text-xl font-black italic tracking-tighter mb-1 uppercase">创建房间</h3>
-              <p className="text-zinc-500 text-[10px] md:text-xs font-bold tracking-widest leading-none">邀请好友进入房间</p>
+              <h3 className="mb-1 text-xl font-black italic uppercase tracking-tighter">创建房间</h3>
+              <p className="text-xs font-bold leading-none tracking-widest text-zinc-500">直接进入等待页</p>
             </motion.div>
             <motion.div
               whileHover={{ scale: 1.02 }}
               whileTap={{ scale: 0.98 }}
               onClick={() => setMode('join')}
-              className="p-6 md:p-8 rounded-2xl bg-gradient-to-br from-blue-900/10 to-zinc-900 border border-zinc-800 hover:border-blue-600/50 cursor-pointer text-center transition-all group"
+              className="group cursor-pointer rounded-2xl border border-zinc-800 bg-gradient-to-br from-blue-900/10 to-zinc-900 p-8 text-center transition-all hover:border-blue-600/50"
             >
-              <div className="w-12 h-12 md:w-16 md:h-16 rounded-full bg-blue-600/10 group-hover:bg-blue-600 flex items-center justify-center mx-auto mb-3 md:mb-4 transition-colors">
-                <LogIn className="w-6 h-6 md:w-8 md:h-8" />
+              <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-blue-600/10 transition-colors group-hover:bg-blue-600">
+                <LogIn className="h-8 w-8" />
               </div>
-              <h3 className="text-lg md:text-xl font-black italic tracking-tighter mb-1 uppercase">加入房间</h3>
-              <p className="text-zinc-500 text-[10px] md:text-xs font-bold tracking-widest leading-none">输入房间码加入对局</p>
+              <h3 className="mb-1 text-xl font-black italic uppercase tracking-tighter">加入房间</h3>
+              <p className="text-xs font-bold leading-none tracking-widest text-zinc-500">输入房间码加入等待页或观战</p>
             </motion.div>
           </div>
         )}
 
-        {!waitingForOpponent && mode !== 'select' && (
-          <>
-            <h2 className="text-sm font-bold text-zinc-500 tracking-widest mb-4">选择你的卡组</h2>
-            <div className="grid grid-cols-1 gap-3 mb-8">
-              {myDecks.map((d, index) => (
-                <motion.div
-                  key={d.id || `deck-${index}`}
-                  whileHover={{ scale: 1.01 }}
-                  onClick={() => setSelectedDeckId(d.id)}
-                  className={cn(
-                    'p-4 rounded-xl border-2 cursor-pointer transition-all flex items-center justify-between',
-                    selectedDeckId === d.id ? 'border-red-600 bg-red-900/15' : 'border-zinc-800 bg-zinc-900/30 hover:border-zinc-700'
-                  )}
-                >
-                  <div>
-                    <p className="font-bold">{d.name}</p>
-                    <p className="text-xs text-zinc-500">{d.cards.length} 张卡牌</p>
+        {mode === 'join' && (
+          <div className="mx-auto max-w-3xl space-y-6">
+            <input
+              className="w-full rounded-xl border border-zinc-800 bg-zinc-900 px-6 py-4 text-center font-mono text-2xl font-bold tracking-[0.3em] transition-all focus:border-red-600 focus:outline-none"
+              placeholder="输入房间码"
+              maxLength={8}
+              value={roomCode}
+              onChange={e => setRoomCode(e.target.value.replace(/\D/g, ''))}
+            />
+            {error && <div className="rounded-xl border border-red-500/30 bg-red-900/30 p-3 text-sm text-red-400">{error}</div>}
+            <button
+              onClick={handleJoinRoom}
+              disabled={joining || roomCode.length < 6}
+              className="flex w-full items-center justify-center gap-3 rounded-2xl bg-gradient-to-r from-blue-600 to-cyan-600 px-10 py-3.5 text-lg font-black italic tracking-tighter shadow-[0_0_30px_rgba(37,99,235,0.3)] transition-all disabled:opacity-50"
+            >
+              {joining ? <Loader2 className="h-5 w-5 animate-spin" /> : <LogIn className="h-5 w-5" />}
+              加入房间
+            </button>
+          </div>
+        )}
+
+        {mode === 'lobby' && lobby && (
+          <div className="space-y-6">
+            <div className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-5">
+              <div className="grid gap-4 md:grid-cols-[1fr_auto_auto] md:items-center">
+                <div>
+                  <div className="text-[10px] font-black tracking-widest text-zinc-500">房间码</div>
+                  <div className="mt-2 flex items-center gap-3">
+                    <span className="font-mono text-3xl font-black tracking-[0.25em] text-amber-400">{lobby.roomCode}</span>
+                    <button onClick={copyCode} className="rounded-lg p-2 transition-colors hover:bg-zinc-800">
+                      {copied ? <Check className="h-5 w-5 text-green-500" /> : <Copy className="h-5 w-5 text-zinc-500" />}
+                    </button>
                   </div>
-                  {selectedDeckId === d.id && (
-                    <div className="w-5 h-5 rounded-full bg-red-600 flex items-center justify-center">
-                      <div className="w-1.5 h-1.5 rounded-full bg-white" />
+                </div>
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!isHost || lobby.started) return;
+                      setTurnTime(lobby.turnTimerLimit || 300);
+                      setTimerPopoverOpen(open => !open);
+                    }}
+                    className={cn(
+                      'w-full rounded-xl bg-black/30 px-4 py-3 text-left transition-colors',
+                      isHost && !lobby.started && 'hover:bg-white/10'
+                    )}
+                  >
+                    <div className="flex items-center gap-2 text-[10px] font-black tracking-widest text-zinc-500">
+                      <Clock3 className="h-3.5 w-3.5" />
+                      对局时间
                     </div>
-                  )}
-                </motion.div>
-              ))}
-              {myDecks.length === 0 && (
-                <div className="p-12 border-2 border-dashed border-zinc-800 rounded-2xl text-center text-zinc-500">
-                  <p>还没有卡组</p>
-                  <button onClick={() => navigate('/deck-builder')} className="mt-2 text-red-500 text-sm hover:underline">去创建一个卡组</button>
+                    <div className="mt-1 text-xl font-black text-white">{lobby.turnTimerLimit || 300} 秒</div>
+                  </button>
+                  <AnimatePresence>
+                    {timerPopoverOpen && isHost && !lobby.started && (
+                      <motion.div
+                        initial={{ opacity: 0, y: -6 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -6 }}
+                        className="absolute right-0 top-full z-30 mt-2 w-72 rounded-xl border border-zinc-800 bg-zinc-950 p-4 shadow-2xl"
+                      >
+                        <div className="mb-3 flex items-center justify-between">
+                          <span className="text-xs font-black tracking-widest text-zinc-500">回合时间</span>
+                          <span className="text-xl font-black italic text-red-500">{turnTime}秒</span>
+                        </div>
+                        <input
+                          type="range"
+                          min="180"
+                          max="999"
+                          step="10"
+                          value={turnTime}
+                          onChange={(e) => setTurnTime(parseInt(e.target.value, 10))}
+                          className="h-1.5 w-full cursor-pointer appearance-none rounded-lg bg-zinc-800 accent-red-600"
+                        />
+                        <div className="mt-2 flex justify-between text-[9px] font-bold tracking-widest text-zinc-600">
+                          <span>180</span>
+                          <span>300</span>
+                          <span>999</span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={saveTurnTimer}
+                          disabled={savingTimer}
+                          className="mt-4 flex w-full items-center justify-center gap-2 rounded-lg bg-red-600 px-4 py-2 text-xs font-black text-white transition-colors hover:bg-red-500 disabled:opacity-50"
+                        >
+                          {savingTimer && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                          保存时间
+                        </button>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
+                <div className="rounded-xl bg-black/30 px-4 py-3">
+                  <div className="text-[10px] font-black tracking-widest text-zinc-500">房主 ID</div>
+                  <div className="mt-1 max-w-44 truncate font-mono text-sm text-white">{lobby.hostUid || '-'}</div>
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+              {renderSeatCard('player1', '玩家1', lobby.playerIds[0])}
+              {renderSeatCard('player2', '玩家2', lobby.playerIds[1])}
+            </div>
+
+            <div className={cn('rounded-2xl border p-5', mySeat === 'spectator' ? 'border-sky-500/60 bg-sky-950/15' : 'border-zinc-800 bg-zinc-900/35')}>
+              <div className="mb-4 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Eye className="h-5 w-5 text-sky-300" />
+                  <h3 className="font-black italic">观战席</h3>
+                </div>
+                {mySeat !== 'spectator' && (
+                  <button onClick={() => switchSeat('spectator')} className="rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-xs font-black text-white hover:bg-white/10">
+                    切到观众席
+                  </button>
+                )}
+              </div>
+              {lobby.spectatorIds.length > 0 ? (
+                <div className="grid gap-2 md:grid-cols-2">
+                  {lobby.spectatorIds.map(uid => (
+                    <div key={uid} className="flex items-center gap-2 rounded-xl bg-black/30 px-4 py-3">
+                      <UserRound className="h-4 w-4 text-sky-300" />
+                      <span className="break-all font-mono text-sm">{uid}</span>
+                      {uid === lobby.hostUid && <span className="ml-auto text-[10px] font-black text-amber-400">房主</span>}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="flex items-center gap-2 rounded-xl bg-black/30 px-4 py-6 text-sm font-bold text-zinc-500">
+                  <UsersRound className="h-5 w-5" />
+                  暂无观众
                 </div>
               )}
             </div>
 
-            {selectedDeckId && !selectedDeckValidation.valid && (
-              <div className="mb-4 p-3 bg-red-900/30 border border-red-500/30 rounded-xl text-red-400 text-sm">
-                当前选中的卡组不可用于对战：{selectedDeckValidation.error}
-              </div>
-            )}
+            {error && <div className="rounded-xl border border-red-500/30 bg-red-900/30 p-3 text-sm text-red-400">{error}</div>}
 
-            {error && <div className="mb-4 p-3 bg-red-900/30 border border-red-500/30 rounded-xl text-red-400 text-sm">{error}</div>}
-
-            {mode === 'create' && (
-              <div className="mb-10 p-6 rounded-2xl bg-zinc-900/50 border border-zinc-800">
-                <div className="flex justify-between items-center mb-4">
-                  <h2 className="text-sm font-bold text-zinc-500 tracking-widest">回合时间（秒）</h2>
-                  <span className="text-2xl font-black italic tracking-tighter text-red-500">{turnTime}秒</span>
-                </div>
-                <input
-                  type="range"
-                  min="180"
-                  max="999"
-                  step="10"
-                  value={turnTime}
-                  onChange={(e) => setTurnTime(parseInt(e.target.value, 10))}
-                  className="w-full h-1.5 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-red-600"
-                />
-                <div className="flex justify-between mt-2 text-[10px] text-zinc-600 font-bold tracking-widest">
-                  <span>最短 180 秒</span>
-                  <span>默认 300 秒</span>
-                  <span>最长 999 秒</span>
-                </div>
-              </div>
-            )}
-
-            {mode === 'create' && (
-              <div className="flex justify-center mt-6">
-                <motion.button
-                  whileHover={{ scale: 1.03 }}
-                  whileTap={{ scale: 0.97 }}
-                  onClick={handleCreateRoom}
-                  disabled={creating || !selectedDeckId}
-                  className="w-full md:w-auto px-8 md:px-10 py-3 md:py-3.5 bg-gradient-to-r from-red-600 to-orange-600 rounded-2xl font-black italic text-base md:text-lg tracking-tighter flex items-center justify-center gap-3 shadow-[0_0_30px_rgba(220,38,38,0.3)] disabled:opacity-50 transition-all"
-                >
-                  {creating ? <Loader2 className="w-5 h-5 animate-spin" /> : <Plus className="w-5 h-5" />}
-                  创建房间
-                </motion.button>
-              </div>
-            )}
-
-            {mode === 'join' && (
-              <div className="flex flex-col items-center gap-6 mt-4">
-                <input
-                  className="text-center text-xl md:text-2xl font-mono font-bold tracking-[0.2em] md:tracking-[0.3em] bg-zinc-900 border border-zinc-800 rounded-xl px-4 md:px-6 py-3 md:py-4 w-full md:w-80 focus:outline-none focus:border-red-600 transition-all"
-                  placeholder="输入房间码"
-                  maxLength={8}
-                  value={roomCode}
-                  onChange={e => setRoomCode(e.target.value.replace(/\D/g, ''))}
-                />
-                <motion.button
-                  whileHover={{ scale: 1.03 }}
-                  whileTap={{ scale: 0.97 }}
-                  onClick={handleJoinRoom}
-                  disabled={joining || !selectedDeckId || roomCode.length < 6}
-                  className="w-full md:w-auto px-8 md:px-10 py-3 md:py-3.5 bg-gradient-to-r from-blue-600 to-cyan-600 rounded-2xl font-black italic text-base md:text-lg tracking-tighter flex items-center justify-center gap-3 shadow-[0_0_30px_rgba(37,99,235,0.3)] disabled:opacity-50 transition-all"
-                >
-                  {joining ? <Loader2 className="w-5 h-5 animate-spin" /> : <LogIn className="w-5 h-5" />}
-                  加入房间
-                </motion.button>
-              </div>
-            )}
-          </>
+            <div className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4 text-center text-xs font-bold tracking-widest text-zinc-500">
+              {lobby.status === 'STARTING'
+                ? '双方已准备，正在进入战场...'
+                : '玩家1与玩家2都选择合法卡组并准备后，将自动开始对局'}
+            </div>
+          </div>
         )}
       </div>
     </div>

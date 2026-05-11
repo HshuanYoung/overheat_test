@@ -4,7 +4,7 @@ import { Card, PlayerState, StackItem, GameState, GAME_TIMEOUTS } from '../types
 import { CardComponent } from './Card';
 import { StandardPopup } from './StandardPopup';
 import { KeywordBadges } from './KeywordBadges';
-import { Shield, Sword, Zap, Trash2, Flag, BookOpen, Layers, AlertTriangle, Search, Play, X, Hand } from 'lucide-react';
+import { Shield, Sword, Zap, Trash2, Flag, BookOpen, Layers, AlertTriangle, Search, Play, X, Hand, LogOut } from 'lucide-react';
 import { cn, getCardImageUrl } from '../lib/utils';
 
 interface PlayFieldProps {
@@ -44,6 +44,7 @@ interface PlayFieldProps {
   isPopupHidden?: boolean;
   onHidePopup?: () => void;
   onExpand?: () => void;
+  isSpectator?: boolean;
 }
 
 const CardSlot: React.FC<{
@@ -225,7 +226,8 @@ const PlayerHalf: React.FC<{
   viewingZone?: { title: string, type: string, isOpponentZone?: boolean } | null;
   setViewingZone?: (zone: { title: string, type: string, isOpponentZone?: boolean } | null) => void;
   highlightedCardIds?: Set<string>;
-}> = ({ player, isOpponent, onCardClick, onPreviewCard, onHoverCard, onPlayCard, paymentSelection, pendingPlayCard, selectedAttackers, selectedDefender, game, allianceInitiator, cardBackUrl, viewingZone, setViewingZone, highlightedCardIds }) => {
+  isSpectator?: boolean;
+}> = ({ player, isOpponent, onCardClick, onPreviewCard, onHoverCard, onPlayCard, paymentSelection, pendingPlayCard, selectedAttackers, selectedDefender, game, allianceInitiator, cardBackUrl, viewingZone, setViewingZone, highlightedCardIds, isSpectator }) => {
   if (!player) return null;
   const unitZoneOffsetClass = ""; // Removed horizontal offset to prevent blocking exile area
   const getMobileErosionCount = (playerState: PlayerState): number | string => {
@@ -236,10 +238,12 @@ const PlayerHalf: React.FC<{
   };
   const erosionSlotLabels = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10'];
   const shouldUseHandSlot = (player.hand?.length || 0) > 9;
+  const canViewHand = isSpectator || !isOpponent || !!player.isHandPublic;
+  const shouldRenderHandSlot = shouldUseHandSlot || (!isSpectator && !!player.isHandPublic);
   const openHandZone = () => {
-    if (isOpponent && !player.isHandPublic) return;
+    if (!canViewHand) return;
     setViewingZone?.({
-      title: isOpponent ? (player.isHandPublic ? '敌方公开手牌' : '敌方手牌') : '手牌',
+      title: isSpectator ? `${isOpponent ? '玩家2' : '玩家1'}手牌` : isOpponent ? (player.isHandPublic ? '敌方公开手牌' : '敌方手牌') : '手牌',
       type: 'hand',
       isOpponentZone: !!isOpponent
     });
@@ -327,13 +331,25 @@ const PlayerHalf: React.FC<{
             {/* Opponent Hand Area */}
             <div className="flex items-center justify-center px-1 md:px-0 mb-1 md:mb-2">
               <div className="flex-1 h-14 md:h-20 flex items-center justify-center gap-1 overflow-x-auto bg-black/20 rounded-lg border border-white/5 custom-scrollbar">
-                {shouldUseHandSlot || player.isHandPublic ? (
+                {shouldRenderHandSlot ? (
                   <HandZoneSlot
                     count={player.hand?.length || 0}
                     isOpponent={isOpponent}
-                    isPublic={!!player.isHandPublic}
-                    onClick={player.isHandPublic ? openHandZone : undefined}
+                    isPublic={!!player.isHandPublic || !!isSpectator}
+                    onClick={canViewHand ? openHandZone : undefined}
                   />
+                ) : isSpectator ? (
+                  player.hand?.map((card, i) => (
+                    <div
+                      key={card.gamecardId || i}
+                      className="w-10 md:w-[76.8px] shrink-0 cursor-pointer shadow-lg drop-shadow-md transition-all hover:-translate-y-1"
+                      onClick={(e) => onCardClick?.(card, 'hand', i, e)}
+                      onMouseEnter={() => onHoverCard?.(card)}
+                      onMouseLeave={() => onHoverCard?.(null)}
+                    >
+                      <CardComponent card={card} cardBackUrl={cardBackUrl} disableZoom displayMode="hand" />
+                    </div>
+                  ))
                 ) : (
                   player.hand?.map((card, i) => (
                     <div
@@ -595,7 +611,7 @@ export const PlayField: React.FC<PlayFieldProps> = ({
   setViewingZone, highlightedCardIds, onShowLogs, onOpenRulebook,
   onSurrender, onPhaseClick, confrontationStrategy, onUpdateStrategy,
   canConfront, isConfrontPromptActive, isCounteringPromptActive, isDefensePromptActive, onStartConfront, onDeclineConfront, onDeclineDefense,
-  showPhaseMenu, isAnyPopupOpen, isPopupHidden, onHidePopup, onExpand
+  showPhaseMenu, isAnyPopupOpen, isPopupHidden, onHidePopup, onExpand, isSpectator
 }) => {
   const [hoveredCard, setHoveredCard] = useState<Card | null>(null);
   const [isDesktop, setIsDesktop] = useState<boolean>(() => typeof window !== 'undefined' ? window.innerWidth >= 1024 : false);
@@ -608,7 +624,7 @@ export const PlayField: React.FC<PlayFieldProps> = ({
   }, []);
 
   if (!player || !opponent || !game) return null;
-  const isCurrentPlayer = game.playerIds[game.currentTurnPlayer] === myUid;
+  const isCurrentPlayer = !isSpectator && game.playerIds[game.currentTurnPlayer] === myUid;
   const phaseLabel =
     game.phase === 'COUNTERING' ? '对抗' :
       game.phase === 'MAIN' ? '主要' :
@@ -647,7 +663,7 @@ export const PlayField: React.FC<PlayFieldProps> = ({
         cardMeta={Object.fromEntries(
           viewingZoneCards.map(card => {
             const isFaceDown = viewingZone?.type === 'erosion' && viewingZoneErosionBackIds.includes(card.gamecardId);
-            const isHiddenOpponentHand = viewingZone?.type === 'hand' && viewingZone?.isOpponentZone && !viewingZoneOwner.isHandPublic;
+            const isHiddenOpponentHand = !isSpectator && viewingZone?.type === 'hand' && viewingZone?.isOpponentZone && !viewingZoneOwner.isHandPublic;
             return [
               card.gamecardId || card.id,
               {
@@ -719,6 +735,7 @@ export const PlayField: React.FC<PlayFieldProps> = ({
           viewingZone={viewingZone}
           setViewingZone={setViewingZone}
           highlightedCardIds={highlightedCardIds}
+          isSpectator={isSpectator}
         />
       </div>
 
@@ -737,9 +754,9 @@ export const PlayField: React.FC<PlayFieldProps> = ({
                 onClick={onSurrender}
                 disabled={isPopupHidden}
                 className="rounded-full border border-white/5 bg-white/5 p-2 text-white/60 shadow-inner transition-all hover:bg-red-500/20 hover:text-red-500 disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:bg-white/5 disabled:hover:text-white/60 md:p-2.5"
-                title="投降"
+                title={isSpectator ? '退出观战' : '投降'}
               >
-                <Flag className="h-4 w-4 md:h-5 md:w-5" />
+                {isSpectator ? <LogOut className="h-4 w-4 md:h-5 md:w-5" /> : <Flag className="h-4 w-4 md:h-5 md:w-5" />}
               </button>
               <div className="flex flex-col items-center">
                 {/* <span className="text-[10px] font-black text-white/30 uppercase tracking-widest">回合</span> */}
@@ -753,22 +770,24 @@ export const PlayField: React.FC<PlayFieldProps> = ({
             <div className="flex items-center gap-2 md:gap-4">
               <div className={cn(
                 "flex h-8 w-8 items-center justify-center rounded-xl border-2 shadow-lg transition-all md:h-10 md:w-10",
-                game.playerIds[game.currentTurnPlayer] === myUid
+                isCurrentPlayer
                   ? "bg-red-500/20 border-red-500 shadow-red-500/20"
                   : "bg-blue-500/20 border-blue-500 shadow-blue-500/20"
               )}>
-                {game.playerIds[game.currentTurnPlayer] === myUid ? <Sword className="h-5 w-5 text-red-500 md:h-6 md:w-6" /> : <Shield className="h-5 w-5 text-blue-500 md:h-6 md:w-6" />}
+                {isCurrentPlayer ? <Sword className="h-5 w-5 text-red-500 md:h-6 md:w-6" /> : <Shield className="h-5 w-5 text-blue-500 md:h-6 md:w-6" />}
               </div>
 
-              <div className="flex min-w-[44px] flex-col md:min-w-[60px]">
-                {/* <span className="text-[10px] font-black text-white/30 uppercase tracking-widest">倒计时</span> */}
-                <span className={cn(
-                  "text-lg font-black italic tabular-nums md:text-xl",
-                  (timer || 0) < 30 ? "text-red-500 animate-pulse" : "text-white"
-                )}>
-                  {timer}s
-                </span>
-              </div>
+              {!isSpectator && (
+                <div className="flex min-w-[44px] flex-col md:min-w-[60px]">
+                  {/* <span className="text-[10px] font-black text-white/30 uppercase tracking-widest">倒计时</span> */}
+                  <span className={cn(
+                    "text-lg font-black italic tabular-nums md:text-xl",
+                    (timer || 0) < 30 ? "text-red-500 animate-pulse" : "text-white"
+                  )}>
+                    {timer}s
+                  </span>
+                </div>
+              )}
             </div>
 
             <div className="h-7 w-px bg-white/10 md:h-8" />
@@ -785,7 +804,7 @@ export const PlayField: React.FC<PlayFieldProps> = ({
                   "bg-amber-500/15 border-amber-400/40 shadow-[0_0_24px_rgba(251,191,36,0.35)] animate-pulse"
               )}
               onClick={(e) => {
-                if (isPopupHidden) return;
+                if (isSpectator || isPopupHidden) return;
                 if (isConfrontPromptActive || isCounteringPromptActive || isDefensePromptActive) return;
                 onPhaseClick?.();
               }}
@@ -827,23 +846,25 @@ export const PlayField: React.FC<PlayFieldProps> = ({
 
           {/* Combat Strategy & Logs */}
           <div className="flex w-fit max-w-full items-center justify-center gap-2 md:w-auto md:gap-4">
-            <div className="flex items-center rounded-full border border-white/5 bg-black/40 p-0.5 md:p-1">
-              {(['ON', 'AUTO', 'OFF'] as const).map(strategy => (
-                <button
-                  key={strategy}
-                  onClick={() => onUpdateStrategy?.(strategy)}
-                  disabled={isPopupHidden}
-                  className={cn(
-                    "rounded-full px-2 py-0.5 text-[9px] font-black tracking-widest transition-all disabled:cursor-not-allowed disabled:opacity-35 md:px-3 md:py-1 md:text-[10px]",
-                    confrontationStrategy === strategy
-                      ? "bg-[#f27d26] text-black shadow-lg"
-                      : "text-white/40 hover:text-white"
-                  )}
-                >
-                  {strategy}
-                </button>
-              ))}
-            </div>
+            {!isSpectator && (
+              <div className="flex items-center rounded-full border border-white/5 bg-black/40 p-0.5 md:p-1">
+                {(['ON', 'AUTO', 'OFF'] as const).map(strategy => (
+                  <button
+                    key={strategy}
+                    onClick={() => onUpdateStrategy?.(strategy)}
+                    disabled={isPopupHidden}
+                    className={cn(
+                      "rounded-full px-2 py-0.5 text-[9px] font-black tracking-widest transition-all disabled:cursor-not-allowed disabled:opacity-35 md:px-3 md:py-1 md:text-[10px]",
+                      confrontationStrategy === strategy
+                        ? "bg-[#f27d26] text-black shadow-lg"
+                        : "text-white/40 hover:text-white"
+                    )}
+                  >
+                    {strategy}
+                  </button>
+                ))}
+              </div>
+            )}
 
             <div className="flex items-center gap-1.5 md:gap-2">
               {isPopupHidden && (
@@ -894,6 +915,7 @@ export const PlayField: React.FC<PlayFieldProps> = ({
           viewingZone={viewingZone}
           setViewingZone={setViewingZone}
           highlightedCardIds={highlightedCardIds}
+          isSpectator={isSpectator}
         />
       </div>
 

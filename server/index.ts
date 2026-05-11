@@ -197,6 +197,170 @@ function triggerBotIfNeeded(gameState: any, gameId: string) {
     }
 }
 
+type FriendSeatTarget = 'player' | 'player1' | 'player2' | 'spectator';
+
+const normalizeOptionalUid = (uid: any) => {
+    if (uid === undefined || uid === null || uid === '') return null;
+    return uid.toString();
+};
+
+function isFriendGameStarted(gameState: any) {
+    return gameState.status === 'STARTING' || gameState.status === 'ACTIVE' || (gameState.phase && gameState.phase !== 'INIT');
+}
+
+function normalizeFriendRoomState(gameState: any) {
+    if (!Array.isArray(gameState.playerIds)) gameState.playerIds = [];
+    const p1 = normalizeOptionalUid(gameState.playerIds[0]);
+    const p2Raw = normalizeOptionalUid(gameState.playerIds[1]);
+    const p2 = p2Raw && p2Raw !== p1 ? p2Raw : null;
+    gameState.playerIds = [p1, p2];
+
+    if (!Array.isArray(gameState.participantIds)) {
+        gameState.participantIds = gameState.playerIds.filter(Boolean).map((uid: any) => uid.toString());
+    }
+    if (!Array.isArray(gameState.spectatorIds)) gameState.spectatorIds = [];
+    if (!gameState.friendDeckSelections || typeof gameState.friendDeckSelections !== 'object') gameState.friendDeckSelections = {};
+    if (!gameState.friendReady || typeof gameState.friendReady !== 'object') gameState.friendReady = {};
+
+    gameState.participantIds = Array.from(new Set(gameState.participantIds.map((uid: any) => uid.toString())));
+    gameState.spectatorIds = Array.from(new Set(gameState.spectatorIds.map((uid: any) => uid.toString())));
+
+    for (const uid of gameState.playerIds.filter(Boolean)) {
+        if (!gameState.participantIds.includes(uid)) gameState.participantIds.push(uid);
+    }
+
+    const playerSet = new Set(gameState.playerIds.filter(Boolean));
+    gameState.spectatorIds = gameState.spectatorIds.filter((uid: string) => !playerSet.has(uid));
+    for (const uid of gameState.spectatorIds) {
+        if (!gameState.participantIds.includes(uid)) gameState.participantIds.push(uid);
+    }
+
+    for (const uid of Object.keys(gameState.friendDeckSelections)) {
+        if (!playerSet.has(uid)) delete gameState.friendDeckSelections[uid];
+    }
+    for (const uid of Object.keys(gameState.friendReady)) {
+        if (!playerSet.has(uid)) delete gameState.friendReady[uid];
+    }
+
+    if (!gameState.hostUid || !gameState.participantIds.includes(gameState.hostUid.toString())) {
+        gameState.hostUid = gameState.participantIds[0] || undefined;
+    }
+}
+
+function getFriendSeat(gameState: any, userId: string): 'player1' | 'player2' | 'spectator' | null {
+    normalizeFriendRoomState(gameState);
+    const userIdStr = userId.toString();
+    if (gameState.playerIds[0] === userIdStr) return 'player1';
+    if (gameState.playerIds[1] === userIdStr) return 'player2';
+    if (gameState.spectatorIds.includes(userIdStr)) return 'spectator';
+    return null;
+}
+
+function ensureFriendParticipant(gameState: any, userId: string) {
+    normalizeFriendRoomState(gameState);
+    const userIdStr = userId.toString();
+    if (!gameState.participantIds.includes(userIdStr)) {
+        gameState.participantIds.push(userIdStr);
+    }
+    if (!gameState.hostUid) gameState.hostUid = userIdStr;
+}
+
+function clearFriendPlayerMeta(gameState: any, userId: string) {
+    if (gameState.friendDeckSelections) delete gameState.friendDeckSelections[userId];
+    if (gameState.friendReady) delete gameState.friendReady[userId];
+    if (gameState.players?.[userId] && !isFriendGameStarted(gameState)) delete gameState.players[userId];
+}
+
+function setFriendSeat(gameState: any, userId: string, seat: FriendSeatTarget) {
+    normalizeFriendRoomState(gameState);
+    ensureFriendParticipant(gameState, userId);
+
+    const userIdStr = userId.toString();
+    const currentSeat = getFriendSeat(gameState, userIdStr);
+    const started = isFriendGameStarted(gameState);
+
+    if (started && currentSeat !== 'player1' && currentSeat !== 'player2' && seat !== 'spectator') {
+        throw new Error('对局已开始，无法加入对战席');
+    }
+
+    if (seat === 'player') {
+        if (currentSeat === 'player1' || currentSeat === 'player2') return;
+        seat = !gameState.playerIds[1] ? 'player2' : !gameState.playerIds[0] ? 'player1' : 'spectator';
+    }
+
+    if (seat === 'spectator') {
+        if (currentSeat === 'player1') gameState.playerIds[0] = null;
+        if (currentSeat === 'player2') gameState.playerIds[1] = null;
+        clearFriendPlayerMeta(gameState, userIdStr);
+        if (!gameState.spectatorIds.includes(userIdStr)) gameState.spectatorIds.push(userIdStr);
+    } else {
+        if (started && currentSeat !== seat) throw new Error('对局已开始，无法切换对战席');
+        const slotIndex = seat === 'player1' ? 0 : 1;
+        const occupiedBy = gameState.playerIds[slotIndex];
+        if (occupiedBy && occupiedBy !== userIdStr) throw new Error(`${seat === 'player1' ? '玩家1' : '玩家2'} 已有人`);
+
+        if (currentSeat === 'player1') gameState.playerIds[0] = null;
+        if (currentSeat === 'player2') gameState.playerIds[1] = null;
+        gameState.spectatorIds = gameState.spectatorIds.filter((uid: string) => uid !== userIdStr);
+        gameState.playerIds[slotIndex] = userIdStr;
+        gameState.friendReady[userIdStr] = false;
+    }
+
+    normalizeFriendRoomState(gameState);
+    if (!started) {
+        gameState.status = gameState.playerIds[0] && gameState.playerIds[1] ? 'READY' : 'WAITING';
+    }
+}
+
+function removeFriendParticipant(gameState: any, userId: string) {
+    normalizeFriendRoomState(gameState);
+    const userIdStr = userId.toString();
+    const currentSeat = getFriendSeat(gameState, userIdStr);
+
+    gameState.participantIds = gameState.participantIds.filter((uid: string) => uid !== userIdStr);
+    gameState.spectatorIds = gameState.spectatorIds.filter((uid: string) => uid !== userIdStr);
+
+    if (!isFriendGameStarted(gameState)) {
+        if (currentSeat === 'player1') gameState.playerIds[0] = null;
+        if (currentSeat === 'player2') gameState.playerIds[1] = null;
+        clearFriendPlayerMeta(gameState, userIdStr);
+    }
+
+    gameState.hostUid = gameState.participantIds[0] || undefined;
+    if (!isFriendGameStarted(gameState)) {
+        gameState.status = gameState.playerIds[0] && gameState.playerIds[1] ? 'READY' : 'WAITING';
+    }
+}
+
+function buildFriendLobbyResponse(gameId: string, gameState: any, userId: string) {
+    normalizeFriendRoomState(gameState);
+    return {
+        gameId,
+        roomCode: gameState.roomCode,
+        turnTimerLimit: gameState.turnTimerLimit,
+        playerIds: gameState.playerIds,
+        spectatorIds: gameState.spectatorIds,
+        participantIds: gameState.participantIds,
+        hostUid: gameState.hostUid,
+        friendDeckSelections: gameState.friendDeckSelections || {},
+        friendReady: gameState.friendReady || {},
+        status: gameState.status || 'WAITING',
+        started: isFriendGameStarted(gameState),
+        mySeat: getFriendSeat(gameState, userId) || 'spectator'
+    };
+}
+
+function getFriendPlayerDeckId(gameState: any, userId: string) {
+    normalizeFriendRoomState(gameState);
+    return gameState.friendDeckSelections?.[userId.toString()];
+}
+
+function normalizeTurnTimerLimit(value: any) {
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed)) return 300;
+    return Math.min(999, Math.max(180, Math.round(parsed)));
+}
+
 type RpsChoice = 'ROCK' | 'PAPER' | 'SCISSORS';
 
 const RPS_LABELS: Record<RpsChoice, string> = {
@@ -515,6 +679,7 @@ setInterval(async () => {
 
                 const gameState = typeof stateRows[0].state === 'string' ? JSON.parse(stateRows[0].state) : stateRows[0].state;
                 if (!gameState || gameState.gameStatus === 2) return;
+                if (gameState.mode === 'friend' && !isFriendGameStarted(gameState)) return;
                 ServerGameService.hydrateGameState(gameState);
 
                 const now = Date.now();
@@ -861,7 +1026,12 @@ app.post('/api/games/friend', async (req, res): Promise<void> => {
         const userIdStr = user.userId.toString();
         const initialState = {
             gameId: gameId,
-            playerIds: [userIdStr],
+            playerIds: [userIdStr, null],
+            participantIds: [userIdStr],
+            spectatorIds: [],
+            hostUid: userIdStr,
+            friendDeckSelections: {},
+            friendReady: { [userIdStr]: false },
             players: {},
             status: 'WAITING',
             phase: 'INIT',
@@ -873,11 +1043,11 @@ app.post('/api/games/friend', async (req, res): Promise<void> => {
             counterStack: [],
             isCountering: 0,
             effectUsage: {},
-            turnTimerLimit: req.body.turnTimerLimit
+            turnTimerLimit: normalizeTurnTimerLimit(req.body?.turnTimerLimit)
         };
 
         await pool.query('INSERT INTO games (id, state, status) VALUES (?, ?, 0)', [gameId, JSON.stringify(initialState)]);
-        res.json({ gameId, roomCode });
+        res.json(buildFriendLobbyResponse(gameId, initialState, userIdStr));
     } catch (err) {
         console.error('Create friend game error:', err);
         res.status(500).json({ error: 'Internal server error' });
@@ -902,21 +1072,16 @@ app.post('/api/games/friend/join', async (req, res): Promise<void> => {
             return;
         }
         const gameState = typeof rows[0].state === 'string' ? JSON.parse(rows[0].state) : rows[0].state;
-        if (gameState.playerIds.length >= 2) {
-            res.status(400).json({ error: '房间已满' });
-            return;
-        }
         const userIdStr = user.userId.toString();
-        if (gameState.playerIds.includes(userIdStr)) {
-
-            res.status(400).json({ error: '你已在该房间中' });
-            return;
+        ensureFriendParticipant(gameState, userIdStr);
+        if (!isFriendGameStarted(gameState) && !getFriendSeat(gameState, userIdStr)) {
+            setFriendSeat(gameState, userIdStr, gameState.playerIds[1] ? 'spectator' : 'player2');
+        } else if (isFriendGameStarted(gameState) && !getFriendSeat(gameState, userIdStr)) {
+            setFriendSeat(gameState, userIdStr, 'spectator');
         }
-        gameState.playerIds.push(userIdStr);
-        gameState.status = 'READY';
 
         await syncAndSaveState(gameId, gameState);
-        res.json({ gameId });
+        res.json(buildFriendLobbyResponse(gameId, gameState, userIdStr));
     } catch (err) {
         console.error('Join friend game error:', err);
         res.status(500).json({ error: 'Internal server error' });
@@ -943,22 +1108,183 @@ app.get('/api/games/friend/:gameId/status', async (req, res): Promise<void> => {
         }
 
         const gameState = typeof rows[0].state === 'string' ? JSON.parse(rows[0].state) : rows[0].state;
+        normalizeFriendRoomState(gameState);
         const playerIds = Array.isArray(gameState.playerIds) ? gameState.playerIds : [];
+        const spectatorIds = Array.isArray(gameState.spectatorIds) ? gameState.spectatorIds : [];
+        const participantIds = Array.isArray(gameState.participantIds) ? gameState.participantIds : [];
         const userIdStr = user.userId.toString();
 
-        if (!playerIds.includes(userIdStr)) {
+        if (!participantIds.includes(userIdStr)) {
             res.status(403).json({ error: 'Forbidden' });
             return;
         }
 
-        res.json({
-            gameId,
-            joined: playerIds.length >= 2,
-            playerCount: playerIds.length,
-            status: gameState.status || 'WAITING'
-        });
+        res.json(buildFriendLobbyResponse(gameId, gameState, userIdStr));
     } catch (err) {
         console.error('Friend game status error:', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+app.post('/api/games/friend/:gameId/seat', async (req, res): Promise<void> => {
+    const authHeader = req.headers.authorization;
+    if (!authHeader) { res.status(401).json({ error: 'Unauthorized' }); return; }
+    const user = verifyToken(authHeader.split(' ')[1]);
+    if (!user) { res.status(401).json({ error: 'Invalid token' }); return; }
+
+    const { gameId } = req.params;
+    const seat = req.body?.seat as FriendSeatTarget;
+    if (!['player1', 'player2', 'spectator'].includes(seat)) {
+        res.status(400).json({ error: '无效的席位' });
+        return;
+    }
+
+    try {
+        await withGameLock(gameId, async () => {
+            const rows = await pool.query('SELECT state FROM games WHERE id = ?', [gameId]);
+            if (rows.length === 0) { res.status(404).json({ error: '未找到该房间' }); return; }
+            const gameState = typeof rows[0].state === 'string' ? JSON.parse(rows[0].state) : rows[0].state;
+            setFriendSeat(gameState, user.userId.toString(), seat);
+            await syncAndSaveState(gameId, gameState);
+            res.json(buildFriendLobbyResponse(gameId, gameState, user.userId.toString()));
+        });
+    } catch (err: any) {
+        res.status(400).json({ error: err.message || '切换席位失败' });
+    }
+});
+
+app.post('/api/games/friend/:gameId/timer', async (req, res): Promise<void> => {
+    const authHeader = req.headers.authorization;
+    if (!authHeader) { res.status(401).json({ error: 'Unauthorized' }); return; }
+    const user = verifyToken(authHeader.split(' ')[1]);
+    if (!user) { res.status(401).json({ error: 'Invalid token' }); return; }
+
+    const { gameId } = req.params;
+    const turnTimerLimit = normalizeTurnTimerLimit(req.body?.turnTimerLimit);
+
+    try {
+        await withGameLock(gameId, async () => {
+            const rows = await pool.query('SELECT state FROM games WHERE id = ?', [gameId]);
+            if (rows.length === 0) { res.status(404).json({ error: '未找到该房间' }); return; }
+            const gameState = typeof rows[0].state === 'string' ? JSON.parse(rows[0].state) : rows[0].state;
+            normalizeFriendRoomState(gameState);
+            if (isFriendGameStarted(gameState)) { res.status(400).json({ error: '对局已开始，无法修改时间' }); return; }
+            if (gameState.hostUid?.toString() !== user.userId.toString()) { res.status(403).json({ error: '只有房主可以修改时间' }); return; }
+
+            gameState.turnTimerLimit = turnTimerLimit;
+            await syncAndSaveState(gameId, gameState);
+            res.json(buildFriendLobbyResponse(gameId, gameState, user.userId.toString()));
+        });
+    } catch (err) {
+        console.error('Friend timer update error:', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+app.post('/api/games/friend/:gameId/deck', async (req, res): Promise<void> => {
+    const authHeader = req.headers.authorization;
+    if (!authHeader) { res.status(401).json({ error: 'Unauthorized' }); return; }
+    const user = verifyToken(authHeader.split(' ')[1]);
+    if (!user) { res.status(401).json({ error: 'Invalid token' }); return; }
+
+    const { gameId } = req.params;
+    const { deckId } = req.body || {};
+    if (!deckId) { res.status(400).json({ error: '请选择卡组' }); return; }
+
+    try {
+        await withGameLock(gameId, async () => {
+            const rows = await pool.query('SELECT state FROM games WHERE id = ?', [gameId]);
+            if (rows.length === 0) { res.status(404).json({ error: '未找到该房间' }); return; }
+            const gameState = typeof rows[0].state === 'string' ? JSON.parse(rows[0].state) : rows[0].state;
+            if (isFriendGameStarted(gameState)) { res.status(400).json({ error: '对局已开始' }); return; }
+
+            const userIdStr = user.userId.toString();
+            const seat = getFriendSeat(gameState, userIdStr);
+            if (seat !== 'player1' && seat !== 'player2') { res.status(400).json({ error: '只有对战席需要选择卡组' }); return; }
+
+            const validation = await validateUserDeck(user.userId, deckId);
+            if (!validation.valid) { res.status(400).json({ error: validation.error }); return; }
+
+            gameState.friendDeckSelections[userIdStr] = deckId;
+            gameState.friendReady[userIdStr] = false;
+            await syncAndSaveState(gameId, gameState);
+            res.json(buildFriendLobbyResponse(gameId, gameState, userIdStr));
+        });
+    } catch (err) {
+        console.error('Friend deck selection error:', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+app.post('/api/games/friend/:gameId/ready', async (req, res): Promise<void> => {
+    const authHeader = req.headers.authorization;
+    if (!authHeader) { res.status(401).json({ error: 'Unauthorized' }); return; }
+    const user = verifyToken(authHeader.split(' ')[1]);
+    if (!user) { res.status(401).json({ error: 'Invalid token' }); return; }
+
+    const { gameId } = req.params;
+    const ready = !!req.body?.ready;
+
+    try {
+        await withGameLock(gameId, async () => {
+            const rows = await pool.query('SELECT state FROM games WHERE id = ?', [gameId]);
+            if (rows.length === 0) { res.status(404).json({ error: '未找到该房间' }); return; }
+            const gameState = typeof rows[0].state === 'string' ? JSON.parse(rows[0].state) : rows[0].state;
+            if (isFriendGameStarted(gameState)) { res.json(buildFriendLobbyResponse(gameId, gameState, user.userId.toString())); return; }
+
+            normalizeFriendRoomState(gameState);
+            const userIdStr = user.userId.toString();
+            const seat = getFriendSeat(gameState, userIdStr);
+            if (seat !== 'player1' && seat !== 'player2') { res.status(400).json({ error: '观众无需准备' }); return; }
+            const deckId = gameState.friendDeckSelections?.[userIdStr];
+            if (ready) {
+                if (!deckId) { res.status(400).json({ error: '请先选择卡组' }); return; }
+                const validation = await validateUserDeck(user.userId, deckId);
+                if (!validation.valid) { res.status(400).json({ error: validation.error }); return; }
+            }
+
+            gameState.friendReady[userIdStr] = ready;
+            const [p1, p2] = gameState.playerIds;
+            if (
+                p1 && p2 &&
+                gameState.friendDeckSelections[p1] &&
+                gameState.friendDeckSelections[p2] &&
+                gameState.friendReady[p1] &&
+                gameState.friendReady[p2]
+            ) {
+                gameState.status = 'STARTING';
+            } else {
+                gameState.status = p1 && p2 ? 'READY' : 'WAITING';
+            }
+
+            await syncAndSaveState(gameId, gameState);
+            res.json(buildFriendLobbyResponse(gameId, gameState, userIdStr));
+        });
+    } catch (err) {
+        console.error('Friend ready error:', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+app.post('/api/games/friend/:gameId/leave', async (req, res): Promise<void> => {
+    const authHeader = req.headers.authorization;
+    if (!authHeader) { res.status(401).json({ error: 'Unauthorized' }); return; }
+    const user = verifyToken(authHeader.split(' ')[1]);
+    if (!user) { res.status(401).json({ error: 'Invalid token' }); return; }
+
+    const { gameId } = req.params;
+
+    try {
+        await withGameLock(gameId, async () => {
+            const rows = await pool.query('SELECT state FROM games WHERE id = ?', [gameId]);
+            if (rows.length === 0) { res.status(404).json({ error: '未找到该房间' }); return; }
+            const gameState = typeof rows[0].state === 'string' ? JSON.parse(rows[0].state) : rows[0].state;
+            removeFriendParticipant(gameState, user.userId.toString());
+            await syncAndSaveState(gameId, gameState);
+            res.json({ ok: true });
+        });
+    } catch (err) {
+        console.error('Friend leave error:', err);
         res.status(500).json({ error: 'Internal server error' });
     }
 });
@@ -1687,7 +2013,7 @@ io.on('connection', (socket) => {
         }
     });
 
-    socket.on('joinGame', async (data: { gameId: string, deckId?: string }) => {
+    socket.on('joinGame', async (data: { gameId: string, deckId?: string, seat?: 'player' | 'spectator' }) => {
         const user = (socket as any).user;
         if (!user) {
             // console.log('[Socket] joinGame failed: Socket not authenticated');
@@ -1698,6 +2024,7 @@ io.on('connection', (socket) => {
         const userIdStr = user.userId.toString();
         const gameId = typeof data === 'string' ? data : data.gameId;
         const deckId = typeof data === 'object' ? data.deckId : undefined;
+        const requestedSeat = typeof data === 'object' && data.seat === 'spectator' ? 'spectator' : 'player';
 
         // console.log(`[Socket] Request gameId: ${gameId}`);
         if (!gameId || gameId === 'undefined') {
@@ -1725,15 +2052,32 @@ io.on('connection', (socket) => {
                 const gameState = typeof rows[0].state === 'string' ? JSON.parse(rows[0].state) : rows[0].state;
                 ServerGameService.hydrateGameState(gameState);
                 if (!gameState.players) gameState.players = {};
+                const isFriendGame = gameState.mode === 'friend';
+                if (isFriendGame) normalizeFriendRoomState(gameState);
+                let seat: FriendSeatTarget = isFriendGame ? requestedSeat : 'player';
+                if (isFriendGame && (gameState.playerIds || []).includes(userIdStr)) seat = 'player';
+
+                if (isFriendGame) {
+                    try {
+                        if (seat === 'spectator' || !(gameState.playerIds || []).includes(userIdStr)) {
+                            setFriendSeat(gameState, userIdStr, seat);
+                        }
+                    } catch (err: any) {
+                        socket.emit('error', err.message || '无法加入该席位');
+                        socket.emit('gameStateUpdate', gameState);
+                        return;
+                    }
+                }
 
                 const initializedPlayers = Object.keys(gameState.players);
                 // console.log(`[Socket] joinGame for ${userIdStr} in ${gameId}. Current players: ${initializedPlayers.join(',')}`);
 
                 // Initialize human player if they haven't been initialized yet
-                if (!gameState.players[userIdStr]) {
-                    if (deckId) {
+                if (seat === 'player' && !gameState.players[userIdStr]) {
+                    const effectiveDeckId = isFriendGame ? getFriendPlayerDeckId(gameState, userIdStr) : deckId;
+                    if (effectiveDeckId) {
                         // console.log(`[Socket] Initializing player ${userIdStr} in game ${gameId}`);
-                        const deckRows = await pool.query('SELECT * FROM decks WHERE id = ?', [deckId]);
+                        const deckRows = await pool.query('SELECT * FROM decks WHERE id = ?', [effectiveDeckId]);
                         if (deckRows.length > 0) {
                             const deckCardsRaw = typeof deckRows[0].cards === 'string' ? JSON.parse(deckRows[0].cards) : deckRows[0].cards;
 
@@ -1766,7 +2110,7 @@ io.on('connection', (socket) => {
 
                             await syncAndSaveState(gameId, gameState);
                         } else {
-                            console.error(`[Socket] Deck ${deckId} not found for user ${userIdStr}`);
+                            console.error(`[Socket] Deck ${effectiveDeckId} not found for user ${userIdStr}`);
                             socket.emit('error', '未找到选定的卡组');
                             return;
                         }
@@ -1779,9 +2123,10 @@ io.on('connection', (socket) => {
                 }
 
                 // Start the phase timer if it hasn't started yet and players are ready
-                const initializedCount = Object.keys(gameState.players).length;
                 const isInitial = gameState.phase === 'INIT' || gameState.phase === 'RPS' || gameState.phase === 'FIRST_PLAYER_CHOICE' || gameState.phase === 'MULLIGAN';
-                if (isInitial && initializedCount >= 2 && (gameState.phase === 'INIT' || !gameState.phaseTimerStart || gameState.phaseTimerStart === 0)) {
+                const initializedRealPlayerCount = gameState.playerIds.filter((uid: string) => !!gameState.players[uid]).length;
+                const canStartFriendGame = !isFriendGame || gameState.status === 'STARTING' || gameState.status === 'ACTIVE';
+                if (canStartFriendGame && isInitial && initializedRealPlayerCount >= 2 && (gameState.phase === 'INIT' || !gameState.phaseTimerStart || gameState.phaseTimerStart === 0)) {
                     if (gameState.phase === 'INIT') {
                         if (gameState.mode === 'practice') {
                             const humanUid = gameState.playerIds.find((uid: string) => uid !== 'BOT_PLAYER') || userIdStr;
@@ -1968,11 +2313,34 @@ io.on('connection', (socket) => {
         });
     });
 
-    socket.on('leaveGame', (gameId: string) => {
-        if (gameId) {
-            // console.log(`[Socket] User ${((socket as any).user?.userId) || socket.id} leaving game ${gameId}`);
-            socket.leave(gameId);
+    socket.on('leaveGame', async (gameId: string) => {
+        if (!gameId) return;
+
+        const userIdStr = ((socket as any).user?.userId ?? '').toString();
+        if (userIdStr && gameId.startsWith('friend_')) {
+            try {
+                await withGameLock(gameId, async () => {
+                    const rows = await pool.query('SELECT state FROM games WHERE id = ?', [gameId]);
+                    if (rows.length === 0) return;
+
+                    const gameState = typeof rows[0].state === 'string' ? JSON.parse(rows[0].state) : rows[0].state;
+                    if (gameState?.mode !== 'friend') return;
+
+                    removeFriendParticipant(gameState, userIdStr);
+                    await syncAndSaveState(gameId, gameState);
+                });
+            } catch (err) {
+                console.error('[Socket] leaveGame friend cleanup error:', err);
+            }
         }
+
+        // console.log(`[Socket] User ${((socket as any).user?.userId) || socket.id} leaving game ${gameId}`);
+        socket.leave(gameId);
+    });
+
+    socket.on('leaveGameRoom', (gameId: string) => {
+        if (!gameId) return;
+        socket.leave(gameId);
     });
 
     socket.on('disconnect', () => {

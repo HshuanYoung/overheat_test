@@ -390,6 +390,11 @@ export interface GameState {
   mode?: string;
   status?: string;
   roomCode?: string;
+  participantIds?: string[];
+  spectatorIds?: string[];
+  hostUid?: string;
+  friendDeckSelections?: Record<string, string>;
+  friendReady?: Record<string, boolean>;
   players: {
     [uid: string]: PlayerState;
   };
