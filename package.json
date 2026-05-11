@@ -10,6 +10,7 @@
     "resetcards": "tsx server/reset_all_user_cards.ts",
     "generate:card-scripts": "tsx script/generate-card-scripts.ts",
     "dev": "concurrently \"npm run frontend\" \"npm run backend\"",
+    "close": "bash script/close-dev.sh",
     "frontend": "vite --port=3000 --host=0.0.0.0",
     "backend": "tsx watch server/index.ts",
     "build": "vite build",
