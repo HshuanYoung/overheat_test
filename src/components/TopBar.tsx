@@ -14,6 +14,7 @@ export const TopBar: React.FC<{ onOpenRulebook: () => void }> = ({ onOpenRuleboo
   const [crystals, setCrystals] = useState<number | null>(null);
 
   const isInGame = location.pathname.startsWith('/battle/');
+  const isDeckBuilder = location.pathname === '/deck-builder';
 
   useEffect(() => {
     const loadAssets = async () => {
@@ -42,7 +43,7 @@ export const TopBar: React.FC<{ onOpenRulebook: () => void }> = ({ onOpenRuleboo
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
-  if (isInGame) return null;
+  if (isInGame || isDeckBuilder) return null;
 
   return (
     <>

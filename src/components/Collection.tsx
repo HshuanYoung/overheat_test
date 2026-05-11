@@ -1,6 +1,6 @@
 import React, { useDeferredValue, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { ArrowLeft, Search, Loader2, Filter, Layout, CreditCard, Image as ImageIcon, Copy, Trash2, Plus, Check, Save, Sparkles, Zap, Shield, X } from 'lucide-react';
+import { ArrowLeft, Search, Loader2, Layout, CreditCard, Image as ImageIcon, Trash2, Plus, Check, Save, Sparkles, Share2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn, getCardImageUrl } from '../lib/utils';
 import { CARD_BACKS, RAY_CARDS } from '../data/customization';
@@ -11,6 +11,8 @@ import { useCardCatalog } from '../hooks/useCardCatalog';
 import { KeywordBadges } from './KeywordBadges';
 import { readJsonResponse } from '../lib/http';
 import { SEARCHABLE_CARD_PACKAGES, matchesCardPackageFilter, matchesCardTypeFilter } from '../lib/cardCatalogFilters';
+import { validateDeckForBattle } from '../lib/deckValidation';
+import { encodeDeckShareCode } from '../lib/deckShareCode';
 
 const RARITY_BADGE: Record<string, string> = {
   C: 'bg-zinc-700 text-zinc-300', U: 'bg-emerald-900 text-emerald-300', R: 'bg-blue-900 text-blue-300',
@@ -34,6 +36,9 @@ export const Collection: React.FC = () => {
   const [selectedCard, setSelectedCard] = useState<Card | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
+  const [shareCode, setShareCode] = useState('');
+  const [shareCopied, setShareCopied] = useState(false);
+  const [showShareModal, setShowShareModal] = useState(false);
 
   // Card Filters
   const [searchTerm, setSearchTerm] = useState('');
@@ -194,6 +199,49 @@ export const Collection: React.FC = () => {
     [profile?.favoriteBackId]
   );
 
+  const catalogRefs = useMemo(
+    () => cardLibrary.map(card => card.uniqueId).filter(Boolean).sort((a, b) => a.localeCompare(b)),
+    [cardLibrary]
+  );
+
+  const copyTextToClipboard = async (text: string) => {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+
+    throw new Error('当前浏览器不支持复制');
+  };
+
+  const shareDeck = async (deck: Deck) => {
+    if (!catalogRefs.length) {
+      alert('卡牌库尚未加载完成');
+      return;
+    }
+
+    const validation = validateDeckForBattle(deck);
+    if (!validation.valid) {
+      alert(validation.error || '只有合法卡组才能分享');
+      return;
+    }
+
+    try {
+      const code = encodeDeckShareCode(deck.cards, catalogRefs);
+      setShareCode(code);
+      setShareCopied(false);
+      setShowShareModal(true);
+
+      try {
+        await copyTextToClipboard(code);
+        setShareCopied(true);
+      } catch {
+        // The modal remains available when clipboard access is blocked.
+      }
+    } catch (e) {
+      alert(e instanceof Error ? e.message : '生成分享码失败');
+    }
+  };
+
   const ownedCardCount = useMemo(() =>
     cardLibrary.filter(card => (collection[card.uniqueId] || collection[card.id] || 0) > 0).length,
     [cardLibrary, collection]
@@ -270,23 +318,33 @@ export const Collection: React.FC = () => {
         <AnimatePresence mode="wait">
           {activeTab === 'DECKS' && (
             <motion.div key="decks" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} className="space-y-6">
-              <div className="flex justify-between items-center">
-                <h2 className="text-xl font-bold flex items-center gap-2 italic"><Layout className="w-5 h-5 text-red-600" /> 我的卡组</h2>
-                <button onClick={() => navigate('/deck-builder')} className="flex items-center gap-2 px-6 py-2.5 bg-red-600 hover:bg-red-700 rounded-xl font-bold transition-all">
-                  <Plus className="w-4 h-4" /> 创建新卡组
-                </button>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+              <button
+                onClick={() => navigate('/deck-builder')}
+                className="flex w-full items-center justify-between gap-4 rounded-2xl border border-red-500/30 bg-red-600/10 px-5 py-4 text-left transition-all hover:border-red-500 hover:bg-red-600/20"
+              >
+                <span className="flex min-w-0 items-center gap-3">
+                  <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-red-600 text-white">
+                    <Plus className="h-5 w-5" />
+                  </span>
+                  <span>
+                    <span className="block text-lg font-black italic tracking-tighter text-white">创建新卡组</span>
+                    <span className="text-xs font-bold text-zinc-500">从空卡组开始构筑</span>
+                  </span>
+                </span>
+                <ArrowLeft className="h-5 w-5 rotate-180 text-red-300" />
+              </button>
+              <div className="space-y-3">
                 {decks.map((deck, index) => (
                   <DeckCard
                     key={deck.id || `deck-${index}`}
                     deck={deck}
                     onClick={() => navigate(`/deck-builder?id=${deck.id}`)}
                     onDelete={() => setConfirmDeleteId(deck.id)}
+                    onShare={() => shareDeck(deck)}
                   />
                 ))}
                 {decks.length === 0 && (
-                  <div className="col-span-full py-20 bg-zinc-900/20 border-2 border-dashed border-zinc-800 rounded-3xl flex flex-col items-center justify-center text-zinc-500">
+                  <div className="py-20 bg-zinc-900/20 border-2 border-dashed border-zinc-800 rounded-3xl flex flex-col items-center justify-center text-zinc-500">
                     <Layout className="w-12 h-12 mb-4 opacity-20" />
                     <p>暂无卡组，快去创建一个吧</p>
                   </div>
@@ -719,6 +777,66 @@ export const Collection: React.FC = () => {
             </motion.div>
           )}
         </AnimatePresence>
+
+        <AnimatePresence>
+          {showShareModal && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-[110] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4"
+              onClick={() => setShowShareModal(false)}
+            >
+              <motion.div
+                initial={{ scale: 0.9, y: 20 }}
+                animate={{ scale: 1, y: 0 }}
+                exit={{ scale: 0.9, y: 20 }}
+                className="bg-zinc-900 border border-white/10 p-6 rounded-[2rem] max-w-xl w-full shadow-2xl"
+                onClick={e => e.stopPropagation()}
+              >
+                <div className="mb-4 flex items-center gap-3">
+                  <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-red-600/15 text-red-400">
+                    <Share2 className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-black italic tracking-tighter text-white">分享卡组</h3>
+                    <p className="text-xs font-bold uppercase tracking-widest text-zinc-500">复制下面这串分享码</p>
+                  </div>
+                </div>
+                <textarea
+                  readOnly
+                  value={shareCode}
+                  className="min-h-28 w-full rounded-xl border border-zinc-800 bg-black px-4 py-3 font-mono text-sm text-zinc-100 outline-none"
+                />
+                <div className="mt-3 flex items-center justify-between gap-3 text-xs text-zinc-500">
+                  <span>长度 {shareCode.length} / 64</span>
+                  <span>{shareCopied ? '已复制到剪贴板' : '可复制后分享'}</span>
+                </div>
+                <div className="mt-5 flex gap-3">
+                  <button
+                    onClick={async () => {
+                      try {
+                        await copyTextToClipboard(shareCode);
+                        setShareCopied(true);
+                      } catch {
+                        alert('复制失败，请手动复制分享码');
+                      }
+                    }}
+                    className="flex-1 rounded-xl bg-red-600 px-4 py-3 font-black italic text-sm text-white transition-colors hover:bg-red-700"
+                  >
+                    重新复制
+                  </button>
+                  <button
+                    onClick={() => setShowShareModal(false)}
+                    className="flex-1 rounded-xl border border-zinc-800 bg-zinc-900 px-4 py-3 font-black italic text-sm text-zinc-300 transition-colors hover:bg-zinc-800"
+                  >
+                    关闭
+                  </button>
+                </div>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
     </div>
   );
@@ -737,43 +855,37 @@ const TabButton = ({ active, onClick, icon, label }: any) => (
   </button>
 );
 
-const DeckCard: React.FC<{ deck: Deck; onClick: () => void | Promise<void>; onDelete: () => void | Promise<void> }> = ({ deck, onClick, onDelete }) => (
+const DeckCard: React.FC<{
+  deck: Deck;
+  onClick: () => void | Promise<void>;
+  onDelete: () => void | Promise<void>;
+  onShare: () => void | Promise<void>;
+}> = ({ deck, onClick, onDelete, onShare }) => (
   <div
-    className="group relative bg-zinc-900/40 border border-white/5 rounded-3xl p-6 hover:bg-zinc-900/60 hover:border-red-600/50 transition-all overflow-hidden"
+    onClick={onClick}
+    className="cursor-pointer rounded-2xl border border-white/5 bg-zinc-900/40 px-4 py-4 transition-all hover:border-red-600/40 hover:bg-zinc-900/60"
   >
-    <div
-      onClick={onClick}
-      className="absolute inset-0 z-0 cursor-pointer"
-    />
-    <div className="absolute -right-8 -bottom-8 opacity-[0.03] group-hover:opacity-[0.08] transition-opacity pointer-events-none">
-      <Layout className="w-48 h-48" />
-    </div>
-    <div className="relative z-10 text-left pointer-events-none">
-      <div className="flex justify-between items-start mb-4">
-        <div className="p-3 bg-red-600/10 rounded-2xl text-red-600 group-hover:bg-red-600 group-hover:text-white transition-all">
-          <CreditCard className="w-6 h-6" />
-        </div>
-        <span className="text-[10px] font-black italic px-2 py-1 bg-white/5 rounded-lg text-zinc-500">
-          ID: {deck.id}
-        </span>
+    <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+      <div className="min-w-0">
+        <h3 className="truncate text-lg font-black italic tracking-tighter text-white md:text-xl">{deck.name}</h3>
+        <p className="mt-1 text-xs font-bold uppercase tracking-widest text-zinc-500">
+          创建日期 {new Date(deck.createdAt).toLocaleDateString()} · {deck.cards.length} 张卡牌
+        </p>
       </div>
-      <h3 className="text-2xl font-black italic mb-1 uppercase tracking-tighter truncate">{deck.name}</h3>
-      <p className="text-zinc-500 text-sm mb-6 flex items-center gap-2 font-bold uppercase">
-        {deck.cards.length} 张卡牌 • {new Date(deck.createdAt).toLocaleDateString()}
-      </p>
-      <div className="flex gap-2 pointer-events-auto">
-        <button
-          onClick={onClick}
-          className="flex-1 py-3.5 bg-zinc-800 hover:bg-red-600 text-white font-black rounded-2xl transition-all text-xs uppercase italic"
-        >
-          编辑卡组
-        </button>
+      <div className="grid grid-cols-2 gap-2 md:flex md:shrink-0">
         <button
           onClick={(e) => { e.stopPropagation(); onDelete(); }}
-          className="w-14 flex items-center justify-center bg-zinc-800 hover:bg-red-900/50 text-red-500 rounded-2xl transition-all"
-          title="删除卡组"
+          className="flex items-center justify-center gap-2 rounded-xl bg-zinc-800 px-3 py-2 text-xs font-black italic text-red-400 transition-colors hover:bg-red-900/50"
         >
-          <Trash2 className="w-5 h-5" />
+          <Trash2 className="h-4 w-4" />
+          删除
+        </button>
+        <button
+          onClick={(e) => { e.stopPropagation(); onShare(); }}
+          className="flex items-center justify-center gap-2 rounded-xl bg-zinc-800 px-3 py-2 text-xs font-black italic text-zinc-200 transition-colors hover:bg-zinc-700"
+        >
+          <Share2 className="h-4 w-4" />
+          分享
         </button>
       </div>
     </div>

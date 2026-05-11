@@ -2,7 +2,7 @@ import { getAuthUser } from '../socket';
 import React, { useDeferredValue, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
-import { Save, Trash2, Plus, Search, Loader2, Copy, Edit3, X, ArrowLeft, Shuffle, ListFilter, Check, Share2, Upload } from 'lucide-react';
+import { Save, Trash2, Plus, Search, Loader2, X, ArrowLeft, Shuffle, ListFilter, Check, Share2, Upload, Eraser, Zap, Menu, ChevronDown, AlertTriangle, Edit3 } from 'lucide-react';
 import { FACTIONS } from '../data/factions';
 import { Card as CardType, Deck } from '../types/game';
 import { CardComponent } from './Card';
@@ -28,19 +28,22 @@ export const DeckBuilder: React.FC = () => {
   const [saving, setSaving] = useState(false);
   const [myDecks, setMyDecks] = useState<Deck[]>([]);
   const [zoomedCard, setZoomedCard] = useState<CardType | null>(null);
-  const [isRenaming, setIsRenaming] = useState<string | null>(null);
-  const [newName, setNewName] = useState('');
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [collection, setCollection] = useState<Record<string, number>>({});
   const [cardCrystals, setCardCrystals] = useState(0);
   const [favoriteBackId, setFavoriteBackId] = useState('default');
   const [actionLoading, setActionLoading] = useState(false);
   const [addSuccessToast, setAddSuccessToast] = useState<{ cardName: string; count: number } | null>(null);
+  const [notice, setNotice] = useState<{ title: string; message?: string; tone?: 'success' | 'warning' | 'error' } | null>(null);
   const [shareCode, setShareCode] = useState('');
   const [shareCopied, setShareCopied] = useState(false);
   const [showShareModal, setShowShareModal] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
+  const [showManageModal, setShowManageModal] = useState(false);
+  const [showRenameModal, setShowRenameModal] = useState(false);
   const [importCode, setImportCode] = useState('');
+  const [renameValue, setRenameValue] = useState('');
   const [visibleCardCount, setVisibleCardCount] = useState(INITIAL_VISIBLE_CARD_COUNT);
   const [filters, setFilters] = useState({
     ac: '',
@@ -53,8 +56,7 @@ export const DeckBuilder: React.FC = () => {
     rarity: 'ALL',
     ownership: 'ALL' // ALL, OWNED, NOT_OWNED
   });
-  const [showDecksMobile, setShowDecksMobile] = useState(false);
-  const [showLibrary, setShowLibrary] = useState(false); // Changed from showLibraryMobile
+  const [showLibrary, setShowLibrary] = useState(false);
   const deferredSearchTerm = useDeferredValue(searchTerm.trim());
   const {
     cards: cardLibrary,
@@ -71,6 +73,10 @@ export const DeckBuilder: React.FC = () => {
     PR: { decompose: 100, produce: 400 },
   };
 
+  const showNotice = (title: string, message?: string, tone: 'success' | 'warning' | 'error' = 'warning') => {
+    setNotice({ title, message, tone });
+  };
+
   useEffect(() => {
     loadDecks();
     loadCollection();
@@ -84,6 +90,9 @@ export const DeckBuilder: React.FC = () => {
 
     const deckIdFromUrl = searchParams.get('id');
     if (!deckIdFromUrl) {
+      if (selectedDeckId) {
+        setSelectedDeckId(null);
+      }
       return;
     }
 
@@ -141,7 +150,7 @@ export const DeckBuilder: React.FC = () => {
           return next;
         });
       } else {
-        alert(data.error || '分解失败');
+        showNotice(data.error || '分解失败', undefined, 'error');
       }
     } catch (e) { console.error(e); }
     setActionLoading(false);
@@ -151,7 +160,7 @@ export const DeckBuilder: React.FC = () => {
     const card = getCardByReference(cardId);
     if (!card) return;
     const cost = CRYSTAL_VALUES[card.rarity]?.produce || 0;
-    if (cardCrystals < cost) { alert('卡晶不足'); return; }
+    if (cardCrystals < cost) { showNotice('卡晶不足', undefined, 'warning'); return; }
 
     setActionLoading(true);
     const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || '';
@@ -173,7 +182,7 @@ export const DeckBuilder: React.FC = () => {
           [cardId]: (prev[cardId] || 0) + 1
         }));
       } else {
-        alert(data.error || '制作失败');
+        showNotice(data.error || '制作失败', undefined, 'error');
       }
     } catch (e) { console.error(e); }
     setActionLoading(false);
@@ -244,7 +253,39 @@ export const DeckBuilder: React.FC = () => {
     setDeck([]);
     setDeckName('新卡组');
     setSelectedDeckId(null);
-    setSearchParams({});
+    setSearchParams(new URLSearchParams());
+    setShowManageModal(false);
+  };
+
+  const handleDeckSelect = (deckId: string) => {
+    if (!deckId) return;
+    setSearchParams({ id: deckId });
+  };
+
+  const openRenameModal = () => {
+    setRenameValue(deckName);
+    setShowManageModal(false);
+    setShowRenameModal(true);
+  };
+
+  const confirmRenameDeck = () => {
+    const nextName = renameValue.trim();
+    if (!nextName) {
+      showNotice('卡组名不能为空', undefined, 'warning');
+      return;
+    }
+
+    setDeckName(nextName);
+    if (selectedDeckId) {
+      setMyDecks(prev => prev.map(deck => deck.id === selectedDeckId ? { ...deck, name: nextName } : deck));
+    }
+    setShowRenameModal(false);
+  };
+
+  const clearCurrentDeck = () => {
+    setDeck([]);
+    setShowClearConfirm(false);
+    setShowManageModal(false);
   };
 
   const buildCurrentDeckForValidation = (): Deck => ({
@@ -266,13 +307,13 @@ export const DeckBuilder: React.FC = () => {
 
   const handleShareDeck = async () => {
     if (!catalogRefs.length) {
-      alert('卡牌库尚未加载完成');
+      showNotice('卡牌库尚未加载完成', undefined, 'warning');
       return;
     }
 
     const validation = validateDeckForBattle(buildCurrentDeckForValidation());
     if (!validation.valid) {
-      alert(validation.error || '只有合法卡组才能分享');
+      showNotice(validation.error || '只有合法卡组才能分享', undefined, 'warning');
       return;
     }
 
@@ -289,13 +330,13 @@ export const DeckBuilder: React.FC = () => {
         // The modal still shows the code when clipboard access is unavailable.
       }
     } catch (e) {
-      alert(e instanceof Error ? e.message : '生成分享码失败');
+      showNotice(e instanceof Error ? e.message : '生成分享码失败', undefined, 'error');
     }
   };
 
   const handleImportDeck = () => {
     if (!catalogRefs.length) {
-      alert('卡牌库尚未加载完成');
+      showNotice('卡牌库尚未加载完成', undefined, 'warning');
       return;
     }
 
@@ -304,7 +345,7 @@ export const DeckBuilder: React.FC = () => {
       const importedCards = importedRefs.map(ref => getCardByReference(ref));
 
       if (importedCards.some(card => !card)) {
-        alert('分享码中包含当前卡牌库不存在的卡牌');
+        showNotice('分享码中包含当前卡牌库不存在的卡牌', undefined, 'error');
         return;
       }
 
@@ -315,7 +356,7 @@ export const DeckBuilder: React.FC = () => {
       setShowImportModal(false);
       setImportCode('');
     } catch (e) {
-      alert(e instanceof Error ? e.message : '导入分享码失败');
+      showNotice(e instanceof Error ? e.message : '导入分享码失败', undefined, 'error');
     }
   };
 
@@ -337,53 +378,19 @@ export const DeckBuilder: React.FC = () => {
     }
   };
 
-  const copyDeck = async (savedDeck: Deck, e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (!getAuthUser()) return;
-    const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || '';
-    const token = localStorage.getItem('token');
-    try {
-      await fetch(`${BACKEND_URL}/api/user/decks/${savedDeck.id}/copy`, {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      loadDecks();
-    } catch (e) {
-      console.error('Failed to copy deck:', e);
-    }
-  };
-
-  const renameDeck = async (id: string) => {
-    if (!getAuthUser() || !newName.trim()) return;
-    const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || '';
-    const token = localStorage.getItem('token');
-    try {
-      await fetch(`${BACKEND_URL}/api/user/decks/${id}`, {
-        method: 'PUT',
-        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: newName })
-      });
-      setIsRenaming(null);
-      if (selectedDeckId === id) setDeckName(newName);
-      loadDecks();
-    } catch (e) {
-      console.error('Failed to rename deck:', e);
-    }
-  };
-
   const addToDeck = (card: CardType) => {
     // Count per card ID (not uniqueId) for limit check
     const count = deckBaseCounts[card.id] || 0;
 
     if (count < 4 && deck.length < 50) {
       if (card.godMark && godMarkCount >= 10) {
-        alert('卡组中带有神蚀标记的卡牌不能超过10张！');
+        showNotice('神蚀卡已达上限', '卡组中带有神蚀标记的卡牌不能超过10张。', 'warning');
         return;
       }
 
       const ownedQty = collection[card.uniqueId] || collection[card.id] || 0;
       if (ownedQty <= count) {
-        alert('你拥有的该卡牌数量不足！');
+        showNotice('卡牌数量不足', '你拥有的该卡牌数量不足。', 'warning');
         return;
       }
 
@@ -393,9 +400,9 @@ export const DeckBuilder: React.FC = () => {
         count: count + 1
       });
     } else if (count >= 4) {
-      alert('同名卡牌在卡组中不能超过4张！');
+      showNotice('同名卡已达上限', '同名卡牌在卡组中不能超过4张。', 'warning');
     } else if (deck.length >= 50) {
-      alert('卡组已满（上限50张）！');
+      showNotice('卡组已满', '卡组上限为50张。', 'warning');
     }
   };
 
@@ -444,6 +451,18 @@ export const DeckBuilder: React.FC = () => {
 
     return () => window.clearTimeout(timer);
   }, [addSuccessToast]);
+
+  useEffect(() => {
+    if (!notice) {
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      setNotice(null);
+    }, 1500);
+
+    return () => window.clearTimeout(timer);
+  }, [notice]);
 
   const favoriteBackUrl = useMemo(
     () => CARD_BACKS.find(back => back.id === favoriteBackId)?.url,
@@ -531,7 +550,7 @@ export const DeckBuilder: React.FC = () => {
     : '正在处理当前卡牌操作，请稍候...';
 
   return (
-    <div className="flex h-[calc(100vh-64px)] mt-16 overflow-hidden bg-zinc-950 relative">
+    <div className="flex h-screen overflow-hidden bg-zinc-950 relative pt-4">
       <LoadingOverlay
         open={saving || actionLoading}
         title={loadingOverlayTitle}
@@ -564,68 +583,40 @@ export const DeckBuilder: React.FC = () => {
         )}
       </AnimatePresence>
 
-      {/* Left: My Decks */}
-      <div className={cn(
-        "absolute lg:relative z-40 w-72 h-full border-r border-zinc-800 flex flex-col bg-zinc-900 shadow-2xl lg:shadow-none transition-transform duration-300",
-        showDecksMobile ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
-      )}>
-        <button
-          onClick={() => setShowDecksMobile(false)}
-          className="lg:hidden absolute top-4 right-4 p-2 text-zinc-400"
-        >
-          <X className="w-6 h-6" />
-        </button>
-        <div className="p-4 border-b border-zinc-800 flex flex-col gap-4">
-          <button
-            onClick={() => navigate('/')}
-            className="group flex items-center gap-3 px-4 py-3 bg-zinc-900 hover:bg-zinc-800 rounded-xl border border-white/5 transition-all w-full text-zinc-400 hover:text-white"
+      <AnimatePresence>
+        {notice && (
+          <motion.div
+            initial={{ opacity: 0, y: -18, scale: 0.96 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -12, scale: 0.98 }}
+            transition={{ type: 'spring', stiffness: 260, damping: 20 }}
+            className="fixed left-1/2 top-24 z-[160] w-[calc(100%-2rem)] max-w-md -translate-x-1/2 cursor-pointer"
+            onClick={() => setNotice(null)}
           >
-            <ArrowLeft className="w-5 h-5 group-hover:-translate-x-1" />
-            <span className="font-black italic tracking-tighter uppercase text-sm">返回主界面</span>
-          </button>
-          <div className="flex items-center justify-between px-1">
-            <h3 className="text-sm font-black italic tracking-tighter text-red-500">我的卡组</h3>
-            <button onClick={createNewDeck} className="p-1 hover:bg-zinc-800 rounded text-zinc-400 hover:text-white">
-              <Plus className="w-5 h-5" />
-            </button>
-          </div>
-        </div>
-        <div className="flex-1 overflow-y-auto p-3 space-y-2">
-          {myDecks.map((d, index) => (
-            <div
-              key={d.id || `deck-${index}`}
-              onClick={() => setSearchParams({ id: d.id })}
-              className={cn(
-                "group p-3 rounded-xl border transition-all cursor-pointer relative",
-                selectedDeckId === d.id ? "bg-red-600/10 border-red-600" : "bg-zinc-900/50 border-zinc-800 hover:border-zinc-600"
-              )}
-            >
-              {isRenaming === d.id ? (
-                <div className="flex items-center gap-2">
-                  <input
-                    autoFocus
-                    className="bg-black border border-zinc-700 rounded px-2 py-1 text-xs w-full"
-                    value={newName}
-                    onChange={e => setNewName(e.target.value)}
-                    onKeyDown={e => e.key === 'Enter' && renameDeck(d.id)}
-                  />
-                  <button onClick={() => renameDeck(d.id)}><Save className="w-3 h-3" /></button>
+            <div className={cn(
+              "rounded-2xl border bg-zinc-950/95 px-4 py-3 shadow-[0_20px_60px_rgba(0,0,0,0.45)] backdrop-blur-md",
+              notice.tone === 'success' && "border-emerald-400/20",
+              notice.tone === 'error' && "border-red-400/25",
+              (!notice.tone || notice.tone === 'warning') && "border-amber-400/25"
+            )}>
+              <div className="flex items-center gap-3">
+                <div className={cn(
+                  "flex h-10 w-10 items-center justify-center rounded-full",
+                  notice.tone === 'success' && "bg-emerald-500/12 text-emerald-400",
+                  notice.tone === 'error' && "bg-red-500/12 text-red-400",
+                  (!notice.tone || notice.tone === 'warning') && "bg-amber-500/12 text-amber-300"
+                )}>
+                  {notice.tone === 'success' ? <Check className="h-5 w-5" /> : <AlertTriangle className="h-5 w-5" />}
                 </div>
-              ) : (
-                <>
-                  <p className="font-bold text-sm truncate pr-16">{d.name}</p>
-                  <p className="text-[10px] text-zinc-500 uppercase tracking-widest">{d.cards.length} 张卡牌</p>
-                  <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1 opacity-40 group-hover:opacity-100 transition-opacity">
-                    <button onClick={(e) => { e.stopPropagation(); setIsRenaming(d.id); setNewName(d.name); }} className="p-1.5 hover:bg-zinc-800 rounded text-zinc-400"><Edit3 className="w-3.5 h-3.5" /></button>
-                    <button onClick={(e) => copyDeck(d, e)} className="p-1.5 hover:bg-zinc-800 rounded text-zinc-400"><Copy className="w-3.5 h-3.5" /></button>
-                    <button onClick={(e) => { e.stopPropagation(); setConfirmDeleteId(d.id); }} className="p-1.5 hover:bg-zinc-800 rounded text-red-500"><Trash2 className="w-3.5 h-3.5" /></button>
-                  </div>
-                </>
-              )}
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-black italic text-white">{notice.title}</p>
+                  {notice.message && <p className="truncate text-xs text-zinc-400">{notice.message}</p>}
+                </div>
+              </div>
             </div>
-          ))}
-        </div>
-      </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Delete Confirmation Modal */}
       <AnimatePresence>
@@ -656,6 +647,43 @@ export const DeckBuilder: React.FC = () => {
                   className="flex-1 py-2 bg-red-600 hover:bg-red-700 rounded-xl font-bold transition-colors"
                 >
                   确定删除
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {showClearConfirm && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[110] bg-black/80 flex items-center justify-center p-4"
+            onClick={() => setShowClearConfirm(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.9 }}
+              animate={{ scale: 1 }}
+              exit={{ scale: 0.9 }}
+              className="bg-zinc-900 border border-zinc-800 p-6 rounded-2xl max-w-sm w-full shadow-2xl"
+              onClick={e => e.stopPropagation()}
+            >
+              <h3 className="text-xl font-black italic tracking-tighter mb-4">清空卡组</h3>
+              <p className="text-zinc-400 text-sm mb-6">确定要清空当前卡组中的所有卡牌吗？此操作不会删除已保存卡组。</p>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setShowClearConfirm(false)}
+                  className="flex-1 py-2 bg-zinc-800 hover:bg-zinc-700 rounded-xl font-bold transition-colors"
+                >
+                  取消
+                </button>
+                <button
+                  onClick={clearCurrentDeck}
+                  className="flex-1 py-2 bg-red-600 hover:bg-red-700 rounded-xl font-bold transition-colors"
+                >
+                  确定清空
                 </button>
               </div>
             </motion.div>
@@ -707,7 +735,7 @@ export const DeckBuilder: React.FC = () => {
                       await copyTextToClipboard(shareCode);
                       setShareCopied(true);
                     } catch {
-                      alert('复制失败，请手动复制分享码');
+                      showNotice('复制失败，请手动复制分享码', undefined, 'error');
                     }
                   }}
                   className="flex-1 rounded-xl bg-red-600 px-4 py-3 font-black italic text-sm text-white transition-colors hover:bg-red-700"
@@ -782,104 +810,200 @@ export const DeckBuilder: React.FC = () => {
         )}
       </AnimatePresence>
 
+      <AnimatePresence>
+        {showManageModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[120] bg-black/80 flex items-center justify-center p-4"
+            onClick={() => setShowManageModal(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.96, y: 10 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.96, y: 10 }}
+              className="relative w-full max-w-xl rounded-2xl border border-zinc-800 bg-zinc-950 p-6 shadow-2xl"
+              onClick={e => e.stopPropagation()}
+            >
+              <button
+                onClick={() => setShowManageModal(false)}
+                className="absolute right-4 top-4 flex h-9 w-9 items-center justify-center rounded-xl border border-zinc-800 bg-zinc-900 text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-white"
+                title="返回"
+              >
+                <X className="h-5 w-5" />
+              </button>
+              <div className="mb-5">
+                <h3 className="text-xl font-black italic tracking-tighter text-white">管理卡组</h3>
+                <p className="mt-1 text-xs font-bold uppercase tracking-widest text-zinc-500">
+                  {deckName} · {deck.length}/50 · 神蚀 {godMarkCount}/10
+                </p>
+              </div>
+
+              <div className="grid grid-cols-3 gap-3">
+                <button onClick={createNewDeck} className="flex aspect-square flex-col items-center justify-center gap-2 rounded-xl border border-emerald-400/20 bg-emerald-500/10 px-2 text-sm font-black italic text-emerald-200 transition-colors hover:bg-emerald-500/20">
+                  <Plus className="h-6 w-6 text-emerald-400" /> 新建
+                </button>
+                <button onClick={openRenameModal} className="flex aspect-square flex-col items-center justify-center gap-2 rounded-xl border border-lime-400/20 bg-lime-500/10 px-2 text-sm font-black italic text-lime-200 transition-colors hover:bg-lime-500/20">
+                  <Edit3 className="h-6 w-6 text-lime-300" /> 重命名
+                </button>
+                <button
+                  onClick={() => { void handleSave(); setShowManageModal(false); }}
+                  disabled={saving}
+                  className="flex aspect-square flex-col items-center justify-center gap-2 rounded-xl border border-red-400/20 bg-red-600/90 px-2 text-sm font-black italic text-white transition-colors hover:bg-red-600 disabled:opacity-60"
+                >
+                  {saving ? <Loader2 className="h-6 w-6 animate-spin" /> : <Save className="h-6 w-6" />} 保存
+                </button>
+                <button onClick={() => { setShowClearConfirm(true); setShowManageModal(false); }} className="flex aspect-square flex-col items-center justify-center gap-2 rounded-xl border border-amber-400/20 bg-amber-500/10 px-2 text-sm font-black italic text-amber-200 transition-colors hover:bg-amber-500/20">
+                  <Eraser className="h-6 w-6 text-amber-300" /> 清空
+                </button>
+                <button
+                  onClick={() => selectedDeckId ? (setConfirmDeleteId(selectedDeckId), setShowManageModal(false)) : showNotice('当前卡组尚未保存，无法删除', undefined, 'warning')}
+                  disabled={!selectedDeckId}
+                  className="flex aspect-square flex-col items-center justify-center gap-2 rounded-xl border border-rose-400/20 bg-rose-500/10 px-2 text-sm font-black italic text-rose-200 transition-colors hover:bg-rose-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <Trash2 className="h-6 w-6 text-rose-400" /> 删除
+                </button>
+                <button onClick={() => { shuffleDeck(); setShowManageModal(false); }} className="flex aspect-square flex-col items-center justify-center gap-2 rounded-xl border border-violet-400/20 bg-violet-500/10 px-2 text-sm font-black italic text-violet-200 transition-colors hover:bg-violet-500/20">
+                  <Shuffle className="h-6 w-6 text-violet-300" /> 打乱
+                </button>
+                <button onClick={() => { sortDeck(); setShowManageModal(false); }} className="flex aspect-square flex-col items-center justify-center gap-2 rounded-xl border border-sky-400/20 bg-sky-500/10 px-2 text-sm font-black italic text-sky-200 transition-colors hover:bg-sky-500/20">
+                  <ListFilter className="h-6 w-6 text-sky-300" /> 排序
+                </button>
+                <button
+                  onClick={() => { setShowShareModal(false); setShowImportModal(true); setShowManageModal(false); }}
+                  disabled={!catalogRefs.length}
+                  className="flex aspect-square flex-col items-center justify-center gap-2 rounded-xl border border-cyan-400/20 bg-cyan-500/10 px-2 text-sm font-black italic text-cyan-200 transition-colors hover:bg-cyan-500/20 disabled:opacity-60"
+                >
+                  <Upload className="h-6 w-6 text-cyan-300" /> 导入
+                </button>
+                <button
+                  onClick={() => { setShowImportModal(false); setShowManageModal(false); void handleShareDeck(); }}
+                  disabled={!catalogRefs.length}
+                  className="flex aspect-square flex-col items-center justify-center gap-2 rounded-xl border border-fuchsia-400/20 bg-fuchsia-500/10 px-2 text-sm font-black italic text-fuchsia-200 transition-colors hover:bg-fuchsia-500/20 disabled:opacity-60"
+                >
+                  <Share2 className="h-6 w-6 text-fuchsia-300" /> 分享
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {showRenameModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[120] bg-black/80 flex items-center justify-center p-4"
+            onClick={() => setShowRenameModal(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.96, y: 10 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.96, y: 10 }}
+              className="w-full max-w-md rounded-2xl border border-zinc-800 bg-zinc-950 p-6 shadow-2xl"
+              onClick={e => e.stopPropagation()}
+            >
+              <div className="mb-5 flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-lime-500/15 text-lime-300">
+                  <Edit3 className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="text-xl font-black italic tracking-tighter text-white">重命名卡组</h3>
+                  <p className="text-xs font-bold uppercase tracking-widest text-zinc-500">保存卡组时会同步新的名称</p>
+                </div>
+              </div>
+              <input
+                autoFocus
+                value={renameValue}
+                onChange={e => setRenameValue(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter') confirmRenameDeck();
+                  if (e.key === 'Escape') setShowRenameModal(false);
+                }}
+                className="w-full rounded-xl border border-zinc-800 bg-black px-4 py-3 text-sm font-bold text-zinc-100 outline-none focus:border-lime-400/60"
+                placeholder="输入新的卡组名"
+              />
+              <div className="mt-5 flex gap-3">
+                <button
+                  onClick={confirmRenameDeck}
+                  className="flex-1 rounded-xl bg-lime-600 px-4 py-3 font-black italic text-sm text-white transition-colors hover:bg-lime-500"
+                >
+                  确认
+                </button>
+                <button
+                  onClick={() => setShowRenameModal(false)}
+                  className="flex-1 rounded-xl border border-zinc-800 bg-zinc-900 px-4 py-3 font-black italic text-sm text-zinc-300 transition-colors hover:bg-zinc-800"
+                >
+                  取消
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Middle: Deck Editor */}
       <div className="flex-1 flex flex-col bg-black overflow-hidden w-full">
-        <div className="flex-shrink-0 p-4 md:p-6 border-b border-zinc-900 flex flex-col md:flex-row md:items-center justify-between bg-zinc-950/50 gap-4">
-          <div className="flex items-center justify-between md:justify-start gap-4">
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => setShowDecksMobile(true)}
-                className="lg:hidden p-2 bg-zinc-900 rounded-lg text-zinc-400"
+        <div className="flex-shrink-0 border-b border-zinc-900 bg-zinc-950/50 px-4 pb-2 md:px-4 md:pb-3">
+          <div className="flex items-center gap-2 pr-16 md:gap-3">
+            <button
+              onClick={() => navigate('/collection?tab=DECKS')}
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-white/5 bg-zinc-900 text-zinc-400 transition-all hover:bg-zinc-800 hover:text-white"
+              title="返回收藏"
+            >
+              <ArrowLeft className="h-5 w-5" />
+            </button>
+            <div className="relative min-w-[12rem] flex-[1_1_18rem] max-w-xl">
+              <select
+                value={selectedDeckId || ''}
+                onChange={e => handleDeckSelect(e.target.value)}
+                className="h-10 w-full appearance-none rounded-xl border border-zinc-300 bg-white px-4 pr-10 text-sm font-black text-black outline-none transition-colors hover:bg-zinc-100 md:text-base"
+                title="切换卡组"
               >
-                <ListFilter className="w-5 h-5" />
-              </button>
-              <input
-                className="bg-transparent text-2xl font-black italic tracking-tighter focus:outline-none border-b-2 border-transparent focus:border-red-600 transition-all"
-                value={deckName}
-                onChange={e => setDeckName(e.target.value)}
-              />
-              <span className="px-3 py-1 bg-zinc-900 rounded-full text-[10px] font-black uppercase tracking-widest text-zinc-500">
-                {deck.length} / 50
+                {!selectedDeckId && <option value="" hidden>{deckName || '当前卡组'}</option>}
+                {myDecks.map(deckOption => (
+                  <option key={deckOption.id} value={deckOption.id}>{deckOption.name}</option>
+                ))}
+              </select>
+              <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-black" />
+            </div>
+            <button
+              onClick={() => setShowManageModal(true)}
+              className="flex h-10 shrink-0 items-center justify-center gap-2 rounded-xl bg-red-600 px-4 text-sm font-black italic text-white shadow-[0_0_20px_rgba(220,38,38,0.3)] transition-all hover:bg-red-700"
+              title="管理"
+            >
+              <Menu className="h-5 w-5" />
+              管理
+            </button>
+            <span className="flex shrink-0 items-center gap-2 rounded-full bg-zinc-900 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-zinc-500">
+              <span>{deck.length}/50</span>
+              <span className="flex items-center gap-1 text-red-500">
+                <Zap className="h-3.5 w-3.5 fill-red-500" />
+                {godMarkCount}/10
               </span>
-            </div>
-          </div>
-          <div className="grid w-full grid-cols-2 gap-2 md:flex md:w-auto md:items-center md:gap-4">
+            </span>
             <button
               onClick={() => setShowLibrary(true)}
-              className="hidden items-center justify-center gap-2 rounded-full border border-white/5 bg-zinc-900 px-4 py-2 text-zinc-400 transition-all hover:bg-zinc-800 lg:flex lg:px-6"
+              className="flex shrink-0 items-center justify-center gap-2 rounded-full border border-white/5 bg-zinc-900 px-3 py-2 text-zinc-400 transition-all hover:bg-zinc-800 lg:hidden"
             >
               <Search className="w-4 h-4" />
-              <span className="text-[10px] font-black uppercase tracking-widest whitespace-nowrap">搜索卡牌</span>
+              <span className="hidden text-[10px] font-black uppercase tracking-widest sm:inline">搜索卡牌</span>
             </button>
-            <button
-              onClick={() => setShowLibrary(true)}
-              className="flex items-center justify-center gap-2 rounded-full border border-white/5 bg-zinc-900 px-4 py-2 text-zinc-400 transition-all hover:bg-zinc-800 lg:hidden"
-            >
-              <Search className="w-4 h-4" />
-              <span className="text-[10px] font-black uppercase tracking-widest whitespace-nowrap">搜索卡牌</span>
-            </button>
-            <button
-              onClick={handleSave}
-              disabled={saving}
-              className="flex items-center justify-center gap-2 rounded-full bg-red-600 px-4 py-2 text-[10px] font-black italic tracking-tighter shadow-[0_0_20px_rgba(220,38,38,0.3)] transition-all hover:bg-red-700 disabled:opacity-60 md:order-last md:px-8 md:text-sm"
-            >
-              {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-              <span className="whitespace-nowrap">保存卡组</span>
-            </button>
-            <div className="col-span-2 grid grid-cols-4 gap-2 md:col-span-1 md:flex">
-              <button
-                onClick={sortDeck}
-                className="flex items-center justify-center gap-1.5 rounded-full border border-white/5 bg-zinc-900 px-3 py-2 text-zinc-400 transition-all hover:bg-zinc-800 hover:text-white md:gap-2 md:px-6"
-                title="排序卡组"
-              >
-                <ListFilter className="w-4 h-4 group-hover:scale-110" />
-                <span className="text-[10px] font-black uppercase tracking-widest">排序</span>
-              </button>
-              <button
-                onClick={shuffleDeck}
-                className="flex items-center justify-center gap-1.5 rounded-full border border-white/5 bg-zinc-900 px-3 py-2 text-zinc-400 transition-all hover:bg-zinc-800 hover:text-white md:gap-2 md:px-6"
-                title="洗切卡组"
-              >
-                <Shuffle className="w-4 h-4 group-hover:rotate-180 transition-transform duration-500" />
-                <span className="text-[10px] font-black uppercase tracking-widest">洗切</span>
-              </button>
-              <button
-                onClick={() => {
-                  setShowShareModal(false);
-                  setShowImportModal(true);
-                }}
-                disabled={!catalogRefs.length}
-                className="flex items-center justify-center gap-1.5 rounded-full border border-white/5 bg-zinc-900 px-3 py-2 text-zinc-400 transition-all hover:bg-zinc-800 hover:text-white disabled:opacity-60 md:gap-2 md:px-6"
-                title="导入卡组"
-              >
-                <Upload className="w-4 h-4 group-hover:-translate-y-0.5 transition-transform" />
-                <span className="text-[10px] font-black uppercase tracking-widest">导入</span>
-              </button>
-              <button
-                onClick={() => {
-                  setShowImportModal(false);
-                  void handleShareDeck();
-                }}
-                disabled={!catalogRefs.length}
-                className="flex items-center justify-center gap-1.5 rounded-full border border-white/5 bg-zinc-900 px-3 py-2 text-zinc-400 transition-all hover:bg-zinc-800 hover:text-white disabled:opacity-60 md:gap-2 md:px-6"
-                title="分享卡组"
-              >
-                <Share2 className="w-4 h-4 group-hover:scale-110" />
-                <span className="text-[10px] font-black uppercase tracking-widest">分享</span>
-              </button>
-            </div>
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-4 md:p-8">
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4 md:gap-6">
+        <div className="flex-1 overflow-y-auto p-2 md:p-4">
+          <div className="grid grid-cols-5 gap-1.5 sm:grid-cols-10 md:gap-3">
             {deck.map((card, index) => {
               const ownership = deckOwnership[index];
               return (
                 <div key={`${card.uniqueId}-${index}`} className="relative group">
                   <div
                     className={cn(
-                      "transition-transform hover:scale-105 cursor-zoom-in",
+                      "transition-transform hover:scale-105 cursor-zoom-in [&_.rounded-xl]:rounded-md [&_.shadow-xl]:shadow-md",
                       ownership?.missing && "opacity-45 grayscale"
                     )}
                     onClick={() => setZoomedCard(card)}
@@ -898,9 +1022,9 @@ export const DeckBuilder: React.FC = () => {
                   )}
                   <button
                     onClick={() => removeFromDeck(index)}
-                    className="absolute -top-3 -right-3 w-10 h-10 bg-red-600 rounded-full flex items-center justify-center shadow-2xl opacity-60 group-hover:opacity-100 transition-all hover:scale-110 z-10 border-2 border-white/20"
+                    className="absolute -right-1 -top-1 z-10 flex h-5 w-5 items-center justify-center rounded-full border border-white/20 bg-red-600 shadow-2xl transition-all hover:scale-110 md:h-6 md:w-6 md:opacity-60 md:group-hover:opacity-100"
                   >
-                    <X className="w-6 h-6 text-white" />
+                    <X className="h-3 w-3 text-white md:h-4 md:w-4" />
                   </button>
                 </div>
               );
@@ -917,13 +1041,13 @@ export const DeckBuilder: React.FC = () => {
 
       {/* Right: Card Library */}
       <div className={cn(
-        "absolute lg:relative right-0 z-40 w-80 h-full border-l border-zinc-800 flex flex-col bg-zinc-900 transition-transform duration-300 shadow-2xl lg:shadow-none",
-        showLibrary ? "translate-x-0" : "translate-x-full lg:hidden"
+        "absolute right-0 z-40 flex h-full w-80 flex-col border-l border-zinc-800 bg-zinc-900 shadow-2xl transition-transform duration-300 lg:relative lg:translate-x-0 lg:shadow-none",
+        showLibrary ? "translate-x-0" : "translate-x-full"
       )}>
         <div className="p-4 border-b border-zinc-800 flex flex-col gap-4">
           <button
             onClick={() => setShowLibrary(false)}
-            className="flex items-center gap-3 px-4 py-3 bg-zinc-800 hover:bg-zinc-700 rounded-xl border border-white/10 transition-all w-full text-zinc-300"
+            className="flex items-center gap-3 px-4 py-3 bg-zinc-800 hover:bg-zinc-700 rounded-xl border border-white/10 transition-all w-full text-zinc-300 lg:hidden"
           >
             <ArrowLeft className="w-5 h-5" />
             <span className="font-black italic tracking-tighter uppercase text-sm">返回</span>
