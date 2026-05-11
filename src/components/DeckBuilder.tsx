@@ -2,18 +2,19 @@ import { getAuthUser } from '../socket';
 import React, { useDeferredValue, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
-import { Save, Trash2, Plus, Search, Loader2, Copy, Edit3, X, Sparkles, ArrowLeft, Shuffle, ListFilter, Zap, Shield, Check } from 'lucide-react';
+import { Save, Trash2, Plus, Search, Loader2, Copy, Edit3, X, ArrowLeft, Shuffle, ListFilter, Check, Share2, Upload } from 'lucide-react';
 import { FACTIONS } from '../data/factions';
 import { Card as CardType, Deck } from '../types/game';
 import { CardComponent } from './Card';
 import { cn, getCardImageUrl, getCardTypeLabel } from '../lib/utils';
 import { CARD_BACKS } from '../data/customization';
-import { TriggerLocation } from '../types/game';
 import { useCardCatalog } from '../hooks/useCardCatalog';
 import { LoadingOverlay } from './LoadingOverlay';
 import { KeywordBadges } from './KeywordBadges';
 import { readJsonResponse } from '../lib/http';
 import { SEARCHABLE_CARD_PACKAGES, matchesCardPackageFilter, matchesCardTypeFilter } from '../lib/cardCatalogFilters';
+import { validateDeckForBattle } from '../lib/deckValidation';
+import { decodeDeckShareCode, encodeDeckShareCode } from '../lib/deckShareCode';
 
 const INITIAL_VISIBLE_CARD_COUNT = 48;
 
@@ -35,6 +36,11 @@ export const DeckBuilder: React.FC = () => {
   const [favoriteBackId, setFavoriteBackId] = useState('default');
   const [actionLoading, setActionLoading] = useState(false);
   const [addSuccessToast, setAddSuccessToast] = useState<{ cardName: string; count: number } | null>(null);
+  const [shareCode, setShareCode] = useState('');
+  const [shareCopied, setShareCopied] = useState(false);
+  const [showShareModal, setShowShareModal] = useState(false);
+  const [showImportModal, setShowImportModal] = useState(false);
+  const [importCode, setImportCode] = useState('');
   const [visibleCardCount, setVisibleCardCount] = useState(INITIAL_VISIBLE_CARD_COUNT);
   const [filters, setFilters] = useState({
     ac: '',
@@ -52,8 +58,7 @@ export const DeckBuilder: React.FC = () => {
   const deferredSearchTerm = useDeferredValue(searchTerm.trim());
   const {
     cards: cardLibrary,
-    getCardByReference,
-    loading: cardsLoading
+    getCardByReference
   } = useCardCatalog({ includeEffects: false });
 
   const CRYSTAL_VALUES: Record<string, { decompose: number, produce: number }> = {
@@ -242,6 +247,78 @@ export const DeckBuilder: React.FC = () => {
     setSearchParams({});
   };
 
+  const buildCurrentDeckForValidation = (): Deck => ({
+    id: selectedDeckId || 'current-deck',
+    name: deckName,
+    cards: deck.map(c => c.uniqueId),
+    isFavorite: false,
+    createdAt: Date.now()
+  });
+
+  const copyTextToClipboard = async (text: string) => {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+
+    throw new Error('当前浏览器不支持复制');
+  };
+
+  const handleShareDeck = async () => {
+    if (!catalogRefs.length) {
+      alert('卡牌库尚未加载完成');
+      return;
+    }
+
+    const validation = validateDeckForBattle(buildCurrentDeckForValidation());
+    if (!validation.valid) {
+      alert(validation.error || '只有合法卡组才能分享');
+      return;
+    }
+
+    try {
+      const code = encodeDeckShareCode(deck.map(card => card.uniqueId), catalogRefs);
+      setShareCode(code);
+      setShareCopied(false);
+      setShowShareModal(true);
+
+      try {
+        await copyTextToClipboard(code);
+        setShareCopied(true);
+      } catch {
+        // The modal still shows the code when clipboard access is unavailable.
+      }
+    } catch (e) {
+      alert(e instanceof Error ? e.message : '生成分享码失败');
+    }
+  };
+
+  const handleImportDeck = () => {
+    if (!catalogRefs.length) {
+      alert('卡牌库尚未加载完成');
+      return;
+    }
+
+    try {
+      const importedRefs = decodeDeckShareCode(importCode, catalogRefs);
+      const importedCards = importedRefs.map(ref => getCardByReference(ref));
+
+      if (importedCards.some(card => !card)) {
+        alert('分享码中包含当前卡牌库不存在的卡牌');
+        return;
+      }
+
+      setDeck(importedCards as CardType[]);
+      setDeckName('导入的卡组');
+      setSelectedDeckId(null);
+      setSearchParams({});
+      setShowImportModal(false);
+      setImportCode('');
+    } catch (e) {
+      alert(e instanceof Error ? e.message : '导入分享码失败');
+    }
+  };
+
   const deleteDeck = async (id: string, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
     if (!getAuthUser()) return;
@@ -373,6 +450,11 @@ export const DeckBuilder: React.FC = () => {
     [favoriteBackId]
   );
 
+  const catalogRefs = useMemo(
+    () => cardLibrary.map(card => card.uniqueId).filter(Boolean).sort((a, b) => a.localeCompare(b)),
+    [cardLibrary]
+  );
+
   const deckBaseCounts = useMemo(() => {
     const counts: Record<string, number> = {};
 
@@ -387,6 +469,23 @@ export const DeckBuilder: React.FC = () => {
     () => deck.reduce((total, card) => total + (card.godMark ? 1 : 0), 0),
     [deck]
   );
+
+  const deckOwnership = useMemo(() => {
+    const seenByCollectionKey: Record<string, number> = {};
+
+    return deck.map(card => {
+      const ownedQty = collection[card.uniqueId] || collection[card.id] || 0;
+      const collectionKey = collection[card.uniqueId] ? card.uniqueId : card.id;
+      const copyNumber = (seenByCollectionKey[collectionKey] || 0) + 1;
+      seenByCollectionKey[collectionKey] = copyNumber;
+
+      return {
+        missing: copyNumber > ownedQty,
+        ownedQty,
+        copyNumber
+      };
+    });
+  }, [collection, deck]);
 
   const shuffleDeck = () => {
     const shuffled = [...deck];
@@ -564,6 +663,125 @@ export const DeckBuilder: React.FC = () => {
         )}
       </AnimatePresence>
 
+      <AnimatePresence>
+        {showShareModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[120] bg-black/80 flex items-center justify-center p-4"
+            onClick={() => setShowShareModal(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.96, y: 10 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.96, y: 10 }}
+              className="w-full max-w-xl rounded-2xl border border-zinc-800 bg-zinc-950 p-6 shadow-2xl"
+              onClick={e => e.stopPropagation()}
+            >
+              <div className="mb-4 flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-red-600/15 text-red-400">
+                  <Share2 className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="text-xl font-black italic tracking-tighter text-white">分享卡组</h3>
+                  <p className="text-xs font-bold uppercase tracking-widest text-zinc-500">复制下面这串分享码</p>
+                </div>
+              </div>
+
+              <textarea
+                readOnly
+                value={shareCode}
+                className="min-h-28 w-full rounded-xl border border-zinc-800 bg-black px-4 py-3 font-mono text-sm text-zinc-100 outline-none"
+              />
+
+              <div className="mt-3 flex items-center justify-between gap-3 text-xs text-zinc-500">
+                <span>长度 {shareCode.length} / 64</span>
+                <span>{shareCopied ? '已复制到剪贴板' : '可复制后分享'}</span>
+              </div>
+
+              <div className="mt-5 flex gap-3">
+                <button
+                  onClick={async () => {
+                    try {
+                      await copyTextToClipboard(shareCode);
+                      setShareCopied(true);
+                    } catch {
+                      alert('复制失败，请手动复制分享码');
+                    }
+                  }}
+                  className="flex-1 rounded-xl bg-red-600 px-4 py-3 font-black italic text-sm text-white transition-colors hover:bg-red-700"
+                >
+                  重新复制
+                </button>
+                <button
+                  onClick={() => setShowShareModal(false)}
+                  className="flex-1 rounded-xl border border-zinc-800 bg-zinc-900 px-4 py-3 font-black italic text-sm text-zinc-300 transition-colors hover:bg-zinc-800"
+                >
+                  关闭
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {showImportModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[120] bg-black/80 flex items-center justify-center p-4"
+            onClick={() => setShowImportModal(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.96, y: 10 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.96, y: 10 }}
+              className="w-full max-w-xl rounded-2xl border border-zinc-800 bg-zinc-950 p-6 shadow-2xl"
+              onClick={e => e.stopPropagation()}
+            >
+              <div className="mb-4 flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-cyan-500/15 text-cyan-400">
+                  <Upload className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="text-xl font-black italic tracking-tighter text-white">导入卡组</h3>
+                  <p className="text-xs font-bold uppercase tracking-widest text-zinc-500">粘贴分享码后导入到当前编辑器</p>
+                </div>
+              </div>
+
+              <textarea
+                value={importCode}
+                onChange={e => setImportCode(e.target.value.trim())}
+                placeholder="在这里粘贴分享码"
+                className="min-h-28 w-full rounded-xl border border-zinc-800 bg-black px-4 py-3 font-mono text-sm text-zinc-100 outline-none placeholder:text-zinc-600"
+              />
+
+              <div className="mt-3 text-xs text-zinc-500">
+                导入后不会自动保存，你可以确认后再点保存卡组。
+              </div>
+
+              <div className="mt-5 flex gap-3">
+                <button
+                  onClick={handleImportDeck}
+                  className="flex-1 rounded-xl bg-cyan-600 px-4 py-3 font-black italic text-sm text-white transition-colors hover:bg-cyan-500"
+                >
+                  导入
+                </button>
+                <button
+                  onClick={() => setShowImportModal(false)}
+                  className="flex-1 rounded-xl border border-zinc-800 bg-zinc-900 px-4 py-3 font-black italic text-sm text-zinc-300 transition-colors hover:bg-zinc-800"
+                >
+                  取消
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Middle: Deck Editor */}
       <div className="flex-1 flex flex-col bg-black overflow-hidden w-full">
         <div className="flex-shrink-0 p-4 md:p-6 border-b border-zinc-900 flex flex-col md:flex-row md:items-center justify-between bg-zinc-950/50 gap-4">
@@ -617,6 +835,30 @@ export const DeckBuilder: React.FC = () => {
                 <Shuffle className="w-4 h-4 group-hover:rotate-180 transition-transform duration-500" />
                 <span className="text-[10px] font-black uppercase tracking-widest">洗切</span>
               </button>
+              <button
+                onClick={() => {
+                  setShowShareModal(false);
+                  setShowImportModal(true);
+                }}
+                disabled={!catalogRefs.length}
+                className="flex items-center gap-2 px-6 py-2 bg-zinc-900 hover:bg-zinc-800 border border-white/5 rounded-full transition-all text-zinc-400 hover:text-white group"
+                title="导入卡组"
+              >
+                <Upload className="w-4 h-4 group-hover:-translate-y-0.5 transition-transform" />
+                <span className="text-[10px] font-black uppercase tracking-widest">导入</span>
+              </button>
+              <button
+                onClick={() => {
+                  setShowImportModal(false);
+                  void handleShareDeck();
+                }}
+                disabled={!catalogRefs.length}
+                className="flex items-center gap-2 px-6 py-2 bg-zinc-900 hover:bg-zinc-800 border border-white/5 rounded-full transition-all text-zinc-400 hover:text-white group"
+                title="分享卡组"
+              >
+                <Share2 className="w-4 h-4 group-hover:scale-110" />
+                <span className="text-[10px] font-black uppercase tracking-widest">分享</span>
+              </button>
             </div>
             <button
               onClick={handleSave}
@@ -631,27 +873,38 @@ export const DeckBuilder: React.FC = () => {
 
         <div className="flex-1 overflow-y-auto p-4 md:p-8">
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4 md:gap-6">
-            {deck.map((card, index) => (
-              <div key={`${card.uniqueId}-${index}`} className="relative group">
-                <div
-                  className="transition-transform hover:scale-105 cursor-zoom-in"
-                  onClick={() => setZoomedCard(card)}
-                >
-                  <CardComponent
-                    card={card}
-                    disableZoom={true}
-                    displayMode="deck"
-                    cardBackUrl={favoriteBackUrl}
-                  />
+            {deck.map((card, index) => {
+              const ownership = deckOwnership[index];
+              return (
+                <div key={`${card.uniqueId}-${index}`} className="relative group">
+                  <div
+                    className={cn(
+                      "transition-transform hover:scale-105 cursor-zoom-in",
+                      ownership?.missing && "opacity-45 grayscale"
+                    )}
+                    onClick={() => setZoomedCard(card)}
+                  >
+                    <CardComponent
+                      card={card}
+                      disableZoom={true}
+                      displayMode="deck"
+                      cardBackUrl={favoriteBackUrl}
+                    />
+                  </div>
+                  {ownership?.missing && (
+                    <div className="absolute inset-x-2 bottom-2 z-10 rounded-lg border border-red-500/40 bg-black/85 px-2 py-1 text-center text-[10px] font-black text-red-300 shadow-lg">
+                      数量不足 {ownership.ownedQty}/{ownership.copyNumber}
+                    </div>
+                  )}
+                  <button
+                    onClick={() => removeFromDeck(index)}
+                    className="absolute -top-3 -right-3 w-10 h-10 bg-red-600 rounded-full flex items-center justify-center shadow-2xl opacity-60 group-hover:opacity-100 transition-all hover:scale-110 z-10 border-2 border-white/20"
+                  >
+                    <X className="w-6 h-6 text-white" />
+                  </button>
                 </div>
-                <button
-                  onClick={() => removeFromDeck(index)}
-                  className="absolute -top-3 -right-3 w-10 h-10 bg-red-600 rounded-full flex items-center justify-center shadow-2xl opacity-60 group-hover:opacity-100 transition-all hover:scale-110 z-10 border-2 border-white/20"
-                >
-                  <X className="w-6 h-6 text-white" />
-                </button>
-              </div>
-            ))}
+              );
+            })}
             {deck.length === 0 && (
               <div className="col-span-full h-64 flex flex-col items-center justify-center border-2 border-dashed border-zinc-800 rounded-3xl text-zinc-600">
                 <Plus className="w-12 h-12 mb-4 opacity-20" />
