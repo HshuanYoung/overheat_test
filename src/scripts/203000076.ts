@@ -1,42 +1,48 @@
 import { Card, CardEffect } from '../types/game';
-import { AtomicEffectExecutor, addTempDamage, addTempKeyword, addTempPower, addTempShenyi, allUnitsOnField, createSelectCardQuery, markSpiritTargeted, story } from './BaseUtil';
+import { AtomicEffectExecutor, addTempDamage, addTempKeyword, addTempPower, addTempShenyi, allUnitsOnField, markSpiritTargeted, story } from './BaseUtil';
 
-const cardEffects: CardEffect[] = [story('203000076_spirit_boost', '创痕3：选择战场1个单位。若有【神依】则伤害+4力量+4000并获得歼灭；否则伤害+2力量+2000并获得神依。', async (instance, gameState, playerState) => {
-  const preselectedTargetId = (instance as any).data?.preselectedSpiritTargetId;
-  const preselectedTarget = preselectedTargetId ? AtomicEffectExecutor.findCardById(gameState, preselectedTargetId) : undefined;
-  if (preselectedTarget?.cardlocation === 'UNIT') {
-    markSpiritTargeted(gameState, preselectedTarget, instance);
-    if (preselectedTarget.isShenyi) {
-      addTempDamage(preselectedTarget, instance, 4);
-      addTempPower(preselectedTarget, instance, 4000);
-      addTempKeyword(preselectedTarget, instance, 'annihilation');
-    } else {
-      addTempDamage(preselectedTarget, instance, 2);
-      addTempPower(preselectedTarget, instance, 2000);
-      addTempShenyi(preselectedTarget, instance, gameState);
+const applySpiritBoost = (instance: Card, gameState: any, target: Card, dispatchTargetEvent = true) => {
+  markSpiritTargeted(gameState, target, instance, { dispatchEvent: dispatchTargetEvent });
+  if (target.isShenyi) {
+    addTempDamage(target, instance, 4);
+    addTempPower(target, instance, 4000);
+    addTempKeyword(target, instance, 'annihilation');
+  } else {
+    addTempDamage(target, instance, 2);
+    addTempPower(target, instance, 2000);
+    addTempShenyi(target, instance, gameState);
+  }
+};
+
+const cardEffects: CardEffect[] = [story('203000076_spirit_boost', '创痕3：选择战场1个单位。若有【神依】则伤害+4力量+4000并获得歼灭；否则伤害+2力量+2000并获得神依。', async (instance, gameState, _playerState, _event, declaredSelections?: string[]) => {
+  const declaredTarget = declaredSelections?.[0] ? AtomicEffectExecutor.findCardById(gameState, declaredSelections[0]) : undefined;
+  if (declaredSelections?.length) {
+    if (declaredTarget?.cardlocation === 'UNIT' && declaredTarget.id !== '103080185') {
+      applySpiritBoost(instance, gameState, declaredTarget, false);
     }
     return;
   }
 
-  const targets = allUnitsOnField(gameState).filter(unit => unit.id !== '103080185');
-  if (targets.length === 0) return;
-  createSelectCardQuery(gameState, playerState.uid, targets, '选择单位', '选择战场上的1个单位，根据是否具有【神依】获得不同增益。', 1, 1, { sourceCardId: instance.gamecardId, effectId: '203000076_spirit_boost' }, () => 'UNIT');
+  const preselectedTargetId = (instance as any).data?.preselectedSpiritTargetId;
+  const preselectedTarget = preselectedTargetId ? AtomicEffectExecutor.findCardById(gameState, preselectedTargetId) : undefined;
+  if (preselectedTarget?.cardlocation === 'UNIT') {
+    applySpiritBoost(instance, gameState, preselectedTarget);
+  }
 }, {
   erosionBackLimit: [3, 10],
+  targetSpec: {
+    title: '选择单位',
+    description: '选择战场上的1个单位，根据是否具有【神依】获得不同增益。',
+    minSelections: 1,
+    maxSelections: 1,
+    zones: ['UNIT'],
+    getCandidates: gameState => allUnitsOnField(gameState).map(card => ({ card, source: 'UNIT' }))
+  },
   onQueryResolve: async (instance, gameState, _playerState, selections) => {
     const target = selections[0] ? AtomicEffectExecutor.findCardById(gameState, selections[0]) : undefined;
     if (target?.cardlocation !== 'UNIT') return;
     if (target.id === '103080185') return;
-    markSpiritTargeted(gameState, target, instance);
-    if (target.isShenyi) {
-      addTempDamage(target, instance, 4);
-      addTempPower(target, instance, 4000);
-      addTempKeyword(target, instance, 'annihilation');
-    } else {
-      addTempDamage(target, instance, 2);
-      addTempPower(target, instance, 2000);
-      addTempShenyi(target, instance, gameState);
-    }
+    applySpiritBoost(instance, gameState, target);
   }
 })];
 

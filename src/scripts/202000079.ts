@@ -1,12 +1,22 @@
 import { Card, CardEffect } from '../types/game';
-import { AtomicEffectExecutor, allUnitsOnField, createSelectCardQuery, damagePlayerByEffect, destroyByEffect, story } from './BaseUtil';
+import { AtomicEffectExecutor, allUnitsOnField, damagePlayerByEffect, destroyByEffect, story } from './BaseUtil';
 
-const cardEffects: CardEffect[] = [story('202000079_destroy_self_damage', '5~7：选择战场1个非神蚀单位破坏。之后给予你与那个单位原本伤害值相同的伤害。', async (instance, gameState, playerState) => {
-  const targets = allUnitsOnField(gameState).filter(unit => !unit.godMark);
-  if (targets.length === 0) return;
-  createSelectCardQuery(gameState, playerState.uid, targets, '选择破坏对象', '选择战场上的1个非神蚀单位，将其破坏。', 1, 1, { sourceCardId: instance.gamecardId, effectId: '202000079_destroy_self_damage' }, () => 'UNIT');
+const cardEffects: CardEffect[] = [story('202000079_destroy_self_damage', '5~7：选择战场1个非神蚀单位破坏。之后给予你与那个单位原本伤害值相同的伤害。', async (instance, gameState, playerState, _event, declaredSelections?: string[]) => {
+  const target = declaredSelections?.[0] ? AtomicEffectExecutor.findCardById(gameState, declaredSelections[0]) : undefined;
+  if (!target || target.godMark) return;
+  const damage = target.baseDamage ?? target.damage ?? 0;
+  destroyByEffect(gameState, target, instance);
+  if (damage > 0) await damagePlayerByEffect(gameState, playerState.uid, playerState.uid, damage, instance);
 }, {
   erosionTotalLimit: [5, 7],
+  targetSpec: {
+    title: '选择破坏对象',
+    description: '选择战场上的1个非神蚀单位，将其破坏。',
+    minSelections: 1,
+    maxSelections: 1,
+    zones: ['UNIT'],
+    getCandidates: gameState => allUnitsOnField(gameState).filter(unit => !unit.godMark).map(card => ({ card, source: 'UNIT' }))
+  },
   onQueryResolve: async (instance, gameState, playerState, selections) => {
     const target = selections[0] ? AtomicEffectExecutor.findCardById(gameState, selections[0]) : undefined;
     if (!target || target.godMark) return;

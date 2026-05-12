@@ -114,6 +114,7 @@ async function handleBotMove(gameState: any, gameId: string) {
 
     const bot = gameState.players['BOT_PLAYER'];
     if (!bot) return;
+    if (gameState.pendingQuery && gameState.pendingQuery.playerUid !== 'BOT_PLAYER') return;
 
     // The bot should move if it's its turn, if it's being asked for a confrontation response, if it has priority, or has a query
     const isBotAsked = gameState.battleState && gameState.battleState.askConfront === 'ASKING_OPPONENT';
@@ -184,6 +185,7 @@ async function handleBotMove(gameState: any, gameId: string) {
 function triggerBotIfNeeded(gameState: any, gameId: string) {
     const bot = gameState.players['BOT_PLAYER'];
     if (!bot) return;
+    if (gameState.pendingQuery && gameState.pendingQuery.playerUid !== 'BOT_PLAYER') return;
 
     const currentPlayerId = gameState.playerIds[gameState.currentTurnPlayer];
     const isBotAsked = gameState.battleState && gameState.battleState.askConfront === 'ASKING_OPPONENT';
@@ -758,7 +760,7 @@ setInterval(async () => {
                 const currentPlayerId = gameState.playerIds[gameState.currentTurnPlayer];
                 const isBotQuery = gameState.pendingQuery && gameState.pendingQuery.playerUid === 'BOT_PLAYER';
                 const isBotDefending = gameState.phase === 'DEFENSE_DECLARATION' && !gameState.players['BOT_PLAYER']?.isTurn;
-                if (currentPlayerId === 'BOT_PLAYER' || gameState.priorityPlayerId === 'BOT_PLAYER' || isBotQuery || isBotDefending) {
+                if (isBotQuery || (!gameState.pendingQuery && (currentPlayerId === 'BOT_PLAYER' || gameState.priorityPlayerId === 'BOT_PLAYER' || isBotDefending))) {
                     const syncCallback = async (state: any) => {
                         await syncAndSaveState(gameId, state);
                     };
@@ -2303,8 +2305,12 @@ io.on('connection', (socket) => {
                 } else if (action === 'END_PHASE') {
                     if (player.isTurn || gameState.phase === 'BATTLE_FREE' || gameState.phase === 'COUNTERING') {
                         await advancePhase(gameState, gameId, myUid, socket, payload);
-                        await ServerGameService.checkTriggeredEffects(gameState);
-                        await ServerGameService.applyConfrontationStrategy(gameState, syncCallback);
+                        if (!gameState.pendingQuery) {
+                            await ServerGameService.checkTriggeredEffects(gameState);
+                        }
+                        if (!gameState.pendingQuery) {
+                            await ServerGameService.applyConfrontationStrategy(gameState, syncCallback);
+                        }
                         await syncAndSaveState(gameId, gameState);
                         if (gameState.gameStatus !== 2) {
                             triggerBotIfNeeded(gameState, gameId);
@@ -2315,12 +2321,16 @@ io.on('connection', (socket) => {
                     await ServerGameService.surrender(gameState, myUid);
                 }
 
-                await ServerGameService.applyConfrontationStrategy(gameState, syncCallback);
+                if (!gameState.pendingQuery) {
+                    await ServerGameService.applyConfrontationStrategy(gameState, syncCallback);
+                }
 
                 // Ensure any dangling triggers are checked before saving state (Skip if game is over)
-                if (gameState.gameStatus !== 2) {
+                if (gameState.gameStatus !== 2 && !gameState.pendingQuery) {
                     await ServerGameService.checkTriggeredEffects(gameState);
-                    await ServerGameService.applyConfrontationStrategy(gameState, syncCallback);
+                    if (!gameState.pendingQuery) {
+                        await ServerGameService.applyConfrontationStrategy(gameState, syncCallback);
+                    }
                 }
 
                 // Final state sync and save

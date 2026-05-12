@@ -136,20 +136,24 @@ export class EventEngine {
     for (const { card, effect, effectIndex, playerUid } of triggeredEffects) {
       const pendingSourceCard = findCardByGamecardId(gameState.pendingQuery?.context?.sourceCardId);
       const hasQueuedDuplicate = !!(
-        effect.limitCount === 1 &&
         gameState.triggeredEffectsQueue?.some(item =>
           item.playerUid === playerUid &&
           (effect.limitNameType ? item.card?.id === card.id : item.card?.gamecardId === card.gamecardId) &&
           (item.effect?.id || '') === (effect.id || '') &&
-          (effect.limitNameType || item.effectIndex === effectIndex)
+          (effect.limitNameType || item.effectIndex === effectIndex) &&
+          item.event?.type === event.type &&
+          item.event?.sourceCardId === event.sourceCardId &&
+          item.event?.targetCardId === event.targetCardId
         )
       );
       const hasPendingDuplicate = !!(
-        effect.limitCount === 1 &&
         gameState.pendingQuery?.callbackKey === 'TRIGGER_CHOICE' &&
         gameState.pendingQuery?.playerUid === playerUid &&
         (effect.limitNameType ? pendingSourceCard?.id === card.id : gameState.pendingQuery?.context?.sourceCardId === card.gamecardId) &&
-        (effect.limitNameType || gameState.pendingQuery?.context?.effectIndex === effectIndex)
+        (effect.limitNameType || gameState.pendingQuery?.context?.effectIndex === effectIndex) &&
+        gameState.pendingQuery?.context?.event?.type === event.type &&
+        gameState.pendingQuery?.context?.event?.sourceCardId === event.sourceCardId &&
+        gameState.pendingQuery?.context?.event?.targetCardId === event.targetCardId
       );
 
       if (hasQueuedDuplicate || hasPendingDuplicate) {
@@ -287,6 +291,15 @@ export class EventEngine {
           }
           if ((card.cardlocation === 'UNIT' || card.cardlocation === 'ITEM') && card.nextEffectProtection) {
             card.influencingEffects.push({ sourceCardName: '变装', description: '已变装' });
+          }
+          if (card.declaredTargetMarkers?.length) {
+            card.declaredTargetMarkers.forEach(marker => {
+              const linkPrefix = marker.linkNumber ? `Link ${marker.linkNumber}: ` : '';
+              card.influencingEffects!.push({
+                sourceCardName: marker.sourceCardName,
+                description: `${linkPrefix}被 [${marker.sourceCardName}] 指定为效果对象`
+              });
+            });
           }
 
           if (card.temporaryPowerBuff) {

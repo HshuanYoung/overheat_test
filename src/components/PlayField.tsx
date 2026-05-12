@@ -4,7 +4,7 @@ import { Card, PlayerState, StackItem, GameState, GAME_TIMEOUTS } from '../types
 import { CardComponent } from './Card';
 import { StandardPopup } from './StandardPopup';
 import { KeywordBadges } from './KeywordBadges';
-import { Shield, Sword, Zap, Trash2, Flag, BookOpen, Layers, AlertTriangle, Search, Play, X, LogOut } from 'lucide-react';
+import { ArrowDown, Shield, Sword, Zap, Trash2, Flag, BookOpen, Layers, AlertTriangle, Search, Play, X, LogOut } from 'lucide-react';
 import { cn, getCardImageUrl } from '../lib/utils';
 
 interface PlayFieldProps {
@@ -73,6 +73,9 @@ const CardSlot: React.FC<{
   const isStackArea = isDeck || label === '墓地' || label === '放逐';
   const numericCount = typeof count === 'number' ? count : 0;
   const heightScale = isStackArea ? 1 + Math.min(numericCount / 100, 0.2) : 1;
+  const isDeclaredEffectTarget =
+    !!card?.declaredTargetMarkers?.length ||
+    !!card?.influencingEffects?.some(effect => effect.description.includes('指定为效果对象'));
 
   return (
     <div
@@ -140,26 +143,36 @@ const CardSlot: React.FC<{
           </div>
         )}
 
-        {(isAttacking || isDefending) && (
+        {(isAttacking || isDefending || isDeclaredEffectTarget) && (
           <div
             className={cn(
               "pointer-events-none absolute inset-0 z-30 flex items-center justify-center",
               isOpponent && "rotate-180"
             )}
           >
-            <div
-              className={cn(
-                "relative flex h-9 w-9 items-center justify-center rounded-full border shadow-2xl md:h-11 md:w-11",
-                isAttacking
-                  ? "border-red-200/80 bg-gradient-to-br from-red-500 via-rose-600 to-zinc-950 shadow-[0_12px_24px_rgba(239,68,68,0.55),inset_0_2px_6px_rgba(255,255,255,0.35)]"
-                  : "border-blue-100/80 bg-gradient-to-br from-sky-300 via-blue-600 to-zinc-950 shadow-[0_12px_24px_rgba(59,130,246,0.55),inset_0_2px_6px_rgba(255,255,255,0.35)]"
+            <div className="flex items-center justify-center gap-1 md:gap-1.5">
+              {(isAttacking || isDefending) && (
+                <div
+                  className={cn(
+                    "relative flex h-9 w-9 items-center justify-center rounded-full border shadow-2xl md:h-11 md:w-11",
+                    isAttacking
+                      ? "border-red-200/80 bg-gradient-to-br from-red-500 via-rose-600 to-zinc-950 shadow-[0_12px_24px_rgba(239,68,68,0.55),inset_0_2px_6px_rgba(255,255,255,0.35)]"
+                      : "border-blue-100/80 bg-gradient-to-br from-sky-300 via-blue-600 to-zinc-950 shadow-[0_12px_24px_rgba(59,130,246,0.55),inset_0_2px_6px_rgba(255,255,255,0.35)]"
+                  )}
+                >
+                  <div className="absolute inset-1 rounded-full bg-white/10 blur-[1px]" />
+                  {isAttacking ? (
+                    <Sword className="relative h-5 w-5 -rotate-45 text-white drop-shadow-[0_3px_2px_rgba(0,0,0,0.75)] md:h-6 md:w-6" />
+                  ) : (
+                    <Shield className="relative h-5 w-5 text-white drop-shadow-[0_3px_2px_rgba(0,0,0,0.75)] md:h-6 md:w-6" />
+                  )}
+                </div>
               )}
-            >
-              <div className="absolute inset-1 rounded-full bg-white/10 blur-[1px]" />
-              {isAttacking ? (
-                <Sword className="relative h-5 w-5 -rotate-45 text-white drop-shadow-[0_3px_2px_rgba(0,0,0,0.75)] md:h-6 md:w-6" />
-              ) : (
-                <Shield className="relative h-5 w-5 text-white drop-shadow-[0_3px_2px_rgba(0,0,0,0.75)] md:h-6 md:w-6" />
+              {isDeclaredEffectTarget && (
+                <div className="relative flex h-9 w-9 items-center justify-center rounded-full border border-amber-100/80 bg-gradient-to-br from-amber-300 via-orange-500 to-zinc-950 shadow-[0_12px_24px_rgba(245,158,11,0.55),inset_0_2px_6px_rgba(255,255,255,0.35)] md:h-11 md:w-11">
+                  <div className="absolute inset-1 rounded-full bg-white/10 blur-[1px]" />
+                  <ArrowDown className="relative h-5 w-5 text-white drop-shadow-[0_3px_2px_rgba(0,0,0,0.75)] md:h-6 md:w-6" />
+                </div>
               )}
             </div>
           </div>

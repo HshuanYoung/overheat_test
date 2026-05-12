@@ -1,4 +1,4 @@
-import { Card, GameState, PlayerState, CardEffect, TriggerLocation } from '../types/game';
+import { Card, GameState, PlayerState, CardEffect } from '../types/game';
 import { AtomicEffectExecutor } from '../services/AtomicEffectExecutor';
 
 const effect_204000046_activation: CardEffect = {
@@ -16,29 +16,24 @@ const effect_204000046_activation: CardEffect = {
     const sharedPhases = ['MAIN', 'BATTLE_DECLARATION', 'BATTLE_FREE'];
     return hasTargets && (sharedPhases.includes(gameState.phase) || gameState.phase === 'COUNTERING');
   },
-  execute: async (instance: Card, gameState: GameState, playerState: PlayerState) => {
-    const targets: Card[] = [];
-    playerState.unitZone.forEach(c => { if (c) targets.push(c); });
-    playerState.itemZone.forEach(c => { if (c) targets.push(c); });
-
-    if (targets.length > 0) {
-      gameState.pendingQuery = {
-        id: Math.random().toString(36).substring(7),
-        type: 'SELECT_CARD',
-        playerUid: playerState.uid,
-        options: AtomicEffectExecutor.enrichQueryOptions(gameState, playerState.uid, targets.map(c => ({ card: c, source: c.cardlocation as TriggerLocation }))),
-        title: '选择保护目标',
-        description: '选择一张我方单位或道具，为其施加一次效果抵消护盾。',
-        minSelections: 1,
-        maxSelections: 1,
-        callbackKey: 'EFFECT_RESOLVE',
-        context: {
-          effectId: 'hensou_protection',
-          sourceCardId: instance.gamecardId
-        }
-      };
-    } else {
-      gameState.logs.push(`[${instance.fullName}] 未发现可用目标，施加失败。`);
+  targetSpec: {
+    title: '选择保护目标',
+    description: '选择一张我方单位或道具，为其施加一次效果抵消护盾。',
+    minSelections: 1,
+    maxSelections: 1,
+    controller: 'SELF',
+    zones: ['UNIT', 'ITEM'],
+    getCandidates: (_gameState, playerState) => [
+      ...playerState.unitZone.filter((card): card is Card => !!card).map(card => ({ card, source: 'UNIT' as const })),
+      ...playerState.itemZone.filter((card): card is Card => !!card).map(card => ({ card, source: 'ITEM' as const }))
+    ]
+  },
+  execute: async (instance: Card, gameState: GameState, _playerState: PlayerState, _event?: any, declaredSelections?: string[]) => {
+    const targetId = declaredSelections?.[0];
+    const target = targetId ? AtomicEffectExecutor.findCardById(gameState, targetId) : undefined;
+    if (target) {
+      target.nextEffectProtection = true;
+      gameState.logs.push(`[${instance.fullName}] 为 [${target.fullName}] 施加了效果抵消护盾！`);
     }
   },
   onQueryResolve: async (instance: Card, gameState: GameState, playerState: PlayerState, selections: string[]) => {

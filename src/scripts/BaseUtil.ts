@@ -735,7 +735,7 @@ export const markCannotDefendUntilEndOfTurn = (target: Card, source: Card, gameS
   addInfluence(target, source, '不能宣言防御');
 };
 
-export const markSpiritTargeted = (gameState: GameState, target: Card, source: Card) => {
+export const markSpiritTargeted = (gameState: GameState, target: Card, source: Card, options?: { dispatchEvent?: boolean }) => {
   const data = ensureData(target);
   data.spiritTargetedTurn = gameState.turnCount;
   data.spiritTargetedSourceName = source.fullName;
@@ -743,6 +743,7 @@ export const markSpiritTargeted = (gameState: GameState, target: Card, source: C
   if (target.id === '103080185' && source.fullName.includes('降灵')) {
     addInfluence(source, target, '指定天鬼图腾「暴龙」');
   }
+  if (options?.dispatchEvent === false) return;
   EventEngine.dispatchEvent(gameState, {
     type: 'CARD_SELECTED_TARGET',
     sourceCard: source,

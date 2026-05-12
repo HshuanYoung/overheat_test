@@ -128,6 +128,40 @@ export interface AtomicEffect {
   params?: any;
 }
 
+export interface EffectTargetCandidate {
+  card: Card;
+  source?: TriggerLocation;
+}
+
+export interface EffectTargetSpec {
+  title: string;
+  description: string;
+  minSelections: number;
+  maxSelections: number;
+  zones?: TriggerLocation[];
+  controller?: 'SELF' | 'OPPONENT' | 'ANY';
+  filter?: CardFilter;
+  preselect?: boolean;
+  getCandidates?: (gameState: GameState, playerState: PlayerState, card: Card) => EffectTargetCandidate[];
+}
+
+export interface DeclaredEffectTarget {
+  gamecardId: string;
+  ownerUid: string;
+  zone: TriggerLocation;
+  sourceCardId: string;
+  sourceCardName: string;
+  effectIndex?: number;
+  linkNumber?: number;
+}
+
+export interface DeclaredTargetMarker {
+  sourceCardId: string;
+  sourceCardName: string;
+  effectIndex?: number;
+  linkNumber?: number;
+}
+
 export interface GameEvent {
   type: GameEventType;
   sourceCard?: Card;
@@ -168,6 +202,7 @@ export interface CardEffect {
   onQueryResolve?: (card: Card, gameState: GameState, playerState: PlayerState, selections: string[], context?: any) => void | Promise<void>; // Resolve sequential steps after a query
   resolve?: (card: Card, gameState: GameState, playerState: PlayerState, event?: GameEvent) => void | Promise<void>; // Post-processing logic (e.g. end of turn)
   atomicEffects?: AtomicEffect[]; // Structured atomic effects
+  targetSpec?: EffectTargetSpec;
   content?: string; // Description of the effect: Move, Draw, Add Power, etc.
   description: string; // Human readable text
   substitutionFilter?: CardFilter; // Filter for units this card can substitute/protect
@@ -244,6 +279,7 @@ export interface Card {
   silencedEffectIds?: string[];
   temporaryBuffSources?: { [key: string]: string }; // Map of buff type to source card name
   temporaryBuffDetails?: { [key: string]: { sourceCardName: string; value?: number; description?: string }[] };
+  declaredTargetMarkers?: DeclaredTargetMarker[];
 }
 
 export interface PlayerState {
@@ -297,6 +333,7 @@ export interface StackItem {
   attackerIds?: string[]; // For ATTACK
   isAlliance?: boolean; // For ATTACK
   data?: any; // Generic data for effects (e.g. query results)
+  declaredTargets?: DeclaredEffectTarget[];
   timestamp: number;
   isNegated?: boolean;
   isInterrupted?: boolean;

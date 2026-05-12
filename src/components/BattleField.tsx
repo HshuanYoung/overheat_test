@@ -248,7 +248,7 @@ export const BattleField: React.FC = () => {
   const [previewCard, setPreviewCard] = useState<Card | null>(null);
   const [selectedMulligan, setSelectedMulligan] = useState<string[]>([]);
   const [isMulliganSubmitting, setIsMulliganSubmitting] = useState(false);
-  const [paymentSelection, setPaymentSelection] = useState<{ useFeijing: string[], exhaustIds: string[], erosionFrontIds: string[], spiritTargetId?: string }>({ useFeijing: [], exhaustIds: [], erosionFrontIds: [] });
+  const [paymentSelection, setPaymentSelection] = useState<{ useFeijing: string[], exhaustIds: string[], erosionFrontIds: string[] }>({ useFeijing: [], exhaustIds: [], erosionFrontIds: [] });
   const [pendingPlayCard, setPendingPlayCard] = useState<Card | null>(null);
   const [selectedAttackers, setSelectedAttackers] = useState<string[]>([]);
   const [isAlliance, setIsAlliance] = useState(false);
@@ -498,7 +498,7 @@ export const BattleField: React.FC = () => {
       setTimer(prev => prev !== newTimerValue ? newTimerValue : prev);
 
       // Auto-resolve for player if timeout during Countering
-      if (game.phase === 'COUNTERING' && game.priorityPlayerId === myUid && remaining <= 0) {
+      if (!game.pendingQuery && game.phase === 'COUNTERING' && game.priorityPlayerId === myUid && remaining <= 0) {
         const resolveKey = `${game.phase}-${game.priorityPlayerId}-${game.counterStack.length}`;
         if (lastAutoResolveRef.current !== resolveKey) {
           lastAutoResolveRef.current = resolveKey;
@@ -513,13 +513,14 @@ export const BattleField: React.FC = () => {
 
   useEffect(() => {
     if (isSpectator || !game || !gameId) return;
+    if (game.pendingQuery || game.isResolvingStack || game.currentProcessingItem) return;
     
     // OFF Strategy: Always auto-pass
     // AUTO Strategy: Auto-pass ONLY if no cards/effects available
     const shouldAutoPass = localStrategy === 'OFF' || (localStrategy === 'AUTO' && !canConfront);
 
     if (shouldAutoPass) {
-      if (game.phase === 'COUNTERING' && game.priorityPlayerId === myUid && !game.isResolvingStack) {
+      if (game.phase === 'COUNTERING' && game.priorityPlayerId === myUid) {
         handleResolve();
       }
       if (game.phase === 'BATTLE_FREE' && game.battleState?.askConfront && 
@@ -528,7 +529,7 @@ export const BattleField: React.FC = () => {
         GameService.advancePhase(gameId, 'DECLINE_CONFRONTATION');
       }
     }
-  }, [game?.phase, game?.priorityPlayerId, game?.battleState?.askConfront, localStrategy, canConfront, isSpectator]);
+  }, [game?.phase, game?.priorityPlayerId, game?.battleState?.askConfront, game?.pendingQuery?.id, game?.isResolvingStack, game?.currentProcessingItem, localStrategy, canConfront, isSpectator]);
 
   // Reset interaction states when phase or priority changes
   useEffect(() => {
@@ -867,18 +868,6 @@ export const BattleField: React.FC = () => {
 
   const getEffectiveCardCost = (card: Card, player: PlayerState | null = me) => {
     const baseCost = card.id === '202000080' ? 6 : (card.baseAcValue ?? card.acValue ?? 0);
-    const selectedSpiritTarget = paymentSelection.spiritTargetId
-      ? Object.values(game?.players || {})
-        .flatMap(playerState => (playerState as PlayerState).unitZone)
-        .find(unit => unit?.gamecardId === paymentSelection.spiritTargetId)
-      : undefined;
-    if (
-      pendingPlayCard?.gamecardId === card.gamecardId &&
-      (card.id === '203000075' || card.id === '203000076') &&
-      selectedSpiritTarget?.id === '103080185'
-    ) {
-      return 0;
-    }
     if (card.id === '101140062' && player) {
       const unitCount = player.unitZone.filter(Boolean).length;
       return Math.max(0, baseCost - unitCount);
@@ -1468,9 +1457,10 @@ export const BattleField: React.FC = () => {
     if (isCounteringTurn && card.type !== 'STORY') return;
 
     const playEffect = card.effects?.find(e => e.type === 'ACTIVATE' || e.type === 'TRIGGER' || e.type === 'ALWAYS');
+    const needsPreselectedTarget = !!playEffect?.targetSpec && playEffect.targetSpec.preselect !== false;
     const cost = getEffectiveCardCost(card);
 
-    if (cost === 0) {
+    if (cost === 0 || needsPreselectedTarget) {
       try {
         await socket.emit('gameAction', { gameId, action: 'PLAY_CARD', payload: { cardId: card.gamecardId, paymentSelection: {} } });
       } catch (error: any) {
@@ -1524,6 +1514,7 @@ export const BattleField: React.FC = () => {
 
   const handleResolve = async () => {
     if (!gameId) return;
+    if (game.pendingQuery || game.isResolvingStack || game.currentProcessingItem) return;
     try {
       setIsConfronting(false);
       if (game.phase === 'COUNTERING') {
@@ -1543,8 +1534,7 @@ export const BattleField: React.FC = () => {
       await GameService.playCard(gameId, myUid, pendingPlayCard.gamecardId, {
         feijingCardId: paymentSelection.useFeijing[0],
         exhaustUnitIds: paymentSelection.exhaustIds,
-        erosionFrontIds: paymentSelection.erosionFrontIds,
-        spiritTargetId: paymentSelection.spiritTargetId
+        erosionFrontIds: paymentSelection.erosionFrontIds
       });
       setPendingPlayCard(null);
       setPaymentSelection({ useFeijing: [], exhaustIds: [], erosionFrontIds: [] });
@@ -1594,7 +1584,6 @@ export const BattleField: React.FC = () => {
 
       await GameService.submitQueryChoice(gameId, game.pendingQuery.id, selections);
       setSelectedQueryIds([]);
-      setPaymentSelection({ useFeijing: [], exhaustIds: [], erosionFrontIds: [] });
     } catch (error: any) {
       console.error('[Query] Submission error:', error);
       setLastError(error.message);
@@ -2206,49 +2195,6 @@ export const BattleField: React.FC = () => {
 
                 {/* Right: Selection Area */}
                 <div className="flex flex-col gap-8">
-                  {(pendingPlayCard.id === '203000075' || pendingPlayCard.id === '203000076') && Object.values(game?.players || {})
-                    .flatMap(playerState => (playerState as PlayerState).unitZone)
-                    .some(unit => unit?.id === '103080185') && (
-                    <div className="flex flex-col gap-3">
-                      <div className="flex items-center gap-2 text-emerald-300 font-black uppercase italic tracking-widest text-sm">
-                        降灵对象
-                      </div>
-                      <div className="grid grid-cols-2 gap-3 pb-2 justify-items-center">
-                        <button
-                          type="button"
-                          onClick={() => setPaymentSelection(prev => ({ ...prev, spiritTargetId: undefined }))}
-                          className={cn(
-                            "min-h-24 rounded-lg border-2 px-3 py-2 text-xs font-black text-white transition-all",
-                            !paymentSelection.spiritTargetId ? "border-emerald-400 bg-emerald-500/20" : "border-white/10 bg-white/5 opacity-70"
-                          )}
-                        >
-                          不预选对象<br />按原费用支付
-                        </button>
-                        {Object.values(game?.players || {}).flatMap(playerState => (playerState as PlayerState).unitZone).filter(unit => unit?.id === '103080185').map(unit => {
-                          const isSelected = paymentSelection.spiritTargetId === unit!.gamecardId;
-                          return (
-                            <motion.div
-                              key={unit!.gamecardId}
-                              whileHover={{ y: -3 }}
-                              whileTap={{ scale: 0.95 }}
-                              onClick={() => setPaymentSelection(prev => ({ ...prev, spiritTargetId: unit!.gamecardId }))}
-                              className={cn(
-                                "aspect-[3/4] w-full max-w-[10.8rem] cursor-pointer transition-all rounded-lg overflow-hidden border-2 md:max-w-none",
-                                isSelected ? "border-emerald-400 scale-105 shadow-[0_0_20px_rgba(52,211,153,0.5)]" : "border-white/5 opacity-60 grayscale hover:grayscale-0 hover:opacity-100"
-                              )}
-                            >
-                              <div className="relative h-full w-full">
-                                <CardComponent card={unit!} disableZoom cardBackUrl={cardBackUrl} />
-                                <div className="absolute left-2 top-2 rounded-lg bg-black/75 px-2 py-1 text-[10px] font-black text-white shadow-lg">
-                                  指定此单位时 0 费
-                                </div>
-                              </div>
-                            </motion.div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
                   {getEffectiveCardCost(pendingPlayCard) > 0 ? (
                     <>
                       {/* Hand Replacement Section */}
@@ -2444,7 +2390,9 @@ export const BattleField: React.FC = () => {
                     !isSpectator &&
                     game.phase === 'COUNTERING' &&
                     game.priorityPlayerId === myUid &&
-                    !game.isResolvingStack
+                    !game.pendingQuery &&
+                    !game.isResolvingStack &&
+                    !game.currentProcessingItem
                   }
                   isDefensePromptActive={
                     !isSpectator &&

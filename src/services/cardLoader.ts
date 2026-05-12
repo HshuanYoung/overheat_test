@@ -48,6 +48,7 @@ export function hydrateCard(card: Card | null) {
         cost: originalEffect.cost,
         onQueryResolve: originalEffect.onQueryResolve,
         resolve: originalEffect.resolve,
+        targetSpec: originalEffect.targetSpec,
         applyContinuous: originalEffect.applyContinuous,
         removeContinuous: originalEffect.removeContinuous
       };
