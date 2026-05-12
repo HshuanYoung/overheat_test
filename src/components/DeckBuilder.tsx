@@ -1,5 +1,5 @@
 import { getAuthUser } from '../socket';
-import React, { useDeferredValue, useEffect, useMemo, useState } from 'react';
+import React, { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { Save, Trash2, Plus, Search, Loader2, X, ArrowLeft, Shuffle, ListFilter, Check, Share2, Upload, Eraser, Zap, Menu, ChevronDown, AlertTriangle, Edit3 } from 'lucide-react';
@@ -42,8 +42,12 @@ export const DeckBuilder: React.FC = () => {
   const [showImportModal, setShowImportModal] = useState(false);
   const [showManageModal, setShowManageModal] = useState(false);
   const [showRenameModal, setShowRenameModal] = useState(false);
+  const [showNewDeckModal, setShowNewDeckModal] = useState(false);
+  const [isNewDeckDraft, setIsNewDeckDraft] = useState(false);
+  const isNewDeckDraftRef = useRef(false);
   const [importCode, setImportCode] = useState('');
   const [renameValue, setRenameValue] = useState('');
+  const [newDeckName, setNewDeckName] = useState('新卡组');
   const [visibleCardCount, setVisibleCardCount] = useState(INITIAL_VISIBLE_CARD_COUNT);
   const [filters, setFilters] = useState({
     ac: '',
@@ -58,6 +62,7 @@ export const DeckBuilder: React.FC = () => {
   });
   const [showLibrary, setShowLibrary] = useState(false);
   const deferredSearchTerm = useDeferredValue(searchTerm.trim());
+  const deckIdFromUrl = searchParams.get('id');
   const {
     cards: cardLibrary,
     getCardByReference
@@ -88,7 +93,10 @@ export const DeckBuilder: React.FC = () => {
       return;
     }
 
-    const deckIdFromUrl = searchParams.get('id');
+    if (isNewDeckDraftRef.current || isNewDeckDraft) {
+      return;
+    }
+
     if (!deckIdFromUrl) {
       if (selectedDeckId) {
         setSelectedDeckId(null);
@@ -100,7 +108,7 @@ export const DeckBuilder: React.FC = () => {
     if (targetDeck && selectedDeckId !== targetDeck.id) {
       loadDeckToEditor(targetDeck);
     }
-  }, [cardLibrary, myDecks, searchParams, selectedDeckId]);
+  }, [cardLibrary, myDecks, deckIdFromUrl, selectedDeckId, isNewDeckDraft]);
 
   const loadCollection = async () => {
     if (!getAuthUser()) return;
@@ -205,6 +213,11 @@ export const DeckBuilder: React.FC = () => {
   const loadDeckToEditor = (savedDeck: Deck) => {
     const cards = savedDeck.cards.map(uid => getCardByReference(uid)).filter((c): c is CardType => !!c);
 
+    if (isNewDeckDraftRef.current) {
+      return;
+    }
+
+    setIsNewDeckDraft(false);
     setDeck(cards);
     setDeckName(savedDeck.name);
     setSelectedDeckId(savedDeck.id);
@@ -238,6 +251,8 @@ export const DeckBuilder: React.FC = () => {
           body: JSON.stringify(deckData)
         });
         const data = await res.json();
+        isNewDeckDraftRef.current = false;
+        setIsNewDeckDraft(false);
         setSelectedDeckId(data.id);
         setSearchParams({ id: data.id });
       }
@@ -250,16 +265,42 @@ export const DeckBuilder: React.FC = () => {
   };
 
   const createNewDeck = () => {
+    isNewDeckDraftRef.current = true;
+    setIsNewDeckDraft(true);
     setDeck([]);
     setDeckName('新卡组');
     setSelectedDeckId(null);
-    setSearchParams(new URLSearchParams());
+    setSearchParams({}, { replace: true });
     setShowManageModal(false);
   };
 
   const handleDeckSelect = (deckId: string) => {
     if (!deckId) return;
+    isNewDeckDraftRef.current = false;
+    setIsNewDeckDraft(false);
     setSearchParams({ id: deckId });
+  };
+
+  const openNewDeckModal = () => {
+    setNewDeckName('新卡组');
+    setShowManageModal(false);
+    setShowNewDeckModal(true);
+  };
+
+  const createNamedDeck = (keepCards: boolean) => {
+    const nextName = newDeckName.trim();
+    if (!nextName) {
+      showNotice('卡组名不能为空', undefined, 'warning');
+      return;
+    }
+
+    isNewDeckDraftRef.current = true;
+    setIsNewDeckDraft(true);
+    setDeckName(nextName);
+    setSelectedDeckId(null);
+    setSearchParams({}, { replace: true });
+    setDeck(currentDeck => keepCards ? currentDeck : []);
+    setShowNewDeckModal(false);
   };
 
   const openRenameModal = () => {
@@ -841,7 +882,7 @@ export const DeckBuilder: React.FC = () => {
               </div>
 
               <div className="grid grid-cols-3 gap-3">
-                <button onClick={createNewDeck} className="flex aspect-square flex-col items-center justify-center gap-2 rounded-xl border border-emerald-400/20 bg-emerald-500/10 px-2 text-sm font-black italic text-emerald-200 transition-colors hover:bg-emerald-500/20">
+                <button onClick={openNewDeckModal} className="flex aspect-square flex-col items-center justify-center gap-2 rounded-xl border border-emerald-400/20 bg-emerald-500/10 px-2 text-sm font-black italic text-emerald-200 transition-colors hover:bg-emerald-500/20">
                   <Plus className="h-6 w-6 text-emerald-400" /> 新建
                 </button>
                 <button onClick={openRenameModal} className="flex aspect-square flex-col items-center justify-center gap-2 rounded-xl border border-lime-400/20 bg-lime-500/10 px-2 text-sm font-black italic text-lime-200 transition-colors hover:bg-lime-500/20">
@@ -938,6 +979,66 @@ export const DeckBuilder: React.FC = () => {
                   className="flex-1 rounded-xl border border-zinc-800 bg-zinc-900 px-4 py-3 font-black italic text-sm text-zinc-300 transition-colors hover:bg-zinc-800"
                 >
                   取消
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {showNewDeckModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[120] bg-black/80 flex items-center justify-center p-4"
+            onClick={() => setShowNewDeckModal(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.96, y: 10 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.96, y: 10 }}
+              className="w-full max-w-md rounded-2xl border border-zinc-800 bg-zinc-950 p-6 shadow-2xl"
+              onClick={e => e.stopPropagation()}
+            >
+              <div className="mb-5 flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-500/15 text-emerald-300">
+                  <Plus className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="text-xl font-black italic tracking-tighter text-white">新建卡组</h3>
+                  <p className="text-xs font-bold uppercase tracking-widest text-zinc-500">输入名称后选择如何创建</p>
+                </div>
+              </div>
+              <input
+                autoFocus
+                value={newDeckName}
+                onChange={e => setNewDeckName(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === 'Escape') setShowNewDeckModal(false);
+                }}
+                className="w-full rounded-xl border border-zinc-800 bg-black px-4 py-3 text-sm font-bold text-zinc-100 outline-none focus:border-emerald-400/60"
+                placeholder="输入新卡组名"
+              />
+              <div className="mt-5 grid gap-3">
+                <button
+                  onClick={() => createNamedDeck(true)}
+                  className="rounded-xl bg-emerald-600 px-4 py-3 font-black italic text-sm text-white transition-colors hover:bg-emerald-500"
+                >
+                  保留卡牌并创建
+                </button>
+                <button
+                  onClick={() => createNamedDeck(false)}
+                  className="rounded-xl bg-red-600 px-4 py-3 font-black italic text-sm text-white transition-colors hover:bg-red-500"
+                >
+                  清空卡牌并创建
+                </button>
+                <button
+                  onClick={() => setShowNewDeckModal(false)}
+                  className="rounded-xl border border-zinc-800 bg-zinc-900 px-4 py-3 font-black italic text-sm text-zinc-300 transition-colors hover:bg-zinc-800"
+                >
+                  返回
                 </button>
               </div>
             </motion.div>
