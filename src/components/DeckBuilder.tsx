@@ -390,10 +390,12 @@ export const DeckBuilder: React.FC = () => {
         return;
       }
 
+      isNewDeckDraftRef.current = true;
+      setIsNewDeckDraft(true);
       setDeck(importedCards as CardType[]);
       setDeckName('导入的卡组');
       setSelectedDeckId(null);
-      setSearchParams({});
+      setSearchParams({}, { replace: true });
       setShowImportModal(false);
       setImportCode('');
     } catch (e) {
