@@ -68,6 +68,16 @@ const card: Card = {
         }, card);
 
         gameState.logs.push(`[拳法训练] 将单位横置。`);
+      },
+      targetSpec: {
+        title: '选择目标单位横置',
+        description: '请选择一张除蓝色以外的非神蚀单位。',
+        minSelections: 1,
+        maxSelections: 1,
+        zones: ['UNIT'],
+        getCandidates: gameState => Object.values(gameState.players)
+          .flatMap(player => player.unitZone.filter((card): card is Card => !!card && !card.godMark && card.color !== 'BLUE'))
+          .map(card => ({ card, source: 'UNIT' as any }))
       }
     }
   ],

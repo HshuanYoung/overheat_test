@@ -26,6 +26,17 @@ const cardEffects: CardEffect[] = [{
   onQueryResolve: async (instance, gameState, _playerState, selections) => {
     const target = selections[0] ? AtomicEffectExecutor.findCardById(gameState, selections[0]) : undefined;
     if (target?.cardlocation === 'UNIT') addTempPowerUntilEndOfTurn(target, instance, 1000, gameState);
+  },
+  targetSpec: {
+    title: '选择强化单位',
+    description: '选择这个单位以外的你的1个<瑟诺布>单位，本回合力量+1000。',
+    minSelections: 1,
+    maxSelections: 1,
+    zones: ['UNIT'],
+    controller: 'SELF',
+    getCandidates: (_gameState, playerState, instance) => ownUnits(playerState)
+      .filter(unit => unit.gamecardId !== instance.gamecardId && unit.faction === '瑟诺布')
+      .map(card => ({ card, source: 'UNIT' as any }))
   }
 }];
 

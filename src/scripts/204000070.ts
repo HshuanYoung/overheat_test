@@ -75,6 +75,16 @@ const card: Card = {
         }, card);
 
         gameState.logs.push(`${playerState.displayName} 发动了 [伏击]，将在本回合登场的 ${targetCard?.fullName || '一个单位'} 返回手牌。`);
+      },
+      targetSpec: {
+        title: '选择返回手牌的单位',
+        description: '请选择一个本回合进入战场的单位返回持有者手牌。',
+        minSelections: 1,
+        maxSelections: 1,
+        zones: ['UNIT'],
+        getCandidates: gameState => Object.values(gameState.players)
+          .flatMap(player => player.unitZone.filter((card): card is Card => !!card && card.playedTurn === gameState.turnCount))
+          .map(card => ({ card, source: 'UNIT' as any }))
       }
     }
   ],

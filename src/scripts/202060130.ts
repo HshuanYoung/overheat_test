@@ -8,6 +8,17 @@ const cardEffects: CardEffect[] = [story('202060130_power', '选择你的1个卡
   });
 }, {
   condition: (_gameState, playerState) => ownUnits(playerState).some(unit => nameContains(unit, '炎雷')),
+  targetSpec: {
+    title: '选择炎雷单位',
+    description: '选择你的1个卡名含有《炎雷》的单位，本回合力量+1500。',
+    minSelections: 1,
+    maxSelections: 1,
+    zones: ['UNIT'],
+    controller: 'SELF',
+    getCandidates: (_gameState, playerState) => ownUnits(playerState)
+      .filter(unit => nameContains(unit, '炎雷'))
+      .map(card => ({ card, source: 'UNIT' as any }))
+  },
   onQueryResolve: async (instance, gameState, _playerState, selections) => {
     const target = selections[0] ? AtomicEffectExecutor.findCardById(gameState, selections[0]) : undefined;
     if (target?.cardlocation === 'UNIT') addTempPower(target, instance, 1500);

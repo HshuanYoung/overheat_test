@@ -84,6 +84,16 @@ const card: Card = {
         }
 
         gameState.logs.push(`[明镜止水] 已对目标单位生效。`);
+      },
+      targetSpec: {
+        title: '选择目标单位',
+        description: '请选择一个单位进行效果屏蔽与单位效果免疫。',
+        minSelections: 1,
+        maxSelections: 1,
+        zones: ['UNIT'],
+        getCandidates: gameState => Object.values(gameState.players)
+          .flatMap(player => player.unitZone.filter((card): card is Card => !!card))
+          .map(card => ({ card, source: 'UNIT' as any }))
       }
     }
   ],

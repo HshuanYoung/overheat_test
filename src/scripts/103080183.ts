@@ -27,6 +27,16 @@ const cardEffects: CardEffect[] = [{
   onQueryResolve: async (instance, gameState, _playerState, selections) => {
     const target = selections[0] ? AtomicEffectExecutor.findCardById(gameState, selections[0]) : undefined;
     if (target && !target.godMark) destroyByEffect(gameState, target, instance);
+  },
+  targetSpec: {
+    title: '选择破坏对象',
+    description: '选择战场上的1张非神蚀卡，将其破坏。',
+    minSelections: 1,
+    maxSelections: 1,
+    zones: ['UNIT', 'ITEM'],
+    getCandidates: gameState => allCardsOnField(gameState)
+      .filter(card => !card.godMark)
+      .map(card => ({ card, source: card.cardlocation as any }))
   }
 }, grantedTotemReviveFromGrave()];
 

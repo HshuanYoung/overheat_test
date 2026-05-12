@@ -63,6 +63,16 @@ const effect_205110043_activate: CardEffect = {
         }
       });
     }
+  },
+  targetSpec: {
+    title: '选择单位',
+    description: '选择我方1个单位。',
+    minSelections: 1,
+    maxSelections: 1,
+    zones: ['UNIT'],
+    getCandidates: (_gameState, playerState) => playerState.unitZone
+      .filter((unit): unit is Card => !!unit)
+      .map(card => ({ card, source: 'UNIT' as any }))
   }
 };
 

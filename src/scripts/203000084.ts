@@ -19,7 +19,41 @@ const cardEffects: CardEffect[] = [story('203000084_send_units', '主要阶段�
     playerState.isTurn &&
     ownUnits(playerState).some(isNonGodUnit) &&
     ownUnits(gameState.players[getOpponentUid(gameState, playerState.uid)]).some(isNonGodUnit),
+  targetSpec: {
+    targetGroups: [{
+      title: '选择我方单位',
+      description: '选择你的1个非神蚀单位。',
+      minSelections: 1,
+      maxSelections: 1,
+      zones: ['UNIT'],
+      controller: 'SELF',
+      step: 'OWN',
+      getCandidates: (_gameState, playerState) => ownUnits(playerState)
+        .filter(isNonGodUnit)
+        .map(card => ({ card, source: 'UNIT' as any }))
+    }, {
+      title: '选择对手单位',
+      description: '选择对手的1个非神蚀单位。',
+      minSelections: 1,
+      maxSelections: 1,
+      zones: ['UNIT'],
+      controller: 'OPPONENT',
+      step: 'OPPONENT',
+      getCandidates: (gameState, playerState) => ownUnits(gameState.players[getOpponentUid(gameState, playerState.uid)])
+        .filter(isNonGodUnit)
+        .map(card => ({ card, source: 'UNIT' as any }))
+    }]
+  },
   onQueryResolve: async (instance, gameState, playerState, selections, context) => {
+    if (context?.declaredTargets?.length) {
+      const ownTargetId = context.declaredTargets.find((target: any) => target.step === 'OWN')?.gamecardId;
+      const opponentTargetId = context.declaredTargets.find((target: any) => target.step === 'OPPONENT')?.gamecardId;
+      const ownTarget = ownTargetId ? AtomicEffectExecutor.findCardById(gameState, ownTargetId) : undefined;
+      const opponentTarget = opponentTargetId ? AtomicEffectExecutor.findCardById(gameState, opponentTargetId) : undefined;
+      if (ownTarget?.cardlocation === 'UNIT') moveCard(gameState, playerState.uid, ownTarget, 'GRAVE', instance);
+      if (opponentTarget?.cardlocation === 'UNIT') moveCard(gameState, getOpponentUid(gameState, playerState.uid), opponentTarget, 'GRAVE', instance);
+      return;
+    }
     if (context?.step === 'OWN') {
       const ownTargetId = selections[0];
       const opponent = gameState.players[getOpponentUid(gameState, playerState.uid)];

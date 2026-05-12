@@ -19,7 +19,19 @@ const cardEffects: CardEffect[] = [story('202050033_goddess', '5~7且创痕3：�
     erosionTotalLimit: [5, 7],
     erosionBackLimit: [3, 10],
     condition: (_gameState, playerState) => ownUnits(playerState).length > 0,
-    onQueryResolve: async (instance, _gameState, playerState, selections) => {
+    targetSpec: {
+      title: '选择单位',
+      description: '选择你的1个单位，本回合中伤害+2、力量+2000。',
+      minSelections: 1,
+      maxSelections: 1,
+      zones: ['UNIT'],
+      controller: 'SELF',
+      getCandidates: (_gameState, playerState) => ownUnits(playerState).map(card => ({ card, source: 'UNIT' as any }))
+    },
+    onQueryResolve: async (instance, gameState, playerState, selections, context) => {
+      if (context?.declaredTargets?.length) {
+        dealUnpreventableSelfDamage(gameState, playerState.uid, 5, instance);
+      }
       const target = ownUnits(playerState).find(unit => unit.gamecardId === selections[0]);
     if (target) {
       addTempDamage(target, instance, 2);

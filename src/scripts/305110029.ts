@@ -1,6 +1,6 @@
 import { Card, CardEffect } from '../types/game';
 import { AtomicEffectExecutor } from '../services/AtomicEffectExecutor';
-import { createSelectCardQuery } from './BaseUtil';
+import { createSelectCardQuery, exhaustCost } from './BaseUtil';
 
 const effect_305110029_activate: CardEffect = {
   id: '305110029_activate',
@@ -8,6 +8,7 @@ const effect_305110029_activate: CardEffect = {
   triggerLocation: ['ITEM'],
   description: '横置这个道具。选择战场上1个单位。本回合中，其伤害+1、力量+500。',
   condition: (_gameState, _playerState, instance) => !instance.isExhausted,
+  cost: exhaustCost,
   execute: async (instance, gameState, playerState) => {
     await AtomicEffectExecutor.execute(gameState, playerState.uid, {
       type: 'ROTATE_HORIZONTAL',
@@ -42,6 +43,16 @@ const effect_305110029_activate: CardEffect = {
       turnDuration: 1,
       targetFilter: { gamecardId: targetId }
     }, instance);
+  },
+  targetSpec: {
+    title: '选择单位',
+    description: '选择战场上1个单位。',
+    minSelections: 1,
+    maxSelections: 1,
+    zones: ['UNIT'],
+    getCandidates: gameState => Object.values(gameState.players)
+      .flatMap(player => player.unitZone.filter((card): card is Card => !!card))
+      .map(card => ({ card, source: 'UNIT' as any }))
   }
 };
 

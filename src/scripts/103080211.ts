@@ -29,6 +29,16 @@ const cardEffects: CardEffect[] = [{
     if (!target?.cardlocation || target.cardlocation !== 'GRAVE') return;
     moveCard(gameState, playerState.uid, instance, 'DECK', instance, { insertAtBottom: true });
     putUnitOntoField(gameState, playerState.uid, target, instance);
+  },
+  targetSpec: {
+    title: '选择复生单位',
+    description: '选择墓地中的1张《神木复生灵萨》以外的<神木森>非神蚀单位卡。',
+    minSelections: 1,
+    maxSelections: 1,
+    zones: ['GRAVE'],
+    getCandidates: (_gameState, playerState) => playerState.grave
+      .filter(card => card.id !== '103080211' && isFaction(card, '神木森') && isNonGodUnit(card))
+      .map(card => ({ card, source: 'GRAVE' as any }))
   }
 }];
 

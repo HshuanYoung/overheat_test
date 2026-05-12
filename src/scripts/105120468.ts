@@ -32,6 +32,14 @@ const effect_105120468_activate: CardEffect = {
       type: 'BANISH_CARD',
       targetFilter: { gamecardId: selections[0], onField: true }
     }, instance);
+  },
+  targetSpec: {
+    title: '选择卡牌',
+    description: '选择战场上1张卡放逐。',
+    minSelections: 1,
+    maxSelections: 1,
+    zones: ['UNIT', 'ITEM'],
+    getCandidates: gameState => getBattlefieldCards(gameState).map(card => ({ card, source: card.cardlocation as any }))
   }
 };
 

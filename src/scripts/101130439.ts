@@ -27,6 +27,17 @@ const cardEffects: CardEffect[] = [{
   onQueryResolve: async (instance, gameState, _playerState, selections) => {
     const target = selections[0] ? AtomicEffectExecutor.findCardById(gameState, selections[0]) : undefined;
     if (target?.cardlocation === 'UNIT') readyByEffect(gameState, target, instance);
+  },
+  targetSpec: {
+    title: '选择重置单位',
+    description: '选择这个单位以外你的1个卡名含有《殿堂》的单位，将其重置。',
+    minSelections: 1,
+    maxSelections: 1,
+    zones: ['UNIT'],
+    controller: 'SELF',
+    getCandidates: (_gameState, playerState, instance) => ownUnits(playerState)
+      .filter(unit => unit.gamecardId !== instance.gamecardId && unit.isExhausted && nameContains(unit, '殿堂'))
+      .map(card => ({ card, source: 'UNIT' as any }))
   }
 }];
 

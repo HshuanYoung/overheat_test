@@ -18,6 +18,15 @@ const cardEffects: CardEffect[] = [story('201100036_prevent', '选择侵蚀区2�
     );
   }, {
     condition: (_gameState, playerState) => faceUpErosion(playerState).length > 0,
+    targetSpec: {
+      title: '选择翻面的侵蚀卡',
+      description: '选择你的侵蚀区中的正面卡，将其翻面。',
+      minSelections: 1,
+      maxSelections: 2,
+      zones: ['EROSION_FRONT'],
+      controller: 'SELF',
+      getCandidates: (_gameState, playerState) => faceUpErosion(playerState).map(card => ({ card, source: 'EROSION_FRONT' as any }))
+    },
     onQueryResolve: async (instance, gameState, playerState, selections) => {
       selections
         .map(id => faceUpErosion(playerState).find(card => card.gamecardId === id))

@@ -13,7 +13,14 @@ const cardEffects: CardEffect[] = [{
     playerState.exiledFromErosionTurn === _gameState.turnCount &&
     playerState.grave.length >= 2,
   cost: exhaustCost,
-  execute: async (instance, gameState, playerState) => {
+  execute: async (instance, gameState, playerState, _event, declaredSelections?: string[]) => {
+    if (declaredSelections?.length) {
+      const cards = declaredSelections
+        .map(id => playerState.grave.find(card => card.gamecardId === id))
+        .filter((card): card is Card => !!card);
+      moveCardsToBottom(gameState, playerState.uid, cards, instance);
+      return;
+    }
     createSelectCardQuery(
       gameState,
       playerState.uid,
@@ -31,6 +38,15 @@ const cardEffects: CardEffect[] = [{
       .map(id => playerState.grave.find(card => card.gamecardId === id))
       .filter((card): card is Card => !!card);
     moveCardsToBottom(gameState, playerState.uid, cards, instance);
+  },
+  targetSpec: {
+    title: '选择墓地的卡',
+    description: '选择你的墓地中的2张卡，将其放置到卡组底。',
+    minSelections: 2,
+    maxSelections: 2,
+    zones: ['GRAVE'],
+    controller: 'SELF',
+    getCandidates: (_gameState, playerState) => playerState.grave.map(card => ({ card, source: 'GRAVE' as any }))
   }
 }];
 

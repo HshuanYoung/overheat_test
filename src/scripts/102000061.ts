@@ -12,7 +12,12 @@ const cardEffects: CardEffect[] = [{
   condition: (gameState, playerState) =>
     allCardsOnField(gameState).length > 0,
   cost: erosionCost(2),
-  execute: async (instance, gameState, playerState) => {
+  execute: async (instance, gameState, playerState, _event, declaredSelections?: string[]) => {
+    if (declaredSelections?.length) {
+      const target = allCardsOnField(gameState).find(card => card.gamecardId === declaredSelections[0]);
+      if (target) destroyByEffect(gameState, target, instance);
+      return;
+    }
     const candidates = allCardsOnField(gameState);
     if (candidates.length === 0) return;
 
@@ -31,6 +36,14 @@ const cardEffects: CardEffect[] = [{
   onQueryResolve: async (instance, gameState, _playerState, selections) => {
     const target = allCardsOnField(gameState).find(card => card.gamecardId === selections[0]);
     if (target) destroyByEffect(gameState, target, instance);
+  },
+  targetSpec: {
+    title: '选择破坏对象',
+    description: '选择1张卡，将其破坏。',
+    minSelections: 1,
+    maxSelections: 1,
+    zones: ['UNIT', 'ITEM'],
+    getCandidates: gameState => allCardsOnField(gameState).map(card => ({ card, source: card.cardlocation as any }))
   }
 }];
 

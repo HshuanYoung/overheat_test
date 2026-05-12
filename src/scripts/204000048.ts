@@ -56,6 +56,16 @@ const effect_204000048_activate: CardEffect = {
 
       gameState.logs.push(`[${instance.fullName}] 效果：使 [${target.fullName}] 休息并进入冻结状态。`);
     }
+  },
+  targetSpec: {
+    title: '选择神位单位',
+    description: '选择一个神位单位转为横置状态，回合开始时不能竖置。',
+    minSelections: 1,
+    maxSelections: 1,
+    zones: ['UNIT'],
+    getCandidates: gameState => Object.values(gameState.players)
+      .flatMap(player => player.unitZone.filter((card): card is Card => !!card && card.godMark && !card.isExhausted))
+      .map(card => ({ card, source: 'UNIT' as any }))
   }
 };
 

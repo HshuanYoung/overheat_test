@@ -5,6 +5,15 @@ const cardEffects: CardEffect[] = [story('203000073_must_defend', '选择你的1
   if (ownUnits(playerState).length === 0) return;
   createSelectCardQuery(gameState, playerState.uid, ownUnits(playerState), '选择单位', '选择你的1个单位，本回合中攻击时对手必须防御。', 1, 1, { sourceCardId: instance.gamecardId, effectId: '203000073_must_defend' }, () => 'UNIT');
 }, {
+  targetSpec: {
+    title: '选择单位',
+    description: '选择你的1个单位，本回合中攻击时对手必须防御。',
+    minSelections: 1,
+    maxSelections: 1,
+    zones: ['UNIT'],
+    controller: 'SELF',
+    getCandidates: (_gameState, playerState) => ownUnits(playerState).map(card => ({ card, source: 'UNIT' as any }))
+  },
   onQueryResolve: async (instance, gameState, _playerState, selections) => {
     const target = selections[0] ? AtomicEffectExecutor.findCardById(gameState, selections[0]) : undefined;
     if (target?.cardlocation === 'UNIT') {

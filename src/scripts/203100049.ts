@@ -17,6 +17,18 @@ const cardEffects: CardEffect[] = [story('203100049_control_witch', '创痕3：�
   );
 }, {
   erosionBackLimit: [3, 10],
+  targetSpec: {
+    title: '选择取得控制权的单位',
+    description: '选择对手的1个单位，你得到其控制权。',
+    minSelections: 1,
+    maxSelections: 1,
+    zones: ['UNIT'],
+    controller: 'OPPONENT',
+    getCandidates: (gameState, playerState) => {
+      const opponentUid = getOpponentUid(gameState, playerState.uid);
+      return ownUnits(gameState.players[opponentUid]).map(card => ({ card, source: 'UNIT' as any }));
+    }
+  },
   onQueryResolve: async (instance, gameState, playerState, selections) => {
     const opponentUid = getOpponentUid(gameState, playerState.uid);
     const target = selections[0] ? AtomicEffectExecutor.findCardById(gameState, selections[0]) : undefined;

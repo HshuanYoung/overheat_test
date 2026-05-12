@@ -133,7 +133,7 @@ export interface EffectTargetCandidate {
   source?: TriggerLocation;
 }
 
-export interface EffectTargetSpec {
+export interface EffectTargetShape {
   title: string;
   description: string;
   minSelections: number;
@@ -141,8 +141,23 @@ export interface EffectTargetSpec {
   zones?: TriggerLocation[];
   controller?: 'SELF' | 'OPPONENT' | 'ANY';
   filter?: CardFilter;
+  step?: string;
+  getCandidates?: (gameState: GameState, playerState: PlayerState, card: Card, declaredTargets?: DeclaredEffectTarget[]) => EffectTargetCandidate[];
+}
+
+export interface EffectTargetModeOption extends EffectTargetShape {
+  id: string;
+  label: string;
+  modeDescription?: string;
+  condition?: (gameState: GameState, playerState: PlayerState, card: Card) => boolean;
+}
+
+export interface EffectTargetSpec extends Partial<EffectTargetShape> {
   preselect?: boolean;
-  getCandidates?: (gameState: GameState, playerState: PlayerState, card: Card) => EffectTargetCandidate[];
+  modeTitle?: string;
+  modeDescription?: string;
+  modeOptions?: EffectTargetModeOption[];
+  targetGroups?: EffectTargetShape[];
 }
 
 export interface DeclaredEffectTarget {
@@ -153,6 +168,9 @@ export interface DeclaredEffectTarget {
   sourceCardName: string;
   effectIndex?: number;
   linkNumber?: number;
+  modeId?: string;
+  step?: string;
+  capturedContext?: any;
 }
 
 export interface DeclaredTargetMarker {
@@ -160,6 +178,8 @@ export interface DeclaredTargetMarker {
   sourceCardName: string;
   effectIndex?: number;
   linkNumber?: number;
+  modeId?: string;
+  step?: string;
 }
 
 export interface GameEvent {

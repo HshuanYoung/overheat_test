@@ -105,6 +105,17 @@ const effect_205000141_activate: CardEffect = {
       targetFilter: { gamecardId: selections[0] },
       destinationZone: 'UNIT'
     }, instance);
+  },
+  targetSpec: {
+    title: '选择重置状态单位',
+    description: '选择1个重置状态单位送入墓地。',
+    minSelections: 1,
+    maxSelections: 1,
+    zones: ['UNIT'],
+    step: 'SEND_UNIT',
+    getCandidates: (_gameState, playerState) => playerState.unitZone
+      .filter((unit): unit is Card => !!unit && !unit.isExhausted)
+      .map(card => ({ card, source: 'UNIT' as any }))
   }
 };
 

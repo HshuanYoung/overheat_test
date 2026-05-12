@@ -87,6 +87,20 @@ const card: Card = {
         }, card);
 
         gameState.logs.push(`${playerState.displayName} 发动了 [歌月拂风]，将一个单位返回手牌。`);
+      },
+      targetSpec: {
+        title: '选择返回手牌的单位',
+        description: '选择战场上一个单位返回持有者手牌。',
+        minSelections: 1,
+        maxSelections: 1,
+        zones: ['UNIT'],
+        getCandidates: (gameState, playerState, card) => {
+          const isFuhuaPresent = playerState.unitZone.some(c => c && c.specialName === '风花');
+          const filter = { onField: true, type: 'UNIT', godMark: isFuhuaPresent ? undefined : false };
+          return Object.values(gameState.players)
+            .flatMap(player => player.unitZone.filter((unit): unit is Card => !!unit && AtomicEffectExecutor.matchesFilter(unit, filter as any, card)))
+            .map(card => ({ card, source: 'UNIT' as any }));
+        }
       }
     }
   ],

@@ -16,6 +16,17 @@ const cardEffects: CardEffect[] = [story('201130038_blessing', '选择你的1个
     );
   }, {
     condition: (_gameState, playerState) => ownUnits(playerState).some(unit => AtomicEffectExecutor.matchesColor(unit, 'WHITE')),
+    targetSpec: {
+      title: '选择白色单位',
+      description: '选择你的1个白色单位，本回合中伤害+1、力量+2000。',
+      minSelections: 1,
+      maxSelections: 1,
+      zones: ['UNIT'],
+      controller: 'SELF',
+      getCandidates: (_gameState, playerState) => ownUnits(playerState)
+        .filter(unit => AtomicEffectExecutor.matchesColor(unit, 'WHITE'))
+        .map(card => ({ card, source: 'UNIT' as any }))
+    },
     onQueryResolve: async (instance, gameState, playerState, selections) => {
       const target = ownUnits(playerState).find(unit => unit.gamecardId === selections[0]);
     if (target) {

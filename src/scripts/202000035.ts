@@ -17,6 +17,16 @@ const cardEffects: CardEffect[] = [story('202000035_destroy', '选择1张非神�
     );
   }, {
     condition: gameState => allCardsOnField(gameState).some(card => !card.godMark && ((card.type === 'ITEM' || card.isEquip) || (card.type === 'UNIT' && (card.power || 0) <= 2500))),
+    targetSpec: {
+      title: '选择破坏对象',
+      description: '选择1张非神蚀道具卡或1个力量2500以下的非神蚀单位，将其破坏。',
+      minSelections: 1,
+      maxSelections: 1,
+      zones: ['UNIT', 'ITEM'],
+      getCandidates: gameState => allCardsOnField(gameState)
+        .filter(card => !card.godMark && ((card.type === 'ITEM' || card.isEquip) || (card.type === 'UNIT' && (card.power || 0) <= 2500)))
+        .map(card => ({ card, source: card.cardlocation as any }))
+    },
     onQueryResolve: async (instance, gameState, _playerState, selections) => {
       const target = allCardsOnField(gameState).find(card => card.gamecardId === selections[0]);
     if (target) destroyByEffect(gameState, target, instance);

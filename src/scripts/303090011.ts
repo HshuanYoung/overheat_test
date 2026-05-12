@@ -28,6 +28,17 @@ const cardEffects: CardEffect[] = [{
         !cannotBeChosenAsEffectTarget(unit, instance)
       );
       if (target) addTempPower(target, instance, 500);
+    },
+    targetSpec: {
+      title: '选择单位',
+      description: '选择你的1个单位，本回合中力量+500。',
+      minSelections: 1,
+      maxSelections: 1,
+      zones: ['UNIT'],
+      controller: 'SELF',
+      getCandidates: (_gameState, playerState, instance) => ownUnits(playerState)
+        .filter(unit => !cannotBeChosenAsEffectTarget(unit, instance))
+        .map(card => ({ card, source: 'UNIT' as any }))
     }
   }];
 

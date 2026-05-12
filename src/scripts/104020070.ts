@@ -1,5 +1,6 @@
 import { Card, GameState, PlayerState, CardEffect } from '../types/game';
 import { AtomicEffectExecutor } from '../services/AtomicEffectExecutor';
+import { discardHandCost } from './BaseUtil';
 
 const card: Card = {
   id: '104020070',
@@ -33,6 +34,7 @@ const card: Card = {
       condition: (gameState, playerState) => {
         return playerState.hand.length > 0;
       },
+      cost: discardHandCost(1),
       execute: async (card, gameState, playerState) => {
         // Step 1: Discard selection
         gameState.pendingQuery = {
@@ -49,6 +51,21 @@ const card: Card = {
         };
       },
       onQueryResolve: async (card, gameState, playerState, selections, context) => {
+        if (context?.declaredTargets?.length) {
+          const targetId = selections[0];
+          const targetUnit = AtomicEffectExecutor.findCardById(gameState, targetId);
+
+          if (targetUnit) {
+            await AtomicEffectExecutor.execute(gameState, playerState.uid, {
+              type: 'CHANGE_POWER',
+              targetFilter: { gamecardId: targetId },
+              value: 1000,
+              turnDuration: 1
+            }, card);
+            gameState.logs.push(`[牛头人保镖领队] 效果生效：${targetUnit.fullName} 获得了本回合力量+1000。`);
+          }
+          return;
+        }
         const step = context?.step || 1;
 
         if (step === 1) {
@@ -98,6 +115,17 @@ const card: Card = {
             gameState.logs.push(`[牛头人保镖领队] 效果生效：${targetUnit.fullName} 获得了本回合力量+1000。`);
           }
         }
+      },
+      targetSpec: {
+        title: '选择目标单位',
+        description: '效果结算：请选择一个名字包含「牛头人」的单位，使其获得力量+1000。',
+        minSelections: 1,
+        maxSelections: 1,
+        zones: ['UNIT'],
+        step: '2',
+        getCandidates: gameState => Object.values(gameState.players)
+          .flatMap(player => player.unitZone.filter((card): card is Card => !!card && card.fullName.includes('牛头人')))
+          .map(card => ({ card, source: 'UNIT' as any }))
       }
     }
   ],

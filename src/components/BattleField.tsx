@@ -1456,8 +1456,10 @@ export const BattleField: React.FC = () => {
     if (!gameId || (!isMainTurn && !isBattleFreeTurn && !isCounteringTurn)) return;
     if (isCounteringTurn && card.type !== 'STORY') return;
 
-    const playEffect = card.effects?.find(e => e.type === 'ACTIVATE' || e.type === 'TRIGGER' || e.type === 'ALWAYS');
-    const needsPreselectedTarget = !!playEffect?.targetSpec && playEffect.targetSpec.preselect !== false;
+    const playEffect = card.type === 'STORY'
+      ? card.effects?.find(e => e.type === 'ACTIVATE' || e.type === 'TRIGGER' || e.type === 'ALWAYS')
+      : undefined;
+    const needsPreselectedTarget = card.type === 'STORY' && !!playEffect?.targetSpec && playEffect.targetSpec.preselect !== false;
     const cost = getEffectiveCardCost(card);
 
     if (cost === 0 || needsPreselectedTarget) {

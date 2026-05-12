@@ -1,10 +1,24 @@
 import { Card, CardEffect } from '../types/game';
 import { AtomicEffectExecutor, addTempKeyword, createSelectCardQuery, ownUnits, story } from './BaseUtil';
 
-const cardEffects: CardEffect[] = [story('202000078_rush', '选择你的1个单位，本回合获得【速攻】。', async (instance, gameState, playerState) => {
+const cardEffects: CardEffect[] = [story('202000078_rush', '选择你的1个单位，本回合获得【速攻】。', async (instance, gameState, playerState, _event, declaredSelections?: string[]) => {
+  if (declaredSelections?.length) {
+    const target = declaredSelections[0] ? AtomicEffectExecutor.findCardById(gameState, declaredSelections[0]) : undefined;
+    if (target?.cardlocation === 'UNIT') addTempKeyword(target, instance, 'rush');
+    return;
+  }
   if (ownUnits(playerState).length === 0) return;
   createSelectCardQuery(gameState, playerState.uid, ownUnits(playerState), '选择单位', '选择你的1个单位，本回合中获得【速攻】。', 1, 1, { sourceCardId: instance.gamecardId, effectId: '202000078_rush' }, () => 'UNIT');
 }, {
+  targetSpec: {
+    title: '选择单位',
+    description: '选择你的1个单位，本回合中获得【速攻】。',
+    minSelections: 1,
+    maxSelections: 1,
+    zones: ['UNIT'],
+    controller: 'SELF',
+    getCandidates: (_gameState, playerState) => ownUnits(playerState).map(card => ({ card, source: 'UNIT' as any }))
+  },
   onQueryResolve: async (instance, gameState, _playerState, selections) => {
     const target = selections[0] ? AtomicEffectExecutor.findCardById(gameState, selections[0]) : undefined;
     if (target?.cardlocation === 'UNIT') addTempKeyword(target, instance, 'rush');

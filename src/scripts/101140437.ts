@@ -1,6 +1,28 @@
 import { Card, CardEffect } from '../types/game';
 import { AtomicEffectExecutor, addInfluence, appendEndResolution, canActivateDefaultTiming, canPutUnitOntoBattlefield, cardsInZones, createSelectCardQuery, ensureData, getOpponentUid, moveCard, ownUnits } from './BaseUtil';
 
+const paySimeteExileCost: CardEffect['cost'] = async (gameState, playerState, instance) => {
+  const costs = cardsInZones(playerState, ['HAND', 'DECK', 'GRAVE']).filter(({ card }) => card.godMark && card.specialName === '丝梅特');
+  if (costs.length < 2) return false;
+  gameState.pendingQuery = {
+    id: Math.random().toString(36).substring(7),
+    type: 'SELECT_CARD',
+    playerUid: playerState.uid,
+    options: AtomicEffectExecutor.enrichQueryOptions(gameState, playerState.uid, costs),
+    title: '选择放逐费用',
+    description: '选择合计2张「丝梅特」神蚀卡放逐作为费用。',
+    minSelections: 2,
+    maxSelections: 2,
+    callbackKey: 'EFFECT_RESOLVE',
+    context: {
+      sourceCardId: instance.gamecardId,
+      costType: 'SIMETE_EXILE_COST',
+      simeteCostAmount: 2
+    }
+  };
+  return true;
+};
+
 const cardEffects: CardEffect[] = [{
   id: '101140437_god_limit',
   type: 'CONTINUOUS',
@@ -38,6 +60,7 @@ const cardEffects: CardEffect[] = [{
   limitCount: 1,
   limitNameType: true,
   description: '同名1回合1次：从手牌、卡组、墓地放逐合计2张「丝梅特」神蚀卡，选择对手1个单位放逐，回合结束时回到持有者战场。',
+  cost: paySimeteExileCost,
   condition: (gameState, playerState) => {
     if (!canActivateDefaultTiming(gameState, playerState)) return false;
     const costCount = cardsInZones(playerState, ['HAND', 'DECK', 'GRAVE']).filter(({ card }) => card.godMark && card.specialName === '丝梅特').length;
@@ -60,6 +83,33 @@ const cardEffects: CardEffect[] = [{
     };
   },
   onQueryResolve: async (instance, gameState, playerState, selections, context) => {
+    if (context?.declaredTargets?.length) {
+      const target = selections[0] ? AtomicEffectExecutor.findCardById(gameState, selections[0]) : undefined;
+      const ownerUid = target ? AtomicEffectExecutor.findCardOwnerKey(gameState, target.gamecardId) : undefined;
+      if (!target || !ownerUid) return;
+      const exiledId = target.gamecardId;
+      moveCard(gameState, ownerUid, target, 'EXILE', instance);
+      const exiled = AtomicEffectExecutor.findCardById(gameState, exiledId);
+      if (exiled) {
+        const data = ensureData(exiled);
+        data.returnToOwnerFieldAtTurnEndSourceName = instance.fullName;
+        addInfluence(exiled, instance, '回合结束时回到持有者战场');
+      }
+      appendEndResolution(gameState, playerState.uid, instance, '101140437_return', async (_source, state) => {
+        const exiled = AtomicEffectExecutor.findCardById(state, exiledId);
+        if (!exiled || exiled.cardlocation !== 'EXILE') return;
+        const data = ensureData(exiled);
+        delete data.returnToOwnerFieldAtTurnEndSourceName;
+        if (!canPutUnitOntoBattlefield(state.players[ownerUid], exiled)) return;
+        moveCard(state, ownerUid, exiled, 'UNIT', instance);
+        const returned = AtomicEffectExecutor.findCardById(state, exiledId);
+        if (returned) {
+          returned.isExhausted = false;
+          returned.displayState = 'FRONT_UPRIGHT';
+        }
+      });
+      return;
+    }
     if (context?.step === 'COST') {
       selections.forEach(id => {
         const cost = AtomicEffectExecutor.findCardById(gameState, id);
@@ -98,6 +148,21 @@ const cardEffects: CardEffect[] = [{
         returned.displayState = 'FRONT_UPRIGHT';
       }
     });
+  },
+  targetSpec: {
+    title: '选择放逐单位',
+    description: '选择对手的1个单位放逐，回合结束时回到持有者战场。',
+    minSelections: 1,
+    maxSelections: 1,
+    zones: ['UNIT'],
+    controller: 'OPPONENT',
+    step: 'TARGET',
+    getCandidates: (gameState, playerState) => {
+      const opponent = gameState.players[getOpponentUid(gameState, playerState.uid)];
+      return opponent.unitZone
+        .filter((unit): unit is Card => !!unit)
+        .map(card => ({ card, source: 'UNIT' as any }));
+    }
   }
 }];
 

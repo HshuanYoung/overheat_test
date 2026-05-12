@@ -27,6 +27,16 @@ const cardEffects: CardEffect[] = [{
   onQueryResolve: async (instance, gameState, _playerState, selections) => {
     const target = selections[0] ? AtomicEffectExecutor.findCardById(gameState, selections[0]) : undefined;
     if (target?.cardlocation === 'UNIT' && (target.power || 0) >= 3500) destroyByEffect(gameState, target, instance);
+  },
+  targetSpec: {
+    title: '选择破坏的单位',
+    description: '选择1个力量3500以上的单位，将其破坏。',
+    minSelections: 1,
+    maxSelections: 1,
+    zones: ['UNIT'],
+    getCandidates: gameState => allUnitsOnField(gameState)
+      .filter(unit => (unit.power || 0) >= 3500)
+      .map(card => ({ card, source: 'UNIT' as any }))
   }
 }];
 

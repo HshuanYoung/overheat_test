@@ -14,6 +14,15 @@ const cardEffects: CardEffect[] = [story('201000059_prevent_destroy', '选择你
     { sourceCardId: instance.gamecardId, effectId: '201000059_prevent_destroy' }
   );
 }, {
+  targetSpec: {
+    title: '选择保护单位',
+    description: '选择你的1个单位，本回合中那个单位下一次将要被破坏时，防止那次破坏。',
+    minSelections: 1,
+    maxSelections: 1,
+    zones: ['UNIT'],
+    controller: 'SELF',
+    getCandidates: (_gameState, playerState) => ownUnits(playerState).map(card => ({ card, source: 'UNIT' as any }))
+  },
   onQueryResolve: async (instance, gameState, _playerState, selections) => {
     const target = selections[0] ? AtomicEffectExecutor.findCardById(gameState, selections[0]) : undefined;
     if (target?.cardlocation === 'UNIT') preventNextDestroy(target, instance, gameState.turnCount);

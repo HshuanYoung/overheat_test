@@ -36,6 +36,16 @@ const cardEffects: CardEffect[] = [{
     const ownerUid = ownerUidOf(gameState, target);
     if (!ownerUid) return;
     freezeUntil(target, instance, untilOpponentEndTurn(gameState, playerState.uid));
+  },
+  targetSpec: {
+    title: '选择冻结目标',
+    description: '选择战场上的1个非神蚀单位冻结。',
+    minSelections: 1,
+    maxSelections: 1,
+    zones: ['UNIT'],
+    getCandidates: gameState => allUnitsOnField(gameState)
+      .filter(unit => !unit.godMark)
+      .map(card => ({ card, source: card.cardlocation as any }))
   }
 }];
 

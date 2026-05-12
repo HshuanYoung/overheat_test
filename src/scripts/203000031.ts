@@ -20,6 +20,16 @@ const cardEffects: CardEffect[] = [story('203000031_flip', '同名1回合1次：
     limitCount: 1,
     limitNameType: true,
     condition: (gameState, playerState) => faceUpErosion(gameState.players[getOpponentUid(gameState, playerState.uid)]).length > 0,
+    targetSpec: {
+      title: '选择翻面的侵蚀卡',
+      description: '选择对手侵蚀区中的1张正面卡，将其转为背面。',
+      minSelections: 1,
+      maxSelections: 1,
+      zones: ['EROSION_FRONT'],
+      controller: 'OPPONENT',
+      getCandidates: (gameState, playerState) => faceUpErosion(gameState.players[getOpponentUid(gameState, playerState.uid)])
+        .map(card => ({ card, source: 'EROSION_FRONT' as any }))
+    },
     onQueryResolve: async (instance, gameState, playerState, selections) => {
       const opponent = gameState.players[getOpponentUid(gameState, playerState.uid)];
       const target = faceUpErosion(opponent).find(card => card.gamecardId === selections[0]);

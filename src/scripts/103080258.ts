@@ -31,6 +31,17 @@ const cardEffects: CardEffect[] = [{
     addTempPowerUntilEndOfTurn(target, instance, 1000, gameState);
     addTempKeyword(target, instance, 'annihilation');
     markReturnToDeckBottomAtEnd(target, instance, gameState, playerState.uid);
+  },
+  targetSpec: {
+    title: '选择神木单位',
+    description: '选择你的战场上的1个《神木震慑者》以外的卡名含有《神木》的单位。',
+    minSelections: 1,
+    maxSelections: 1,
+    zones: ['UNIT'],
+    controller: 'SELF',
+    getCandidates: (_gameState, playerState, instance) => ownUnits(playerState)
+      .filter(unit => unit.gamecardId !== instance.gamecardId && nameContains(unit, '神木'))
+      .map(card => ({ card, source: 'UNIT' as any }))
   }
 }];
 

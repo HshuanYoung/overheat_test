@@ -15,6 +15,22 @@ const cardEffects: CardEffect[] = [story('203000128_awaken', '同名1回合1次�
     !!unit.specialName &&
     playerState.grave.some(card => card.type === 'UNIT' && card.specialName === unit.specialName && card.fullName !== unit.fullName)
   ),
+  targetSpec: {
+    title: '选择返回单位',
+    description: '选择你的1个具有指定名的神蚀单位返回手牌。',
+    minSelections: 1,
+    maxSelections: 1,
+    zones: ['UNIT'],
+    controller: 'SELF',
+    step: 'BOUNCE',
+    getCandidates: (_gameState, playerState) => ownUnits(playerState)
+      .filter(unit =>
+        unit.godMark &&
+        !!unit.specialName &&
+        playerState.grave.some(card => card.type === 'UNIT' && card.specialName === unit.specialName && card.fullName !== unit.fullName)
+      )
+      .map(card => ({ card, source: 'UNIT' as any }))
+  },
   onQueryResolve: async (instance, gameState, playerState, selections, context) => {
     if (context?.step === 'BOUNCE') {
       const bounced = selections[0] ? AtomicEffectExecutor.findCardById(gameState, selections[0]) : undefined;

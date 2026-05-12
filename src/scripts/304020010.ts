@@ -1,5 +1,6 @@
 import { Card, GameState, PlayerState, CardEffect } from '../types/game';
 import { AtomicEffectExecutor } from '../services/AtomicEffectExecutor';
+import { createSelectCardQuery } from './BaseUtil';
 
 const card: Card = {
   id: '304020010',
@@ -36,6 +37,27 @@ const card: Card = {
           )
         );
       },
+      cost: async (gameState, playerState, instance) => {
+        const candidates = playerState.hand.filter(card => card.gamecardId !== instance.gamecardId);
+        if (candidates.length === 0 || instance.isExhausted) return false;
+        createSelectCardQuery(
+          gameState,
+          playerState.uid,
+          candidates,
+          '弃置手牌',
+          '发动费用：请选择 1 张手牌弃置。',
+          1,
+          1,
+          {
+            sourceCardId: instance.gamecardId,
+            costType: 'DISCARD_HAND_COST',
+            discardCostAmount: 1,
+            exhaustSourceAsCost: true
+          },
+          () => 'HAND'
+        );
+        return true;
+      },
       execute: async (card, gameState, playerState) => {
         // 1. Cost: Discard selection
         gameState.pendingQuery = {
@@ -52,6 +74,16 @@ const card: Card = {
         };
       },
       onQueryResolve: async (card, gameState, playerState, selections, context) => {
+        if (context?.declaredTargets?.length) {
+          const targetId = selections[0];
+          await AtomicEffectExecutor.execute(gameState, playerState.uid, {
+            type: 'SET_CAN_RESET_COUNT',
+            targetFilter: { gamecardId: targetId },
+            value: 1
+          }, card);
+          gameState.logs.push(`[菲晶相机] 效果生效，目标单位在下次调度阶段无法转为纵置。`);
+          return;
+        }
         const step = context?.step || 1;
 
         if (step === 1) {
@@ -99,6 +131,17 @@ const card: Card = {
 
           gameState.logs.push(`[菲晶相机] 效果生效，目标单位在下次调度阶段无法转为纵置。`);
         }
+      },
+      targetSpec: {
+        title: '选择冻结目标',
+        description: '效果结算：请选择 1 个 AC 2 及以下的非「神蚀」单位。该单位下次无法调度。',
+        minSelections: 1,
+        maxSelections: 1,
+        zones: ['UNIT'],
+        step: '2',
+        getCandidates: gameState => Object.values(gameState.players)
+          .flatMap(player => player.unitZone.filter((card): card is Card => !!card && (card.acValue || 0) <= 2 && !card.godMark))
+          .map(card => ({ card, source: 'UNIT' as any }))
       }
     }
   ],

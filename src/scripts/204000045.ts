@@ -40,6 +40,16 @@ const effect_204000045_activate: CardEffect = {
       }, instance);
       gameState.logs.push(`[${instance.fullName}] 效果：将 [${target.fullName}] 从侵蚀区回收。`);
     }
+  },
+  targetSpec: {
+    title: '选择卡牌',
+    description: '选择一张侵蚀前区的卡牌加入手牌。',
+    minSelections: 1,
+    maxSelections: 1,
+    zones: ['EROSION_FRONT'],
+    getCandidates: (_gameState, playerState) => playerState.erosionFront
+      .filter((card): card is Card => !!card)
+      .map(card => ({ card, source: 'EROSION_FRONT' as any }))
   }
 };
 

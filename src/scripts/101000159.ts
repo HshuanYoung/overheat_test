@@ -10,7 +10,12 @@ const cardEffects: CardEffect[] = [{
     !instance.isExhausted &&
     ownUnits(playerState).some(unit => unit.gamecardId !== instance.gamecardId && (unit.power || 0) <= 2000),
   cost: exhaustCost,
-  execute: async (instance, gameState, playerState) => {
+  execute: async (instance, gameState, playerState, _event, declaredSelections?: string[]) => {
+    if (declaredSelections?.length) {
+      const target = declaredSelections[0] ? AtomicEffectExecutor.findCardById(gameState, declaredSelections[0]) : undefined;
+      if (target) preventNextDestroy(target, instance, gameState.turnCount);
+      return;
+    }
     createSelectCardQuery(
       gameState,
       playerState.uid,
@@ -26,6 +31,17 @@ const cardEffects: CardEffect[] = [{
   onQueryResolve: async (instance, gameState, _playerState, selections) => {
     const target = selections[0] ? AtomicEffectExecutor.findCardById(gameState, selections[0]) : undefined;
     if (target) preventNextDestroy(target, instance, gameState.turnCount);
+  },
+  targetSpec: {
+    title: '选择防止破坏的单位',
+    description: '选择你的1个其他力量2000以下单位。',
+    minSelections: 1,
+    maxSelections: 1,
+    zones: ['UNIT'],
+    controller: 'SELF',
+    getCandidates: (_gameState, playerState, instance) => ownUnits(playerState)
+      .filter(unit => unit.gamecardId !== instance.gamecardId && (unit.power || 0) <= 2000)
+      .map(card => ({ card, source: 'UNIT' as any }))
   }
 }];
 

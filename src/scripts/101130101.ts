@@ -13,7 +13,12 @@ const cardEffects: CardEffect[] = [{
       moveCard(gameState, playerState.uid, instance, 'EXILE', instance);
       return true;
     },
-    execute: async (instance, gameState, playerState) => {
+    execute: async (instance, gameState, playerState, _event, declaredSelections?: string[]) => {
+      if (declaredSelections?.length) {
+        const target = playerState.grave.find(card => card.gamecardId === declaredSelections[0]);
+        if (target) moveCard(gameState, playerState.uid, target, 'DECK', instance, { insertAtBottom: true });
+        return;
+      }
       createSelectCardQuery(
         gameState,
         playerState.uid,
@@ -29,6 +34,15 @@ const cardEffects: CardEffect[] = [{
     onQueryResolve: async (instance, gameState, playerState, selections) => {
       const target = playerState.grave.find(card => card.gamecardId === selections[0]);
       if (target) moveCard(gameState, playerState.uid, target, 'DECK', instance, { insertAtBottom: true });
+    },
+    targetSpec: {
+      title: '选择放回卡组底的卡',
+      description: '选择你的墓地中的1张卡，放置到卡组底。',
+      minSelections: 1,
+      maxSelections: 1,
+      zones: ['GRAVE'],
+      controller: 'SELF',
+      getCandidates: (_gameState, playerState) => playerState.grave.map(card => ({ card, source: 'GRAVE' as any }))
     }
   }];
 

@@ -11,7 +11,14 @@ const cardEffects: CardEffect[] = [{
       playerState.isTurn &&
       gameState.phase === 'MAIN' &&
       Object.values(gameState.players).some(player => player.grave.length > 0),
-    execute: async (instance, gameState, playerState) => {
+    execute: async (instance, gameState, playerState, _event, declaredSelections?: string[]) => {
+      if (declaredSelections?.length) {
+        const target = Object.values(gameState.players)
+          .flatMap(player => player.grave)
+          .find(card => card.gamecardId === declaredSelections[0]);
+        if (target) exileByEffect(gameState, target, instance);
+        return;
+      }
       const candidates = Object.values(gameState.players).flatMap(player => player.grave);
       if (candidates.length === 0) return;
       createSelectCardQuery(
@@ -31,6 +38,16 @@ const cardEffects: CardEffect[] = [{
         .flatMap(player => player.grave)
         .find(card => card.gamecardId === selections[0]);
       if (target) exileByEffect(gameState, target, instance);
+    },
+    targetSpec: {
+      title: '选择放逐卡牌',
+      description: '选择任意玩家墓地中的1张卡，将其放逐。',
+      minSelections: 1,
+      maxSelections: 1,
+      zones: ['GRAVE'],
+      getCandidates: gameState => Object.values(gameState.players)
+        .flatMap(player => player.grave)
+        .map(card => ({ card, source: 'GRAVE' as any }))
     }
   }];
 

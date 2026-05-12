@@ -16,6 +16,17 @@ const cardEffects: CardEffect[] = [story('202050032_sac_draw', '选择你的1个
     );
   }, {
     condition: (_gameState, playerState) => ownUnits(playerState).some(unit => !unit.isExhausted),
+    targetSpec: {
+      title: '选择送入墓地的单位',
+      description: '选择你的1个重置单位，将其送入墓地。之后，抽1张卡。',
+      minSelections: 1,
+      maxSelections: 1,
+      zones: ['UNIT'],
+      controller: 'SELF',
+      getCandidates: (_gameState, playerState) => ownUnits(playerState)
+        .filter(unit => !unit.isExhausted)
+        .map(card => ({ card, source: 'UNIT' as any }))
+    },
     onQueryResolve: async (instance, gameState, playerState, selections) => {
       const target = ownUnits(playerState).find(unit => unit.gamecardId === selections[0]);
       if (!target) return;

@@ -68,6 +68,16 @@ const card: Card = {
           targetCard.displayState = 'FRONT_UPRIGHT';
           gameState.logs.push(`${playerState.displayName} 接受委托，将 ${targetCard.fullName} 召集至战场。`);
         }
+      },
+      targetSpec: {
+        title: '选择入场单位',
+        description: '从你的侵蚀区正面选择一个AC<=2且非神蚀单位进入战场。',
+        minSelections: 1,
+        maxSelections: 1,
+        zones: ['EROSION_FRONT'],
+        getCandidates: (_gameState, playerState) => playerState.erosionFront
+          .filter((card): card is Card => !!card && card.type === 'UNIT' && !card.godMark && (card.acValue ?? 0) <= 2)
+          .map(card => ({ card, source: 'EROSION_FRONT' as any }))
       }
     }
   ],

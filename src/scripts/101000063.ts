@@ -11,7 +11,15 @@ const cardEffects: CardEffect[] = [{
   condition: (gameState, playerState) =>
     allUnitsOnField(gameState).filter(unit => !unit.godMark).length >= 2,
   cost: erosionCost(2),
-  execute: async (instance, gameState, playerState) => {
+  execute: async (instance, gameState, playerState, _event, declaredSelections?: string[]) => {
+    if (declaredSelections?.length) {
+      const targets = allUnitsOnField(gameState).filter(unit => declaredSelections.includes(unit.gamecardId));
+      targets.forEach(target => {
+        target.isExhausted = false;
+        addInfluence(target, instance, '因效果重置');
+      });
+      return;
+    }
     const candidates = allUnitsOnField(gameState).filter(unit => !unit.godMark);
     if (candidates.length < 2) return;
 
@@ -33,6 +41,16 @@ const cardEffects: CardEffect[] = [{
       target.isExhausted = false;
       addInfluence(target, instance, '因效果重置');
     });
+  },
+  targetSpec: {
+    title: '选择重置单位',
+    description: '选择2个非神蚀单位，将其重置。',
+    minSelections: 2,
+    maxSelections: 2,
+    zones: ['UNIT'],
+    getCandidates: gameState => allUnitsOnField(gameState)
+      .filter(unit => !unit.godMark)
+      .map(card => ({ card, source: card.cardlocation as any }))
   }
 }];
 

@@ -11,7 +11,15 @@ const cardEffects: CardEffect[] = [{
     moveCardAsCost(gameState, playerState.uid, instance, 'GRAVE', instance);
     return true;
   },
-  execute: async (instance, gameState, playerState) => {
+  execute: async (instance, gameState, playerState, _event, declaredSelections?: string[]) => {
+    if (declaredSelections?.length) {
+      const target = declaredSelections[0] ? AtomicEffectExecutor.findCardById(gameState, declaredSelections[0]) : undefined;
+      if (target?.cardlocation === 'UNIT') {
+        addTempDamage(target, instance, 1);
+        addTempPower(target, instance, 500);
+      }
+      return;
+    }
     createSelectCardQuery(
       gameState,
       playerState.uid,
@@ -30,6 +38,14 @@ const cardEffects: CardEffect[] = [{
       addTempDamage(target, instance, 1);
       addTempPower(target, instance, 500);
     }
+  },
+  targetSpec: {
+    title: '选择单位',
+    description: '选择战场上的1个单位，本回合中伤害+1、力量+500。',
+    minSelections: 1,
+    maxSelections: 1,
+    zones: ['UNIT'],
+    getCandidates: gameState => allUnitsOnField(gameState).map(card => ({ card, source: 'UNIT' as any }))
   }
 }];
 
