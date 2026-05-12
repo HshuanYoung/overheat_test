@@ -1079,7 +1079,7 @@ export const DeckBuilder: React.FC = () => {
               <Menu className="h-5 w-5" />
               管理
             </button>
-            <span className="flex shrink-0 items-center gap-2 rounded-full bg-zinc-900 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-zinc-500">
+            <span className="hidden shrink-0 items-center gap-2 rounded-full bg-zinc-900 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-zinc-500 sm:flex">
               <span>{deck.length}/50</span>
               <span className="flex items-center gap-1 text-red-500">
                 <Zap className="h-3.5 w-3.5 fill-red-500" />
