@@ -42,7 +42,17 @@ const cardEffects: CardEffect[] = [{
   onQueryResolve: async (instance, gameState, playerState, selections) => {
     const target = selections[0] ? playerState.hand.find(card => card.gamecardId === selections[0]) : undefined;
     if (target && canPutUnitOntoBattlefield(playerState, target)) {
+      const targetId = target.gamecardId;
       moveCard(gameState, playerState.uid, target, 'UNIT', instance);
+      const live = playerState.unitZone.find(card => card?.gamecardId === targetId);
+      if (live) {
+        live.playedTurn = gameState.turnCount;
+        (live as any).data = {
+          ...((live as any).data || {}),
+          cannotAttackThisTurn: gameState.turnCount,
+          cannotAttackThisTurnSourceName: instance.fullName
+        };
+      }
     }
   }
 }];

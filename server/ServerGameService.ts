@@ -543,6 +543,7 @@ export const ServerGameService = {
       if (forcedAttackTurn !== gameState.turnCount) return false;
       if (unit.isExhausted || unit.canAttack === false) return false;
       if ((unit as any).battleForbiddenByEffect) return false;
+      if ((unit as any).data?.cannotAttackThisTurn === gameState.turnCount) return false;
       if ((unit as any).data?.cannotAttackOrDefendUntilTurn && (unit as any).data.cannotAttackOrDefendUntilTurn >= gameState.turnCount) return false;
 
       const isRush = !!unit.isrush;
@@ -1338,8 +1339,8 @@ export const ServerGameService = {
       }
     }
 
-    // 1.1 Godmark Limit Check (e.g. 1040101739)
-    if (card.godMark) {
+    // 1.1 Godmark Unit Limit Check (e.g. 1040101739). This applies only to units.
+    if (card.type === 'UNIT' && card.godMark) {
       // Check for limits on the field OR on the card itself
       const fieldEffects = player.unitZone
         .filter(u => u !== null)
@@ -1787,9 +1788,6 @@ export const ServerGameService = {
 
     if (!card) throw new Error('Card not found in valid zones for playing');
 
-    const canPlay = ServerGameService.canPlayCard(gameState, player, card);
-    if (!canPlay.canPlay) throw new Error(canPlay.reason);
-
     const isCounteringTurn = gameState.phase === 'COUNTERING' && gameState.priorityPlayerId === playerId;
     const isMainTurn = player.isTurn && gameState.phase === 'MAIN';
     const isBattleFreeTurn = player.isTurn && gameState.phase === 'BATTLE_FREE' && card.type === 'STORY';
@@ -1826,6 +1824,10 @@ export const ServerGameService = {
       if (!opened) throw new Error('没有可指定的合法对象');
       return gameState;
     }
+
+    const canPlay = ServerGameService.canPlayCard(gameState, player, card);
+    if (!canPlay.canPlay) throw new Error(canPlay.reason);
+
     const usesSpiritDiscount = ServerGameService.isSpiritDiscountFromDeclaredTargets(gameState, card, declaredTargets);
     const colorCheck = ServerGameService.getColorRequirementResult(player, usesSpiritDiscount ? { GREEN: 1 } : (card.colorReq || {}));
     if (!colorCheck.valid) {
@@ -2645,6 +2647,7 @@ export const ServerGameService = {
       const opponent = gameState.players[opponentId];
       const candidates = opponent.unitZone.filter((unit): unit is Card => {
         if (!unit || (unit as any).cannotBeAttackTargetByEffect) return false;
+        if (targetMode === 'ANY') return true;
         if (targetMode === 'READY') return !unit.isExhausted;
         return unit.isExhausted;
       });
@@ -2664,9 +2667,11 @@ export const ServerGameService = {
           candidates.map(card => ({ card, source: 'UNIT' as TriggerLocation }))
         ),
         title: '选择攻击目标',
-        description: targetMode === 'READY'
-          ? '选择对手的1个重置单位。本次攻击将直接进入战斗自由步骤。'
-          : '选择对手的1个横置单位。本次攻击将直接进入战斗自由步骤。',
+        description: targetMode === 'ANY'
+          ? '选择对手的1个单位。本次攻击将直接进入战斗自由步骤。'
+          : targetMode === 'READY'
+            ? '选择对手的1个重置单位。本次攻击将直接进入战斗自由步骤。'
+            : '选择对手的1个横置单位。本次攻击将直接进入战斗自由步骤。',
         minSelections: 1,
         maxSelections: 1,
         callbackKey: 'DIKAI_ATTACK_TARGET_SELECT',
@@ -3080,7 +3085,13 @@ export const ServerGameService = {
           subCard = player.unitZone[subCardIdx] || undefined;
         }
         if (subCardIdx !== -1 && subCard) {
-          ServerGameService.moveCard(gameState, playerUid, subZone, playerUid, 'GRAVE', subCardId);
+          ServerGameService.moveCard(gameState, playerUid, subZone, playerUid, 'GRAVE', subCardId, {
+            isEffect,
+            effectSourcePlayerUid: sourcePlayerId,
+            effectSourceCardId: sourcePlayerId
+              ? gameState.currentProcessingItem?.card?.gamecardId
+              : undefined
+          });
           gameState.logs.push(`[系统] ${subCard.fullName} 代替了承受破坏。`);
 
           // Mark the unit as resolved (it survived)
@@ -3370,8 +3381,29 @@ export const ServerGameService = {
           ],
           title: '攻击重置单位',
           description: `[${attackerUnit!.fullName}] 可以攻击对手的重置单位。是否选择攻击重置单位？`,
+          minSelections: 1,
+          maxSelections: 1,
           callbackKey: 'DIKAI_ATTACK_TARGET_CHOICE',
           context: { attackerIds, isAlliance, targetMode: 'READY' }
+        };
+        return gameState;
+      }
+
+      if ((attackerUnit as any)?.data?.canAttackAnyUnit && (readyTargets.length + exhaustedTargets.length) > 0) {
+        gameState.pendingQuery = {
+          id: Math.random().toString(36).substring(7),
+          type: 'SELECT_CHOICE',
+          playerUid: playerId,
+          options: [
+            { id: 'YES', label: '攻击单位(YES)' },
+            { id: 'NO', label: '不攻击单位(NO)' }
+          ],
+          title: '攻击单位',
+          description: `[${attackerUnit!.fullName}] 可以攻击对手的单位。是否选择攻击单位？`,
+          minSelections: 1,
+          maxSelections: 1,
+          callbackKey: 'DIKAI_ATTACK_TARGET_CHOICE',
+          context: { attackerIds, isAlliance, targetMode: 'ANY' }
         };
         return gameState;
       }
@@ -3387,11 +3419,14 @@ export const ServerGameService = {
           ],
           title: '攻击横置单位',
           description: `[${attackerUnit!.fullName}] 可以攻击对手的横置单位。是否选择攻击横置单位？`,
+          minSelections: 1,
+          maxSelections: 1,
           callbackKey: 'DIKAI_ATTACK_TARGET_CHOICE',
           context: { attackerIds, isAlliance, targetMode: 'EXHAUSTED' }
         };
         return gameState;
       }
+      player.markedUnitAttackTarget = undefined;
     }
 
     if (!isAlliance) {
@@ -3408,6 +3443,9 @@ export const ServerGameService = {
       if (!unit) throw new Error('Attacker not found in unit zone');
       if (unit.isExhausted) throw new Error('Attacker is already exhausted');
       if (unit.canAttack === false) throw new Error(`单位 [${unit.fullName}] 无法攻击`);
+      if ((unit as any).data?.cannotAttackThisTurn === gameState.turnCount) {
+        throw new Error(`单位 [${unit.fullName}] 由于 [${(unit as any).data.cannotAttackThisTurnSourceName || '卡牌效果'}] 不能在本回合宣言攻击`);
+      }
       if ((unit as any).data?.cannotAttackOrDefendUntilTurn && (unit as any).data.cannotAttackOrDefendUntilTurn >= gameState.turnCount) {
         throw new Error(`单位 [${unit.fullName}] 由于 [${(unit as any).data.cannotAttackOrDefendSourceName || '卡牌效果'}] 不能宣言攻击`);
       }
@@ -3467,6 +3505,12 @@ export const ServerGameService = {
         delete (unit as any).data.canAttackExhaustedUntilTurn;
         delete (unit as any).data.canAttackExhaustedSourceName;
         delete (unit as any).data.canAttackExhaustedConsumeOnAttack;
+      }
+      if ((unit as any).data?.canAttackAnyUnitConsumeOnAttack) {
+        delete (unit as any).data.canAttackAnyUnit;
+        delete (unit as any).data.canAttackAnyUnitUntilTurn;
+        delete (unit as any).data.canAttackAnyUnitSourceName;
+        delete (unit as any).data.canAttackAnyUnitConsumeOnAttack;
       }
       attackers.push(unit);
     }
@@ -4210,8 +4254,8 @@ export const ServerGameService = {
       return false;
     }
 
-    if ((unit as any).data?.indestructibleByEffect) {
-      gameState.logs.push(`[${unit.fullName}] 因效果不会被破坏。`);
+    if (isEffect && (unit as any).data?.indestructibleByEffect) {
+      gameState.logs.push(`[${unit.fullName}] 因效果不会被效果破坏。`);
       return false;
     }
 
@@ -4480,13 +4524,40 @@ export const ServerGameService = {
         fieldCards.forEach(({ card, zone }) => {
           if (!card || (card as any).data?.returnToDeckBottomAtTurnEnd !== gameState.turnCount) return;
           const sourceName = (card as any).data.returnToDeckBottomSourceName || '卡牌效果';
+          const sourceCardId = (card as any).data.returnToDeckBottomSourceCardId;
+          delete (card as any).data.returnToDeckBottomAtTurnEnd;
+          delete (card as any).data.returnToDeckBottomSourceName;
+          delete (card as any).data.returnToDeckBottomSourceCardId;
+          delete (card as any).data.returnToDeckBottomOwnerUid;
           ServerGameService.moveCard(gameState, uid, zone, uid, 'DECK', card.gamecardId, {
             insertAtBottom: true,
             isEffect: true,
             effectSourcePlayerUid: uid,
-            effectSourceCardId: (card as any).data.returnToDeckBottomSourceCardId
+            effectSourceCardId: sourceCardId
           });
           gameState.logs.push(`[${sourceName}] 将 [${card.fullName}] 放置到卡组底。`);
+        });
+      });
+
+      Object.entries(gameState.players).forEach(([uid, player]) => {
+        const fieldCards = [
+          ...player.unitZone.map(card => ({ card, zone: 'UNIT' as TriggerLocation })),
+          ...player.itemZone.map(card => ({ card, zone: 'ITEM' as TriggerLocation }))
+        ];
+
+        fieldCards.forEach(({ card, zone }) => {
+          if (!card || (card as any).data?.returnToExileAtEndTurn !== gameState.turnCount) return;
+          const sourceName = (card as any).data.returnToExileSourceName || '卡牌效果';
+          const sourceCardId = (card as any).data.returnToExileSourceCardId;
+          delete (card as any).data.returnToExileAtEndTurn;
+          delete (card as any).data.returnToExileSourceName;
+          delete (card as any).data.returnToExileSourceCardId;
+          ServerGameService.moveCard(gameState, uid, zone, uid, 'EXILE', card.gamecardId, {
+            isEffect: true,
+            effectSourcePlayerUid: uid,
+            effectSourceCardId: sourceCardId
+          });
+          gameState.logs.push(`[${sourceName}] 回合结束时将 [${card.fullName}] 放逐。`);
         });
       });
 
@@ -4562,6 +4633,16 @@ export const ServerGameService = {
           if ((card as any).data?.forcedAttackTurn !== undefined && (card as any).data.forcedAttackTurn < gameState.turnCount) {
             delete (card as any).data.forcedAttackTurn;
             delete (card as any).data.forcedAttackSourceName;
+          }
+          if ((card as any).data?.cannotAttackThisTurn !== undefined && (card as any).data.cannotAttackThisTurn < gameState.turnCount) {
+            delete (card as any).data.cannotAttackThisTurn;
+            delete (card as any).data.cannotAttackThisTurnSourceName;
+          }
+          if ((card as any).data?.canAttackAnyUnitUntilTurn !== undefined && (card as any).data.canAttackAnyUnitUntilTurn < gameState.turnCount) {
+            delete (card as any).data.canAttackAnyUnit;
+            delete (card as any).data.canAttackAnyUnitUntilTurn;
+            delete (card as any).data.canAttackAnyUnitSourceName;
+            delete (card as any).data.canAttackAnyUnitConsumeOnAttack;
           }
           if ((card as any).data?.cannotAttackOrDefendUntilTurn !== undefined && (card as any).data.cannotAttackOrDefendUntilTurn < gameState.turnCount) {
             delete (card as any).data.cannotAttackOrDefendUntilTurn;
@@ -4776,10 +4857,13 @@ export const ServerGameService = {
     const triggerLocation = (event?.type === 'REVEAL_DECK' && effect.triggerLocation?.includes('DECK'))
       ? 'DECK'
       : liveCard.cardlocation as TriggerLocation;
-    const triggerCheck = ServerGameService.checkEffectLimitsAndReqs(gameState, playerUid, liveCard, effect, triggerLocation, event);
-    if (!triggerCheck.valid) {
-      await ServerGameService.checkTriggeredEffects(gameState, onUpdate);
-      return;
+    const movementTriggerEvents = new Set(['CARD_ENTERED_ZONE', 'CARD_LEFT_ZONE', 'CARD_LEFT_FIELD', 'CARD_DESTROYED_BATTLE', 'CARD_DESTROYED_EFFECT']);
+    if (!movementTriggerEvents.has(event?.type)) {
+      const triggerCheck = ServerGameService.checkEffectLimitsAndReqs(gameState, playerUid, liveCard, effect, triggerLocation, event);
+      if (!triggerCheck.valid) {
+        await ServerGameService.checkTriggeredEffects(gameState, onUpdate);
+        return;
+      }
     }
 
     // 1. Cost check (If needed and not skipped)

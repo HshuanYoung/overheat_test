@@ -905,11 +905,63 @@ export const BattleField: React.FC = () => {
 
   const pendingQuery = game?.pendingQuery;
   const normalizedPendingQueryType = pendingQuery?.type?.replace(/-/g, '_').toUpperCase();
-  const pendingQueryOptions = Array.isArray(pendingQuery?.options) ? pendingQuery.options : [];
+  const rawPendingQueryOptions = Array.isArray(pendingQuery?.options) ? pendingQuery.options : [];
   const isSelectCardPendingQuery = normalizedPendingQueryType === 'SELECT_CARD';
+  const pendingQueryOptions = useMemo(() => {
+    if (!game || !pendingQuery || normalizedPendingQueryType !== 'SELECT_CARD') return rawPendingQueryOptions;
+    const context = pendingQuery.context || {};
+    const sourceCardId = context.sourceCardId;
+    const effectIndex = context.effectIndex;
+    if (!sourceCardId || effectIndex === undefined || effectIndex === null) return rawPendingQueryOptions;
+
+    const allCards = (Object.values(game.players || {}) as PlayerState[]).flatMap(player => [
+      ...player.hand,
+      ...player.deck,
+      ...player.grave,
+      ...player.exile,
+      ...player.unitZone,
+      ...player.itemZone,
+      ...player.erosionFront,
+      ...player.erosionBack,
+      ...player.playZone
+    ]).filter(Boolean) as Card[];
+    const sourceCard = allCards.find(card => card.gamecardId === sourceCardId);
+    const effect = sourceCard?.effects?.[effectIndex];
+    const spec = effect?.targetSpec;
+    if (!sourceCard || !effect || !spec) return rawPendingQueryOptions;
+
+    const targetShape = context.modeId
+      ? spec.modeOptions?.find(mode => mode.id === context.modeId)
+      : spec.targetGroups?.[context.targetGroupIndex || 0] || spec;
+    if (!targetShape) return rawPendingQueryOptions;
+
+    const activationPlayerUid = context.activationPlayerUid || pendingQuery.playerUid;
+    const activationPlayer = game.players[activationPlayerUid];
+    if (!activationPlayer) return rawPendingQueryOptions;
+
+    try {
+      const candidates = targetShape.getCandidates
+        ? targetShape.getCandidates(game, activationPlayer, sourceCard, context.declaredTargets)
+        : [];
+      if (!candidates.length) return rawPendingQueryOptions.filter(option => !option.card);
+      const legalIds = new Set(candidates.map(candidate => candidate.card?.gamecardId).filter(Boolean));
+      return rawPendingQueryOptions.filter(option => {
+        const optionId = option.card?.gamecardId || option.card?.id || option.id;
+        return !option.card || legalIds.has(optionId);
+      });
+    } catch (error) {
+      console.warn('[Query] Failed to locally filter target candidates:', error);
+      return rawPendingQueryOptions;
+    }
+  }, [game, pendingQuery, rawPendingQueryOptions, normalizedPendingQueryType]);
   const selectablePendingQueryOptions = isSelectCardPendingQuery
     ? pendingQueryOptions.filter(option => !!option?.card && !option.disabled)
     : [];
+  const selectablePendingQueryCardIds = useMemo(() => new Set(
+    selectablePendingQueryOptions
+      .map(option => option.card?.gamecardId || option.card?.id)
+      .filter((id): id is string => !!id)
+  ), [selectablePendingQueryOptions]);
   const isInspectOnlyPendingQuery = isSelectCardPendingQuery &&
     (pendingQuery?.minSelections ?? 0) === 0 &&
     selectablePendingQueryOptions.length === 0;
@@ -920,6 +972,10 @@ export const BattleField: React.FC = () => {
   const highlightedCardIds = useMemo(() => {
     const ids = new Set<string>();
     if (isSpectator || !game || !me || !myUid) return ids;
+    if (isSelectCardPendingQuery && game.pendingQuery?.playerUid === myUid) {
+      selectablePendingQueryCardIds.forEach(id => ids.add(id));
+      return ids;
+    }
     if (game.pendingQuery || game.isResolvingStack || game.currentProcessingItem) return ids;
 
     if (game.phase === 'DEFENSE_DECLARATION' && !me.isTurn) {
@@ -980,7 +1036,7 @@ export const BattleField: React.FC = () => {
     });
 
     return ids;
-  }, [game, me, myUid, isSpectator]);
+  }, [game, me, myUid, isSpectator, isSelectCardPendingQuery, selectablePendingQueryCardIds]);
 
 
 
@@ -1008,6 +1064,7 @@ export const BattleField: React.FC = () => {
 
   const canUnitAttack = (card: Card) => {
     if (!card || card.isExhausted || card.canAttack === false || (card as any).battleForbiddenByEffect) return false;
+    if ((card as any).data?.cannotAttackThisTurn === game.turnCount) return false;
     if ((card as any).data?.cannotAttackOrDefendUntilTurn && (card as any).data.cannotAttackOrDefendUntilTurn >= game.turnCount) return false;
     const isRush = !!card.isrush;
     const wasPlayedThisTurn = card.playedTurn === game.turnCount;
@@ -2663,6 +2720,57 @@ export const BattleField: React.FC = () => {
             >
               <div className="md:hidden w-12 h-1 bg-white/20 rounded-full mb-2 shrink-0" />
               <div className="md:hidden text-[10px] font-black text-white/40 tracking-[0.2em] mb-2 shrink-0">操作</div>
+              {isPopupHidden && isSelectCardPendingQuery && game.pendingQuery?.playerUid === myUid && (() => {
+                const optionId = cardMenu.card.gamecardId || cardMenu.card.id;
+                if (!selectablePendingQueryCardIds.has(optionId)) return null;
+                const isSelected = selectedQueryIds.includes(optionId);
+                return (
+                  <motion.button
+                    whileHover={{ scale: 1.1 }}
+                    className={cn(
+                      "px-4 py-3 md:py-1.5 text-[12px] md:text-[10px] font-bold rounded-full shadow-lg border border-white/20 flex items-center justify-center w-full",
+                      isSelected ? "bg-[#f27d26] text-black" : "bg-white text-black"
+                    )}
+                    onClick={() => {
+                      setSelectedQueryIds(prev => {
+                        if (prev.includes(optionId)) return prev.filter(id => id !== optionId);
+                        if (prev.length >= (game.pendingQuery?.maxSelections || 1)) {
+                          if (game.pendingQuery?.maxSelections === 1) return [optionId];
+                          return prev;
+                        }
+                        return [...prev, optionId];
+                      });
+                      setCardMenu(null);
+                    }}
+                  >
+                    {isSelected ? '取消选择' : '选择'}
+                  </motion.button>
+                );
+              })()}
+              {isPopupHidden && game.pendingQuery?.playerUid === myUid && (
+                <motion.button
+                  whileHover={{ scale: 1.1 }}
+                  className="px-4 py-3 md:py-1.5 text-[12px] md:text-[10px] font-bold text-black bg-[#f27d26] rounded-full shadow-lg border border-white/20 flex items-center justify-center w-full"
+                  onClick={() => {
+                    setIsPopupHidden(false);
+                    setCardMenu(null);
+                  }}
+                >
+                  展开窗口
+                </motion.button>
+              )}
+              {isPopupHidden && isSelectCardPendingQuery && game.pendingQuery?.playerUid === myUid && selectedQueryIds.length >= (game.pendingQuery?.minSelections || 0) && (
+                <motion.button
+                  whileHover={{ scale: 1.1 }}
+                  className="px-4 py-3 md:py-1.5 text-[12px] md:text-[10px] font-bold text-white bg-[#22c55e] rounded-full shadow-lg border border-white/20 flex items-center justify-center w-full"
+                  onClick={() => {
+                    handleQuerySubmit();
+                    setCardMenu(null);
+                  }}
+                >
+                  确认选择
+                </motion.button>
+              )}
               {/* Action: Play (Yellow) */}
               {!isPopupHidden && (() => {
                 const isCounteringTurn = game.phase === 'COUNTERING' && game.priorityPlayerId === myUid;
@@ -2862,6 +2970,7 @@ export const BattleField: React.FC = () => {
                 className="px-4 py-3 md:py-1.5 text-[12px] md:text-[10px] font-bold text-white bg-[#9333ea] rounded-full shadow-lg border border-white/20 flex items-center justify-center min-w-[100px] md:min-w-[70px]"
                 onClick={() => {
                   setPreviewCard(cardMenu.card);
+                  setCardMenu(null);
                 }}
               >
                 详情

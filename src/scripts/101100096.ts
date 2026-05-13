@@ -13,6 +13,10 @@ const cardEffects: CardEffect[] = [{
         .filter((unit): unit is Card => !!unit && AtomicEffectExecutor.matchesColor(unit, 'WHITE'))
         .forEach(unit => {
           (unit as any).battleImmuneByEffect = true;
+          (unit as any).data = {
+            ...((unit as any).data || {}),
+            indestructibleByEffect: true
+          };
           addInfluence(unit, instance, '联军攻击中不会被破坏');
         });
     }

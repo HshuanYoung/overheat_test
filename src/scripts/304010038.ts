@@ -88,11 +88,13 @@ const trigger_304010038_destroy: CardEffect = {
   id: '304010038_destroy_trigger',
   type: 'TRIGGER',
   description: '当此卡被破坏时（包含代破离场），从你侵蚀前区选择一张名称含有「剑仙」的卡牌加入手牌。',
-  triggerEvent: 'CARD_LEFT_ZONE',
+  triggerEvent: 'CARD_ENTERED_ZONE',
   triggerLocation: ['GRAVE'],
   isMandatory: true,
   condition: (gameState, playerState, instance, event) => {
-    return event?.sourceCardId === instance.gamecardId && instance.cardlocation === 'GRAVE';
+    return event?.sourceCardId === instance.gamecardId &&
+      event.data?.zone === 'GRAVE' &&
+      (event.data?.sourceZone === 'ITEM' || event.data?.sourceZone === 'UNIT');
   },
   execute: async (instance, gameState, playerState) => {
     const choices = playerState.erosionFront.filter(c => c && c.fullName.includes('剑仙')) as Card[];

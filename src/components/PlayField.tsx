@@ -429,7 +429,7 @@ const PlayerHalf: React.FC<{
                     isExhausted={unit ? unit.isExhausted : false}
                     isSelectedForPayment={unit ? paymentSelection?.exhaustIds.includes(unit.gamecardId) : false}
                     isAttacking={unit ? (selectedAttackers?.includes(unit.gamecardId) || game?.battleState?.attackers.includes(unit.gamecardId)) : false}
-                    isDefending={unit ? (selectedDefender === unit.gamecardId || game?.battleState?.defender === unit.gamecardId) : false}
+                    isDefending={unit ? (selectedDefender === unit.gamecardId || game?.battleState?.defender === unit.gamecardId || game?.battleState?.unitTargetId === unit.gamecardId) : false}
                     isHighlighted={unit ? highlightedCardIds?.has(unit.gamecardId) : false}
                     showCount={false} isOpponent={isOpponent} displayMode="unit" slotLabel={`${6 - i}`} cardBackUrl={cardBackUrl}
                   />
@@ -452,7 +452,7 @@ const PlayerHalf: React.FC<{
                     isExhausted={unit ? unit.isExhausted : false}
                     isSelectedForPayment={unit ? paymentSelection?.exhaustIds.includes(unit.gamecardId) : false}
                     isAttacking={unit ? (selectedAttackers?.includes(unit.gamecardId) || game?.battleState?.attackers.includes(unit.gamecardId)) : false}
-                    isDefending={unit ? (selectedDefender === unit.gamecardId || game?.battleState?.defender === unit.gamecardId) : false}
+                    isDefending={unit ? (selectedDefender === unit.gamecardId || game?.battleState?.defender === unit.gamecardId || game?.battleState?.unitTargetId === unit.gamecardId) : false}
                     isAllianceInitiator={unit && allianceInitiator === unit.gamecardId}
                     isHighlighted={unit ? highlightedCardIds?.has(unit.gamecardId) : false}
                     showCount={false} displayMode="unit" slotLabel={`${i + 1}`} cardBackUrl={cardBackUrl}
@@ -701,8 +701,6 @@ export const PlayField: React.FC<PlayFieldProps> = ({
         }}
         cardBackUrl={cardBackUrl}
         highlightedIds={Array.from(highlightedCardIds || [])}
-        onHide={onHidePopup}
-        isHidden={isPopupHidden}
       />
       {isDesktop && hoveredCard && (
         <div className="pointer-events-none absolute right-4 top-4 z-[120] hidden w-[300px] rounded-2xl border border-white/10 bg-black/75 p-3 shadow-2xl backdrop-blur-md lg:block">

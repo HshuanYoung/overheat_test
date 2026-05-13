@@ -1,7 +1,7 @@
 import { Card, GameState, PlayerState, CardEffect } from '../types/game';
 import { AtomicEffectExecutor } from '../services/AtomicEffectExecutor';
 import { EventEngine } from '../services/EventEngine';
-import { canPayAccessCost } from './BaseUtil';
+import { canPayAccessCost, canPutItemOntoBattlefield } from './BaseUtil';
 
 const isNonCombat = (gameState: GameState, cardId: string) => {
   const isAttacking = (gameState.battleState?.attackers || []).includes(cardId);
@@ -85,7 +85,9 @@ const handActivationEffect: CardEffect = {
     const eligibleBlueUnits = playerState.unitZone.filter(u =>
       u && AtomicEffectExecutor.matchesColor(u, 'BLUE') && isNonCombat(gameState, u.gamecardId)
     );
-    return eligibleBlueUnits.length >= 2 && canPayAccessCost(gameState, playerState, 2, instance.color, instance);
+    return eligibleBlueUnits.length >= 2 &&
+      canPutItemOntoBattlefield(playerState, instance) &&
+      canPayAccessCost(gameState, playerState, 2, instance.color, instance);
   },
   cost: async (gameState, playerState, card) => {
     if (!canPayAccessCost(gameState, playerState, 2, card.color, card)) {
@@ -147,6 +149,12 @@ const handActivationEffect: CardEffect = {
           targetFilter: { gamecardId: id },
           destinationZone: 'HAND'
         }, card);
+      }
+
+      if (!canPutItemOntoBattlefield(playerState, card)) {
+        gameState.logs.push(`[系统] 场上已存在专用名为「${card.specialName || card.fullName}」的道具，${card.fullName} 无法放置到战场。`);
+        context.cancelActivation = true;
+        return;
       }
 
       // Move self to ITEM zone

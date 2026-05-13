@@ -5,6 +5,7 @@ const cardEffects: CardEffect[] = [{
   id: '102000434_battle_destroy_damage',
   type: 'TRIGGER',
   triggerEvent: 'CARD_DESTROYED_BATTLE',
+  triggerLocation: ['GRAVE'],
   description: '这个单位被战斗破坏时，选择1名玩家，给予他2点伤害。',
   condition: (_gameState, _playerState, instance, event) => event?.targetCardId === instance.gamecardId,
   execute: async (instance, gameState, playerState) => {

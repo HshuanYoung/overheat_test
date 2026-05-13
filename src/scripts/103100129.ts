@@ -11,10 +11,10 @@ const cardEffects: CardEffect[] = [{
     event?.sourceCardId === instance.gamecardId &&
     event.data?.zone === 'GRAVE' &&
     event.data?.sourceZone === 'UNIT' &&
-    playerState.grave.some(card => card.gamecardId !== instance.gamecardId && card.type === 'UNIT' && card.fullName.includes('魔女')),
+    playerState.grave.some(card => card.id !== '103100129' && card.type === 'UNIT' && card.fullName.includes('魔女')),
   execute: async (instance, gameState, playerState) => {
     const candidates = playerState.grave.filter(card =>
-      card.gamecardId !== instance.gamecardId &&
+      card.id !== '103100129' &&
       card.type === 'UNIT' &&
       card.fullName.includes('魔女')
     );

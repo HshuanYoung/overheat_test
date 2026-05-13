@@ -434,7 +434,7 @@ export const canPutCardOntoBattlefieldByEffect = (playerState: PlayerState, card
       return false;
     }
 
-    if (card.godMark) {
+    if (card.type === 'UNIT' && card.godMark) {
       const fieldEffects = playerState.unitZone
         .filter((unit): unit is Card => !!unit)
         .flatMap(unit => unit.effects || []);
@@ -1173,6 +1173,7 @@ export const markExileAtEndOfTurn = (
   appendEndResolution(gameState, playerUid, source, id, (resolveSource, state) => {
     const current = AtomicEffectExecutor.findCardById(state, targetId);
     if (current?.cardlocation === 'UNIT' && shouldExile(current, state)) {
+      state.logs.push(`[${resolveSource.fullName}] 回合结束时将 [${current.fullName}] 放逐。`);
       exileByEffect(state, current, resolveSource);
     }
   });

@@ -304,7 +304,7 @@ export const GameService = {
         return { canPlay: false, reason: 'A unit with the same special name already exists' };
       }
 
-      if (card.godMark) {
+      if (card.type === 'UNIT' && card.godMark) {
         const fieldEffects = player.unitZone.filter(cardInZone => cardInZone !== null).flatMap(cardInZone => cardInZone?.effects || []);
         const fieldLimitEffect = fieldEffects.find(effect => effect.type === 'CONTINUOUS' && effect.limitGodmarkCount !== undefined);
         const selfLimitEffect = card.effects?.find(effect => effect.type === 'CONTINUOUS' && effect.limitGodmarkCount !== undefined);

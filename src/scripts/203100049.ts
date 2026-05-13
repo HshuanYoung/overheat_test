@@ -64,7 +64,7 @@ const card: Card = {
   colorReq: { GREEN: 3 },
   faction: '艾柯利普斯',
   acValue: 7,
-  godMark: false,
+  godMark: true,
   displayState: 'FRONT_UPRIGHT',
   feijingMark: false,
   canResetCount: 0,

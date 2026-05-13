@@ -7,12 +7,12 @@ const cardEffects: CardEffect[] = [{
     '这个单位从单位区送去墓地时，可以选择卡组中1张卡名含有《黄昏的魔女》的单位卡加入手牌。',
     card => card.type === 'UNIT' && card.fullName.includes('黄昏的魔女')
   ),
-  triggerEvent: 'CARD_LEFT_ZONE',
+  triggerEvent: 'CARD_ENTERED_ZONE',
   triggerLocation: ['GRAVE'],
   condition: (_gameState, _playerState, instance, event) =>
     event?.sourceCardId === instance.gamecardId &&
-    event.data?.zone === 'UNIT' &&
-    event.data?.targetZone === 'GRAVE'
+    event.data?.zone === 'GRAVE' &&
+    event.data?.sourceZone === 'UNIT'
 }];
 
 /**

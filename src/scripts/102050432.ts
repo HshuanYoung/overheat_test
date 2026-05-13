@@ -1,5 +1,5 @@
 import { Card, CardEffect } from '../types/game';
-import { AtomicEffectExecutor, canActivateDefaultTiming, cardsInZones, createSelectCardQuery, ensureData, markCanAttackExhaustedUnit, moveCard, readyByEffect } from './BaseUtil';
+import { AtomicEffectExecutor, canActivateDefaultTiming, cardsInZones, createSelectCardQuery, ensureData, markCanAttackAnyUnit, moveCard, readyByEffect } from './BaseUtil';
 
 const cardEffects: CardEffect[] = [{
   id: '102050432_god_limit',
@@ -43,10 +43,10 @@ const cardEffects: CardEffect[] = [{
       if (cost && ownerUid) moveCard(gameState, ownerUid, cost, 'EXILE', instance);
     });
     readyByEffect(gameState, instance, instance);
-    markCanAttackExhaustedUnit(instance, instance);
+    markCanAttackAnyUnit(instance, instance);
     const data = ensureData(instance);
-    data.canAttackExhaustedUntilTurn = gameState.turnCount;
-    data.canAttackExhaustedConsumeOnAttack = true;
+    data.canAttackAnyUnitUntilTurn = gameState.turnCount;
+    data.canAttackAnyUnitConsumeOnAttack = true;
   }
 }];
 
