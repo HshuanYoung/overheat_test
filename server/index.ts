@@ -23,8 +23,9 @@ import {
     validateUsername
 } from './registration';
 import { ServerGameService } from './ServerGameService';
-import { PlayerState, Card, GAME_TIMEOUTS, GameState } from '../src/types/game';
+import { PlayerState, Card, GAME_TIMEOUTS, GameState, BattleLogEntry } from '../src/types/game';
 import { EventEngine } from '../src/services/EventEngine';
+import { addBattleLog, battleLogText, normalizeBattleLogs } from '../src/lib/battleLog';
 import fs from 'fs';
 import path from 'path';
 
@@ -45,7 +46,7 @@ const io = new Server(httpServer, {
 const gameLocks = new Map<string, Promise<any>>();
 
 // In-memory match log history (not persisted to DB 'state' blob)
-const matchLogHistory = new Map<string, string[]>();
+const matchLogHistory = new Map<string, BattleLogEntry[]>();
 const lastSyncedLogIndex = new Map<string, number>();
 const botMovingGames = new Set<string>();
 const STARTER_COINS = 100000;
@@ -210,6 +211,26 @@ function getUserDisplayLabel(user: any) {
     const displayName = typeof user?.displayName === 'string' ? user.displayName.trim() : '';
     const username = typeof user?.username === 'string' ? user.username.trim() : '';
     return displayName || username || user?.userId?.toString() || '玩家';
+}
+
+function canUserChatInGame(gameState: any, userId: string) {
+    const userIdStr = userId.toString();
+    if ((gameState.playerIds || []).map((uid: any) => uid?.toString()).includes(userIdStr)) return true;
+    if (gameState.players?.[userIdStr]) return true;
+
+    if (gameState.mode === 'friend') {
+        normalizeFriendRoomState(gameState);
+        return (gameState.participantIds || []).includes(userIdStr) || (gameState.spectatorIds || []).includes(userIdStr);
+    }
+
+    return (gameState.spectatorIds || []).map((uid: any) => uid?.toString()).includes(userIdStr);
+}
+
+function resolveGameDisplayName(gameState: any, user: any) {
+    const userIdStr = user.userId?.toString();
+    return gameState.players?.[userIdStr]?.displayName ||
+        gameState.participantNames?.[userIdStr] ||
+        getUserDisplayLabel(user);
 }
 
 function isFriendGameStarted(gameState: any) {
@@ -417,7 +438,7 @@ function enterMulliganPhase(gameState: any, reason: string) {
     gameState.phaseTimerStart = Date.now();
     gameState.rps = undefined;
     gameState.firstPlayerChoice = undefined;
-    gameState.logs.push(reason);
+    if (reason) gameState.logs.push(reason);
 }
 
 function setFirstPlayer(gameState: any, firstUid: string) {
@@ -516,10 +537,7 @@ function chooseFirstPlayer(gameState: any, chooserUid: string, firstUid: string)
     if (!gameState.playerIds.some((uid: string) => uid.toString() === normalizedFirstUid)) throw new Error('无效的先攻玩家');
 
     setFirstPlayer(gameState, normalizedFirstUid);
-    const chooserKey = gameState.playerIds.find((uid: string) => uid.toString() === normalizedChooserUid) || normalizedChooserUid;
-    const chooser = gameState.players[chooserKey] || gameState.players[normalizedChooserUid];
-    const choiceText = normalizedFirstUid === normalizedChooserUid ? '先攻' : '后攻';
-    enterMulliganPhase(gameState, `${chooser.displayName} 选择${choiceText}。开始调度阶段。`);
+    enterMulliganPhase(gameState, '');
 }
 
 function decideFirstPlayerChoiceTimeout(gameState: any) {
@@ -559,7 +577,14 @@ async function finishMulliganAfterReveal(gameId: string, expectedStartedAt: numb
                 }
             });
 
-            gameState.logs.push(`调度结束。第 1 回合开始，由 ${gameState.players[currentUid].displayName} 先行。`);
+            const firstPlayerName = gameState.players[currentUid]?.displayName || '玩家';
+            const playerNames = gameState.playerIds.map((uid: string) => gameState.players[uid]?.displayName || '玩家');
+            addBattleLog(gameState, {
+                category: 'SYSTEM',
+                actorUid: currentUid,
+                actorName: firstPlayerName,
+                text: `对战开始：${playerNames[0]} vs ${playerNames[1]}，${firstPlayerName} 先攻。`
+            });
             await advancePhase(gameState, gameId, currentUid);
         });
     }, 3600);
@@ -585,7 +610,7 @@ async function saveMatchLog(gameState: any, gameId?: string) {
         `Winner: ${winner}`,
         `Reason: ${reason}`,
         '-----------------------------------',
-        ...history
+        ...history.map(battleLogText)
     ].join('\n');
 
     let savedAny = false;
@@ -628,6 +653,7 @@ async function syncAndSaveState(gameId: string, gameState: any) {
     if (!gameState.logs) gameState.logs = [];
 
     EventEngine.recalculateContinuousEffects(gameState);
+    normalizeBattleLogs(gameState);
 
     // 1. Get or create history for this match
     let history = matchLogHistory.get(gameId) || [];
@@ -2189,6 +2215,32 @@ io.on('connection', (socket) => {
                 let gameState = typeof rows[0].state === 'string' ? JSON.parse(rows[0].state) : rows[0].state;
                 ServerGameService.hydrateGameState(gameState);
                 const myUid = user.userId.toString();
+
+                if (action === 'CHAT_MESSAGE') {
+                    if (!canUserChatInGame(gameState, myUid)) {
+                        socket.emit('error', { message: '你不在该对局中，无法发送聊天。' });
+                        return;
+                    }
+
+                    const content = String(payload?.content ?? '').trim().replace(/\s+/g, ' ');
+                    if (!content) return;
+                    if (content.length > 200) {
+                        socket.emit('error', { message: '聊天内容不能超过 200 个字符。' });
+                        return;
+                    }
+
+                    const actorName = resolveGameDisplayName(gameState, user);
+                    addBattleLog(gameState, {
+                        category: 'CHAT',
+                        actorUid: myUid,
+                        actorName,
+                        text: `[系统]${actorName}：${content}`,
+                        metadata: { content }
+                    });
+                    await syncAndSaveState(gameId, gameState);
+                    return;
+                }
+
                 const player = gameState.players[myUid];
                 if (!player) {
                     // console.log(`[Socket] Action ${action} rejected: Player ${myUid} not found in game ${gameId}`);
@@ -2233,9 +2285,7 @@ io.on('connection', (socket) => {
                             [player.deck[i], player.deck[j]] = [player.deck[j], player.deck[i]];
                         }
 
-                        gameState.logs.push(`${player.displayName} 更换了 ${selectedIds.length} 张卡牌。`);
                     } else {
-                        gameState.logs.push(`${player.displayName} 接受了初始手牌。`);
                     }
 
                     player.mulliganReveal = {

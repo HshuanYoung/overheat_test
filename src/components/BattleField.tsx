@@ -17,6 +17,8 @@ import { StandardPopup } from './StandardPopup';
 import { Flag, Trophy, Frown, Home, Sword, Shield, Zap, LogOut, BookOpen, Send, Loader2, Trash2, X, Play, Search, ChevronRight, ShieldCheck, Layers, Sparkles, Flame, AlertTriangle, RotateCcw, Undo2, Hand, PackagePlus, Scissors, Circle, FileText } from 'lucide-react';
 import { cn, getCardColorLabel, getCardImageUrl, getCardIdentity, getCardTypeLabel, getLocationLabel, getPhaseLabel } from '../lib/utils';
 import { KeywordBadges } from './KeywordBadges';
+import { BattleLogPanel } from './BattleLogPanel';
+import { battleLogText } from '../lib/battleLog';
 
 const EFFECT_TYPE_LABELS: Record<string, string> = {
   ACTIVATE: '主动',
@@ -260,7 +262,8 @@ export const BattleField: React.FC = () => {
   const [erosionChoice, setErosionChoice] = useState<'A' | 'B' | 'C' | null>(null);
   const [selectedQueryIds, setSelectedQueryIds] = useState<string[]>([]);
   const [favoriteBackId, setFavoriteBackId] = useState<string>('default');
-  const [showFullLogs, setShowFullLogs] = useState(false);
+  const [showLogSidebar, setShowLogSidebar] = useState(true);
+  const [showLogModal, setShowLogModal] = useState(false);
   const [viewingZone, setViewingZone] = useState<{ title: string, type: string, erosionBackIds?: string[], isOpponentZone?: boolean } | null>(null);
   const [isHomeMenuOpen, setIsHomeMenuOpen] = useState(false);
   const [showSurrenderConfirm, setShowSurrenderConfirm] = useState(false);
@@ -320,6 +323,17 @@ export const BattleField: React.FC = () => {
   const confrontationStrategy = (me?.confrontationStrategy || 'AUTO') as 'ON' | 'AUTO' | 'OFF';
   const [localStrategy, setLocalStrategy] = useState<'ON' | 'AUTO' | 'OFF'>(confrontationStrategy);
   const activeMulliganReveal = !isSpectator && game?.phase === 'MULLIGAN' ? me?.mulliganReveal : undefined;
+  const handleToggleLogs = () => {
+    if (typeof window !== 'undefined' && window.matchMedia('(min-width: 768px)').matches) {
+      setShowLogSidebar(current => !current);
+      return;
+    }
+    setShowLogModal(true);
+  };
+  const handleSendChat = (content: string) => {
+    if (!gameId) return;
+    socket.emit('gameAction', { gameId, action: 'CHAT_MESSAGE', payload: { content } });
+  };
 
   useEffect(() => {
     if (game?.phase !== 'RPS' && game?.phase !== 'FIRST_PLAYER_CHOICE') return;
@@ -604,8 +618,9 @@ export const BattleField: React.FC = () => {
   useEffect(() => {
     if (game?.logs?.length > 0) {
       const lastLog = game.logs[game.logs.length - 1];
-      if (lastLog.includes('[战斗中止]') && !lastLog.includes('战斗状态缺失')) {
-        setInterruptionNotice(lastLog);
+      const lastLogText = battleLogText(lastLog);
+      if (lastLogText.includes('[战斗中止]') && !lastLogText.includes('战斗状态缺失')) {
+        setInterruptionNotice(lastLogText);
       }
     }
   }, [game?.logs?.length]);
@@ -2385,9 +2400,9 @@ export const BattleField: React.FC = () => {
 
 
       {/* Main Arena */}
-      <div className="flex-1 relative flex flex-col overflow-hidden bg-[#050505]">
+      <div className="flex-1 relative flex min-w-0 overflow-hidden bg-[#050505]">
         {/* Top Bar: Phase & Turn */}
-        <div className="flex-1 flex flex-col min-h-0 relative">
+        <div className="flex-1 flex flex-col min-h-0 min-w-0 relative">
           {/* Playground Area */}
           <div className="flex-1 flex items-center justify-center p-0 md:p-4 bg-[radial-gradient(circle_at_center,_rgba(242,125,38,0.03)_0%,_transparent_70%)] overflow-auto">
             <div className="w-full lg:w-[1920px] h-full md:h-auto md:aspect-video lg:shrink-0 md:shadow-[0_0_80px_rgba(0,0,0,0.9)] md:rounded-2xl overflow-hidden md:border-2 border-white/10 relative bg-black">
@@ -2412,7 +2427,7 @@ export const BattleField: React.FC = () => {
                   viewingZone={viewingZone}
                   setViewingZone={setViewingZone}
                   highlightedCardIds={highlightedCardIds}
-                  onShowLogs={() => setShowFullLogs(true)}
+                  onShowLogs={handleToggleLogs}
                   onOpenRulebook={() => setIsRulebookOpen(true)}
                   onSurrender={() => {
                     if (isSpectator) {
@@ -2495,7 +2510,7 @@ export const BattleField: React.FC = () => {
                       !!allianceConfirmation ||
                       showPhaseMenu
                     )) ||
-                    showFullLogs ||
+                    showLogModal ||
                     !!interruptionNotice ||
                     (!isSpectator && showSurrenderConfirm)
                   }
@@ -2504,6 +2519,15 @@ export const BattleField: React.FC = () => {
             </div>
           </div>
         </div>
+        {game && showLogSidebar && (
+          <div className="hidden md:block">
+            <BattleLogPanel
+              game={game}
+              onClose={() => setShowLogSidebar(false)}
+              onSendChat={handleSendChat}
+            />
+          </div>
+        )}
 
         <AnimatePresence>
           {game.currentProcessingItem && (
@@ -4034,7 +4058,7 @@ export const BattleField: React.FC = () => {
       </AnimatePresence>
 
       <AnimatePresence>
-        {showFullLogs && (
+        {showLogModal && game && (
           <motion.div
             key="battle-logs"
             initial={{ opacity: 0 }}
@@ -4044,48 +4068,18 @@ export const BattleField: React.FC = () => {
               "fixed inset-0 z-[2000] flex items-center justify-center bg-black/90 p-4 backdrop-blur-xl transition-all duration-300",
               isPopupHidden ? "pointer-events-none invisible" : "pointer-events-auto visible"
             )}
-            onClick={() => setShowFullLogs(false)}
+            onClick={() => setShowLogModal(false)}
           >
             <div
-              className="max-w-2xl w-full bg-zinc-900 border border-white/10 rounded-[2.5rem] flex flex-col p-8 md:p-12 gap-8 shadow-[0_0_100px_rgba(242,125,38,0.1)] relative"
+              className="h-[82vh] w-full max-w-2xl"
               onClick={e => e.stopPropagation()}
             >
-              <button
-                onClick={() => setIsPopupHidden(true)}
-                className="absolute left-6 top-6 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-[10px] font-black tracking-widest text-white/60 transition-colors hover:bg-white/10 hover:text-white"
-                title="隐藏窗口以查看战场"
-              >
-                隐藏
-              </button>
-              <div className="flex items-center justify-between">
-                <div className="flex flex-col">
-                  <span className="text-[10px] font-black text-[#f27d26] uppercase tracking-[0.4em]">记录</span>
-                  <h2 className="text-3xl font-black italic text-white uppercase tracking-tighter">战斗记录</h2>
-                </div>
-                <button
-                  onClick={() => setShowFullLogs(false)}
-                  className="p-3 bg-white/5 hover:bg-white/10 rounded-2xl border border-white/10 transition-all"
-                >
-                  <X className="w-6 h-6 text-white" />
-                </button>
-              </div>
-
-              <div className="flex-1 overflow-y-auto pr-4 custom-scrollbar space-y-4 max-h-[60vh]">
-                {game.logs.slice().reverse().map((log, i) => (
-                  <div key={i} className="group flex gap-4">
-                    <div className="w-1 h-auto bg-gradient-to-b from-[#f27d26] to-transparent opacity-20 group-hover:opacity-100 transition-opacity rounded-full" />
-                    <div className="flex-1 py-1">
-                      <p className="text-white/60 text-xs md:text-sm font-medium leading-relaxed group-hover:text-white transition-colors">
-                        {log}
-                      </p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              <div className="flex justify-center pt-4 opacity-20">
-                <span className="text-[10px] font-black text-[#f27d26] uppercase tracking-widest">记录结束</span>
-              </div>
+              <BattleLogPanel
+                game={game}
+                variant="modal"
+                onClose={() => setShowLogModal(false)}
+                onSendChat={handleSendChat}
+              />
             </div>
           </motion.div>
         )}

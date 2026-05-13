@@ -191,6 +191,47 @@ export interface GameEvent {
   data?: any;
 }
 
+export type BattleLogCategory =
+  | 'SYSTEM'
+  | 'TURN'
+  | 'PHASE'
+  | 'CARD_PLAYED'
+  | 'TRIGGERED_EFFECT'
+  | 'CONTINUOUS_EFFECT'
+  | 'EFFECT_ACTIVATED'
+  | 'TARGET_DECLARED'
+  | 'CONFRONTATION'
+  | 'BATTLE'
+  | 'DAMAGE'
+  | 'DESTROYED'
+  | 'MOVED'
+  | 'CHAT';
+
+export interface BattleLogCardRef {
+  gamecardId?: string;
+  cardId?: string;
+  name?: string;
+  ownerUid?: string;
+  ownerName?: string;
+  zone?: TriggerLocation | string;
+  zoneLabel?: string;
+  slotNumber?: number;
+}
+
+export interface BattleLogEntry {
+  id: string;
+  timestamp: number;
+  turn: number;
+  phase: GamePhase;
+  category: BattleLogCategory;
+  text: string;
+  actorUid?: string;
+  actorName?: string;
+  sourceCard?: BattleLogCardRef;
+  targets?: BattleLogCardRef[];
+  metadata?: Record<string, any>;
+}
+
 export interface CardEffect {
   id?: string;
   type: EffectType;
@@ -443,7 +484,7 @@ export interface GameState {
   winReason?: string;
   winnerId?: string;
   winSourceCardName?: string;
-  logs: string[];
+  logs: Array<string | BattleLogEntry>;
   mode?: string;
   status?: string;
   roomCode?: string;
