@@ -42,8 +42,24 @@ const cardEffects: CardEffect[] = [{
     if (!selected || selected.cardlocation !== 'GRAVE') return;
     const copiedEffect = selected.effects?.find(effect => effect.type === 'ACTIVATE');
     moveCard(gameState, playerState.uid, selected, 'EXILE', instance);
-    if (copiedEffect?.execute) {
-      await copiedEffect.execute(instance, gameState, playerState);
+    if (copiedEffect) {
+      const originalColorReq = { ...(selected.colorReq || {}) };
+      const originalAcValue = selected.acValue;
+      selected.colorReq = {};
+      selected.acValue = 0;
+      try {
+        if (copiedEffect.atomicEffects) {
+          for (const atomic of copiedEffect.atomicEffects) {
+            await AtomicEffectExecutor.execute(gameState, playerState.uid, atomic, selected);
+          }
+        }
+        if (copiedEffect.execute) {
+          await copiedEffect.execute(selected, gameState, playerState);
+        }
+      } finally {
+        selected.colorReq = originalColorReq;
+        selected.acValue = originalAcValue;
+      }
     }
   }
 }];

@@ -171,13 +171,27 @@ async function handleBotMove(gameState: any, gameId: string) {
                     } else {
                         botMovingGames.delete(gameId);
                     }
-                } catch (err) {
-                    // console.error('[Bot] handleBotMove inner error:', err);
+                } catch (err: any) {
+                    console.error('[Bot] handleBotMove inner error:', err);
+                    try {
+                        const stateRows = await pool.query('SELECT state FROM games WHERE id = ?', [gameId]);
+                        if (stateRows.length > 0) {
+                            const failedState = typeof stateRows[0].state === 'string' ? JSON.parse(stateRows[0].state) : stateRows[0].state;
+                            const query = failedState?.pendingQuery;
+                            if (query?.playerUid === 'BOT_PLAYER') {
+                                failedState.logs = failedState.logs || [];
+                                failedState.logs.push(`[Bot错误] 自动处理效果失败：${err?.message || '未知错误'}`);
+                                await syncAndSaveState(gameId, failedState);
+                            }
+                        }
+                    } catch (logErr) {
+                        console.error('[Bot] failed to persist bot error state:', logErr);
+                    }
                     botMovingGames.delete(gameId);
                 }
             });
         } catch (err) {
-            // console.error('[Bot] handleBotMove outer error:', err);
+            console.error('[Bot] handleBotMove outer error:', err);
             botMovingGames.delete(gameId);
         }
     }, 1000);

@@ -16,14 +16,24 @@ const executeSongyueEffect = async (card: Card, gameState: GameState, playerStat
     return;
   }
 
-  if (effect.atomicEffects) {
-    for (const atomic of effect.atomicEffects) {
-      await AtomicEffectExecutor.execute(gameState, playerState.uid, atomic, card);
-    }
-  }
+  const originalColorReq = { ...(card.colorReq || {}) };
+  const originalAcValue = card.acValue;
+  card.colorReq = {};
+  card.acValue = 0;
 
-  if (effect.execute) {
-    await (effect.execute as any)(card, gameState, playerState);
+  try {
+    if (effect.atomicEffects) {
+      for (const atomic of effect.atomicEffects) {
+        await AtomicEffectExecutor.execute(gameState, playerState.uid, atomic, card);
+      }
+    }
+
+    if (effect.execute) {
+      await (effect.execute as any)(card, gameState, playerState);
+    }
+  } finally {
+    card.colorReq = originalColorReq;
+    card.acValue = originalAcValue;
   }
 };
 
@@ -67,16 +77,6 @@ const card: Card = {
       execute: async (card, gameState, playerState) => {
         const checkCardViable = (c: Card) => {
           if (!(c.fullName.includes('歌月') && c.type === 'STORY')) return false;
-
-          const cost = c.acValue || 0;
-          if (cost > 0) {
-            const currentErosion = playerState.erosionFront.filter(e => e !== null).length +
-              playerState.erosionBack.filter(e => e !== null).length;
-            if (currentErosion + cost >= 10) return false;
-          } else if (cost < 0) {
-            const frontCount = playerState.erosionFront.filter(e => e !== null && e.displayState === 'FRONT_UPRIGHT').length;
-            if (frontCount < Math.abs(cost)) return false;
-          }
 
           const activateEffect = getSongyueEffect(c);
           if (activateEffect) {
@@ -151,30 +151,6 @@ const card: Card = {
             }, card);
 
             gameState.logs.push(`[风花] 已放逐 ${foundCard.fullName}。`);
-
-            if (foundCard.acValue && foundCard.acValue !== 0) {
-              gameState.pendingQuery = {
-                id: Math.random().toString(36).substring(7),
-                type: 'SELECT_PAYMENT',
-                playerUid: playerState.uid,
-                options: [],
-                title: `支付 [${foundCard.fullName}] 的费用`,
-                description: `请支付 ${foundCard.acValue} 点费用以执行其效果。`,
-                minSelections: 1,
-                maxSelections: 1,
-                callbackKey: 'EFFECT_RESOLVE',
-                paymentCost: foundCard.acValue,
-                paymentColor: foundCard.color,
-                context: {
-                  sourceCardId: card.gamecardId,
-                  effectIndex: 0,
-                  step: 2,
-                  banishedCardId: foundCard.gamecardId
-                }
-              };
-              gameState.logs.push(`[风花] 等待 ${sourcePlayer.displayName} 支付费用...`);
-              return;
-            }
 
             await executeSongyueEffect(foundCard, gameState, sourcePlayer);
           }

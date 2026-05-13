@@ -1,5 +1,6 @@
 import { Card, GameState, PlayerState, CardEffect } from '../types/game';
 import { AtomicEffectExecutor } from '../services/AtomicEffectExecutor';
+import { EventEngine } from '../services/EventEngine';
 
 const card: Card = {
   id: '104030451',
@@ -141,23 +142,75 @@ const card: Card = {
           const erosionUnit = playerState.erosionFront.find(c => c?.gamecardId === erosionUnitId);
 
           if (fieldUnit && erosionUnit) {
-            // Swap execution
-            // Move erosion to field
+            const fieldUnitIndex = playerState.unitZone.findIndex(u => u?.gamecardId === fieldUnitId);
+            const erosionUnitIndex = playerState.erosionFront.findIndex(c => c?.gamecardId === erosionUnitId);
+            if (fieldUnitIndex < 0) {
+              gameState.logs.push(`[龙翼看板娘[小婷]] 结算时场上目标已不合法，效果发动失败。`);
+              return;
+            }
+            if (erosionUnitIndex < 0) {
+              gameState.logs.push(`[龙翼看板娘[小婷]] 结算时侵蚀区目标已不合法，效果发动失败。`);
+              return;
+            }
+
+            playerState.unitZone[fieldUnitIndex] = null;
+            playerState.erosionFront[erosionUnitIndex] = null;
+
+            fieldUnit.cardlocation = 'EROSION_FRONT';
+            fieldUnit.displayState = 'FRONT_UPRIGHT';
+            fieldUnit.isExhausted = false;
             erosionUnit.isExhausted = false;
             erosionUnit.displayState = 'FRONT_UPRIGHT';
-            await AtomicEffectExecutor.execute(gameState, playerState.uid, {
-              type: 'MOVE_FROM_EROSION',
-              destinationZone: 'UNIT',
-              targetFilter: { gamecardId: erosionUnitId }
-            }, card);
+            erosionUnit.cardlocation = 'UNIT';
+            erosionUnit.playedTurn = gameState.turnCount;
 
-            // Move field to erosion
-            fieldUnit.displayState = 'FRONT_UPRIGHT';
-            await AtomicEffectExecutor.execute(gameState, playerState.uid, {
-              type: 'MOVE_FROM_FIELD',
-              destinationZone: 'EROSION_FRONT',
-              targetFilter: { gamecardId: fieldUnitId }
-            }, card);
+            playerState.unitZone[fieldUnitIndex] = erosionUnit;
+            playerState.erosionFront[erosionUnitIndex] = fieldUnit;
+
+            EventEngine.handleCardLeftZone(gameState, playerState.uid, fieldUnit, 'UNIT', true, 'EROSION_FRONT', {
+              effectSourcePlayerUid: playerState.uid,
+              effectSourceCardId: card.gamecardId,
+              previousSourceCardId: fieldUnit.gamecardId
+            });
+            EventEngine.handleCardLeftZone(gameState, playerState.uid, erosionUnit, 'EROSION_FRONT', true, 'UNIT', {
+              effectSourcePlayerUid: playerState.uid,
+              effectSourceCardId: card.gamecardId,
+              previousSourceCardId: erosionUnit.gamecardId
+            });
+            EventEngine.handleCardEnteredZone(gameState, playerState.uid, fieldUnit, 'EROSION_FRONT', true, {
+              sourceZone: 'UNIT',
+              targetZone: 'EROSION_FRONT',
+              effectSourcePlayerUid: playerState.uid,
+              effectSourceCardId: card.gamecardId,
+              previousSourceCardId: fieldUnit.gamecardId
+            });
+            EventEngine.handleCardEnteredZone(gameState, playerState.uid, erosionUnit, 'UNIT', true, {
+              sourceZone: 'EROSION_FRONT',
+              targetZone: 'UNIT',
+              effectSourcePlayerUid: playerState.uid,
+              effectSourceCardId: card.gamecardId,
+              previousSourceCardId: erosionUnit.gamecardId
+            });
+            EventEngine.dispatchMovementSubEvents(gameState, {
+              card: fieldUnit,
+              cardOwnerUid: playerState.uid,
+              fromZone: 'UNIT',
+              toZone: 'EROSION_FRONT',
+              isEffect: true,
+              effectSourcePlayerUid: playerState.uid,
+              effectSourceCardId: card.gamecardId,
+              previousSourceCardId: fieldUnit.gamecardId
+            });
+            EventEngine.dispatchMovementSubEvents(gameState, {
+              card: erosionUnit,
+              cardOwnerUid: playerState.uid,
+              fromZone: 'EROSION_FRONT',
+              toZone: 'UNIT',
+              isEffect: true,
+              effectSourcePlayerUid: playerState.uid,
+              effectSourceCardId: card.gamecardId,
+              previousSourceCardId: erosionUnit.gamecardId
+            });
 
             gameState.logs.push(`[龙翼看板娘[小婷]] 效果生效：${fieldUnit.fullName} 与 ${erosionUnit.fullName} 进行了互换。`);
           } else {

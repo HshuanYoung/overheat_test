@@ -77,7 +77,7 @@ const card: Card = {
   type: 'UNIT',
   color: 'WHITE',
   gamecardId: null as any,
-  colorReq: { WHITE: 1 },
+  colorReq: {},
   faction: '圣王国',
   acValue: 3,
   power: 2500,

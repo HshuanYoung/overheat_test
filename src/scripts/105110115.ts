@@ -284,7 +284,8 @@ const effect_105110115_stack_top: CardEffect = {
       paymentColor: 'NONE',
       context: {
         sourceCardId: instance.gamecardId,
-        effectIndex: 0
+        effectIndex: 0,
+        effectId: '105110115_stack_top'
       }
     };
     return true;

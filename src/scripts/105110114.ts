@@ -13,7 +13,8 @@ const effect_105110114_indestructible: CardEffect = {
     (instance as any).data = {
       ...((instance as any).data || {}),
       cannotAllianceByEffect: true,
-      indestructibleByEffect: true
+      indestructibleByEffect: true,
+      battleImmuneByEffect: true
     };
 
     instance.influencingEffects = instance.influencingEffects || [];

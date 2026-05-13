@@ -990,7 +990,7 @@ export class AtomicEffectExecutor {
     toZone: TriggerLocation,
     cardId: string,
     isEffect?: boolean,
-    options?: { faceDown?: boolean; insertAtBottom?: boolean; effectSourcePlayerUid?: string; effectSourceCardId?: string }
+    options?: { faceDown?: boolean; insertAtBottom?: boolean; effectSourcePlayerUid?: string; effectSourceCardId?: string; targetIndex?: number }
   ) {
     const sourcePlayer = gameState.players[playerUid];
     const targetPlayer = gameState.players[toPlayerUid];
@@ -1196,9 +1196,20 @@ export class AtomicEffectExecutor {
     findToZone(targetPlayer.playZone, 'PLAY');
 
     if (['UNIT', 'ITEM', 'EROSION_FRONT', 'EROSION_BACK'].includes(toZone)) {
-      const emptyIdx = toArray.findIndex(c => c === null);
-      if (emptyIdx !== -1) toArray[emptyIdx] = card;
-      else toArray.push(card);
+      const targetIndex =
+        options?.targetIndex !== undefined &&
+        options.targetIndex >= 0 &&
+        options.targetIndex < toArray.length &&
+        toArray[options.targetIndex] === null
+          ? options.targetIndex
+          : -1;
+      if (targetIndex !== -1) {
+        toArray[targetIndex] = card;
+      } else {
+        const emptyIdx = toArray.findIndex(c => c === null);
+        if (emptyIdx !== -1) toArray[emptyIdx] = card;
+        else toArray.push(card);
+      }
     } else {
       if (options?.insertAtBottom) {
         toArray.unshift(card);

@@ -1,5 +1,6 @@
 import { Card, GameState, PlayerState, CardEffect } from '../types/game';
 import { AtomicEffectExecutor } from '../services/AtomicEffectExecutor';
+import { createSelectCardQuery } from './BaseUtil';
 
 const card: Card = {
   id: '204000067',
@@ -46,42 +47,6 @@ const card: Card = {
         };
       },
       onQueryResolve: async (card, gameState, playerState, selections, context) => {
-        if (context?.declaredTargets?.length) {
-          const targetId = selections[0];
-          const target = AtomicEffectExecutor.findCardById(gameState, targetId);
-          if (!target) return;
-
-          const isFuhua = target.specialName === '风花';
-          await AtomicEffectExecutor.execute(gameState, playerState.uid, {
-            type: 'MOVE_FROM_FIELD',
-            destinationZone: 'HAND',
-            targetFilter: { gamecardId: targetId }
-          }, card);
-          gameState.logs.push(`${playerState.displayName} 将 ${target.fullName} 返回手牌。`);
-
-          if (isFuhua) {
-            const opponentUid = Object.keys(gameState.players).find(uid => uid !== playerState.uid);
-            if (opponentUid) {
-              const opponent = gameState.players[opponentUid];
-              const enemyTargets = opponent.unitZone.filter(u => u !== null) as Card[];
-              if (enemyTargets.length > 0) {
-                gameState.pendingQuery = {
-                  id: Math.random().toString(36).substring(7),
-                  type: 'SELECT_CARD',
-                  playerUid: playerState.uid,
-                  options: enemyTargets.map(u => ({ card: u, source: 'UNIT' as any })),
-                  title: '选择对方单位横置',
-                  description: '返回的是「风花」单位，可以选择对方一个单位变为横置且下回合无法重置。',
-                  minSelections: 1,
-                  maxSelections: 1,
-                  callbackKey: 'EFFECT_RESOLVE',
-                  context: { sourceCardId: card.gamecardId, effectIndex: 0, step: 2 }
-                };
-              }
-            }
-          }
-          return;
-        }
         const step = context?.step || 1;
 
         if (step === 1) {
@@ -106,18 +71,17 @@ const card: Card = {
               const opponent = gameState.players[opponentUid];
               const enemyTargets = opponent.unitZone.filter(u => u !== null) as Card[];
               if (enemyTargets.length > 0) {
-                gameState.pendingQuery = {
-                  id: Math.random().toString(36).substring(7),
-                  type: 'SELECT_CARD',
-                  playerUid: playerState.uid, // Our side selects
-                  options: enemyTargets.map(u => ({ card: u, source: 'UNIT' as any })),
-                  title: '选择对方单位横置',
-                  description: '返回的是「风花」单位，可以选择对方一个单位变为横置且下回合无法重置。',
-                  minSelections: 1,
-                  maxSelections: 1,
-                  callbackKey: 'EFFECT_RESOLVE',
-                  context: { sourceCardId: card.gamecardId, effectIndex: 0, step: 2 }
-                };
+                createSelectCardQuery(
+                  gameState,
+                  playerState.uid,
+                  enemyTargets,
+                  '选择对方单位横置',
+                  '返回的是「风花」单位，可以选择对方一个单位变为横置且下回合无法重置。',
+                  1,
+                  1,
+                  { sourceCardId: card.gamecardId, effectId: 'yingwu_activate', step: 2 },
+                  () => 'UNIT'
+                );
                 return;
               }
             }

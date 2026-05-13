@@ -129,6 +129,11 @@ const activate_104030459_swap: CardEffect = {
   onQueryResolve: async (instance: Card, gameState: GameState, playerState: PlayerState, selections: string[], context: any) => {
     if (context?.step === 'PAYMENT') {
       const sourcePlayer = gameState.players[playerState.uid];
+      const sourceUnitIndex = sourcePlayer.unitZone.findIndex(c => c?.gamecardId === instance.gamecardId);
+      if (sourceUnitIndex < 0) {
+        gameState.logs.push(`[${instance.fullName}] 结算时已不在单位区，效果失败。`);
+        return;
+      }
 
       await AtomicEffectExecutor.execute(gameState, playerState.uid, {
         type: 'MOVE_FROM_FIELD',
@@ -165,7 +170,8 @@ const activate_104030459_swap: CardEffect = {
         context: {
           sourceCardId: instance.gamecardId,
           effectIndex: 1,
-          step: 'SELECT_SWAP_TARGET'
+          step: 'SELECT_SWAP_TARGET',
+          sourceUnitIndex
         }
       };
       return;
@@ -184,11 +190,20 @@ const activate_104030459_swap: CardEffect = {
       targetCard.isExhausted = false;
       targetCard.displayState = 'FRONT_UPRIGHT';
 
-      await AtomicEffectExecutor.execute(gameState, playerState.uid, {
-        type: 'MOVE_FROM_EROSION',
-        destinationZone: 'UNIT',
-        targetFilter: { gamecardId: targetId }
-      }, instance);
+      AtomicEffectExecutor.moveCard(
+        gameState,
+        playerState.uid,
+        'EROSION_FRONT',
+        playerState.uid,
+        'UNIT',
+        targetId,
+        true,
+        {
+          effectSourcePlayerUid: playerState.uid,
+          effectSourceCardId: instance.gamecardId,
+          targetIndex: context?.sourceUnitIndex
+        }
+      );
 
       gameState.logs.push(`[${instance.fullName}] 将 [${targetCard.fullName}] 从侵蚀区放置到了战场上。`);
     }
