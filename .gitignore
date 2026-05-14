@@ -11,4 +11,4 @@ guest*/
 vite.config.ts
 android/
 .idea/
-deploy/
+deploy/nginx-overheat.conf

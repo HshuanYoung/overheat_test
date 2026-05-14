@@ -761,7 +761,7 @@ function emitTimerUpdate(gameId: string, gameState: any) {
     lastTimerBroadcast.set(gameId, now);
     io.to(gameId).emit('gameTimerUpdate', {
         gameId,
-        phaseTimerStart: gameState.phaseTimerStart,
+        phaseTimerStart: now,
         players: getRuntimeTimedState(gameState, now)
     });
 }

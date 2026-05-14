@@ -267,7 +267,7 @@ npm run start
 - `npm run build` 只构建前端产物到 `dist`。
 - `npm run start` 只运行后端 API 和 Socket.IO，不启动 Vite HMR，也不启动 `tsx watch`。
 - Nginx 直接托管 `dist`、`assets` 和 `pics`，并反代 `/api`、`/socket.io` 到后端 `3001`。
-- 可参考 `deploy/nginx-overheat.conf` 和 `deploy/overheat.service`。
+- 可参考 `deploy/nginx-overheat.conf` 和 `deploy/overheat.service`。示例部署目录为 `/home/ubuntu/overheat_test`，如果服务器路径不同，需要同步替换 Nginx 和 systemd 配置中的路径。
 
 线上 `.env` 可以按机器配置收紧数据库连接池：
 

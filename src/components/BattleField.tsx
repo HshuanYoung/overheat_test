@@ -604,7 +604,7 @@ export const BattleField: React.FC = () => {
         if (!prev) return prev;
         const next = {
           ...prev,
-          phaseTimerStart: patch.phaseTimerStart ?? prev.phaseTimerStart,
+          phaseTimerStart: patch.phaseTimerStart ? Date.now() : prev.phaseTimerStart,
           players: { ...prev.players }
         } as GameState;
         if (patch.players) {
