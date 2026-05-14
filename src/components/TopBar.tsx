@@ -1,20 +1,25 @@
-import { getAuthUser } from '../socket';
+import { getAuthToken, getAuthUser, removeAuthToken, removeAuthUser, setAuthToken, setAuthUser, socket } from '../socket';
 import React, { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { LayoutGrid, BookOpen, Coins, Sparkles, X, Menu, LogOut, Info, Undo2 } from 'lucide-react';
+import { BookOpen, Check, Coins, Gem, Layers3, Loader2, LogOut, Menu, Settings, UserRound, UsersRound, X } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
 import { readJsonResponse } from '../lib/http';
 
-export const TopBar: React.FC<{ onOpenRulebook: () => void }> = ({ onOpenRulebook }) => {
-  const user = getAuthUser();
+export const TopBar: React.FC<{ onOpenRulebook: () => void; onlinePlayerCount?: number; onToggleOnlinePlayers?: () => void }> = ({ onOpenRulebook, onlinePlayerCount = 0, onToggleOnlinePlayers }) => {
+  const [user, setUser] = useState<any | null>(() => getAuthUser());
   const location = useLocation();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [coins, setCoins] = useState<number | null>(null);
   const [crystals, setCrystals] = useState<number | null>(null);
+  const [editingName, setEditingName] = useState(false);
+  const [usernameDraft, setUsernameDraft] = useState(user?.username || user?.displayName || '');
+  const [savingName, setSavingName] = useState(false);
+  const [nameError, setNameError] = useState('');
 
   const isInGame = location.pathname.startsWith('/battle/');
   const isDeckBuilder = location.pathname === '/deck-builder';
+  const displayName = user?.username || user?.displayName || '玩家';
 
   useEffect(() => {
     const loadAssets = async () => {
@@ -34,6 +39,16 @@ export const TopBar: React.FC<{ onOpenRulebook: () => void }> = ({ onOpenRuleboo
   }, [user]);
 
   useEffect(() => {
+    if (isMenuOpen) {
+      const currentUser = getAuthUser();
+      setUser(currentUser);
+      setUsernameDraft(currentUser?.username || currentUser?.displayName || '');
+      setEditingName(false);
+      setNameError('');
+    }
+  }, [isMenuOpen]);
+
+  useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         setIsMenuOpen(false);
@@ -43,11 +58,70 @@ export const TopBar: React.FC<{ onOpenRulebook: () => void }> = ({ onOpenRuleboo
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
+  const handleSaveUsername = async () => {
+    const nextUsername = usernameDraft.trim();
+    if (!nextUsername) {
+      setNameError('用户名不能为空');
+      return;
+    }
+
+    setSavingName(true);
+    setNameError('');
+    try {
+      const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || '';
+      const token = getAuthToken();
+      const res = await fetch(`${BACKEND_URL}/api/user/profile`, {
+        method: 'PUT',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: nextUsername })
+      });
+      const data = await readJsonResponse(res);
+      if (!res.ok || data?.error) {
+        setNameError(data?.error || '修改用户名失败');
+        return;
+      }
+
+      if (data?.token) {
+        setAuthToken(data.token);
+        socket.emit('authenticate', data.token);
+      }
+      if (data?.user) {
+        setAuthUser(data.user);
+        setUser(data.user);
+        setUsernameDraft(data.user.username || data.user.displayName || nextUsername);
+      }
+      setEditingName(false);
+    } catch (e) {
+      setNameError('网络错误');
+    } finally {
+      setSavingName(false);
+    }
+  };
+
+  const handleLogout = () => {
+    removeAuthToken();
+    removeAuthUser();
+    socket.disconnect();
+    window.location.href = '/';
+  };
+
   if (isInGame || isDeckBuilder) return null;
 
   return (
     <>
-      <div className="fixed top-4 right-4 z-50">
+      <div className="fixed top-4 right-4 z-50 flex items-center gap-2">
+        <button
+          type="button"
+          onClick={onToggleOnlinePlayers}
+          className="flex items-center gap-2 rounded-xl border border-white/10 bg-zinc-900/80 px-3 py-3 text-sm font-black text-white shadow-xl backdrop-blur-md transition-all hover:border-white/30 hover:bg-zinc-800/90"
+          aria-label="在线玩家"
+        >
+          <UsersRound className="h-4 w-4 text-emerald-300" />
+          <span className="hidden sm:inline">在线玩家</span>
+          <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-black text-emerald-300">
+            {onlinePlayerCount}
+          </span>
+        </button>
         <button
           onClick={() => setIsMenuOpen(!isMenuOpen)}
           aria-label={isMenuOpen ? '关闭菜单' : '打开菜单'}
@@ -65,94 +139,115 @@ export const TopBar: React.FC<{ onOpenRulebook: () => void }> = ({ onOpenRuleboo
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.3 }}
-            className="fixed inset-0 z-[100] bg-zinc-950/90 backdrop-blur-2xl flex items-center justify-center p-6"
+            className="fixed inset-0 z-[100] flex items-start justify-center overflow-y-auto bg-zinc-950/90 p-3 text-white backdrop-blur-2xl md:items-center md:p-6"
           >
             <motion.div
               initial={{ scale: 0.9, opacity: 0, y: 20 }}
               animate={{ scale: 1, opacity: 1, y: 0 }}
               exit={{ scale: 0.9, opacity: 0, y: 20 }}
-              className="w-full max-w-2xl flex flex-col gap-8 relative"
+              className="relative my-3 flex w-full max-w-lg flex-col gap-4 md:my-0"
             >
-              <div className="absolute -top-32 -left-32 w-64 h-64 bg-red-600/10 blur-[120px] rounded-full" />
-              <div className="absolute -bottom-32 -right-32 w-64 h-64 bg-blue-600/10 blur-[120px] rounded-full" />
-
-              <div className="flex flex-col items-center gap-2 mb-8 relative z-10">
-                <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-red-600 to-red-500 flex items-center justify-center shadow-2xl mb-4">
-                  <Menu className="w-8 h-8 text-white" />
+              <div className="relative z-10 rounded-2xl border border-white/10 bg-zinc-950/95 p-4 shadow-2xl md:p-5">
+                <div className="mb-4 flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-red-600">
+                      <UserRound className="h-5 w-5" />
+                    </div>
+                    <div>
+                      <h2 className="text-2xl font-black italic tracking-tighter text-white">账户</h2>
+                      <p className="text-[10px] font-bold tracking-widest text-zinc-500">ACCOUNT</p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setIsMenuOpen(false)}
+                    className="rounded-xl border border-white/10 bg-white/5 p-2 text-zinc-300 transition-colors hover:bg-white/10 hover:text-white"
+                    aria-label="关闭菜单"
+                  >
+                    <X className="h-5 w-5" />
+                  </button>
                 </div>
-                <h2 className="text-4xl font-black italic text-white uppercase tracking-tighter">游戏菜单</h2>
-                <div className="h-1 w-24 bg-red-600" />
-              </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 relative z-10">
-                <Link
-                  to="/deck-builder"
-                  onClick={() => setIsMenuOpen(false)}
-                  className="group flex items-center gap-6 p-6 bg-white/5 hover:bg-white/10 rounded-[2.5rem] border border-white/5 hover:border-white/20 transition-all hover:-translate-y-1 shadow-xl"
-                >
-                  <div className="p-4 rounded-2xl bg-red-500/10 group-hover:bg-red-500 transition-colors">
-                    <LayoutGrid className="w-8 h-8 text-red-500 group-hover:text-white" />
+                <div className="space-y-2">
+                  <div className="rounded-xl border border-white/10 bg-black/35 p-3">
+                    {editingName ? (
+                      <div className="space-y-2">
+                        <div className="flex gap-2">
+                          <input
+                            value={usernameDraft}
+                            onChange={e => setUsernameDraft(e.target.value)}
+                            className="min-w-0 flex-1 rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm font-bold text-white outline-none transition-colors focus:border-red-500"
+                            autoFocus
+                          />
+                          <button
+                            type="button"
+                            onClick={handleSaveUsername}
+                            disabled={savingName}
+                            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-red-600 text-white transition-colors hover:bg-red-500 disabled:opacity-50"
+                            aria-label="保存用户名"
+                          >
+                            {savingName ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditingName(false);
+                              setUsernameDraft(displayName);
+                              setNameError('');
+                            }}
+                            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-white/5 text-zinc-300 transition-colors hover:bg-white/10 hover:text-white"
+                            aria-label="取消修改用户名"
+                          >
+                            <X className="h-4 w-4" />
+                          </button>
+                        </div>
+                        {nameError && <div className="text-xs font-bold text-red-400">{nameError}</div>}
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => setEditingName(true)}
+                        className="flex w-full items-center gap-3 text-left"
+                      >
+                        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-zinc-800 text-sm font-black">
+                          {displayName.slice(0, 1).toUpperCase()}
+                        </div>
+                        <div className="min-w-0">
+                          <div className="truncate text-base font-black text-white">{displayName}</div>
+                          <div className="text-[10px] font-bold tracking-widest text-zinc-500">点击修改用户名</div>
+                        </div>
+                      </button>
+                    )}
                   </div>
-                  <div>
-                    <h3 className="text-xl font-black italic text-white uppercase tracking-tight">我的卡组</h3>
-                    <p className="text-zinc-500 text-xs font-bold uppercase tracking-widest mt-1">管理你的战斗套牌</p>
+
+                  <MenuLink to="/collection?tab=DECKS" icon={<Layers3 className="h-5 w-5 text-red-300" />} label="我的卡组" onClose={() => setIsMenuOpen(false)} />
+                  <MenuButton icon={<BookOpen className="h-5 w-5 text-sky-300" />} label="简易规则书" onClick={() => { onOpenRulebook(); setIsMenuOpen(false); }} />
+                  <MenuLink to="/profile" icon={<Settings className="h-5 w-5 text-zinc-300" />} label="设置" onClose={() => setIsMenuOpen(false)} />
+                  <MenuButton icon={<LogOut className="h-5 w-5 text-red-300" />} label="登出" onClick={handleLogout} />
+
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                    <div className="flex items-center justify-between rounded-xl border border-white/10 bg-black/35 px-4 py-3">
+                      <div className="flex items-center gap-3">
+                        <Coins className="h-5 w-5 text-amber-400" />
+                        <span className="text-xs font-black tracking-widest text-zinc-400">金币</span>
+                      </div>
+                      <span className="text-base font-black italic text-amber-400">{coins?.toLocaleString() ?? 0}</span>
+                    </div>
+                    <div className="flex items-center justify-between rounded-xl border border-white/10 bg-black/35 px-4 py-3">
+                      <div className="flex items-center gap-3">
+                        <Gem className="h-5 w-5 text-cyan-400" />
+                        <span className="text-xs font-black tracking-widest text-zinc-400">卡晶</span>
+                      </div>
+                      <span className="text-base font-black italic text-cyan-400">{crystals?.toLocaleString() ?? 0}</span>
+                    </div>
                   </div>
-                </Link>
+                </div>
 
                 <button
-                  onClick={() => {
-                    onOpenRulebook();
-                    setIsMenuOpen(false);
-                  }}
-                  className="group flex items-center gap-6 p-6 bg-white/5 hover:bg-white/10 rounded-[2.5rem] border border-white/5 hover:border-white/20 transition-all hover:-translate-y-1 shadow-xl text-left"
-                >
-                  <div className="p-4 rounded-2xl bg-blue-500/10 group-hover:bg-blue-500 transition-colors">
-                    <BookOpen className="w-8 h-8 text-blue-500 group-hover:text-white" />
-                  </div>
-                  <div>
-                    <h3 className="text-xl font-black italic text-white uppercase tracking-tight">简易规则书</h3>
-                    <p className="text-zinc-500 text-xs font-bold uppercase tracking-widest mt-1">查看游戏规则与机制</p>
-                  </div>
-                </button>
-
-                <Link
-                  to="/profile"
                   onClick={() => setIsMenuOpen(false)}
-                  className="group flex items-center gap-6 p-6 bg-white/5 hover:bg-white/10 rounded-[2.5rem] border border-white/5 hover:border-white/20 transition-all hover:-translate-y-1 shadow-xl"
+                  className="mt-4 flex w-full items-center justify-center gap-3 rounded-xl bg-white px-4 py-3 text-sm font-black text-black transition-colors hover:bg-zinc-200"
                 >
-                  <div className="w-16 h-16 rounded-2xl bg-zinc-800 flex items-center justify-center overflow-hidden border border-white/10 group-hover:border-red-500 transition-colors">
-                    {user?.photoURL ? <img src={user.photoURL} className="w-full h-full object-cover" /> : <img src="assets/icons/myself.JPG" className="w-full h-full object-cover" />}
-                  </div>
-                  <div>
-                    <h3 className="text-xl font-black italic text-white uppercase tracking-tight">个人信息</h3>
-                    <p className="text-zinc-500 text-xs font-bold uppercase tracking-widest mt-1">查看你的战绩与资产</p>
-                  </div>
-                </Link>
-
-                <div className="grid grid-rows-2 gap-4">
-                  <div className="flex items-center justify-between px-8 bg-black/40 rounded-[2rem] border border-white/5 shadow-inner">
-                    <div className="flex items-center gap-4">
-                      <Coins className="w-5 h-5 text-amber-400" />
-                      <span className="text-xs font-black text-white/60 uppercase tracking-widest">金币</span>
-                    </div>
-                    <span className="text-xl font-black text-amber-400 italic">{coins?.toLocaleString() ?? 0}</span>
-                  </div>
-                  <div className="flex items-center justify-between px-8 bg-black/40 rounded-[2rem] border border-white/5 shadow-inner">
-                    <div className="flex items-center gap-4">
-                      <Sparkles className="w-5 h-5 text-cyan-400" />
-                      <span className="text-xs font-black text-white/60 uppercase tracking-widest">卡晶</span>
-                    </div>
-                    <span className="text-xl font-black text-cyan-400 italic">{crystals?.toLocaleString() ?? 0}</span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex justify-center mt-12">
-                <button
-                  onClick={() => setIsMenuOpen(false)}
-                  className="group px-12 py-5 bg-white text-black rounded-3xl font-black uppercase italic tracking-widest transition-all hover:bg-zinc-200 flex items-center gap-4 shadow-[0_20px_50px_rgba(255,255,255,0.1)]"
-                >
-                  <X className="w-6 h-6" />
+                  <X className="h-5 w-5" />
                   关闭菜单
                 </button>
               </div>
@@ -163,3 +258,19 @@ export const TopBar: React.FC<{ onOpenRulebook: () => void }> = ({ onOpenRuleboo
     </>
   );
 };
+
+const menuItemClass = 'flex w-full items-center gap-3 rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-left text-sm font-black text-white transition-colors hover:bg-white/10';
+
+const MenuLink = ({ to, icon, label, onClose }: { to: string; icon: React.ReactNode; label: string; onClose: () => void }) => (
+  <Link to={to} onClick={onClose} className={cn(menuItemClass)}>
+    {icon}
+    <span>{label}</span>
+  </Link>
+);
+
+const MenuButton = ({ icon, label, onClick }: { icon: React.ReactNode; label: string; onClick: () => void }) => (
+  <button type="button" onClick={onClick} className={cn(menuItemClass)}>
+    {icon}
+    <span>{label}</span>
+  </button>
+);

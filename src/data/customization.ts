@@ -8,8 +8,9 @@ export const RAY_CARDS = [
 ];
 
 export const CARD_BACKS = [
-  { id: 'default', name: '默认卡背', url: '/assets/card_bg/default_card_bg.jpg' },
+  { id: 'default', name: '经典', url: '/assets/card_bg/default_card_bg.jpg' },
   { id: 'back_1', name: '萨拉拉', url: '/assets/card_bg/card_bg_1.jpg' },
   { id: 'back_2', name: '小天使', url: '/assets/card_bg/card_bg_2.jpg' },
   { id: 'back_3', name: '真理', url: '/assets/card_bg/card_bg_3.jpg' },
+  { id: 'back_4', name: '万圣节', url: '/assets/card_bg/card_bg_4.jpg' },
 ];

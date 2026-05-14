@@ -12,6 +12,7 @@ type LobbySeat = 'player1' | 'player2' | 'spectator';
 interface FriendLobby {
   gameId: string;
   roomCode: string;
+  isPublic?: boolean;
   turnTimerLimit?: number;
   playerIds: [string | null, string | null];
   spectatorIds: string[];
@@ -28,6 +29,7 @@ interface FriendLobby {
 interface FriendLobbySummary {
   gameId: string;
   roomCode: string;
+  isPublic?: boolean;
   turnTimerLimit?: number;
   playerIds: [string | null, string | null];
   spectatorCount: number;
@@ -51,6 +53,7 @@ export const FriendMatch: React.FC = () => {
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState('');
   const [turnTime, setTurnTime] = useState(300);
+  const [isPublicRoom, setIsPublicRoom] = useState(false);
   const [lobby, setLobby] = useState<FriendLobby | null>(null);
   const [publicRooms, setPublicRooms] = useState<FriendLobbySummary[]>([]);
   const [roomsLoading, setRoomsLoading] = useState(false);
@@ -103,6 +106,7 @@ export const FriendMatch: React.FC = () => {
   const applyLobby = (nextLobby: FriendLobby) => {
     setLobby(nextLobby);
     setRoomCode(nextLobby.roomCode || '');
+    setIsPublicRoom(!!nextLobby.isPublic);
     setMode('lobby');
     if (nextLobby.started) enterBattle(nextLobby);
   };
@@ -297,6 +301,18 @@ export const FriendMatch: React.FC = () => {
       setError(e.message || '修改时间失败');
     } finally {
       setSavingTimer(false);
+    }
+  };
+
+  const saveRoomVisibility = async (nextIsPublic: boolean) => {
+    if (!lobby || !isHost || lobby.started) return;
+    setError('');
+    setIsPublicRoom(nextIsPublic);
+    try {
+      await requestLobby(`${BACKEND_URL}/api/games/friend/${lobby.gameId}/visibility`, { isPublic: nextIsPublic });
+    } catch (e: any) {
+      setIsPublicRoom(!!lobby.isPublic);
+      setError(e.message || '修改公开状态失败');
     }
   };
 
@@ -597,6 +613,9 @@ export const FriendMatch: React.FC = () => {
               onChange={e => setRoomCode(e.target.value.replace(/\D/g, ''))}
             />
             {error && <div className="rounded-xl border border-red-500/30 bg-red-900/30 p-3 text-sm text-red-400">{error}</div>}
+            <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 px-4 py-3 text-center text-xs font-bold tracking-widest text-zinc-500">
+              也可以直接在对战大厅点击公开房间的加入按钮
+            </div>
             <button
               onClick={handleJoinRoom}
               disabled={joining || roomCode.length < 6}
@@ -611,7 +630,7 @@ export const FriendMatch: React.FC = () => {
         {mode === 'lobby' && lobby && (
           <div className="space-y-6">
             <div className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-5">
-              <div className="grid gap-4 md:grid-cols-[1fr_auto_auto] md:items-center">
+              <div className="grid gap-4 md:grid-cols-[1fr_auto_auto_auto] md:items-center">
                 <div>
                   <div className="text-[10px] font-black tracking-widest text-zinc-500">房间码</div>
                   <div className="mt-2 flex items-center gap-3">
@@ -621,6 +640,26 @@ export const FriendMatch: React.FC = () => {
                     </button>
                   </div>
                 </div>
+                <button
+                  type="button"
+                  onClick={() => saveRoomVisibility(!lobby.isPublic)}
+                  disabled={!isHost || lobby.started}
+                  className={cn(
+                    'rounded-xl bg-black/30 px-4 py-3 text-left transition-colors disabled:cursor-default',
+                    isHost && !lobby.started && 'hover:bg-white/10'
+                  )}
+                >
+                  <div className="flex items-center gap-2 text-[10px] font-black tracking-widest text-zinc-500">
+                    <span className={cn(
+                      'flex h-4 w-4 items-center justify-center rounded border',
+                      lobby.isPublic ? 'border-red-500 bg-red-600 text-white' : 'border-zinc-600 bg-zinc-900 text-transparent'
+                    )}>
+                      <Check className="h-3 w-3" />
+                    </span>
+                    公开房间
+                  </div>
+                  <div className="mt-1 text-sm font-bold text-white">{lobby.isPublic ? '对战大厅可见' : '仅房间码加入'}</div>
+                </button>
                 <div className="relative">
                   <button
                     type="button"

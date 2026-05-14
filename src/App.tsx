@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { Suspense, lazy, useEffect, useState } from 'react';
+import React, { Suspense, lazy, useCallback, useEffect, useState } from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { motion } from 'framer-motion';
 
@@ -30,6 +30,9 @@ export default function App() {
   const [user, setUser] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
   const [isRulebookOpen, setIsRulebookOpen] = useState(false);
+  const [isDesktopOnlinePlayersOpen, setIsDesktopOnlinePlayersOpen] = useState(true);
+  const [isMobileOnlinePlayersOpen, setIsMobileOnlinePlayersOpen] = useState(false);
+  const [onlinePlayerCount, setOnlinePlayerCount] = useState(0);
   const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
   const [loginUsername, setLoginUsername] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
@@ -44,6 +47,18 @@ export default function App() {
   const [sendingCode, setSendingCode] = useState(false);
   const [registerSubmitting, setRegisterSubmitting] = useState(false);
   const [sendCodeCooldown, setSendCodeCooldown] = useState(0);
+
+  const closeOnlinePlayers = useCallback(() => {
+    setIsMobileOnlinePlayersOpen(false);
+  }, []);
+
+  const toggleOnlinePlayers = useCallback(() => {
+    if (typeof window !== 'undefined' && window.matchMedia('(min-width: 1280px)').matches) {
+      setIsDesktopOnlinePlayersOpen(open => !open);
+      return;
+    }
+    setIsMobileOnlinePlayersOpen(open => !open);
+  }, []);
 
   useEffect(() => {
     const savedUser = getAuthUser();
@@ -362,8 +377,17 @@ export default function App() {
   return (
     <Router>
       <div className="min-h-screen bg-black text-white font-sans selection:bg-red-500 selection:text-white">
-        <TopBar onOpenRulebook={() => setIsRulebookOpen(true)} />
-        <OnlinePlayersSidebar />
+        <TopBar
+          onOpenRulebook={() => setIsRulebookOpen(true)}
+          onlinePlayerCount={onlinePlayerCount}
+          onToggleOnlinePlayers={toggleOnlinePlayers}
+        />
+        <OnlinePlayersSidebar
+          isDesktopOpen={isDesktopOnlinePlayersOpen}
+          isMobileOpen={isMobileOnlinePlayersOpen}
+          onClose={closeOnlinePlayers}
+          onCountChange={setOnlinePlayerCount}
+        />
 
         <main className="h-screen overflow-auto">
           <Suspense fallback={<PageFallback />}>

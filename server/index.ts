@@ -274,6 +274,11 @@ function getUserDisplayLabel(user: any) {
     return displayName || username || user?.userId?.toString() || '玩家';
 }
 
+function getUserUsernameLabel(user: any) {
+    const username = typeof user?.username === 'string' ? user.username.trim() : '';
+    return username || getUserDisplayLabel(user);
+}
+
 function canUserChatInGame(gameState: any, userId: string) {
     const userIdStr = userId.toString();
     if ((gameState.playerIds || []).map((uid: any) => uid?.toString()).includes(userIdStr)) return true;
@@ -471,6 +476,7 @@ function buildFriendLobbyResponse(gameId: string, gameState: any, userId: string
     return {
         gameId,
         roomCode: gameState.roomCode,
+        isPublic: !!gameState.isPublic,
         turnTimerLimit: gameState.turnTimerLimit,
         playerIds: gameState.playerIds,
         spectatorIds: gameState.spectatorIds,
@@ -492,6 +498,7 @@ function buildFriendLobbySummary(gameId: string, gameState: any, userId?: string
     return {
         gameId,
         roomCode: gameState.roomCode,
+        isPublic: !!gameState.isPublic,
         turnTimerLimit: gameState.turnTimerLimit,
         playerIds: gameState.playerIds,
         spectatorCount: gameState.spectatorIds.length,
@@ -1197,13 +1204,14 @@ app.post('/api/games/friend', async (req, res): Promise<void> => {
         const roomCode = Math.random().toString(10).substring(2, 10).padEnd(8, '0');
         const gameId = 'friend_' + roomCode;
         const userIdStr = user.userId.toString();
+        const isPublic = !!req.body?.isPublic;
         const initialState = {
             gameId: gameId,
             playerIds: [userIdStr, null],
             participantIds: [userIdStr],
             spectatorIds: [],
             hostUid: userIdStr,
-            participantNames: { [userIdStr]: getUserDisplayLabel(user) },
+            participantNames: { [userIdStr]: getUserUsernameLabel(user) },
             friendDeckSelections: {},
             friendReady: { [userIdStr]: false },
             players: {},
@@ -1214,6 +1222,7 @@ app.post('/api/games/friend', async (req, res): Promise<void> => {
             logs: [],
             mode: 'friend',
             roomCode: roomCode,
+            isPublic,
             counterStack: [],
             isCountering: 0,
             effectUsage: {},
@@ -1242,6 +1251,7 @@ app.get('/api/games/friend/lobby', async (req, res): Promise<void> => {
                 const gameState = typeof row.state === 'string' ? JSON.parse(row.state) : row.state;
                 if (!gameState || gameState.mode !== 'friend' || gameState.gameStatus === 2) return null;
                 normalizeFriendRoomState(gameState);
+                if (!gameState.isPublic) return null;
                 return buildFriendLobbySummary(row.id, gameState, userIdStr);
             })
             .filter(Boolean)
@@ -1279,7 +1289,7 @@ app.post('/api/games/friend/join', async (req, res): Promise<void> => {
         const gameState = typeof rows[0].state === 'string' ? JSON.parse(rows[0].state) : rows[0].state;
         const userIdStr = user.userId.toString();
         ensureFriendParticipant(gameState, userIdStr);
-        rememberFriendParticipantName(gameState, userIdStr, getUserDisplayLabel(user));
+        rememberFriendParticipantName(gameState, userIdStr, getUserUsernameLabel(user));
         if (!isFriendGameStarted(gameState) && !getFriendSeat(gameState, userIdStr)) {
             setFriendSeat(gameState, userIdStr, gameState.playerIds[1] ? 'spectator' : 'player2');
         } else if (isFriendGameStarted(gameState) && !getFriendSeat(gameState, userIdStr)) {
@@ -1319,7 +1329,7 @@ app.get('/api/games/friend/:gameId/status', async (req, res): Promise<void> => {
         const spectatorIds = Array.isArray(gameState.spectatorIds) ? gameState.spectatorIds : [];
         const participantIds = Array.isArray(gameState.participantIds) ? gameState.participantIds : [];
         const userIdStr = user.userId.toString();
-        rememberFriendParticipantName(gameState, userIdStr, getUserDisplayLabel(user));
+        rememberFriendParticipantName(gameState, userIdStr, getUserUsernameLabel(user));
 
         if (!participantIds.includes(userIdStr)) {
             res.status(403).json({ error: 'Forbidden' });
@@ -1351,7 +1361,7 @@ app.post('/api/games/friend/:gameId/seat', async (req, res): Promise<void> => {
             const rows = await pool.query('SELECT state FROM games WHERE id = ?', [gameId]);
             if (rows.length === 0) { res.status(404).json({ error: '未找到该房间' }); return; }
             const gameState = typeof rows[0].state === 'string' ? JSON.parse(rows[0].state) : rows[0].state;
-            rememberFriendParticipantName(gameState, user.userId.toString(), getUserDisplayLabel(user));
+            rememberFriendParticipantName(gameState, user.userId.toString(), getUserUsernameLabel(user));
             setFriendSeat(gameState, user.userId.toString(), seat);
             await syncAndSaveState(gameId, gameState);
             res.json(buildFriendLobbyResponse(gameId, gameState, user.userId.toString()));
@@ -1694,17 +1704,102 @@ app.put('/api/user/profile', async (req, res): Promise<void> => {
     if (!user) { res.status(401).json({ error: 'Invalid token' }); return; }
 
     try {
-        const { favoriteCardId, favoriteBackId } = req.body;
-        if (favoriteCardId !== undefined && favoriteBackId !== undefined) {
-            await pool.query('UPDATE users SET favorite_card_id = ?, favorite_back_id = ? WHERE id = ?', [favoriteCardId, favoriteBackId, user.userId]);
-        } else if (favoriteCardId !== undefined) {
-            await pool.query('UPDATE users SET favorite_card_id = ? WHERE id = ?', [favoriteCardId, user.userId]);
-        } else if (favoriteBackId !== undefined) {
-            await pool.query('UPDATE users SET favorite_back_id = ? WHERE id = ?', [favoriteBackId, user.userId]);
+        const { favoriteCardId, favoriteBackId, username } = req.body || {};
+        const nextUsername = typeof username === 'string' ? username.trim() : undefined;
+
+        if (nextUsername !== undefined && !nextUsername) {
+            res.status(400).json({ error: '用户名不能为空' });
+            return;
         }
-        res.json({ success: true });
+        if (nextUsername !== undefined) {
+            const usernameError = validateUsername(nextUsername);
+            if (usernameError) {
+                res.status(400).json({ error: usernameError });
+                return;
+            }
+
+            const exists = await pool.query('SELECT id FROM users WHERE username = ? AND id <> ? LIMIT 1', [nextUsername, user.userId]);
+            if (exists.length > 0) {
+                res.status(400).json({ error: '用户名已存在' });
+                return;
+            }
+        }
+
+        const updates: string[] = [];
+        const params: any[] = [];
+
+        if (favoriteCardId !== undefined) {
+            updates.push('favorite_card_id = ?');
+            params.push(favoriteCardId);
+        }
+        if (favoriteBackId !== undefined) {
+            updates.push('favorite_back_id = ?');
+            params.push(favoriteBackId);
+        }
+        if (nextUsername !== undefined) {
+            updates.push('username = ?');
+            params.push(nextUsername);
+            updates.push('display_name = ?');
+            params.push(nextUsername);
+        }
+
+        if (updates.length === 0) {
+            const fallbackUser = buildAuthUser({ id: user.userId, username: user.username, display_name: user.displayName, email: user.email });
+            const token = generateToken(fallbackUser.uid, fallbackUser.username, fallbackUser.displayName, user.role || 'user');
+            res.json({ success: true, user: fallbackUser, token });
+            return;
+        }
+
+        params.push(user.userId);
+        await pool.query(`UPDATE users SET ${updates.join(', ')} WHERE id = ?`, params);
+
+        const rows = await pool.query('SELECT id, username, display_name, email FROM users WHERE id = ? LIMIT 1', [user.userId]);
+        const updatedUser = rows[0] || { id: user.userId, username: nextUsername || user.username, display_name: nextUsername || user.displayName, email: user.email || null };
+        const authUser = buildAuthUser(updatedUser);
+        const token = generateToken(authUser.uid, authUser.username, authUser.displayName, user.role || 'user');
+
+        for (const [socketId, onlineUser] of onlineSockets.entries()) {
+            if (onlineUser.userId === user.userId.toString()) {
+                onlineSockets.set(socketId, {
+                    ...onlineUser,
+                    username: authUser.username,
+                    displayName: authUser.displayName
+                });
+            }
+        }
+        emitOnlinePlayers();
+
+        res.json({ success: true, user: authUser, token });
     } catch (err) {
         res.status(500).json({ error: 'DB Error' });
+    }
+});
+
+app.post('/api/games/friend/:gameId/visibility', async (req, res): Promise<void> => {
+    const authHeader = req.headers.authorization;
+    if (!authHeader) { res.status(401).json({ error: 'Unauthorized' }); return; }
+    const user = verifyToken(authHeader.split(' ')[1]);
+    if (!user) { res.status(401).json({ error: 'Invalid token' }); return; }
+
+    const { gameId } = req.params;
+    const isPublic = !!req.body?.isPublic;
+
+    try {
+        await withGameLock(gameId, async () => {
+            const rows = await pool.query('SELECT state FROM games WHERE id = ?', [gameId]);
+            if (rows.length === 0) { res.status(404).json({ error: '未找到该房间' }); return; }
+            const gameState = typeof rows[0].state === 'string' ? JSON.parse(rows[0].state) : rows[0].state;
+            normalizeFriendRoomState(gameState);
+            if (isFriendGameStarted(gameState)) { res.status(400).json({ error: '对局已开始，无法修改公开状态' }); return; }
+            if (gameState.hostUid?.toString() !== user.userId.toString()) { res.status(403).json({ error: '只有房主可以修改公开状态' }); return; }
+
+            gameState.isPublic = isPublic;
+            await syncAndSaveState(gameId, gameState);
+            res.json(buildFriendLobbyResponse(gameId, gameState, user.userId.toString()));
+        });
+    } catch (err) {
+        console.error('Friend visibility update error:', err);
+        res.status(500).json({ error: 'Internal server error' });
     }
 });
 
@@ -2403,6 +2498,13 @@ io.on('connection', (socket) => {
         } else {
             socket.emit('unauthorized');
         }
+    });
+
+    socket.on('requestOnlinePlayers', () => {
+        socket.emit('onlinePlayers', {
+            players: getOnlinePlayers(),
+            count: getOnlinePlayers().length
+        });
     });
 
     socket.on('joinGame', async (data: { gameId: string, deckId?: string, seat?: 'player' | 'spectator' }) => {
