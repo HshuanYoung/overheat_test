@@ -12,6 +12,7 @@ async function migrate() {
             await conn.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS favorite_back_id VARCHAR(50) DEFAULT 'default';`);
             await conn.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS coins BIGINT DEFAULT 100000;`);
             await conn.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS card_crystals BIGINT DEFAULT 100000;`);
+            await conn.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS session_version INT NOT NULL DEFAULT 0;`);
             
             // Force update all users to have at least 100k
             await conn.query(`UPDATE users SET coins = 100000 WHERE coins < 100000 OR coins IS NULL;`);

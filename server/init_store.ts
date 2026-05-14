@@ -30,11 +30,10 @@ async function initStore() {
         // 2. Create user_cards table
         await conn.query(`
             CREATE TABLE IF NOT EXISTS user_cards (
-                id INT AUTO_INCREMENT PRIMARY KEY,
                 user_id VARCHAR(50) NOT NULL,
-                card_id VARCHAR(20) NOT NULL,
-                quantity INT DEFAULT 0,
-                UNIQUE KEY unique_user_card (user_id, card_id),
+                card_id VARCHAR(50) NOT NULL,
+                quantity INT NOT NULL DEFAULT 0,
+                PRIMARY KEY (user_id, card_id),
                 FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
             )
         `);

@@ -42,3 +42,7 @@ export const getAuthUser = () => {
 export const setAuthUser = (user: any) => typeof window !== 'undefined' ? localStorage.setItem('user', JSON.stringify(user)) : null;
 export const removeAuthUser = () => typeof window !== 'undefined' ? localStorage.removeItem('user') : null;
 
+export const clearAuthSession = () => {
+    removeAuthToken();
+    removeAuthUser();
+};

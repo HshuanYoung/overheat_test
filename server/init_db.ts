@@ -20,7 +20,8 @@ async function initDB() {
                 card_crystals BIGINT DEFAULT 100000,
                 favorite_card_id VARCHAR(50) DEFAULT 'fav_card',
                 favorite_back_id VARCHAR(50) DEFAULT 'default',
-                created_at BIGINT
+                created_at BIGINT,
+                session_version INT NOT NULL DEFAULT 0
             )
         `);
         // console.log("✅ Users table ensured");

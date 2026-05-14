@@ -33,6 +33,70 @@ async function indexExists(conn: mariadb.PoolConnection, table: string, indexNam
     return Number(rows[0]?.count || 0) > 0;
 }
 
+async function primaryKeyColumns(conn: mariadb.PoolConnection, table: string): Promise<string[]> {
+    const rows = await conn.query(
+        `SELECT COLUMN_NAME
+         FROM information_schema.KEY_COLUMN_USAGE
+         WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND CONSTRAINT_NAME = 'PRIMARY'
+         ORDER BY ORDINAL_POSITION`,
+        [table]
+    );
+    return rows.map((row: any) => String(row.COLUMN_NAME));
+}
+
+async function tableExists(conn: mariadb.PoolConnection, table: string): Promise<boolean> {
+    const rows = await conn.query(
+        `SELECT COUNT(*) AS count
+         FROM information_schema.TABLES
+         WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?`,
+        [table]
+    );
+    return Number(rows[0]?.count || 0) > 0;
+}
+
+async function migrateUserCardsTable(conn: mariadb.PoolConnection) {
+    await conn.query(`
+        CREATE TABLE IF NOT EXISTS user_cards (
+            user_id VARCHAR(50) NOT NULL,
+            card_id VARCHAR(50) NOT NULL,
+            quantity INT NOT NULL DEFAULT 0,
+            PRIMARY KEY (user_id, card_id)
+        )
+    `);
+
+    const hasIdColumn = await columnExists(conn, 'user_cards', 'id');
+    const hasQuantityColumn = await columnExists(conn, 'user_cards', 'quantity');
+    if (!hasQuantityColumn) {
+        await conn.query(`ALTER TABLE user_cards ADD COLUMN quantity INT NOT NULL DEFAULT 1 AFTER card_id`);
+        await conn.query(`UPDATE user_cards SET quantity = 1 WHERE quantity IS NULL`);
+    }
+
+    const pkColumns = await primaryKeyColumns(conn, 'user_cards');
+    const uniqueExists = await indexExists(conn, 'user_cards', 'PRIMARY');
+    const alreadyNormalized = !hasIdColumn && uniqueExists && pkColumns.length === 2 && pkColumns[0] === 'user_id' && pkColumns[1] === 'card_id';
+    if (alreadyNormalized) {
+        return;
+    }
+
+    await conn.query('DROP TABLE IF EXISTS user_cards_migrated');
+    await conn.query(`
+        CREATE TABLE user_cards_migrated (
+            user_id VARCHAR(50) NOT NULL,
+            card_id VARCHAR(50) NOT NULL,
+            quantity INT NOT NULL DEFAULT 0,
+            PRIMARY KEY (user_id, card_id)
+        )
+    `);
+    await conn.query(`
+        INSERT INTO user_cards_migrated (user_id, card_id, quantity)
+        SELECT user_id, card_id, SUM(COALESCE(quantity, 1)) AS quantity
+        FROM user_cards
+        GROUP BY user_id, card_id
+    `);
+    await conn.query('DROP TABLE user_cards');
+    await conn.query('RENAME TABLE user_cards_migrated TO user_cards');
+}
+
 export const dbInit = async () => {
     let conn;
     try {
@@ -72,6 +136,9 @@ export const dbInit = async () => {
         }
         if (!(await columnExists(conn, 'users', 'created_at'))) {
             await conn.query(`ALTER TABLE users ADD COLUMN created_at BIGINT NULL AFTER favorite_back_id`);
+        }
+        if (!(await columnExists(conn, 'users', 'session_version'))) {
+            await conn.query(`ALTER TABLE users ADD COLUMN session_version INT NOT NULL DEFAULT 0 AFTER created_at`);
         }
         if (!(await indexExists(conn, 'users', 'uq_users_email'))) {
             await conn.query(`ALTER TABLE users ADD UNIQUE INDEX uq_users_email (email)`);
@@ -123,14 +190,7 @@ export const dbInit = async () => {
             )
         `);
 
-        await conn.query(`
-            CREATE TABLE IF NOT EXISTS user_cards (
-                user_id VARCHAR(50) NOT NULL,
-                card_id VARCHAR(50) NOT NULL,
-                quantity INT DEFAULT 0,
-                PRIMARY KEY (user_id, card_id)
-            )
-        `);
+        await migrateUserCardsTable(conn);
 
         await conn.query(`
             CREATE TABLE IF NOT EXISTS pack_history (

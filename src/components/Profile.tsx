@@ -1,4 +1,4 @@
-import { getAuthUser, removeAuthToken, removeAuthUser } from '../socket';
+import { clearAuthSession, getAuthUser, setAuthToken, setAuthUser } from '../socket';
 import { socket } from '../socket';
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -44,11 +44,19 @@ export const Profile: React.FC = () => {
     try {
       const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || '';
       const token = localStorage.getItem('token');
-      await fetch(`${BACKEND_URL}/api/user/profile`, { 
+      const res = await fetch(`${BACKEND_URL}/api/user/profile`, { 
           method: 'PUT', 
           headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }, 
           body: JSON.stringify({ favoriteCardId, favoriteBackId }) 
       });
+      const data = await readJsonResponse(res);
+      if (data?.token) {
+        setAuthToken(data.token);
+        socket.emit('authenticate', data.token);
+      }
+      if (data?.user) {
+        setAuthUser(data.user);
+      }
       alert('个人信息已保存');
     } catch (e) {
       console.error(e);
@@ -58,8 +66,7 @@ export const Profile: React.FC = () => {
   };
 
   const handleLogout = () => {
-    removeAuthToken();
-    removeAuthUser();
+    clearAuthSession();
     socket.disconnect();
     window.location.href = '/';
   };

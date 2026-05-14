@@ -12,13 +12,21 @@ CREATE TABLE IF NOT EXISTS users (
     card_crystals BIGINT DEFAULT 100000,
     favorite_card_id VARCHAR(50) DEFAULT 'fav_card',
     favorite_back_id VARCHAR(50) DEFAULT 'default',
-    created_at BIGINT
+    created_at BIGINT,
+    session_version INT NOT NULL DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS games (
     id VARCHAR(50) PRIMARY KEY,
     state JSON NOT NULL,
     status INT DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS user_cards (
+    user_id VARCHAR(50) NOT NULL,
+    card_id VARCHAR(50) NOT NULL,
+    quantity INT NOT NULL DEFAULT 0,
+    PRIMARY KEY (user_id, card_id)
 );
 
 CREATE TABLE IF NOT EXISTS deck_square_posts (

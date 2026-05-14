@@ -7,7 +7,7 @@ import React, { Suspense, lazy, useCallback, useEffect, useState } from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { motion } from 'framer-motion';
 
-import { socket, getAuthUser, setAuthUser, setAuthToken, getAuthToken } from './socket';
+import { socket, getAuthUser, setAuthUser, setAuthToken, getAuthToken, clearAuthSession } from './socket';
 import { TopBar } from './components/TopBar';
 import { OnlinePlayersSidebar } from './components/OnlinePlayersSidebar';
 import { Home } from './components/Home';
@@ -47,6 +47,7 @@ export default function App() {
   const [sendingCode, setSendingCode] = useState(false);
   const [registerSubmitting, setRegisterSubmitting] = useState(false);
   const [sendCodeCooldown, setSendCodeCooldown] = useState(0);
+  const [sessionMessage, setSessionMessage] = useState('');
 
   const closeOnlinePlayers = useCallback(() => {
     setIsMobileOnlinePlayersOpen(false);
@@ -62,32 +63,53 @@ export default function App() {
 
   useEffect(() => {
     const savedUser = getAuthUser();
-    let cleanup = () => {};
-
     if (savedUser) {
       setUser(savedUser);
+    }
 
+    const authHandler = () => {
       const token = getAuthToken();
-      if (token) {
-        const authHandler = () => {
-          socket.emit('authenticate', token);
-        };
+      if (!token) return;
+      socket.emit('authenticate', token);
+    };
 
-        socket.on('connect', authHandler);
-        if (!socket.connected) {
-          socket.connect();
-        } else {
-          authHandler();
-        }
+    socket.on('connect', authHandler);
 
-        cleanup = () => {
-          socket.off('connect', authHandler);
-        };
+    if (savedUser && getAuthToken()) {
+      if (!socket.connected) {
+        socket.connect();
+      } else {
+        authHandler();
       }
     }
 
     setLoading(false);
-    return cleanup;
+    return () => {
+      socket.off('connect', authHandler);
+    };
+  }, []);
+
+  useEffect(() => {
+    const handleForcedLogout = (payload?: { reason?: string }) => {
+      clearAuthSession();
+      setUser(null);
+      setSessionMessage(payload?.reason || '账号已在其他设备登录');
+      socket.disconnect();
+    };
+
+    const handleUnauthorized = () => {
+      if (!getAuthToken() || !getAuthUser()) {
+        return;
+      }
+      handleForcedLogout({ reason: '登录状态已失效，请重新登录' });
+    };
+
+    socket.on('forceLogout', handleForcedLogout);
+    socket.on('unauthorized', handleUnauthorized);
+    return () => {
+      socket.off('forceLogout', handleForcedLogout);
+      socket.off('unauthorized', handleUnauthorized);
+    };
   }, []);
 
   useEffect(() => {
@@ -135,9 +157,11 @@ export default function App() {
     setAuthToken(token);
     setAuthUser(authUser);
     setUser(authUser);
+    setSessionMessage('');
+    setLoginError('');
+    setRegisterError('');
 
     if (!socket.connected) {
-      socket.once('connect', () => socket.emit('authenticate', token));
       socket.connect();
       return;
     }
@@ -148,6 +172,7 @@ export default function App() {
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoginError('');
+    setSessionMessage('');
     setLoginSubmitting(true);
 
     try {
@@ -175,6 +200,7 @@ export default function App() {
   const handleSendVerificationCode = async () => {
     setRegisterError('');
     setRegisterMessage('');
+    setSessionMessage('');
     setSendingCode(true);
 
     try {
@@ -208,6 +234,7 @@ export default function App() {
     e.preventDefault();
     setRegisterError('');
     setRegisterMessage('');
+    setSessionMessage('');
     setRegisterSubmitting(true);
 
     try {
@@ -301,6 +328,7 @@ export default function App() {
                   onChange={e => setLoginPassword(e.target.value)}
                   className="rounded-xl border border-white/15 bg-black px-4 py-3 text-white placeholder:text-zinc-500"
                 />
+                {sessionMessage && <div className="text-sm font-bold text-amber-400">{sessionMessage}</div>}
                 {loginError && <div className="text-sm font-bold text-red-500">{loginError}</div>}
                 <button
                   type="submit"
@@ -355,6 +383,7 @@ export default function App() {
                   </button>
                 </div>
                 {registerMessage && <div className="text-sm font-bold text-emerald-400">{registerMessage}</div>}
+                {sessionMessage && <div className="text-sm font-bold text-amber-400">{sessionMessage}</div>}
                 {registerError && <div className="text-sm font-bold text-red-500">{registerError}</div>}
                 <button
                   type="submit"

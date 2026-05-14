@@ -8,6 +8,7 @@
     "init": "tsx server/init_db.ts && tsx server/init_store.ts && tsx server/seed_admin.ts",
     "deletecards": "tsx server/delete_user_cards.ts",
     "resetcards": "tsx server/reset_all_user_cards.ts",
+    "refillcards": "tsx server/refill_user_cards.ts",
     "generate:card-scripts": "tsx script/generate-card-scripts.ts",
     "dev": "concurrently \"npm run frontend\" \"npm run backend:dev\"",
     "close": "bash script/close-dev.sh",

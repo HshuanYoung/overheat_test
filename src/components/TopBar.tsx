@@ -1,4 +1,4 @@
-import { getAuthToken, getAuthUser, removeAuthToken, removeAuthUser, setAuthToken, setAuthUser, socket } from '../socket';
+import { clearAuthSession, getAuthToken, getAuthUser, setAuthToken, setAuthUser, socket } from '../socket';
 import React, { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { BookOpen, Check, Coins, Gem, Layers3, Loader2, LogOut, Menu, Settings, UserRound, UsersRound, X } from 'lucide-react';
@@ -72,7 +72,11 @@ export const TopBar: React.FC<{ onOpenRulebook: () => void; onlinePlayerCount?: 
       const token = getAuthToken();
       const res = await fetch(`${BACKEND_URL}/api/user/profile`, {
         method: 'PUT',
-        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+          ...(socket.id ? { 'X-Socket-Id': socket.id } : {})
+        },
         body: JSON.stringify({ username: nextUsername })
       });
       const data = await readJsonResponse(res);
@@ -99,8 +103,7 @@ export const TopBar: React.FC<{ onOpenRulebook: () => void; onlinePlayerCount?: 
   };
 
   const handleLogout = () => {
-    removeAuthToken();
-    removeAuthUser();
+    clearAuthSession();
     socket.disconnect();
     window.location.href = '/';
   };

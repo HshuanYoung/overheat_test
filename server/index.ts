@@ -53,6 +53,7 @@ const lastTimerBroadcast = new Map<string, number>();
 const STARTER_COINS = 100000;
 const STARTER_CARD_CRYSTALS = 100000;
 const TIMER_BROADCAST_INTERVAL_MS = Number(process.env.TIMER_BROADCAST_INTERVAL_MS || 1000);
+const FORCE_LOGOUT_REASON = '账号已在其他设备登录';
 
 function getDefaultTurnTime(gameState: any) {
     return gameState.turnTimerLimit ? gameState.turnTimerLimit * 1000 : 300000;
@@ -272,6 +273,56 @@ function getUserDisplayLabel(user: any) {
     const displayName = typeof user?.displayName === 'string' ? user.displayName.trim() : '';
     const username = typeof user?.username === 'string' ? user.username.trim() : '';
     return displayName || username || user?.userId?.toString() || '玩家';
+}
+
+function clearGameRuntime(gameId: string) {
+    matchLogHistory.delete(gameId);
+    lastSyncedLogIndex.delete(gameId);
+    lastTimerBroadcast.delete(gameId);
+    botMovingGames.delete(gameId);
+    gameLocks.delete(gameId);
+}
+
+async function getAuthenticatedUserFromHeader(req: express.Request, res: express.Response) {
+    const authHeader = req.headers.authorization;
+    if (!authHeader) {
+        res.status(401).json({ error: 'Unauthorized' });
+        return null;
+    }
+
+    const user = await verifyToken(authHeader.split(' ')[1]);
+    if (!user) {
+        res.status(401).json({ error: 'Invalid token' });
+        return null;
+    }
+
+    return user;
+}
+
+async function issueTokenForUser(userId: string) {
+    const rows = await pool.query(
+        'SELECT id, username, display_name, email, role, session_version FROM users WHERE id = ? LIMIT 1',
+        [userId]
+    );
+    if (!rows.length) return null;
+
+    const user = rows[0];
+    return {
+        token: generateToken(
+            user.id,
+            user.username,
+            user.display_name,
+            user.role,
+            Number(user.session_version ?? 0),
+            user.email || null
+        ),
+        user: buildAuthUser(user)
+    };
+}
+
+function getRequestSocketId(req: express.Request) {
+    const socketId = req.headers['x-socket-id'];
+    return typeof socketId === 'string' && socketId.trim() ? socketId.trim() : undefined;
 }
 
 function getUserUsernameLabel(user: any) {
@@ -711,12 +762,12 @@ async function finishMulliganAfterReveal(gameId: string, expectedStartedAt: numb
     }, 3600);
 }
 
-async function saveMatchLog(gameState: any, gameId?: string) {
-    if (gameState.gameStatus !== 2 || gameState.logsSaved) return;
-    if (gameState.mode !== 'friend' && gameState.mode !== 'match') return;
+async function saveMatchLog(gameState: any, gameId?: string): Promise<boolean> {
+    if (gameState.gameStatus !== 2 || gameState.logsSaved) return false;
+    if (gameState.mode !== 'friend' && gameState.mode !== 'match') return false;
 
     const matchNumber = gameState.gameId || gameId;
-    if (!matchNumber) return;
+    if (!matchNumber) return false;
 
     const p1 = gameState.playerIds[0] || 'Unknown';
     const p2 = gameState.playerIds[1] || 'Unknown';
@@ -759,9 +810,14 @@ async function saveMatchLog(gameState: any, gameId?: string) {
 
     if (savedAny) {
         gameState.logsSaved = true;
-        // Final state save to mark logs as saved
-        await pool.query('UPDATE games SET state = ? WHERE id = ?', [JSON.stringify(gameState), matchNumber]);
+        await pool.query('DELETE FROM games WHERE id = ?', [matchNumber]);
+        clearGameRuntime(matchNumber);
+        return true;
     }
+
+    gameState.logs = history;
+    await pool.query('UPDATE games SET state = ? WHERE id = ?', [JSON.stringify(gameState), matchNumber]);
+    return false;
 }
 
 async function syncAndSaveState(gameId: string, gameState: any) {
@@ -805,11 +861,10 @@ async function syncAndSaveState(gameId: string, gameState: any) {
 
     // 6. If game ended, write full history to file
     if (gameState.gameStatus === 2) {
-        await saveMatchLog(gameState, gameId);
-        // Cleanup memory
-        matchLogHistory.delete(gameId);
-        lastSyncedLogIndex.delete(gameId);
-        lastTimerBroadcast.delete(gameId);
+        const cleanedUp = await saveMatchLog(gameState, gameId);
+        if (cleanedUp) {
+            clearGameRuntime(gameId);
+        }
     }
 }
 
@@ -1109,15 +1164,14 @@ app.post('/api/register', async (req, res): Promise<void> => {
         await conn.query('DELETE FROM email_verification_codes WHERE email = ?', [email]);
         await conn.commit();
 
-        const token = generateToken(userId, username, username, 'user');
+        const issued = await issueTokenForUser(userId);
+        if (!issued) {
+            res.status(500).json({ error: 'Internal server error' });
+            return;
+        }
         res.status(201).json({
-            token,
-            user: {
-                uid: userId,
-                username,
-                displayName: username,
-                email
-            }
+            token: issued.token,
+            user: issued.user
         });
     } catch (err) {
         if (conn) {
@@ -1157,8 +1211,14 @@ app.post('/api/login', async (req, res): Promise<void> => {
             return;
         }
 
-        const token = generateToken(user.id, user.username, user.display_name, user.role);
-        res.json({ token, user: buildAuthUser(user) });
+        await pool.query('UPDATE users SET session_version = COALESCE(session_version, 0) + 1 WHERE id = ?', [user.id]);
+        await forceLogoutOtherSockets(String(user.id));
+        const issued = await issueTokenForUser(String(user.id));
+        if (!issued) {
+            res.status(500).json({ error: 'Internal server error' });
+            return;
+        }
+        res.json({ token: issued.token, user: issued.user });
     } catch (err) {
         console.error('Login error:', err);
         res.status(500).json({ error: 'Internal server error' });
@@ -1167,10 +1227,8 @@ app.post('/api/login', async (req, res): Promise<void> => {
 
 // Create Practice Game
 app.post('/api/games/practice', async (req, res): Promise<void> => {
-    const authHeader = req.headers.authorization;
-    if (!authHeader) { res.status(401).json({ error: 'Unauthorized' }); return; }
-    const user = verifyToken(authHeader.split(' ')[1]);
-    if (!user) { res.status(401).json({ error: 'Invalid token' }); return; }
+    const user = await getAuthenticatedUserFromHeader(req, res);
+    if (!user) { return; }
 
     const { deckId, turnTimerLimit } = req.body;
     if (!deckId) { res.status(400).json({ error: '请选择卡组' }); return; }
@@ -1193,10 +1251,8 @@ app.post('/api/games/practice', async (req, res): Promise<void> => {
 
 // Create Friend Match (generates 8-digit room code)
 app.post('/api/games/friend', async (req, res): Promise<void> => {
-    const authHeader = req.headers.authorization;
-    if (!authHeader) { res.status(401).json({ error: 'Unauthorized' }); return; }
-    const user = verifyToken(authHeader.split(' ')[1]);
-    if (!user) { res.status(401).json({ error: 'Invalid token' }); return; }
+    const user = await getAuthenticatedUserFromHeader(req, res);
+    if (!user) { return; }
 
     try {
         const roomCode = Math.random().toString(10).substring(2, 10).padEnd(8, '0');
@@ -1236,10 +1292,8 @@ app.post('/api/games/friend', async (req, res): Promise<void> => {
 });
 
 app.get('/api/games/friend/lobby', async (req, res): Promise<void> => {
-    const authHeader = req.headers.authorization;
-    if (!authHeader) { res.status(401).json({ error: 'Unauthorized' }); return; }
-    const user = verifyToken(authHeader.split(' ')[1]);
-    if (!user) { res.status(401).json({ error: 'Invalid token' }); return; }
+    const user = await getAuthenticatedUserFromHeader(req, res);
+    if (!user) { return; }
 
     try {
         const rows = await pool.query("SELECT id, state FROM games WHERE id LIKE 'friend_%' ORDER BY id DESC LIMIT 60");
@@ -1269,10 +1323,8 @@ app.get('/api/games/friend/lobby', async (req, res): Promise<void> => {
 
 // Join Friend Match by room code
 app.post('/api/games/friend/join', async (req, res): Promise<void> => {
-    const authHeader = req.headers.authorization;
-    if (!authHeader) { res.status(401).json({ error: 'Unauthorized' }); return; }
-    const user = verifyToken(authHeader.split(' ')[1]);
-    if (!user) { res.status(401).json({ error: 'Invalid token' }); return; }
+    const user = await getAuthenticatedUserFromHeader(req, res);
+    if (!user) { return; }
 
     const { roomCode } = req.body;
     if (!roomCode) { res.status(400).json({ error: '请输入房间码' }); return; }
@@ -1303,10 +1355,8 @@ app.post('/api/games/friend/join', async (req, res): Promise<void> => {
 });
 
 app.get('/api/games/friend/:gameId/status', async (req, res): Promise<void> => {
-    const authHeader = req.headers.authorization;
-    if (!authHeader) { res.status(401).json({ error: 'Unauthorized' }); return; }
-    const user = verifyToken(authHeader.split(' ')[1]);
-    if (!user) { res.status(401).json({ error: 'Invalid token' }); return; }
+    const user = await getAuthenticatedUserFromHeader(req, res);
+    if (!user) { return; }
 
     try {
         const { gameId } = req.params;
@@ -1342,10 +1392,8 @@ app.get('/api/games/friend/:gameId/status', async (req, res): Promise<void> => {
 });
 
 app.post('/api/games/friend/:gameId/seat', async (req, res): Promise<void> => {
-    const authHeader = req.headers.authorization;
-    if (!authHeader) { res.status(401).json({ error: 'Unauthorized' }); return; }
-    const user = verifyToken(authHeader.split(' ')[1]);
-    if (!user) { res.status(401).json({ error: 'Invalid token' }); return; }
+    const user = await getAuthenticatedUserFromHeader(req, res);
+    if (!user) { return; }
 
     const { gameId } = req.params;
     const seat = req.body?.seat as FriendSeatTarget;
@@ -1370,10 +1418,8 @@ app.post('/api/games/friend/:gameId/seat', async (req, res): Promise<void> => {
 });
 
 app.post('/api/games/friend/:gameId/timer', async (req, res): Promise<void> => {
-    const authHeader = req.headers.authorization;
-    if (!authHeader) { res.status(401).json({ error: 'Unauthorized' }); return; }
-    const user = verifyToken(authHeader.split(' ')[1]);
-    if (!user) { res.status(401).json({ error: 'Invalid token' }); return; }
+    const user = await getAuthenticatedUserFromHeader(req, res);
+    if (!user) { return; }
 
     const { gameId } = req.params;
     const turnTimerLimit = normalizeTurnTimerLimit(req.body?.turnTimerLimit);
@@ -1398,10 +1444,8 @@ app.post('/api/games/friend/:gameId/timer', async (req, res): Promise<void> => {
 });
 
 app.post('/api/games/friend/:gameId/deck', async (req, res): Promise<void> => {
-    const authHeader = req.headers.authorization;
-    if (!authHeader) { res.status(401).json({ error: 'Unauthorized' }); return; }
-    const user = verifyToken(authHeader.split(' ')[1]);
-    if (!user) { res.status(401).json({ error: 'Invalid token' }); return; }
+    const user = await getAuthenticatedUserFromHeader(req, res);
+    if (!user) { return; }
 
     const { gameId } = req.params;
     const { deckId } = req.body || {};
@@ -1433,10 +1477,8 @@ app.post('/api/games/friend/:gameId/deck', async (req, res): Promise<void> => {
 });
 
 app.post('/api/games/friend/:gameId/ready', async (req, res): Promise<void> => {
-    const authHeader = req.headers.authorization;
-    if (!authHeader) { res.status(401).json({ error: 'Unauthorized' }); return; }
-    const user = verifyToken(authHeader.split(' ')[1]);
-    if (!user) { res.status(401).json({ error: 'Invalid token' }); return; }
+    const user = await getAuthenticatedUserFromHeader(req, res);
+    if (!user) { return; }
 
     const { gameId } = req.params;
     const ready = !!req.body?.ready;
@@ -1483,10 +1525,8 @@ app.post('/api/games/friend/:gameId/ready', async (req, res): Promise<void> => {
 });
 
 app.post('/api/games/friend/:gameId/leave', async (req, res): Promise<void> => {
-    const authHeader = req.headers.authorization;
-    if (!authHeader) { res.status(401).json({ error: 'Unauthorized' }); return; }
-    const user = verifyToken(authHeader.split(' ')[1]);
-    if (!user) { res.status(401).json({ error: 'Invalid token' }); return; }
+    const user = await getAuthenticatedUserFromHeader(req, res);
+    if (!user) { return; }
 
     const { gameId } = req.params;
 
@@ -1503,8 +1543,42 @@ app.post('/api/games/friend/:gameId/leave', async (req, res): Promise<void> => {
 const matchmakingQueue: { userId: string; socketId?: string; timestamp: number; deck?: Card[]; turnTimerLimit?: number }[] = [];
 // Matchmaking results map: userId -> gameId
 const matchmakingResults = new Map<string, string>();
-const authenticatedSockets = new Map<string, string>();
+const authenticatedSockets = new Map<string, Set<string>>();
 const onlineSockets = new Map<string, { userId: string; username?: string; displayName?: string }>();
+
+function getAuthenticatedSocketIds(userId: string) {
+    return Array.from(authenticatedSockets.get(userId) || []);
+}
+
+function addAuthenticatedSocket(userId: string, socketId: string) {
+    const socketIds = authenticatedSockets.get(userId) || new Set<string>();
+    socketIds.add(socketId);
+    authenticatedSockets.set(userId, socketIds);
+}
+
+function removeAuthenticatedSocket(userId: string, socketId: string) {
+    const socketIds = authenticatedSockets.get(userId);
+    if (!socketIds) return;
+    socketIds.delete(socketId);
+    if (socketIds.size === 0) authenticatedSockets.delete(userId);
+}
+
+async function forceLogoutOtherSockets(userId: string, keepSocketId?: string) {
+    for (const socketId of getAuthenticatedSocketIds(userId)) {
+        if (socketId === keepSocketId) continue;
+
+        const target = io.sockets.sockets.get(socketId);
+        if (!target) {
+            removeAuthenticatedSocket(userId, socketId);
+            onlineSockets.delete(socketId);
+            continue;
+        }
+
+        target.emit('forceLogout', { reason: FORCE_LOGOUT_REASON });
+        target.disconnect(true);
+    }
+}
+
 const getMatchmakingQueueIndex = (userId: string | number) => matchmakingQueue.findIndex(q => q.userId === userId.toString());
 const removeMatchmakingQueueEntries = (userId: string | number) => {
     const userIdStr = userId.toString();
@@ -1545,10 +1619,8 @@ function emitOnlinePlayers() {
 
 
 app.post('/api/games/matchmaking', async (req, res): Promise<void> => {
-    const authHeader = req.headers.authorization;
-    if (!authHeader) { res.status(401).json({ error: 'Unauthorized' }); return; }
-    const user = verifyToken(authHeader.split(' ')[1]);
-    if (!user) { res.status(401).json({ error: 'Invalid token' }); return; }
+    const user = await getAuthenticatedUserFromHeader(req, res);
+    if (!user) { return; }
 
     try {
         const { deckId, turnTimerLimit } = req.body;
@@ -1587,9 +1659,9 @@ app.post('/api/games/matchmaking', async (req, res): Promise<void> => {
             if (opponent.socketId) {
                 io.to(opponent.socketId).emit('matchFound', { gameId });
             }
-            const currentSocketId = authenticatedSockets.get(userIdStr);
-            if (currentSocketId) {
-                io.to(currentSocketId).emit('matchFound', { gameId });
+            const currentSocketIds = getAuthenticatedSocketIds(userIdStr);
+            if (currentSocketIds.length > 0) {
+                currentSocketIds.forEach(socketId => io.to(socketId).emit('matchFound', { gameId }));
             }
 
             res.json({ gameId, matched: true });
@@ -1597,7 +1669,7 @@ app.post('/api/games/matchmaking', async (req, res): Promise<void> => {
             // Add to queue
             matchmakingQueue.push({
                 userId: userIdStr,
-                socketId: authenticatedSockets.get(userIdStr),
+                socketId: getAuthenticatedSocketIds(userIdStr)[0],
                 deck: validation.cards,
                 timestamp: Date.now(),
                 turnTimerLimit
@@ -1611,10 +1683,8 @@ app.post('/api/games/matchmaking', async (req, res): Promise<void> => {
 });
 
 app.get('/api/games/matchmaking/status', async (req, res): Promise<void> => {
-    const authHeader = req.headers.authorization;
-    if (!authHeader) { res.status(401).json({ error: 'Unauthorized' }); return; }
-    const user = verifyToken(authHeader.split(' ')[1]);
-    if (!user) { res.status(401).json({ error: 'Invalid token' }); return; }
+    const user = await getAuthenticatedUserFromHeader(req, res);
+    if (!user) { return; }
 
     const userIdStr = user.userId.toString();
     const existingGameId = matchmakingResults.get(userIdStr);
@@ -1633,10 +1703,8 @@ app.get('/api/games/matchmaking/status', async (req, res): Promise<void> => {
 
 // Cancel matchmaking
 app.post('/api/games/matchmaking/cancel', async (req, res): Promise<void> => {
-    const authHeader = req.headers.authorization;
-    if (!authHeader) { res.status(401).json({ error: 'Unauthorized' }); return; }
-    const user = verifyToken(authHeader.split(' ')[1]);
-    if (!user) { res.status(401).json({ error: 'Invalid token' }); return; }
+    const user = await getAuthenticatedUserFromHeader(req, res);
+    if (!user) { return; }
 
     removeMatchmakingQueueEntries(user.userId);
     res.json({ success: true });
@@ -1644,10 +1712,8 @@ app.post('/api/games/matchmaking/cancel', async (req, res): Promise<void> => {
 
 // Legacy create game (kept for compatibility)
 app.post('/api/games', async (req, res): Promise<void> => {
-    const authHeader = req.headers.authorization;
-    if (!authHeader) { res.status(401).json({ error: 'Unauthorized' }); return; }
-    const user = verifyToken(authHeader.split(' ')[1]);
-    if (!user) { res.status(401).json({ error: 'Invalid token' }); return; }
+    const user = await getAuthenticatedUserFromHeader(req, res);
+    if (!user) { return; }
 
     try {
         const mode = req.body?.practice ? 'practice' : 'match';
@@ -1677,10 +1743,8 @@ app.post('/api/games', async (req, res): Promise<void> => {
 
 // Profile Endpoint
 app.get('/api/user/profile', async (req, res): Promise<void> => {
-    const authHeader = req.headers.authorization;
-    if (!authHeader) { res.status(401).json({ error: 'Unauthorized' }); return; }
-    const user = verifyToken(authHeader.split(' ')[1]);
-    if (!user) { res.status(401).json({ error: 'Invalid token' }); return; }
+    const user = await getAuthenticatedUserFromHeader(req, res);
+    if (!user) { return; }
 
     try {
         const rows = await pool.query('SELECT favorite_card_id, favorite_back_id, coins, card_crystals FROM users WHERE id = ?', [user.userId]);
@@ -1696,10 +1760,8 @@ app.get('/api/user/profile', async (req, res): Promise<void> => {
 });
 
 app.put('/api/user/profile', async (req, res): Promise<void> => {
-    const authHeader = req.headers.authorization;
-    if (!authHeader) { res.status(401).json({ error: 'Unauthorized' }); return; }
-    const user = verifyToken(authHeader.split(' ')[1]);
-    if (!user) { res.status(401).json({ error: 'Invalid token' }); return; }
+    const user = await getAuthenticatedUserFromHeader(req, res);
+    if (!user) { return; }
 
     try {
         const { favoriteCardId, favoriteBackId, username } = req.body || {};
@@ -1741,43 +1803,52 @@ app.put('/api/user/profile', async (req, res): Promise<void> => {
             params.push(nextUsername);
         }
 
+        const shouldRotateSession = nextUsername !== undefined;
+        const currentSocketId = getRequestSocketId(req);
+
         if (updates.length === 0) {
-            const fallbackUser = buildAuthUser({ id: user.userId, username: user.username, display_name: user.displayName, email: user.email });
-            const token = generateToken(fallbackUser.uid, fallbackUser.username, fallbackUser.displayName, user.role || 'user');
-            res.json({ success: true, user: fallbackUser, token });
+            const issued = await issueTokenForUser(user.userId);
+            if (!issued) {
+                res.status(500).json({ error: 'DB Error' });
+                return;
+            }
+            res.json({ success: true, user: issued.user, token: issued.token });
             return;
         }
 
+        if (shouldRotateSession) {
+            await pool.query('UPDATE users SET session_version = COALESCE(session_version, 0) + 1 WHERE id = ?', [user.userId]);
+            await forceLogoutOtherSockets(user.userId.toString(), currentSocketId);
+        }
         params.push(user.userId);
         await pool.query(`UPDATE users SET ${updates.join(', ')} WHERE id = ?`, params);
 
-        const rows = await pool.query('SELECT id, username, display_name, email FROM users WHERE id = ? LIMIT 1', [user.userId]);
-        const updatedUser = rows[0] || { id: user.userId, username: nextUsername || user.username, display_name: nextUsername || user.displayName, email: user.email || null };
-        const authUser = buildAuthUser(updatedUser);
-        const token = generateToken(authUser.uid, authUser.username, authUser.displayName, user.role || 'user');
+        const issued = await issueTokenForUser(user.userId);
+        if (!issued) {
+            res.status(500).json({ error: 'DB Error' });
+            return;
+        }
 
         for (const [socketId, onlineUser] of onlineSockets.entries()) {
             if (onlineUser.userId === user.userId.toString()) {
                 onlineSockets.set(socketId, {
                     ...onlineUser,
-                    username: authUser.username,
-                    displayName: authUser.displayName
+                    username: issued.user.username,
+                    displayName: issued.user.displayName
                 });
             }
         }
         emitOnlinePlayers();
 
-        res.json({ success: true, user: authUser, token });
+        res.json({ success: true, user: issued.user, token: issued.token });
     } catch (err) {
         res.status(500).json({ error: 'DB Error' });
     }
 });
 
 app.post('/api/games/friend/:gameId/visibility', async (req, res): Promise<void> => {
-    const authHeader = req.headers.authorization;
-    if (!authHeader) { res.status(401).json({ error: 'Unauthorized' }); return; }
-    const user = verifyToken(authHeader.split(' ')[1]);
-    if (!user) { res.status(401).json({ error: 'Invalid token' }); return; }
+    const user = await getAuthenticatedUserFromHeader(req, res);
+    if (!user) { return; }
 
     const { gameId } = req.params;
     const isPublic = !!req.body?.isPublic;
@@ -1803,10 +1874,8 @@ app.post('/api/games/friend/:gameId/visibility', async (req, res): Promise<void>
 
 // Decks Endpoints
 app.get('/api/user/decks', async (req, res): Promise<void> => {
-    const authHeader = req.headers.authorization;
-    if (!authHeader) { res.status(401).json({ error: 'Unauthorized' }); return; }
-    const user = verifyToken(authHeader.split(' ')[1]);
-    if (!user) { res.status(401).json({ error: 'Invalid token' }); return; }
+    const user = await getAuthenticatedUserFromHeader(req, res);
+    if (!user) { return; }
 
     try {
         const rows = await pool.query('SELECT * FROM decks WHERE user_id = ?', [user.userId]);
@@ -1824,10 +1893,8 @@ app.get('/api/user/decks', async (req, res): Promise<void> => {
 });
 
 app.post('/api/user/decks', async (req, res): Promise<void> => {
-    const authHeader = req.headers.authorization;
-    if (!authHeader) { res.status(401).json({ error: 'Unauthorized' }); return; }
-    const user = verifyToken(authHeader.split(' ')[1]);
-    if (!user) { res.status(401).json({ error: 'Invalid token' }); return; }
+    const user = await getAuthenticatedUserFromHeader(req, res);
+    if (!user) { return; }
 
     try {
         const deckData = req.body;
@@ -1850,10 +1917,8 @@ app.post('/api/user/decks', async (req, res): Promise<void> => {
 });
 
 app.put('/api/user/decks/:id', async (req, res): Promise<void> => {
-    const authHeader = req.headers.authorization;
-    if (!authHeader) { res.status(401).json({ error: 'Unauthorized' }); return; }
-    const user = verifyToken(authHeader.split(' ')[1]);
-    if (!user) { res.status(401).json({ error: 'Invalid token' }); return; }
+    const user = await getAuthenticatedUserFromHeader(req, res);
+    if (!user) { return; }
 
     try {
         const deckId = req.params.id;
@@ -1877,10 +1942,8 @@ app.put('/api/user/decks/:id', async (req, res): Promise<void> => {
 });
 
 app.delete('/api/user/decks/:id', async (req, res): Promise<void> => {
-    const authHeader = req.headers.authorization;
-    if (!authHeader) { res.status(401).json({ error: 'Unauthorized' }); return; }
-    const user = verifyToken(authHeader.split(' ')[1]);
-    if (!user) { res.status(401).json({ error: 'Invalid token' }); return; }
+    const user = await getAuthenticatedUserFromHeader(req, res);
+    if (!user) { return; }
 
     try {
         const deckId = req.params.id;
@@ -1892,10 +1955,8 @@ app.delete('/api/user/decks/:id', async (req, res): Promise<void> => {
 });
 
 app.post('/api/user/decks/:id/copy', async (req, res): Promise<void> => {
-    const authHeader = req.headers.authorization;
-    if (!authHeader) { res.status(401).json({ error: 'Unauthorized' }); return; }
-    const user = verifyToken(authHeader.split(' ')[1]);
-    if (!user) { res.status(401).json({ error: 'Invalid token' }); return; }
+    const user = await getAuthenticatedUserFromHeader(req, res);
+    if (!user) { return; }
 
     try {
         const deckId = req.params.id;
@@ -1933,10 +1994,8 @@ const buildDeckSquarePost = (row: any, likedPostIds: Set<string>) => ({
 });
 
 app.get('/api/deck-square', async (req, res): Promise<void> => {
-    const authHeader = req.headers.authorization;
-    if (!authHeader) { res.status(401).json({ error: 'Unauthorized' }); return; }
-    const user = verifyToken(authHeader.split(' ')[1]);
-    if (!user) { res.status(401).json({ error: 'Invalid token' }); return; }
+    const user = await getAuthenticatedUserFromHeader(req, res);
+    if (!user) { return; }
 
     try {
         const rows = await pool.query(`
@@ -1960,10 +2019,8 @@ app.get('/api/deck-square', async (req, res): Promise<void> => {
 });
 
 app.post('/api/deck-square/publish', async (req, res): Promise<void> => {
-    const authHeader = req.headers.authorization;
-    if (!authHeader) { res.status(401).json({ error: 'Unauthorized' }); return; }
-    const user = verifyToken(authHeader.split(' ')[1]);
-    if (!user) { res.status(401).json({ error: 'Invalid token' }); return; }
+    const user = await getAuthenticatedUserFromHeader(req, res);
+    if (!user) { return; }
 
     try {
         const { deckId } = req.body || {};
@@ -2000,10 +2057,8 @@ app.post('/api/deck-square/publish', async (req, res): Promise<void> => {
 });
 
 app.post('/api/deck-square/:id/like', async (req, res): Promise<void> => {
-    const authHeader = req.headers.authorization;
-    if (!authHeader) { res.status(401).json({ error: 'Unauthorized' }); return; }
-    const user = verifyToken(authHeader.split(' ')[1]);
-    if (!user) { res.status(401).json({ error: 'Invalid token' }); return; }
+    const user = await getAuthenticatedUserFromHeader(req, res);
+    if (!user) { return; }
 
     try {
         const postId = req.params.id;
@@ -2029,10 +2084,8 @@ app.post('/api/deck-square/:id/like', async (req, res): Promise<void> => {
 });
 
 app.delete('/api/deck-square/:id', async (req, res): Promise<void> => {
-    const authHeader = req.headers.authorization;
-    if (!authHeader) { res.status(401).json({ error: 'Unauthorized' }); return; }
-    const user = verifyToken(authHeader.split(' ')[1]);
-    if (!user) { res.status(401).json({ error: 'Invalid token' }); return; }
+    const user = await getAuthenticatedUserFromHeader(req, res);
+    if (!user) { return; }
 
     try {
         const postId = req.params.id;
@@ -2050,10 +2103,8 @@ app.delete('/api/deck-square/:id', async (req, res): Promise<void> => {
 });
 
 app.post('/api/deck-square/:id/copy', async (req, res): Promise<void> => {
-    const authHeader = req.headers.authorization;
-    if (!authHeader) { res.status(401).json({ error: 'Unauthorized' }); return; }
-    const user = verifyToken(authHeader.split(' ')[1]);
-    if (!user) { res.status(401).json({ error: 'Invalid token' }); return; }
+    const user = await getAuthenticatedUserFromHeader(req, res);
+    if (!user) { return; }
 
     try {
         const postRows = await pool.query('SELECT * FROM deck_square_posts WHERE id = ?', [req.params.id]);
@@ -2087,10 +2138,8 @@ app.get('/api/games', async (req, res): Promise<void> => {
 
 // Collection Endpoint
 app.get('/api/user/collection', async (req, res): Promise<void> => {
-    const authHeader = req.headers.authorization;
-    if (!authHeader) { res.status(401).json({ error: 'Unauthorized' }); return; }
-    const user = verifyToken(authHeader.split(' ')[1]);
-    if (!user) { res.status(401).json({ error: 'Invalid token' }); return; }
+    const user = await getAuthenticatedUserFromHeader(req, res);
+    if (!user) { return; }
 
     try {
         const rows = await pool.query('SELECT card_id, quantity FROM user_cards WHERE user_id = ?', [user.userId]);
@@ -2190,10 +2239,8 @@ app.get('/api/cards/meta', async (req, res): Promise<void> => {
 });
 
 app.post('/api/store/buy-pack', async (req, res): Promise<void> => {
-    const authHeader = req.headers.authorization;
-    if (!authHeader) { res.status(401).json({ error: 'Unauthorized' }); return; }
-    const user = verifyToken(authHeader.split(' ')[1]);
-    if (!user) { res.status(401).json({ error: 'Invalid token' }); return; }
+    const user = await getAuthenticatedUserFromHeader(req, res);
+    if (!user) { return; }
 
     const { packType, count = 1 } = req.body;
     const isPrizePack = packType === 'prize';
@@ -2327,10 +2374,8 @@ app.post('/api/store/buy-pack', async (req, res): Promise<void> => {
 
 // Card Crystallization Endpoints
 app.post('/api/user/decompose', async (req, res): Promise<void> => {
-    const authHeader = req.headers.authorization;
-    if (!authHeader) { res.status(401).json({ error: 'Unauthorized' }); return; }
-    const user = verifyToken(authHeader.split(' ')[1]);
-    if (!user) { res.status(401).json({ error: 'Invalid token' }); return; }
+    const user = await getAuthenticatedUserFromHeader(req, res);
+    if (!user) { return; }
 
     const { cardId, quantity = 1 } = req.body;
     const card = (SERVER_CARD_LIBRARY as any)[cardId];
@@ -2377,10 +2422,8 @@ app.post('/api/user/decompose', async (req, res): Promise<void> => {
 });
 
 app.post('/api/user/craft', async (req, res): Promise<void> => {
-    const authHeader = req.headers.authorization;
-    if (!authHeader) { res.status(401).json({ error: 'Unauthorized' }); return; }
-    const user = verifyToken(authHeader.split(' ')[1]);
-    if (!user) { res.status(401).json({ error: 'Invalid token' }); return; }
+    const user = await getAuthenticatedUserFromHeader(req, res);
+    if (!user) { return; }
 
     const { cardId } = req.body;
     const card = (SERVER_CARD_LIBRARY as any)[cardId];
@@ -2475,11 +2518,12 @@ function createInitialPlayer(deckCards: Card[], displayName: string, isFirst: bo
 io.on('connection', (socket) => {
     // console.log('Client connected:', socket.id);
 
-    socket.on('authenticate', (token) => {
-        const user = verifyToken(token);
+    socket.on('authenticate', async (token) => {
+        const user = await verifyToken(token);
         if (user) {
             (socket as any).user = user;
-            authenticatedSockets.set(user.userId.toString(), socket.id);
+            addAuthenticatedSocket(user.userId.toString(), socket.id);
+            await forceLogoutOtherSockets(user.userId.toString(), socket.id);
             onlineSockets.set(socket.id, {
                 userId: user.userId.toString(),
                 username: user.username,
@@ -2871,8 +2915,8 @@ io.on('connection', (socket) => {
     socket.on('disconnect', async () => {
         // console.log('Client disconnected:', socket.id);
         const userIdStr = ((socket as any).user?.userId ?? '').toString();
-        if (userIdStr && authenticatedSockets.get(userIdStr) === socket.id) {
-            authenticatedSockets.delete(userIdStr);
+        if (userIdStr) {
+            removeAuthenticatedSocket(userIdStr, socket.id);
         }
         onlineSockets.delete(socket.id);
         if (userIdStr) {
