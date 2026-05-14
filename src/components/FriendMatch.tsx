@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Plus, LogIn, Loader2, Copy, Check, Eye, Swords, ChevronDown, UserRound, UsersRound, Clock3 } from 'lucide-react';
+import { ArrowLeft, Plus, LogIn, Loader2, Copy, Check, Eye, Swords, ChevronDown, UserRound, UsersRound, Clock3, RefreshCw } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '../lib/utils';
 import { validateDeckForBattle } from '../lib/deckValidation';
@@ -25,6 +25,21 @@ interface FriendLobby {
   mySeat: LobbySeat;
 }
 
+interface FriendLobbySummary {
+  gameId: string;
+  roomCode: string;
+  turnTimerLimit?: number;
+  playerIds: [string | null, string | null];
+  spectatorCount: number;
+  hostUid?: string;
+  participantNames?: Record<string, string>;
+  status: string;
+  started: boolean;
+  hasOpenSeat: boolean;
+  playerCount: number;
+  mySeat: LobbySeat | null;
+}
+
 export const FriendMatch: React.FC = () => {
   const navigate = useNavigate();
   const [mode, setMode] = useState<'select' | 'join' | 'lobby'>('select');
@@ -37,10 +52,14 @@ export const FriendMatch: React.FC = () => {
   const [error, setError] = useState('');
   const [turnTime, setTurnTime] = useState(300);
   const [lobby, setLobby] = useState<FriendLobby | null>(null);
+  const [publicRooms, setPublicRooms] = useState<FriendLobbySummary[]>([]);
+  const [roomsLoading, setRoomsLoading] = useState(false);
+  const [roomActionId, setRoomActionId] = useState<string | null>(null);
   const [deckDropdownOpen, setDeckDropdownOpen] = useState(false);
   const [timerPopoverOpen, setTimerPopoverOpen] = useState(false);
   const [savingTimer, setSavingTimer] = useState(false);
   const pollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const roomPollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || '';
   const token = getAuthToken();
@@ -63,6 +82,13 @@ export const FriendMatch: React.FC = () => {
     if (pollRef.current) {
       clearTimeout(pollRef.current);
       pollRef.current = null;
+    }
+  };
+
+  const clearRoomPoll = () => {
+    if (roomPollRef.current) {
+      clearTimeout(roomPollRef.current);
+      roomPollRef.current = null;
     }
   };
 
@@ -103,8 +129,43 @@ export const FriendMatch: React.FC = () => {
 
     loadDecks();
     void import('./BattleField');
-    return () => clearPoll();
+    return () => {
+      clearPoll();
+      clearRoomPoll();
+    };
   }, [BACKEND_URL, token]);
+
+  const loadPublicRooms = async (showSpinner = false) => {
+    if (!token) return;
+    if (showSpinner) setRoomsLoading(true);
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/games/friend/lobby`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const data = await res.json();
+      if (res.ok && !data.error) {
+        setPublicRooms(data.rooms || []);
+      }
+    } catch (e) {
+      console.error('[FriendMatch] Public room list error:', e);
+    } finally {
+      if (showSpinner) setRoomsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    clearRoomPoll();
+    if (mode !== 'select') return;
+
+    const pollRooms = async () => {
+      await loadPublicRooms(false);
+      roomPollRef.current = setTimeout(pollRooms, 2500);
+    };
+
+    void loadPublicRooms(true);
+    roomPollRef.current = setTimeout(pollRooms, 2500);
+    return () => clearRoomPoll();
+  }, [mode, BACKEND_URL, token]);
 
   useEffect(() => {
     clearPoll();
@@ -133,7 +194,7 @@ export const FriendMatch: React.FC = () => {
   const requestLobby = async (url: string, body?: any) => {
     const res = await fetch(url, {
       method: 'POST',
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      headers: body ? { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' } : { Authorization: `Bearer ${token}` },
       body: body ? JSON.stringify(body) : undefined
     });
     const data = await res.json();
@@ -169,6 +230,22 @@ export const FriendMatch: React.FC = () => {
       setError(e.message || '加入房间失败');
     } finally {
       setJoining(false);
+    }
+  };
+
+  const joinPublicRoom = async (room: FriendLobbySummary, asSpectator = false) => {
+    setRoomActionId(room.gameId);
+    setError('');
+    try {
+      const nextLobby = await requestLobby(`${BACKEND_URL}/api/games/friend/join`, { roomCode: room.roomCode });
+      if (asSpectator && nextLobby.mySeat !== 'spectator' && !nextLobby.started) {
+        await requestLobby(`${BACKEND_URL}/api/games/friend/${nextLobby.gameId}/seat`, { seat: 'spectator' });
+      }
+    } catch (e: any) {
+      setError(e.message || '加入房间失败');
+      await loadPublicRooms(false);
+    } finally {
+      setRoomActionId(null);
     }
   };
 
@@ -245,10 +322,89 @@ export const FriendMatch: React.FC = () => {
       }
       setLobby(null);
     }
+    void loadPublicRooms(false);
     setMode('select');
     setError('');
     setTimerPopoverOpen(false);
   };
+
+  const renderPublicRooms = () => (
+    <div className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4 md:p-5">
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <div>
+          <h2 className="text-base font-black italic tracking-tighter md:text-xl">对战大厅</h2>
+          <p className="mt-1 text-[10px] font-bold tracking-widest text-zinc-500">所有登录玩家可见的好友房间</p>
+        </div>
+        <button
+          type="button"
+          onClick={() => loadPublicRooms(true)}
+          className="flex shrink-0 items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs font-black text-white transition-colors hover:bg-white/10"
+        >
+          <RefreshCw className={cn('h-4 w-4', roomsLoading && 'animate-spin')} />
+          刷新
+        </button>
+      </div>
+
+      {publicRooms.length === 0 ? (
+        <div className="rounded-xl bg-black/30 px-4 py-8 text-center text-sm font-bold text-zinc-500">
+          暂无可加入或观战的房间
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {publicRooms.map(room => {
+            const busy = roomActionId === room.gameId;
+            const hostName = room.hostUid ? (room.participantNames?.[room.hostUid] || room.hostUid) : '未知房主';
+            const canJoinSeat = !room.started && room.hasOpenSeat;
+            const statusText = room.started ? '对局中' : canJoinSeat ? '等待玩家' : '观战开放';
+            return (
+              <div key={room.gameId} className="grid gap-3 rounded-xl border border-zinc-800 bg-black/25 p-4 md:grid-cols-[1fr_auto] md:items-center">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-mono text-xl font-black tracking-[0.18em] text-amber-400">{room.roomCode}</span>
+                    <span className={cn(
+                      'rounded-full px-2.5 py-1 text-[10px] font-black',
+                      room.started ? 'bg-sky-500/20 text-sky-300' : canJoinSeat ? 'bg-emerald-500/20 text-emerald-300' : 'bg-zinc-800 text-zinc-300'
+                    )}>
+                      {statusText}
+                    </span>
+                    {room.mySeat && <span className="rounded-full bg-red-500/20 px-2.5 py-1 text-[10px] font-black text-red-300">已在房间</span>}
+                  </div>
+                  <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs font-bold text-zinc-500">
+                    <span>房主：{hostName}</span>
+                    <span>玩家：{room.playerCount}/2</span>
+                    <span>观战：{room.spectatorCount}</span>
+                    <span>{room.turnTimerLimit || 300} 秒</span>
+                  </div>
+                </div>
+                <div className="flex gap-2 md:justify-end">
+                  {canJoinSeat && (
+                    <button
+                      type="button"
+                      onClick={() => joinPublicRoom(room, false)}
+                      disabled={busy}
+                      className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-red-600 px-4 py-2 text-xs font-black text-white transition-colors hover:bg-red-500 disabled:opacity-50 md:flex-none"
+                    >
+                      {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <LogIn className="h-4 w-4" />}
+                      加入
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => joinPublicRoom(room, true)}
+                    disabled={busy}
+                    className="flex flex-1 items-center justify-center gap-2 rounded-xl border border-sky-400/30 bg-sky-500/10 px-4 py-2 text-xs font-black text-sky-100 transition-colors hover:bg-sky-500/20 disabled:opacity-50 md:flex-none"
+                  >
+                    {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Eye className="h-4 w-4" />}
+                    观战
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
 
   const renderDeckDropdown = () => {
     if (!isPlayerSeat) return null;
@@ -399,7 +555,8 @@ export const FriendMatch: React.FC = () => {
         </div>
 
         {mode === 'select' && (
-          <div className="mb-8 grid grid-cols-1 gap-4 md:grid-cols-2">
+          <div className="space-y-6">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <motion.div
               whileHover={{ scale: 1.02 }}
               whileTap={{ scale: 0.98 }}
@@ -424,6 +581,9 @@ export const FriendMatch: React.FC = () => {
               <h3 className="mb-1 text-xl font-black italic uppercase tracking-tighter">加入房间</h3>
               <p className="text-xs font-bold leading-none tracking-widest text-zinc-500">输入房间码加入等待页或观战</p>
             </motion.div>
+          </div>
+          {error && <div className="rounded-xl border border-red-500/30 bg-red-900/30 p-3 text-sm text-red-400">{error}</div>}
+          {renderPublicRooms()}
           </div>
         )}
 

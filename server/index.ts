@@ -452,6 +452,26 @@ function buildFriendLobbyResponse(gameId: string, gameState: any, userId: string
     };
 }
 
+function buildFriendLobbySummary(gameId: string, gameState: any, userId?: string) {
+    normalizeFriendRoomState(gameState);
+    const [player1, player2] = gameState.playerIds;
+    const started = isFriendGameStarted(gameState);
+    return {
+        gameId,
+        roomCode: gameState.roomCode,
+        turnTimerLimit: gameState.turnTimerLimit,
+        playerIds: gameState.playerIds,
+        spectatorCount: gameState.spectatorIds.length,
+        hostUid: gameState.hostUid,
+        participantNames: gameState.participantNames || {},
+        status: gameState.status || 'WAITING',
+        started,
+        hasOpenSeat: !started && (!player1 || !player2),
+        playerCount: gameState.playerIds.filter(Boolean).length,
+        mySeat: userId ? getFriendSeat(gameState, userId) : null
+    };
+}
+
 function getFriendPlayerDeckId(gameState: any, userId: string) {
     normalizeFriendRoomState(gameState);
     return gameState.friendDeckSelections?.[userId.toString()];
@@ -1171,6 +1191,37 @@ app.post('/api/games/friend', async (req, res): Promise<void> => {
         res.json(buildFriendLobbyResponse(gameId, initialState, userIdStr));
     } catch (err) {
         console.error('Create friend game error:', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+app.get('/api/games/friend/lobby', async (req, res): Promise<void> => {
+    const authHeader = req.headers.authorization;
+    if (!authHeader) { res.status(401).json({ error: 'Unauthorized' }); return; }
+    const user = verifyToken(authHeader.split(' ')[1]);
+    if (!user) { res.status(401).json({ error: 'Invalid token' }); return; }
+
+    try {
+        const rows = await pool.query("SELECT id, state FROM games WHERE id LIKE 'friend_%' ORDER BY id DESC LIMIT 60");
+        const userIdStr = user.userId.toString();
+        const rooms = rows
+            .map((row: any) => {
+                const gameState = typeof row.state === 'string' ? JSON.parse(row.state) : row.state;
+                if (!gameState || gameState.mode !== 'friend' || gameState.gameStatus === 2) return null;
+                normalizeFriendRoomState(gameState);
+                return buildFriendLobbySummary(row.id, gameState, userIdStr);
+            })
+            .filter(Boolean)
+            .filter((room: any) => room.started || room.hasOpenSeat || room.mySeat)
+            .sort((a: any, b: any) => {
+                if (!!a.mySeat !== !!b.mySeat) return a.mySeat ? -1 : 1;
+                if (a.started !== b.started) return a.started ? 1 : -1;
+                return b.roomCode.localeCompare(a.roomCode);
+            });
+
+        res.json({ rooms });
+    } catch (err) {
+        console.error('Friend lobby list error:', err);
         res.status(500).json({ error: 'Internal server error' });
     }
 });
