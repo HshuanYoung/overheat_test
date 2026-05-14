@@ -1469,6 +1469,7 @@ const matchmakingQueue: { userId: string; socketId?: string; timestamp: number; 
 // Matchmaking results map: userId -> gameId
 const matchmakingResults = new Map<string, string>();
 const authenticatedSockets = new Map<string, string>();
+const onlineSockets = new Map<string, { userId: string; username?: string; displayName?: string }>();
 const getMatchmakingQueueIndex = (userId: string | number) => matchmakingQueue.findIndex(q => q.userId === userId.toString());
 const removeMatchmakingQueueEntries = (userId: string | number) => {
     const userIdStr = userId.toString();
@@ -1485,6 +1486,27 @@ const popMatchmakingOpponent = (userId: string | number) => {
     const [opponent] = matchmakingQueue.splice(opponentIndex, 1);
     return opponent || null;
 };
+
+function getOnlinePlayers() {
+    const users = new Map<string, { uid: string; username?: string; displayName: string }>();
+    for (const onlineUser of onlineSockets.values()) {
+        if (!onlineUser.userId) continue;
+        users.set(onlineUser.userId, {
+            uid: onlineUser.userId,
+            username: onlineUser.username,
+            displayName: getUserDisplayLabel(onlineUser)
+        });
+    }
+    return Array.from(users.values()).sort((a, b) => a.displayName.localeCompare(b.displayName));
+}
+
+function emitOnlinePlayers() {
+    const players = getOnlinePlayers();
+    io.emit('onlinePlayers', {
+        players,
+        count: players.length
+    });
+}
 
 
 app.post('/api/games/matchmaking', async (req, res): Promise<void> => {
@@ -2180,9 +2202,19 @@ io.on('connection', (socket) => {
         if (user) {
             (socket as any).user = user;
             authenticatedSockets.set(user.userId.toString(), socket.id);
+            onlineSockets.set(socket.id, {
+                userId: user.userId.toString(),
+                username: user.username,
+                displayName: user.displayName
+            });
             const queueEntry = matchmakingQueue.find(q => q.userId === user.userId.toString());
             if (queueEntry) queueEntry.socketId = socket.id;
             socket.emit('authenticated');
+            socket.emit('onlinePlayers', {
+                players: getOnlinePlayers(),
+                count: getOnlinePlayers().length
+            });
+            emitOnlinePlayers();
         } else {
             socket.emit('unauthorized');
         }
@@ -2556,11 +2588,13 @@ io.on('connection', (socket) => {
         if (userIdStr && authenticatedSockets.get(userIdStr) === socket.id) {
             authenticatedSockets.delete(userIdStr);
         }
+        onlineSockets.delete(socket.id);
         matchmakingQueue.forEach(entry => {
             if (entry.socketId === socket.id) {
                 delete entry.socketId;
             }
         });
+        emitOnlinePlayers();
     });
 });
 

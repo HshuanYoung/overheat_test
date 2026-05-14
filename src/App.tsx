@@ -9,6 +9,7 @@ import { motion } from 'framer-motion';
 
 import { socket, getAuthUser, setAuthUser, setAuthToken, getAuthToken } from './socket';
 import { TopBar } from './components/TopBar';
+import { OnlinePlayersSidebar } from './components/OnlinePlayersSidebar';
 import { Home } from './components/Home';
 import { prefetchCardCatalog } from './hooks/useCardCatalog';
 import { PageFallback } from './components/PageFallback';
@@ -360,6 +361,7 @@ export default function App() {
     <Router>
       <div className="min-h-screen bg-black text-white font-sans selection:bg-red-500 selection:text-white">
         <TopBar onOpenRulebook={() => setIsRulebookOpen(true)} />
+        <OnlinePlayersSidebar />
 
         <main className="h-screen overflow-auto">
           <Suspense fallback={<PageFallback />}>
