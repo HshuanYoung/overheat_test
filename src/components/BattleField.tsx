@@ -6,7 +6,7 @@ import { socket, getAuthUser, onceAuthenticated, isSocketAuthenticated } from '.
 
 import { GameService } from '../services/gameService';
 import { hydrateGameState } from '../services/cardLoader';
-import { CARD_BACKS } from '../data/customization';
+import { CARD_BACKS, DEFAULT_CARD_BACK_URL } from '../data/customization';
 import { readJsonResponse } from '../lib/http';
 
 import { CardComponent } from './Card';
@@ -486,7 +486,7 @@ export const BattleField: React.FC = () => {
   }, []);
 
   const cardBackUrl = useMemo(() => {
-    return CARD_BACKS.find(b => b.id === favoriteBackId)?.url || '/assets/card_bg/default_card_bg.jpg';
+    return CARD_BACKS.find(b => b.id === favoriteBackId)?.url || DEFAULT_CARD_BACK_URL;
   }, [favoriteBackId]);
 
   // Universal Visual Timer Logic - Stabilized with gameRef

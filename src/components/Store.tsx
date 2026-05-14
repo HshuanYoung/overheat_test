@@ -6,6 +6,7 @@ import { cn, getCardImageUrl } from '../lib/utils';
 import { Card } from '../types/game';
 import { prefetchCardCatalog, useCardCatalog } from '../hooks/useCardCatalog';
 import { readJsonResponse } from '../lib/http';
+import { DEFAULT_CARD_BACK_URL } from '../data/customization';
 
 const RARITY_COLORS: Record<string, string> = {
   C: 'border-zinc-500 shadow-zinc-500/20',
@@ -393,7 +394,7 @@ export const Store: React.FC = () => {
                               "absolute inset-0 backface-hidden rounded-xl md:rounded-2xl border-2 border-white/10 bg-zinc-900 group-hover:border-red-500/50 flex flex-col items-center justify-center p-2 md:p-4 transition-colors",
                               "shadow-[0_10px_30px_rgba(0,0,0,0.5)]"
                             )}>
-                              <img src="/assets/card_bg/default_card_bg.jpg" className="absolute inset-0 w-full h-full object-cover opacity-20 rounded-2xl grayscale" loading="lazy" decoding="async" />
+                              <img src={DEFAULT_CARD_BACK_URL} className="absolute inset-0 w-full h-full object-cover opacity-20 rounded-2xl grayscale" loading="lazy" decoding="async" />
                               <div className="relative z-10 flex flex-col items-center gap-2">
                                 <ShoppingBag className="w-10 h-10 text-zinc-700 group-hover:text-red-500 animation-pulse" />
                                 <span className="text-[10px] font-black text-zinc-700 tracking-widest">卡包内容</span>

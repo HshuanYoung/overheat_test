@@ -5,6 +5,7 @@ import { clsx } from 'clsx';
 import { Sword, Shield, Zap, Plus } from 'lucide-react';
 import { getCardImageUrl } from '../lib/utils';
 import { KeywordBadges } from './KeywordBadges';
+import { DEFAULT_CARD_BACK_URL } from '../data/customization';
 
 interface CardProps {
   card?: CardType;
@@ -68,7 +69,7 @@ const CardComponentImpl: React.FC<CardProps> = ({
       >
         <div className={clsx('absolute inset-0 transition-transform duration-300', backExhausted && 'rotate-90 scale-75')}>
           <img
-            src={cardBackUrl || '/assets/card_bg/default_card_bg.jpg'}
+            src={cardBackUrl || DEFAULT_CARD_BACK_URL}
             alt="卡背"
             className="absolute inset-0 w-full h-full object-cover"
             loading="lazy"

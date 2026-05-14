@@ -847,11 +847,9 @@ async function advancePhase(gameState: any, gameId: string, playerId?: string, s
 
 app.use(cors());
 app.use('/assets', express.static(path.join(process.cwd(), 'assets'), {
-    immutable: true,
     maxAge: '30d'
 }));
 app.use('/pics', express.static(path.join(process.cwd(), 'pics'), {
-    immutable: true,
     maxAge: '30d'
 }));
 
