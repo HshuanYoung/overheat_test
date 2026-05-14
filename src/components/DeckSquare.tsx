@@ -1,11 +1,12 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Copy, Heart, Loader2, Search, UserRound } from 'lucide-react';
+import { ArrowLeft, Copy, Heart, Loader2, Search, Trash2, UserRound } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Card } from '../types/game';
 import { useCardCatalog } from '../hooks/useCardCatalog';
 import { CardComponent } from './Card';
 import { cn } from '../lib/utils';
+import { getAuthUser } from '../socket';
 
 interface DeckSquarePost {
   id: string;
@@ -24,6 +25,7 @@ export const DeckSquare: React.FC = () => {
   const navigate = useNavigate();
   const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || '';
   const token = localStorage.getItem('token');
+  const currentUser = getAuthUser();
   const { getCardByReference, loading: cardsLoading } = useCardCatalog({ includeEffects: false });
 
   const [posts, setPosts] = useState<DeckSquarePost[]>([]);
@@ -111,6 +113,29 @@ export const DeckSquare: React.FC = () => {
     }
   };
 
+  const deletePost = async (post: DeckSquarePost) => {
+    if (post.authorUid !== currentUser?.uid) return;
+    if (!window.confirm(`确定要删除《${post.name}》吗？`)) return;
+
+    setActionPostId(post.id);
+    setNotice('');
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/deck-square/${post.id}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const data = await res.json();
+      if (!res.ok || data.error) throw new Error(data.error || '删除失败');
+      setPosts(current => current.filter(item => item.id !== post.id));
+      setSelectedPost(current => current?.id === post.id ? null : current);
+      setNotice(`已删除《${post.name}》`);
+    } catch (e: any) {
+      setNotice(e.message || '删除失败');
+    } finally {
+      setActionPostId(null);
+    }
+  };
+
   if (loading || cardsLoading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-black pt-20 text-white">
@@ -154,6 +179,7 @@ export const DeckSquare: React.FC = () => {
             {filteredPosts.map(post => {
               const preview = groupedPreview(post).slice(0, 8);
               const busy = actionPostId === post.id;
+              const isAuthor = post.authorUid === currentUser?.uid;
               return (
                 <motion.div
                   key={post.id}
@@ -170,17 +196,29 @@ export const DeckSquare: React.FC = () => {
                         <span>{new Date(post.updatedAt || post.createdAt).toLocaleDateString()}</span>
                       </div>
                     </div>
-                    <button
-                      onClick={() => toggleLike(post)}
-                      disabled={busy}
-                      className={cn(
-                        'flex shrink-0 items-center gap-2 rounded-xl px-3 py-2 text-xs font-black transition-colors',
-                        post.likedByMe ? 'bg-red-600 text-white' : 'bg-zinc-800 text-zinc-300 hover:bg-zinc-700'
+                    <div className="flex shrink-0 gap-2">
+                      {isAuthor && (
+                        <button
+                          onClick={() => deletePost(post)}
+                          disabled={busy}
+                          className="flex items-center gap-2 rounded-xl bg-zinc-800 px-3 py-2 text-xs font-black text-zinc-300 transition-colors hover:bg-red-600 hover:text-white disabled:opacity-60"
+                        >
+                          {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                          删除
+                        </button>
                       )}
-                    >
-                      {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Heart className={cn('h-4 w-4', post.likedByMe && 'fill-current')} />}
-                      {post.likes}
-                    </button>
+                      <button
+                        onClick={() => toggleLike(post)}
+                        disabled={busy}
+                        className={cn(
+                          'flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-black transition-colors',
+                          post.likedByMe ? 'bg-red-600 text-white' : 'bg-zinc-800 text-zinc-300 hover:bg-zinc-700'
+                        )}
+                      >
+                        {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Heart className={cn('h-4 w-4', post.likedByMe && 'fill-current')} />}
+                        {post.likes}
+                      </button>
+                    </div>
                   </div>
 
                   <div className="mb-4 grid grid-cols-4 gap-2 sm:grid-cols-8">
@@ -237,6 +275,12 @@ export const DeckSquare: React.FC = () => {
                   <p className="mt-1 text-xs font-bold text-zinc-500">{selectedPost.authorName} · {selectedPost.cards.length} 张卡牌</p>
                 </div>
                 <div className="flex gap-2">
+                  {selectedPost.authorUid === currentUser?.uid && (
+                    <button onClick={() => deletePost(selectedPost)} className="flex items-center gap-2 rounded-xl bg-zinc-800 px-4 py-2 text-sm font-black hover:bg-red-600">
+                      <Trash2 className="h-4 w-4" />
+                      删除
+                    </button>
+                  )}
                   <button onClick={() => toggleLike(selectedPost)} className="flex items-center gap-2 rounded-xl bg-zinc-800 px-4 py-2 text-sm font-black hover:bg-zinc-700">
                     <Heart className={cn('h-4 w-4', selectedPost.likedByMe && 'fill-current text-red-400')} />
                     {selectedPost.likes}
