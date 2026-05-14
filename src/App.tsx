@@ -23,6 +23,7 @@ const Store = lazy(() => import('./components/Store').then(module => ({ default:
 const Collection = lazy(() => import('./components/Collection').then(module => ({ default: module.Collection })));
 const PracticeSetup = lazy(() => import('./components/PracticeSetup').then(module => ({ default: module.PracticeSetup })));
 const FriendMatch = lazy(() => import('./components/FriendMatch').then(module => ({ default: module.FriendMatch })));
+const DeckSquare = lazy(() => import('./components/DeckSquare').then(module => ({ default: module.DeckSquare })));
 
 export default function App() {
   const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || '';
@@ -80,6 +81,7 @@ export default function App() {
     const preloadRoutes = () => {
       void import('./components/Matchmaking');
       void import('./components/FriendMatch');
+      void import('./components/DeckSquare');
       void import('./components/PracticeSetup');
       void prefetchCardCatalog({ includeEffects: false });
     };
@@ -373,6 +375,7 @@ export default function App() {
               <Route path="/profile" element={<Profile />} />
               <Route path="/store" element={<Store />} />
               <Route path="/collection" element={<Collection />} />
+              <Route path="/deck-square" element={<DeckSquare />} />
               <Route path="/practice" element={<PracticeSetup />} />
               <Route path="/friend-match" element={<FriendMatch />} />
               <Route path="/history" element={<div className="pt-24 px-12 text-zinc-500 uppercase tracking-widest text-center">对战历史即将上线</div>} />

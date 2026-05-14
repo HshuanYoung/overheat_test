@@ -21,6 +21,26 @@ CREATE TABLE IF NOT EXISTS games (
     status INT DEFAULT 0
 );
 
+CREATE TABLE IF NOT EXISTS deck_square_posts (
+    id VARCHAR(50) PRIMARY KEY,
+    source_deck_id VARCHAR(255),
+    user_id VARCHAR(50) NOT NULL,
+    author_name VARCHAR(100) NOT NULL,
+    name VARCHAR(255) NOT NULL,
+    cards LONGTEXT NOT NULL,
+    created_at BIGINT NOT NULL,
+    updated_at BIGINT NOT NULL,
+    INDEX (user_id),
+    INDEX (created_at)
+);
+
+CREATE TABLE IF NOT EXISTS deck_square_likes (
+    post_id VARCHAR(50) NOT NULL,
+    user_id VARCHAR(50) NOT NULL,
+    created_at BIGINT NOT NULL,
+    PRIMARY KEY (post_id, user_id)
+);
+
 CREATE TABLE IF NOT EXISTS email_verification_codes (
     email VARCHAR(255) PRIMARY KEY,
     username VARCHAR(50) NOT NULL,

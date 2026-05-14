@@ -1,7 +1,7 @@
 import { getAuthUser } from '../socket';
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Swords, Bot, ShoppingBag, Library, Play, Users, Layout, CreditCard, Image as ImageIcon, Plus } from 'lucide-react';
+import { Swords, Bot, ShoppingBag, Library, Play, Users, Layout, CreditCard, Image as ImageIcon, Plus, GalleryHorizontalEnd } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { RAY_CARDS } from '../data/customization';
 import { readJsonResponse } from '../lib/http';
@@ -133,6 +133,8 @@ export const Home: React.FC = () => {
             )}
           </AnimatePresence>
         </div>
+
+        <MenuButton title="套牌广场" icon={<GalleryHorizontalEnd className="w-6 h-6" />} description="发布、预览全服卡组" to="/deck-square" />
       </div>
 
       <div className="absolute bottom-12 right-6 md:right-12 z-20 text-right">
