@@ -1,6 +1,6 @@
 import React, { useDeferredValue, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { ArrowLeft, Search, Loader2, Layout, CreditCard, Image as ImageIcon, Trash2, Plus, Check, Save, Sparkles, Share2 } from 'lucide-react';
+import { ArrowLeft, Search, Loader2, Layout, CreditCard, Image as ImageIcon, Trash2, Plus, Check, Save, Sparkles, Share2, UploadCloud } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn, getCardImageUrl } from '../lib/utils';
 import { CARD_BACKS, RAY_CARDS } from '../data/customization';
@@ -39,6 +39,8 @@ export const Collection: React.FC = () => {
   const [shareCode, setShareCode] = useState('');
   const [shareCopied, setShareCopied] = useState(false);
   const [showShareModal, setShowShareModal] = useState(false);
+  const [publishingDeckId, setPublishingDeckId] = useState<string | null>(null);
+  const [deckNotice, setDeckNotice] = useState('');
 
   // Card Filters
   const [searchTerm, setSearchTerm] = useState('');
@@ -242,6 +244,34 @@ export const Collection: React.FC = () => {
     }
   };
 
+  const publishDeck = async (deck: Deck) => {
+    const validation = validateDeckForBattle(deck);
+    if (!validation.valid) {
+      alert(validation.error || '只有合法卡组才能发布');
+      return;
+    }
+
+    setPublishingDeckId(deck.id);
+    setDeckNotice('');
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/deck-square/publish`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ deckId: deck.id })
+      });
+      const data = await res.json();
+      if (!res.ok || data.error) throw new Error(data.error || '发布失败');
+      setDeckNotice(data.updated ? `已更新发布《${deck.name}》` : `已发布《${deck.name}》到套牌广场`);
+    } catch (e: any) {
+      alert(e.message || '发布失败');
+    } finally {
+      setPublishingDeckId(null);
+    }
+  };
+
   const ownedCardCount = useMemo(() =>
     cardLibrary.filter(card => (collection[card.uniqueId] || collection[card.id] || 0) > 0).length,
     [cardLibrary, collection]
@@ -341,8 +371,15 @@ export const Collection: React.FC = () => {
                     onClick={() => navigate(`/deck-builder?id=${deck.id}`)}
                     onDelete={() => setConfirmDeleteId(deck.id)}
                     onShare={() => shareDeck(deck)}
+                    onPublish={() => publishDeck(deck)}
+                    publishing={publishingDeckId === deck.id}
                   />
                 ))}
+                {deckNotice && (
+                  <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm font-bold text-emerald-300">
+                    {deckNotice}
+                  </div>
+                )}
                 {decks.length === 0 && (
                   <div className="py-20 bg-zinc-900/20 border-2 border-dashed border-zinc-800 rounded-3xl flex flex-col items-center justify-center text-zinc-500">
                     <Layout className="w-12 h-12 mb-4 opacity-20" />
@@ -860,7 +897,9 @@ const DeckCard: React.FC<{
   onClick: () => void | Promise<void>;
   onDelete: () => void | Promise<void>;
   onShare: () => void | Promise<void>;
-}> = ({ deck, onClick, onDelete, onShare }) => (
+  onPublish: () => void | Promise<void>;
+  publishing?: boolean;
+}> = ({ deck, onClick, onDelete, onShare, onPublish, publishing }) => (
   <div
     onClick={onClick}
     className="cursor-pointer rounded-2xl border border-white/5 bg-zinc-900/40 px-4 py-4 transition-all hover:border-red-600/40 hover:bg-zinc-900/60"
@@ -872,7 +911,7 @@ const DeckCard: React.FC<{
           创建日期 {new Date(deck.createdAt).toLocaleDateString()} · {deck.cards.length} 张卡牌
         </p>
       </div>
-      <div className="grid grid-cols-2 gap-2 md:flex md:shrink-0">
+      <div className="grid grid-cols-3 gap-2 md:flex md:shrink-0">
         <button
           onClick={(e) => { e.stopPropagation(); onDelete(); }}
           className="flex items-center justify-center gap-2 rounded-xl bg-zinc-800 px-3 py-2 text-xs font-black italic text-red-400 transition-colors hover:bg-red-900/50"
@@ -886,6 +925,14 @@ const DeckCard: React.FC<{
         >
           <Share2 className="h-4 w-4" />
           分享
+        </button>
+        <button
+          onClick={(e) => { e.stopPropagation(); onPublish(); }}
+          disabled={publishing}
+          className="flex items-center justify-center gap-2 rounded-xl bg-red-600 px-3 py-2 text-xs font-black italic text-white transition-colors hover:bg-red-500 disabled:opacity-60"
+        >
+          {publishing ? <Loader2 className="h-4 w-4 animate-spin" /> : <UploadCloud className="h-4 w-4" />}
+          发布
         </button>
       </div>
     </div>

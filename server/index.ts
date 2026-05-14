@@ -1821,6 +1821,143 @@ app.post('/api/user/decks/:id/copy', async (req, res): Promise<void> => {
     }
 });
 
+const parseStoredDeckCards = (cards: any): string[] => {
+    const parsed = typeof cards === 'string' ? JSON.parse(cards) : cards;
+    return Array.isArray(parsed) ? parsed.map((card: any) => typeof card === 'string' ? card : card?.id).filter(Boolean) : [];
+};
+
+const buildDeckSquarePost = (row: any, likedPostIds: Set<string>) => ({
+    id: row.id,
+    sourceDeckId: row.source_deck_id,
+    authorUid: row.user_id,
+    authorName: row.author_name,
+    name: row.name,
+    cards: parseStoredDeckCards(row.cards),
+    likes: Number(row.like_count || 0),
+    likedByMe: likedPostIds.has(row.id),
+    createdAt: Number(row.created_at),
+    updatedAt: Number(row.updated_at)
+});
+
+app.get('/api/deck-square', async (req, res): Promise<void> => {
+    const authHeader = req.headers.authorization;
+    if (!authHeader) { res.status(401).json({ error: 'Unauthorized' }); return; }
+    const user = verifyToken(authHeader.split(' ')[1]);
+    if (!user) { res.status(401).json({ error: 'Invalid token' }); return; }
+
+    try {
+        const rows = await pool.query(`
+            SELECT p.*, COALESCE(l.like_count, 0) AS like_count
+            FROM deck_square_posts p
+            LEFT JOIN (
+                SELECT post_id, COUNT(*) AS like_count
+                FROM deck_square_likes
+                GROUP BY post_id
+            ) l ON l.post_id = p.id
+            ORDER BY like_count DESC, p.created_at DESC
+            LIMIT 100
+        `);
+        const likedRows = await pool.query('SELECT post_id FROM deck_square_likes WHERE user_id = ?', [user.userId]);
+        const likedPostIds = new Set<string>(likedRows.map((row: any) => row.post_id));
+        res.json({ posts: rows.map((row: any) => buildDeckSquarePost(row, likedPostIds)) });
+    } catch (err) {
+        console.error('Deck square list error:', err);
+        res.status(500).json({ error: 'DB Error' });
+    }
+});
+
+app.post('/api/deck-square/publish', async (req, res): Promise<void> => {
+    const authHeader = req.headers.authorization;
+    if (!authHeader) { res.status(401).json({ error: 'Unauthorized' }); return; }
+    const user = verifyToken(authHeader.split(' ')[1]);
+    if (!user) { res.status(401).json({ error: 'Invalid token' }); return; }
+
+    try {
+        const { deckId } = req.body || {};
+        if (!deckId) { res.status(400).json({ error: '请选择要发布的卡组' }); return; }
+
+        const deckRows = await pool.query('SELECT * FROM decks WHERE id = ? AND user_id = ?', [deckId, user.userId]);
+        if (deckRows.length === 0) { res.status(404).json({ error: '未找到卡组' }); return; }
+
+        const deck = deckRows[0];
+        const cardIds = parseStoredDeckCards(deck.cards);
+        if (cardIds.length === 0) { res.status(400).json({ error: '空卡组不能发布' }); return; }
+
+        const existingRows = await pool.query('SELECT id FROM deck_square_posts WHERE source_deck_id = ? AND user_id = ?', [deckId, user.userId]);
+        const now = Date.now();
+        if (existingRows.length > 0) {
+            await pool.query(
+                'UPDATE deck_square_posts SET author_name = ?, name = ?, cards = ?, updated_at = ? WHERE id = ?',
+                [getUserDisplayLabel(user), deck.name, JSON.stringify(cardIds), now, existingRows[0].id]
+            );
+            res.json({ id: existingRows[0].id, updated: true });
+            return;
+        }
+
+        const postId = Math.random().toString(36).substring(2, 10);
+        await pool.query(
+            'INSERT INTO deck_square_posts (id, source_deck_id, user_id, author_name, name, cards, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+            [postId, deckId, user.userId, getUserDisplayLabel(user), deck.name, JSON.stringify(cardIds), now, now]
+        );
+        res.json({ id: postId, published: true });
+    } catch (err) {
+        console.error('Deck square publish error:', err);
+        res.status(500).json({ error: 'DB Error' });
+    }
+});
+
+app.post('/api/deck-square/:id/like', async (req, res): Promise<void> => {
+    const authHeader = req.headers.authorization;
+    if (!authHeader) { res.status(401).json({ error: 'Unauthorized' }); return; }
+    const user = verifyToken(authHeader.split(' ')[1]);
+    if (!user) { res.status(401).json({ error: 'Invalid token' }); return; }
+
+    try {
+        const postId = req.params.id;
+        const postRows = await pool.query('SELECT id FROM deck_square_posts WHERE id = ?', [postId]);
+        if (postRows.length === 0) { res.status(404).json({ error: '未找到发布的卡组' }); return; }
+
+        const existingRows = await pool.query('SELECT post_id FROM deck_square_likes WHERE post_id = ? AND user_id = ?', [postId, user.userId]);
+        if (existingRows.length > 0) {
+            await pool.query('DELETE FROM deck_square_likes WHERE post_id = ? AND user_id = ?', [postId, user.userId]);
+        } else {
+            await pool.query(
+                'INSERT INTO deck_square_likes (post_id, user_id, created_at) VALUES (?, ?, ?)',
+                [postId, user.userId, Date.now()]
+            );
+        }
+
+        const countRows = await pool.query('SELECT COUNT(*) AS count FROM deck_square_likes WHERE post_id = ?', [postId]);
+        res.json({ liked: existingRows.length === 0, likes: Number(countRows[0]?.count || 0) });
+    } catch (err) {
+        console.error('Deck square like error:', err);
+        res.status(500).json({ error: 'DB Error' });
+    }
+});
+
+app.post('/api/deck-square/:id/copy', async (req, res): Promise<void> => {
+    const authHeader = req.headers.authorization;
+    if (!authHeader) { res.status(401).json({ error: 'Unauthorized' }); return; }
+    const user = verifyToken(authHeader.split(' ')[1]);
+    if (!user) { res.status(401).json({ error: 'Invalid token' }); return; }
+
+    try {
+        const postRows = await pool.query('SELECT * FROM deck_square_posts WHERE id = ?', [req.params.id]);
+        if (postRows.length === 0) { res.status(404).json({ error: '未找到发布的卡组' }); return; }
+
+        const post = postRows[0];
+        const newDeckId = Math.random().toString(36).substring(2, 10);
+        await pool.query(
+            'INSERT INTO decks (id, user_id, name, cards, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)',
+            [newDeckId, user.userId, `${post.name} (广场复制)`, typeof post.cards === 'string' ? post.cards : JSON.stringify(post.cards), Date.now(), Date.now()]
+        );
+        res.json({ id: newDeckId });
+    } catch (err) {
+        console.error('Deck square copy error:', err);
+        res.status(500).json({ error: 'DB Error' });
+    }
+});
+
 app.get('/api/games', async (req, res): Promise<void> => {
     try {
         const rows = await pool.query('SELECT * FROM games WHERE status = 0');
