@@ -985,13 +985,74 @@ export const dealUnpreventableSelfDamage = (gameState: GameState, playerUid: str
 export const destroyByEffect = (gameState: GameState, target: Card, source: Card) => {
   const uid = ownerUidOf(gameState, target);
   if (!uid) return;
+  const sourceUid = ownerUidOf(gameState, source);
+  const data = (target as any).data || {};
+  const sourceName = source.fullName || '卡牌效果';
+
+  if (data.indestructibleByEffect) {
+    gameState.logs.push(`[${target.fullName}] 因效果不会被破坏。`);
+    return;
+  }
+
+  const opponentUid = getOpponentUid(gameState, uid);
+  if (data.indestructibleIfOpponentGoddess && opponentUid && gameState.players[opponentUid]?.isGoddessMode) {
+    gameState.logs.push(`[${target.fullName}] 因对手处于女神化状态而不会被破坏。`);
+    return;
+  }
+
+  if (
+    sourceUid &&
+    sourceUid !== uid &&
+    gameState.players[sourceUid]?.isGoddessMode &&
+    data.immuneToOpponentEffectsIfOpponentGoddess
+  ) {
+    gameState.logs.push(`[${target.fullName}] 因对手处于女神化状态而不受对手卡牌效果影响。`);
+    return;
+  }
+
+  if (sourceUid && sourceUid !== uid && data.unaffectedByOpponentCardEffects) {
+    gameState.logs.push(`[${target.fullName}] 不受对手的卡牌效果影响。`);
+    return;
+  }
+
+  if (sourceUid && sourceUid !== uid && data.unaffectedByOpponentColorEffects && source.color === data.unaffectedByOpponentColorEffects) {
+    gameState.logs.push(`[${target.fullName}] 不受对手宣言颜色的卡牌效果影响。`);
+    return;
+  }
+
+  if (
+    data.preventNextDestroy &&
+    (
+      data.preventNextDestroyUntilTurn === undefined ||
+      data.preventNextDestroyUntilTurn >= gameState.turnCount
+    )
+  ) {
+    gameState.logs.push(`[${data.preventNextDestroySourceName || sourceName}] 防止了 [${target.fullName}] 将要被破坏。`);
+    delete data.preventNextDestroy;
+    delete data.preventNextDestroySourceName;
+    delete data.preventNextDestroyUntilTurn;
+    return;
+  }
+
+  if (data.preventFirstDestroyEachTurnSourceName && data.preventFirstDestroyEachTurnUsedTurn !== gameState.turnCount) {
+    data.preventFirstDestroyEachTurnUsedTurn = gameState.turnCount;
+    gameState.logs.push(`[${data.preventFirstDestroyEachTurnSourceName}] 防止了 [${target.fullName}] 本回合第一次将被破坏。`);
+    return;
+  }
+
+  if (data.returnToHandOnDestroyTurn === gameState.turnCount) {
+    moveCard(gameState, uid, target, 'HAND', source);
+    gameState.logs.push(`[替换效果] ${target.fullName} 本回合被破坏时改为返回手牌。`);
+    return;
+  }
+
   moveCard(gameState, uid, target, 'GRAVE', source);
   EventEngine.dispatchEvent(gameState, {
     type: 'CARD_DESTROYED_EFFECT',
     targetCardId: target.gamecardId,
     playerUid: uid,
     data: {
-      sourcePlayerId: ownerUidOf(gameState, source)
+      sourcePlayerId: sourceUid
     }
   });
   gameState.logs.push(`[${source.fullName}] 破坏了 [${target.fullName}]。`);
