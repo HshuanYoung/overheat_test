@@ -1,11 +1,12 @@
 import { getAuthUser, getAuthToken, socket } from '../socket';
 import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { Loader2, ArrowLeft, Swords, X, ChevronDown, Check } from 'lucide-react';
+import { ArrowLeft, Swords, X, ChevronDown, Check } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '../lib/utils';
 import { validateDeckForBattle } from '../lib/deckValidation';
 import { Deck } from '../types/game';
+import { PageFallback } from './PageFallback';
 
 export const Matchmaking: React.FC = () => {
   const navigate = useNavigate();
@@ -274,9 +275,10 @@ export const Matchmaking: React.FC = () => {
 
   if (loading) {
     return (
-      <div className="pt-24 flex items-center justify-center min-h-screen bg-black">
-        <Loader2 className="w-8 h-8 animate-spin text-red-600" />
-      </div>
+      <PageFallback
+        title="对战模式加载中"
+        description="正在加载卡组列表并连接对战服务，请稍候..."
+      />
     );
   }
 

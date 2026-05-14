@@ -61,8 +61,11 @@ export function getCardImageUrl(
   const hasMultipleRarities = normalizedRarities.length > 1;
   const baseRarity = normalizedRarities[0];
   const rarityPath = hasMultipleRarities && rarityUpper !== baseRarity ? `/${rarityUpper}` : '';
+  const imageBaseUrl = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_CARD_IMAGE_BASE_URL)
+    ? import.meta.env.VITE_CARD_IMAGE_BASE_URL.replace(/\/$/, '')
+    : '';
 
-  return `/pics${rarityPath}/${cardId}.jpg`;
+  return `${imageBaseUrl}/pics${rarityPath}/${cardId}.jpg`;
 }
 
 export function getLocationLabel(location?: string | null): string {

@@ -10,6 +10,7 @@ import { cn, getCardImageUrl, getCardTypeLabel } from '../lib/utils';
 import { CARD_BACKS } from '../data/customization';
 import { useCardCatalog } from '../hooks/useCardCatalog';
 import { LoadingOverlay } from './LoadingOverlay';
+import { PageFallback } from './PageFallback';
 import { KeywordBadges } from './KeywordBadges';
 import { readJsonResponse } from '../lib/http';
 import { SEARCHABLE_CARD_PACKAGES, matchesCardPackageFilter, matchesCardTypeFilter } from '../lib/cardCatalogFilters';
@@ -45,6 +46,7 @@ export const DeckBuilder: React.FC = () => {
   const [showNewDeckModal, setShowNewDeckModal] = useState(false);
   const [isNewDeckDraft, setIsNewDeckDraft] = useState(false);
   const isNewDeckDraftRef = useRef(false);
+  const [initialDataLoading, setInitialDataLoading] = useState(true);
   const [importCode, setImportCode] = useState('');
   const [renameValue, setRenameValue] = useState('');
   const [newDeckName, setNewDeckName] = useState('新卡组');
@@ -65,7 +67,8 @@ export const DeckBuilder: React.FC = () => {
   const deckIdFromUrl = searchParams.get('id');
   const {
     cards: cardLibrary,
-    getCardByReference
+    getCardByReference,
+    loading: cardsLoading
   } = useCardCatalog({ includeEffects: false });
 
   const CRYSTAL_VALUES: Record<string, { decompose: number, produce: number }> = {
@@ -83,9 +86,19 @@ export const DeckBuilder: React.FC = () => {
   };
 
   useEffect(() => {
-    loadDecks();
-    loadCollection();
-    loadProfile();
+    let active = true;
+
+    Promise.all([
+      loadDecks(),
+      loadCollection(),
+      loadProfile()
+    ]).finally(() => {
+      if (active) setInitialDataLoading(false);
+    });
+
+    return () => {
+      active = false;
+    };
   }, []);
 
   useEffect(() => {
@@ -591,6 +604,15 @@ export const DeckBuilder: React.FC = () => {
   const loadingOverlayDescription = saving
     ? '正在同步你的卡组配置，请稍候...'
     : '正在处理当前卡牌操作，请稍候...';
+
+  if (cardsLoading || initialDataLoading) {
+    return (
+      <PageFallback
+        title="卡组构筑加载中"
+        description="正在加载卡牌库和收藏数据，首次进入可能需要多等一会儿..."
+      />
+    );
+  }
 
   return (
     <div className="flex h-screen overflow-hidden bg-zinc-950 relative pt-4">

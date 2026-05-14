@@ -598,6 +598,26 @@ export const BattleField: React.FC = () => {
       }
     };
 
+    const onGameTimerUpdate = (patch: any) => {
+      if (patch.gameId !== gameId) return;
+      setGame(prev => {
+        if (!prev) return prev;
+        const next = {
+          ...prev,
+          phaseTimerStart: patch.phaseTimerStart ?? prev.phaseTimerStart,
+          players: { ...prev.players }
+        } as GameState;
+        if (patch.players) {
+          for (const [uid, playerPatch] of Object.entries(patch.players)) {
+            if (next.players[uid]) {
+              next.players[uid] = { ...next.players[uid], ...(playerPatch as any) };
+            }
+          }
+        }
+        return next;
+      });
+    };
+
     const onSocketError = (err: string | any) => {
       console.error('[BattleField] Socket Error:', err);
       const msg = typeof err === 'string' ? err : (err.message || '网络通讯错误');
@@ -605,11 +625,13 @@ export const BattleField: React.FC = () => {
     };
 
     socket.on('gameStateUpdate', onGameStateUpdate);
+    socket.on('gameTimerUpdate', onGameTimerUpdate);
     socket.on('error', onSocketError);
 
     return () => {
       console.log('[BattleField] Unregistering socket listeners for game:', gameId);
       socket.off('gameStateUpdate', onGameStateUpdate);
+      socket.off('gameTimerUpdate', onGameTimerUpdate);
       socket.off('error', onSocketError);
     };
   }, [gameId]);

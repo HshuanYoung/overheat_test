@@ -6,6 +6,7 @@ import { cn } from '../lib/utils';
 import { validateDeckForBattle } from '../lib/deckValidation';
 import { getAuthUser } from '../socket';
 import { Deck } from '../types/game';
+import { PageFallback } from './PageFallback';
 
 export const PracticeSetup: React.FC = () => {
   const navigate = useNavigate();
@@ -131,14 +132,20 @@ export const PracticeSetup: React.FC = () => {
 
   if (loading) {
     return (
-      <div className="pt-24 flex items-center justify-center min-h-screen bg-black">
-        <Loader2 className="w-8 h-8 animate-spin text-red-600" />
-      </div>
+      <PageFallback
+        title="练习模式加载中"
+        description="正在加载卡组列表和练习配置，请稍候..."
+      />
     );
   }
 
   return (
     <div className="pt-20 px-8 min-h-screen bg-black text-white pb-20">
+      <PageFallback
+        title="正在创建练习对局"
+        description="正在准备机器人、卡组和战场数据，请稍候..."
+        open={starting}
+      />
       <div className="max-w-3xl mx-auto">
         {/* Header */}
         {/* Header */}

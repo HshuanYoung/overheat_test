@@ -49,8 +49,55 @@ const gameLocks = new Map<string, Promise<any>>();
 const matchLogHistory = new Map<string, BattleLogEntry[]>();
 const lastSyncedLogIndex = new Map<string, number>();
 const botMovingGames = new Set<string>();
+const lastTimerBroadcast = new Map<string, number>();
 const STARTER_COINS = 100000;
 const STARTER_CARD_CRYSTALS = 100000;
+const TIMER_BROADCAST_INTERVAL_MS = Number(process.env.TIMER_BROADCAST_INTERVAL_MS || 1000);
+
+function getDefaultTurnTime(gameState: any) {
+    return gameState.turnTimerLimit ? gameState.turnTimerLimit * 1000 : 300000;
+}
+
+function getActiveTimerPlayerUid(gameState: any): string | undefined {
+    if (gameState.phase === 'INIT' || gameState.phase === 'RPS' || gameState.phase === 'FIRST_PLAYER_CHOICE' || gameState.phase === 'MULLIGAN') {
+        return undefined;
+    }
+    if (gameState.pendingQuery) return gameState.pendingQuery.playerUid;
+    if (gameState.priorityPlayerId) return gameState.priorityPlayerId;
+    if (gameState.phase === 'DISCARD') return gameState.playerIds[gameState.currentTurnPlayer];
+    return gameState.playerIds[gameState.currentTurnPlayer];
+}
+
+function getRuntimeTimedState(gameState: any, now = Date.now()) {
+    const elapsed = now - (gameState.phaseTimerStart || now);
+    const players = Object.fromEntries(
+        Object.entries(gameState.players || {}).map(([uid, player]: [string, any]) => [
+            uid,
+            { timeRemaining: player?.timeRemaining }
+        ])
+    ) as Record<string, { timeRemaining: number | undefined }>;
+
+    if (gameState.phase === 'MULLIGAN') {
+        for (const [uid, player] of Object.entries(gameState.players || {}) as [string, any][]) {
+            if (!player?.mulliganDone) {
+                players[uid] = {
+                    timeRemaining: Math.max(0, (player.timeRemaining ?? getDefaultTurnTime(gameState)) - elapsed)
+                };
+            }
+        }
+        return players;
+    }
+
+    const activePlayerUid = getActiveTimerPlayerUid(gameState);
+    if (activePlayerUid && gameState.players?.[activePlayerUid]) {
+        const player = gameState.players[activePlayerUid];
+        players[activePlayerUid] = {
+            timeRemaining: Math.max(0, (player.timeRemaining ?? getDefaultTurnTime(gameState)) - elapsed)
+        };
+    }
+
+    return players;
+}
 
 async function withGameLock<T>(gameId: string, action: () => Promise<T>): Promise<T> {
     const existingLock = gameLocks.get(gameId) || Promise.resolve();
@@ -702,7 +749,21 @@ async function syncAndSaveState(gameId: string, gameState: any) {
         // Cleanup memory
         matchLogHistory.delete(gameId);
         lastSyncedLogIndex.delete(gameId);
+        lastTimerBroadcast.delete(gameId);
     }
+}
+
+function emitTimerUpdate(gameId: string, gameState: any) {
+    const now = Date.now();
+    const lastBroadcastAt = lastTimerBroadcast.get(gameId) || 0;
+    if (now - lastBroadcastAt < TIMER_BROADCAST_INTERVAL_MS) return;
+
+    lastTimerBroadcast.set(gameId, now);
+    io.to(gameId).emit('gameTimerUpdate', {
+        gameId,
+        phaseTimerStart: gameState.phaseTimerStart,
+        players: getRuntimeTimedState(gameState, now)
+    });
 }
 
 async function advancePhase(gameState: any, gameId: string, playerId?: string, socket?: any, action?: any) {
@@ -725,6 +786,14 @@ async function advancePhase(gameState: any, gameId: string, playerId?: string, s
 }
 
 app.use(cors());
+app.use('/assets', express.static(path.join(process.cwd(), 'assets'), {
+    immutable: true,
+    maxAge: '30d'
+}));
+app.use('/pics', express.static(path.join(process.cwd(), 'pics'), {
+    immutable: true,
+    maxAge: '30d'
+}));
 
 // Background Unified Timer Loop
 setInterval(async () => {
@@ -743,47 +812,38 @@ setInterval(async () => {
                 ServerGameService.hydrateGameState(gameState);
 
                 const now = Date.now();
-                const elapsedSinceLastUpdate = now - (gameState.phaseTimerStart || now);
-
                 // Identify active player(s) for the timer
                 let activePlayerUid: string | undefined;
+                let stateChanged = false;
 
-                if (gameState.pendingQuery) {
-                    activePlayerUid = gameState.pendingQuery.playerUid;
-                } else if (gameState.priorityPlayerId) {
-                    activePlayerUid = gameState.priorityPlayerId;
-                } else if (gameState.phase === 'DISCARD') {
-                    activePlayerUid = gameState.playerIds[gameState.currentTurnPlayer];
-                } else if (gameState.phase === 'RPS') {
+                if (gameState.phase === 'RPS') {
                     const rpsElapsed = now - (gameState.rps?.startedAt || gameState.phaseTimerStart || now);
                     if (rpsElapsed >= (gameState.rps?.timeoutMs || PREGAME_DECISION_TIMEOUT_MS)) {
                         decideRpsTimeout(gameState);
+                        stateChanged = true;
                     }
                 } else if (gameState.phase === 'FIRST_PLAYER_CHOICE') {
                     const choiceElapsed = now - (gameState.firstPlayerChoice?.startedAt || gameState.phaseTimerStart || now);
                     if (choiceElapsed >= (gameState.firstPlayerChoice?.timeoutMs || PREGAME_DECISION_TIMEOUT_MS)) {
                         decideFirstPlayerChoiceTimeout(gameState);
+                        stateChanged = true;
                     }
                 } else if (gameState.phase === 'MULLIGAN') {
-                    // Special case: decrement for all who haven't finished
-                    Object.values(gameState.players).forEach((p: any) => {
-                        if (!p.mulliganDone) {
-                            p.timeRemaining = Math.max(0, (p.timeRemaining ?? (gameState.turnTimerLimit ? gameState.turnTimerLimit * 1000 : 300000)) - elapsedSinceLastUpdate);
-                        }
-                    });
+                    // Mulligan countdown is visual-only here; player choices still drive state transitions.
                 } else {
-                    activePlayerUid = gameState.playerIds[gameState.currentTurnPlayer];
+                    activePlayerUid = getActiveTimerPlayerUid(gameState);
                 }
 
                 if (activePlayerUid && gameState.players[activePlayerUid]) {
                     const player = gameState.players[activePlayerUid];
-                    player.timeRemaining = Math.max(0, (player.timeRemaining ?? (gameState.turnTimerLimit ? gameState.turnTimerLimit * 1000 : 300000)) - elapsedSinceLastUpdate);
+                    const runtimeRemaining = getRuntimeTimedState(gameState, now)[activePlayerUid]?.timeRemaining ?? player.timeRemaining;
 
-                    if (player.timeRemaining <= 0) {
+                    if (runtimeRemaining <= 0) {
                         // TIMEOUT LOSS
                         gameState.gameStatus = 2;
                         gameState.winnerId = gameState.playerIds.find(id => id !== activePlayerUid);
                         gameState.winReason = 'TIMEOUT_LOSS';
+                        player.timeRemaining = 0;
                         gameState.logs.push(`[对局结束] ${player.displayName} 时间已耗尽，判负。`);
 
                         await syncAndSaveState(gameId, gameState);
@@ -791,10 +851,10 @@ setInterval(async () => {
                     }
                 }
 
-                gameState.phaseTimerStart = now;
-
-                // Sync the deducted time back to DB
-                await syncAndSaveState(gameId, gameState);
+                emitTimerUpdate(gameId, gameState);
+                if (stateChanged) {
+                    await syncAndSaveState(gameId, gameState);
+                }
 
                 // Bot action check
                 const currentPlayerId = gameState.playerIds[gameState.currentTurnPlayer];

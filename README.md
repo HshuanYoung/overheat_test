@@ -254,6 +254,38 @@ dist
 npm run preview
 ```
 
+## 生产部署建议
+
+2 核 2G 轻量服务器不要在线上使用 `npm run dev`。推荐部署方式：
+
+```bash
+npm ci
+npm run build
+npm run start
+```
+
+- `npm run build` 只构建前端产物到 `dist`。
+- `npm run start` 只运行后端 API 和 Socket.IO，不启动 Vite HMR，也不启动 `tsx watch`。
+- Nginx 直接托管 `dist`、`assets` 和 `pics`，并反代 `/api`、`/socket.io` 到后端 `3001`。
+- 可参考 `deploy/nginx-overheat.conf` 和 `deploy/overheat.service`。
+
+线上 `.env` 可以按机器配置收紧数据库连接池：
+
+```env
+NODE_ENV=production
+PORT=3001
+DB_CONNECTION_LIMIT=4
+TIMER_BROADCAST_INTERVAL_MS=1000
+```
+
+如果图片资源之后迁移到 CDN 或对象存储，可以在构建前设置：
+
+```env
+VITE_CARD_IMAGE_BASE_URL=https://static.example.com
+```
+
+浏览器会从 `https://static.example.com/pics/...` 加载卡图。
+
 ## 已知注意事项
 
 当前 `npm run lint` 使用 `tsc --noEmit`，项目中可能仍存在历史类型错误。修复卡牌脚本或规则逻辑时，建议同时运行针对具体脚本的轻量行为验证，避免被无关类型问题阻塞。

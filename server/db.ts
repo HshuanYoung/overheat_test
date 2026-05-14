@@ -10,7 +10,7 @@ export const pool = mariadb.createPool({
   password: process.env.DB_PASSWORD || process.env.DB_PASS || '',
   database: process.env.DB_NAME || 'overheat',
   port: parseInt(process.env.DB_PORT || '3306'),
-  connectionLimit: 10
+  connectionLimit: parseInt(process.env.DB_CONNECTION_LIMIT || '8')
 });
 
 async function columnExists(conn: mariadb.PoolConnection, table: string, column: string): Promise<boolean> {

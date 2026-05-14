@@ -11,7 +11,7 @@ import { socket, getAuthUser, setAuthUser, setAuthToken, getAuthToken } from './
 import { TopBar } from './components/TopBar';
 import { Home } from './components/Home';
 import { prefetchCardCatalog } from './hooks/useCardCatalog';
-import { LoadingOverlay } from './components/LoadingOverlay';
+import { PageFallback } from './components/PageFallback';
 
 const Matchmaking = lazy(() => import('./components/Matchmaking').then(module => ({ default: module.Matchmaking })));
 const BattleField = lazy(() => import('./components/BattleField').then(module => ({ default: module.BattleField })));
@@ -22,13 +22,6 @@ const Store = lazy(() => import('./components/Store').then(module => ({ default:
 const Collection = lazy(() => import('./components/Collection').then(module => ({ default: module.Collection })));
 const PracticeSetup = lazy(() => import('./components/PracticeSetup').then(module => ({ default: module.PracticeSetup })));
 const FriendMatch = lazy(() => import('./components/FriendMatch').then(module => ({ default: module.FriendMatch })));
-
-const PageFallback = () => (
-  <LoadingOverlay
-    title="界面加载中"
-    description="正在打开目标页面，资源马上就绪..."
-  />
-);
 
 export default function App() {
   const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || '';

@@ -84,7 +84,7 @@ const CardComponentImpl: React.FC<CardProps> = ({
 
   const isNegativeCost = card.acValue < 0;
   const fullImageUrl = card.fullImageUrl || getCardImageUrl(card.id, card.rarity, false, card.availableRarities);
-  const imageUrl = fullImageUrl;
+  const imageUrl = card.imageUrl || fullImageUrl;
   const exhausted = isExhausted ?? !!card.isExhausted;
   const showStats = displayMode !== 'erosion_item' && displayMode !== 'none';
   const showAC = showStats && (displayMode === 'hand' || displayMode === 'deck' || displayMode === 'erosion_item');
@@ -127,6 +127,10 @@ const CardComponentImpl: React.FC<CardProps> = ({
           decoding="async"
           draggable={false}
           referrerPolicy="no-referrer"
+          onError={(event) => {
+            const img = event.currentTarget;
+            if (img.src !== fullImageUrl) img.src = fullImageUrl;
+          }}
         />
         <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-black/40" />
       </div>
