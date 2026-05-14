@@ -433,6 +433,39 @@ function removeFriendParticipant(gameState: any, userId: string) {
     }
 }
 
+function isFriendRoomEmpty(gameState: any) {
+    normalizeFriendRoomState(gameState);
+    return gameState.playerIds.filter(Boolean).length === 0 && gameState.spectatorIds.length === 0;
+}
+
+async function removeFriendParticipantAndCloseIfEmpty(gameId: string, userId: string) {
+    let closed = false;
+    await withGameLock(gameId, async () => {
+        const rows = await pool.query('SELECT state FROM games WHERE id = ?', [gameId]);
+        if (rows.length === 0) return;
+
+        const gameState = typeof rows[0].state === 'string' ? JSON.parse(rows[0].state) : rows[0].state;
+        if (gameState?.mode !== 'friend') return;
+
+        removeFriendParticipant(gameState, userId);
+        if (isFriendRoomEmpty(gameState)) {
+            await pool.query('DELETE FROM games WHERE id = ?', [gameId]);
+            io.to(gameId).emit('friendRoomClosed', { gameId });
+            io.to(gameId).emit('gameError', { message: '房间已关闭' });
+            closed = true;
+            return;
+        }
+
+        await syncAndSaveState(gameId, gameState);
+    });
+    return closed;
+}
+
+async function removeFriendParticipantFromAllRooms(userId: string) {
+    const rows = await pool.query("SELECT id FROM games WHERE id LIKE 'friend_%'");
+    await Promise.all(rows.map((row: any) => removeFriendParticipantAndCloseIfEmpty(row.id, userId)));
+}
+
 function buildFriendLobbyResponse(gameId: string, gameState: any, userId: string) {
     normalizeFriendRoomState(gameState);
     return {
@@ -449,6 +482,26 @@ function buildFriendLobbyResponse(gameId: string, gameState: any, userId: string
         status: gameState.status || 'WAITING',
         started: isFriendGameStarted(gameState),
         mySeat: getFriendSeat(gameState, userId) || 'spectator'
+    };
+}
+
+function buildFriendLobbySummary(gameId: string, gameState: any, userId?: string) {
+    normalizeFriendRoomState(gameState);
+    const [player1, player2] = gameState.playerIds;
+    const started = isFriendGameStarted(gameState);
+    return {
+        gameId,
+        roomCode: gameState.roomCode,
+        turnTimerLimit: gameState.turnTimerLimit,
+        playerIds: gameState.playerIds,
+        spectatorCount: gameState.spectatorIds.length,
+        hostUid: gameState.hostUid,
+        participantNames: gameState.participantNames || {},
+        status: gameState.status || 'WAITING',
+        started,
+        hasOpenSeat: !started && (!player1 || !player2),
+        playerCount: gameState.playerIds.filter(Boolean).length,
+        mySeat: userId ? getFriendSeat(gameState, userId) : null
     };
 }
 
@@ -1175,6 +1228,37 @@ app.post('/api/games/friend', async (req, res): Promise<void> => {
     }
 });
 
+app.get('/api/games/friend/lobby', async (req, res): Promise<void> => {
+    const authHeader = req.headers.authorization;
+    if (!authHeader) { res.status(401).json({ error: 'Unauthorized' }); return; }
+    const user = verifyToken(authHeader.split(' ')[1]);
+    if (!user) { res.status(401).json({ error: 'Invalid token' }); return; }
+
+    try {
+        const rows = await pool.query("SELECT id, state FROM games WHERE id LIKE 'friend_%' ORDER BY id DESC LIMIT 60");
+        const userIdStr = user.userId.toString();
+        const rooms = rows
+            .map((row: any) => {
+                const gameState = typeof row.state === 'string' ? JSON.parse(row.state) : row.state;
+                if (!gameState || gameState.mode !== 'friend' || gameState.gameStatus === 2) return null;
+                normalizeFriendRoomState(gameState);
+                return buildFriendLobbySummary(row.id, gameState, userIdStr);
+            })
+            .filter(Boolean)
+            .filter((room: any) => room.started || room.hasOpenSeat || room.mySeat)
+            .sort((a: any, b: any) => {
+                if (!!a.mySeat !== !!b.mySeat) return a.mySeat ? -1 : 1;
+                if (a.started !== b.started) return a.started ? 1 : -1;
+                return b.roomCode.localeCompare(a.roomCode);
+            });
+
+        res.json({ rooms });
+    } catch (err) {
+        console.error('Friend lobby list error:', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
 // Join Friend Match by room code
 app.post('/api/games/friend/join', async (req, res): Promise<void> => {
     const authHeader = req.headers.authorization;
@@ -1399,14 +1483,8 @@ app.post('/api/games/friend/:gameId/leave', async (req, res): Promise<void> => {
     const { gameId } = req.params;
 
     try {
-        await withGameLock(gameId, async () => {
-            const rows = await pool.query('SELECT state FROM games WHERE id = ?', [gameId]);
-            if (rows.length === 0) { res.status(404).json({ error: '未找到该房间' }); return; }
-            const gameState = typeof rows[0].state === 'string' ? JSON.parse(rows[0].state) : rows[0].state;
-            removeFriendParticipant(gameState, user.userId.toString());
-            await syncAndSaveState(gameId, gameState);
-            res.json({ ok: true });
-        });
+        const closed = await removeFriendParticipantAndCloseIfEmpty(gameId, user.userId.toString());
+        res.json({ ok: true, closed });
     } catch (err) {
         console.error('Friend leave error:', err);
         res.status(500).json({ error: 'Internal server error' });
@@ -1418,6 +1496,7 @@ const matchmakingQueue: { userId: string; socketId?: string; timestamp: number; 
 // Matchmaking results map: userId -> gameId
 const matchmakingResults = new Map<string, string>();
 const authenticatedSockets = new Map<string, string>();
+const onlineSockets = new Map<string, { userId: string; username?: string; displayName?: string }>();
 const getMatchmakingQueueIndex = (userId: string | number) => matchmakingQueue.findIndex(q => q.userId === userId.toString());
 const removeMatchmakingQueueEntries = (userId: string | number) => {
     const userIdStr = userId.toString();
@@ -1434,6 +1513,27 @@ const popMatchmakingOpponent = (userId: string | number) => {
     const [opponent] = matchmakingQueue.splice(opponentIndex, 1);
     return opponent || null;
 };
+
+function getOnlinePlayers() {
+    const users = new Map<string, { uid: string; username?: string; displayName: string }>();
+    for (const onlineUser of onlineSockets.values()) {
+        if (!onlineUser.userId) continue;
+        users.set(onlineUser.userId, {
+            uid: onlineUser.userId,
+            username: onlineUser.username,
+            displayName: getUserDisplayLabel(onlineUser)
+        });
+    }
+    return Array.from(users.values()).sort((a, b) => a.displayName.localeCompare(b.displayName));
+}
+
+function emitOnlinePlayers() {
+    const players = getOnlinePlayers();
+    io.emit('onlinePlayers', {
+        players,
+        count: players.length
+    });
+}
 
 
 app.post('/api/games/matchmaking', async (req, res): Promise<void> => {
@@ -2129,9 +2229,19 @@ io.on('connection', (socket) => {
         if (user) {
             (socket as any).user = user;
             authenticatedSockets.set(user.userId.toString(), socket.id);
+            onlineSockets.set(socket.id, {
+                userId: user.userId.toString(),
+                username: user.username,
+                displayName: user.displayName
+            });
             const queueEntry = matchmakingQueue.find(q => q.userId === user.userId.toString());
             if (queueEntry) queueEntry.socketId = socket.id;
             socket.emit('authenticated');
+            socket.emit('onlinePlayers', {
+                players: getOnlinePlayers(),
+                count: getOnlinePlayers().length
+            });
+            emitOnlinePlayers();
         } else {
             socket.emit('unauthorized');
         }
@@ -2475,16 +2585,9 @@ io.on('connection', (socket) => {
         const userIdStr = ((socket as any).user?.userId ?? '').toString();
         if (userIdStr && gameId.startsWith('friend_')) {
             try {
-                await withGameLock(gameId, async () => {
-                    const rows = await pool.query('SELECT state FROM games WHERE id = ?', [gameId]);
-                    if (rows.length === 0) return;
-
-                    const gameState = typeof rows[0].state === 'string' ? JSON.parse(rows[0].state) : rows[0].state;
-                    if (gameState?.mode !== 'friend') return;
-
-                    removeFriendParticipant(gameState, userIdStr);
-                    await syncAndSaveState(gameId, gameState);
-                });
+                await removeFriendParticipantAndCloseIfEmpty(gameId, userIdStr);
+                socket.leave(gameId);
+                return;
             } catch (err) {
                 console.error('[Socket] leaveGame friend cleanup error:', err);
             }
@@ -2494,22 +2597,39 @@ io.on('connection', (socket) => {
         socket.leave(gameId);
     });
 
-    socket.on('leaveGameRoom', (gameId: string) => {
+    socket.on('leaveGameRoom', async (gameId: string) => {
         if (!gameId) return;
+        const userIdStr = ((socket as any).user?.userId ?? '').toString();
+        if (userIdStr && gameId.startsWith('friend_')) {
+            try {
+                await removeFriendParticipantAndCloseIfEmpty(gameId, userIdStr);
+            } catch (err) {
+                console.error('[Socket] leaveGameRoom friend cleanup error:', err);
+            }
+        }
         socket.leave(gameId);
     });
 
-    socket.on('disconnect', () => {
+    socket.on('disconnect', async () => {
         // console.log('Client disconnected:', socket.id);
         const userIdStr = ((socket as any).user?.userId ?? '').toString();
         if (userIdStr && authenticatedSockets.get(userIdStr) === socket.id) {
             authenticatedSockets.delete(userIdStr);
+        }
+        onlineSockets.delete(socket.id);
+        if (userIdStr) {
+            try {
+                await removeFriendParticipantFromAllRooms(userIdStr);
+            } catch (err) {
+                console.error('[Socket] disconnect friend cleanup error:', err);
+            }
         }
         matchmakingQueue.forEach(entry => {
             if (entry.socketId === socket.id) {
                 delete entry.socketId;
             }
         });
+        emitOnlinePlayers();
     });
 });
 
