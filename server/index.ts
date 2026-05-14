@@ -433,6 +433,39 @@ function removeFriendParticipant(gameState: any, userId: string) {
     }
 }
 
+function isFriendRoomEmpty(gameState: any) {
+    normalizeFriendRoomState(gameState);
+    return gameState.playerIds.filter(Boolean).length === 0 && gameState.spectatorIds.length === 0;
+}
+
+async function removeFriendParticipantAndCloseIfEmpty(gameId: string, userId: string) {
+    let closed = false;
+    await withGameLock(gameId, async () => {
+        const rows = await pool.query('SELECT state FROM games WHERE id = ?', [gameId]);
+        if (rows.length === 0) return;
+
+        const gameState = typeof rows[0].state === 'string' ? JSON.parse(rows[0].state) : rows[0].state;
+        if (gameState?.mode !== 'friend') return;
+
+        removeFriendParticipant(gameState, userId);
+        if (isFriendRoomEmpty(gameState)) {
+            await pool.query('DELETE FROM games WHERE id = ?', [gameId]);
+            io.to(gameId).emit('friendRoomClosed', { gameId });
+            io.to(gameId).emit('gameError', { message: '房间已关闭' });
+            closed = true;
+            return;
+        }
+
+        await syncAndSaveState(gameId, gameState);
+    });
+    return closed;
+}
+
+async function removeFriendParticipantFromAllRooms(userId: string) {
+    const rows = await pool.query("SELECT id FROM games WHERE id LIKE 'friend_%'");
+    await Promise.all(rows.map((row: any) => removeFriendParticipantAndCloseIfEmpty(row.id, userId)));
+}
+
 function buildFriendLobbyResponse(gameId: string, gameState: any, userId: string) {
     normalizeFriendRoomState(gameState);
     return {
@@ -1450,14 +1483,8 @@ app.post('/api/games/friend/:gameId/leave', async (req, res): Promise<void> => {
     const { gameId } = req.params;
 
     try {
-        await withGameLock(gameId, async () => {
-            const rows = await pool.query('SELECT state FROM games WHERE id = ?', [gameId]);
-            if (rows.length === 0) { res.status(404).json({ error: '未找到该房间' }); return; }
-            const gameState = typeof rows[0].state === 'string' ? JSON.parse(rows[0].state) : rows[0].state;
-            removeFriendParticipant(gameState, user.userId.toString());
-            await syncAndSaveState(gameId, gameState);
-            res.json({ ok: true });
-        });
+        const closed = await removeFriendParticipantAndCloseIfEmpty(gameId, user.userId.toString());
+        res.json({ ok: true, closed });
     } catch (err) {
         console.error('Friend leave error:', err);
         res.status(500).json({ error: 'Internal server error' });
@@ -2558,16 +2585,9 @@ io.on('connection', (socket) => {
         const userIdStr = ((socket as any).user?.userId ?? '').toString();
         if (userIdStr && gameId.startsWith('friend_')) {
             try {
-                await withGameLock(gameId, async () => {
-                    const rows = await pool.query('SELECT state FROM games WHERE id = ?', [gameId]);
-                    if (rows.length === 0) return;
-
-                    const gameState = typeof rows[0].state === 'string' ? JSON.parse(rows[0].state) : rows[0].state;
-                    if (gameState?.mode !== 'friend') return;
-
-                    removeFriendParticipant(gameState, userIdStr);
-                    await syncAndSaveState(gameId, gameState);
-                });
+                await removeFriendParticipantAndCloseIfEmpty(gameId, userIdStr);
+                socket.leave(gameId);
+                return;
             } catch (err) {
                 console.error('[Socket] leaveGame friend cleanup error:', err);
             }
@@ -2577,18 +2597,33 @@ io.on('connection', (socket) => {
         socket.leave(gameId);
     });
 
-    socket.on('leaveGameRoom', (gameId: string) => {
+    socket.on('leaveGameRoom', async (gameId: string) => {
         if (!gameId) return;
+        const userIdStr = ((socket as any).user?.userId ?? '').toString();
+        if (userIdStr && gameId.startsWith('friend_')) {
+            try {
+                await removeFriendParticipantAndCloseIfEmpty(gameId, userIdStr);
+            } catch (err) {
+                console.error('[Socket] leaveGameRoom friend cleanup error:', err);
+            }
+        }
         socket.leave(gameId);
     });
 
-    socket.on('disconnect', () => {
+    socket.on('disconnect', async () => {
         // console.log('Client disconnected:', socket.id);
         const userIdStr = ((socket as any).user?.userId ?? '').toString();
         if (userIdStr && authenticatedSockets.get(userIdStr) === socket.id) {
             authenticatedSockets.delete(userIdStr);
         }
         onlineSockets.delete(socket.id);
+        if (userIdStr) {
+            try {
+                await removeFriendParticipantFromAllRooms(userIdStr);
+            } catch (err) {
+                console.error('[Socket] disconnect friend cleanup error:', err);
+            }
+        }
         matchmakingQueue.forEach(entry => {
             if (entry.socketId === socket.id) {
                 delete entry.socketId;

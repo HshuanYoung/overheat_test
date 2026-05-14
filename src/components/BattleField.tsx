@@ -1592,7 +1592,7 @@ export const BattleField: React.FC = () => {
 
   const handleSpectatorExit = () => {
     if (gameId) {
-      socket.emit('leaveGameRoom', gameId);
+      socket.emit('leaveGame', gameId);
     }
     navigate('/');
   };
