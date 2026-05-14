@@ -1935,6 +1935,27 @@ app.post('/api/deck-square/:id/like', async (req, res): Promise<void> => {
     }
 });
 
+app.delete('/api/deck-square/:id', async (req, res): Promise<void> => {
+    const authHeader = req.headers.authorization;
+    if (!authHeader) { res.status(401).json({ error: 'Unauthorized' }); return; }
+    const user = verifyToken(authHeader.split(' ')[1]);
+    if (!user) { res.status(401).json({ error: 'Invalid token' }); return; }
+
+    try {
+        const postId = req.params.id;
+        const postRows = await pool.query('SELECT id, user_id FROM deck_square_posts WHERE id = ?', [postId]);
+        if (postRows.length === 0) { res.status(404).json({ error: '未找到发布的卡组' }); return; }
+        if (postRows[0].user_id !== user.userId) { res.status(403).json({ error: '只有发布者可以删除该卡组' }); return; }
+
+        await pool.query('DELETE FROM deck_square_likes WHERE post_id = ?', [postId]);
+        await pool.query('DELETE FROM deck_square_posts WHERE id = ? AND user_id = ?', [postId, user.userId]);
+        res.json({ deleted: true });
+    } catch (err) {
+        console.error('Deck square delete error:', err);
+        res.status(500).json({ error: 'DB Error' });
+    }
+});
+
 app.post('/api/deck-square/:id/copy', async (req, res): Promise<void> => {
     const authHeader = req.headers.authorization;
     if (!authHeader) { res.status(401).json({ error: 'Unauthorized' }); return; }
