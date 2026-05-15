@@ -16,25 +16,45 @@ jobs:
     runs-on: self-hosted
 
     steps:
-      - name: Checkout latest code
+      - name: 1. Checkout latest code
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Use Node.js
+      - name: 2. Use Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '22'
           cache: npm
 
-      - name: Install dependencies
+      - name: 3. Install dependencies
         run: npm install
 
-      - name: Clean install dependencies
+      - name: 4. Clean install dependencies
         run: npm ci
 
-      - name: Build
+      - name: 5. Build
         run: npm run build
 
-      - name: Restart overheat service
+      - name: 6. Restart overheat service
         run: sudo systemctl restart overheat
+
+      - name: Send failure email
+        if: failure()
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: ${{ secrets.MAIL_SERVER }}
+          server_port: ${{ secrets.MAIL_PORT }}
+          username: ${{ secrets.MAIL_USERNAME }}
+          password: ${{ secrets.MAIL_PASSWORD }}
+          subject: '[Overheat] Daily deploy failed'
+          to: 2032461502@qq.com
+          from: Overheat Deploy <${{ secrets.MAIL_USERNAME }}>
+          body: |
+            Daily Overheat deploy failed.
+
+            Repository: ${{ github.repository }}
+            Workflow: ${{ github.workflow }}
+            Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+            Branch: ${{ github.ref_name }}
+            Commit: ${{ github.sha }}
