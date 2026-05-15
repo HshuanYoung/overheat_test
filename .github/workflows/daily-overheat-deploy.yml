@@ -1,0 +1,40 @@
+name: Daily Overheat Deploy
+
+on:
+  schedule:
+    # 04:00 Asia/Shanghai, which is 20:00 UTC on the previous day.
+    - cron: '0 20 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: daily-overheat-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Pull, build, and restart overheat
+    runs-on: self-hosted
+
+    steps:
+      - name: Checkout latest code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Clean install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Restart overheat service
+        run: sudo systemctl restart overheat
