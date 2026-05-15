@@ -5,7 +5,7 @@ import { canPutUnitOntoBattlefield, createSelectCardQuery } from './BaseUtil';
 const effect_305000073_continuous: CardEffect = {
   id: '305000073_continuous',
   type: 'CONTINUOUS',
-  description: '因这个道具的效果放置到战场的单位不受对手卡牌效果影响，变为力量4000 / 伤害4，并获得【英勇】和【歼灭】。',
+  description: '因这个道具的效果放置到战场的单位伤害+4、力量+4000，并获得【英勇】【歼灭】与不受对手卡牌效果影响。',
   applyContinuous: (gameState, instance) => {
     const ownerUid = AtomicEffectExecutor.findCardOwnerKey(gameState, instance.gamecardId);
     if (!ownerUid) return;
@@ -15,8 +15,8 @@ const effect_305000073_continuous: CardEffect = {
       if (!unit) return;
       if ((unit as any).data?.mysteryWorkshopSourceCardId !== instance.gamecardId) return;
 
-      unit.power = 4000;
-      unit.damage = 4;
+      unit.power = (unit.power || 0) + 4000;
+      unit.damage = (unit.damage || 0) + 4;
       unit.isHeroic = true;
       unit.isAnnihilation = true;
       unit.temporaryImmuneToUnitEffects = true;
@@ -27,7 +27,7 @@ const effect_305000073_continuous: CardEffect = {
       if (!unit.influencingEffects) unit.influencingEffects = [];
       unit.influencingEffects.push({
         sourceCardName: instance.fullName,
-        description: '神秘工坊加成：力量4000 / 伤害4 / 英勇 / 歼灭 / 不受对手卡牌效果影响。'
+        description: '神秘工坊加成：+4伤害 / +4000力量 / 英勇 / 歼灭 / 不受对手卡牌效果影响。'
       });
     });
   }

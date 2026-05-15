@@ -9,7 +9,7 @@ const effectDamageBoost: CardEffect = {
     let owner: PlayerState | undefined;
     for (const uid of Object.keys(gameState.players)) {
       const p = gameState.players[uid];
-      const hasCard = [...p.unitZone, ...p.itemZone, ...p.erosionFront].some(c => c && c.gamecardId === card.gamecardId);
+      const hasCard = p.itemZone.some(c => c && c.gamecardId === card.gamecardId);
       if (hasCard) {
         owner = p;
         break;

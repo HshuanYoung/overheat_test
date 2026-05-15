@@ -7,9 +7,9 @@ const trigger_104010484: CardEffect = {
   type: 'TRIGGER',
   triggerEvent: 'CARD_TO_EROSION_FRONT',
   triggerLocation: ['EROSION_FRONT'],
-  erosionTotalLimit: [1, 4],
+  erosionTotalLimit: [1, 5],
   isMandatory: true,
-  description: '【永】当侵蚀区存在1-4张卡牌且战场上有1个或更多蓝色单位时，因卡的效果将此卡从卡组或手牌放入侵蚀区正面时，将此卡放置在战场上。',
+  description: '【永】当侵蚀区存在1-4张其他卡牌且战场上有1个或更多蓝色单位时，因卡的效果将此卡从卡组或手牌放入侵蚀区正面时，将此卡放置在战场上。',
   condition: (gameState: GameState, playerState: PlayerState, instance: Card, event?: GameEvent) => {
     const isSelf = event?.type === 'CARD_TO_EROSION_FRONT' &&
       (event.sourceCardId === instance.gamecardId || event.sourceCard === instance);
@@ -89,7 +89,7 @@ const card: Card = {
   ],
   rarity: 'PR',
   availableRarities: ['PR'],
-  cardPackage: '特殊',
+  cardPackage: 'BT04',
   uniqueId: null,
 };
 

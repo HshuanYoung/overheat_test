@@ -6,7 +6,7 @@ const effect_305110029_activate: CardEffect = {
   id: '305110029_activate',
   type: 'ACTIVATE',
   triggerLocation: ['ITEM'],
-  description: '横置这个道具。选择战场上1个单位。本回合中，其伤害+1、力量+500。',
+  description: '横置这个道具。选择战场上1个单位。本回合中，其伤害-1、力量-500。',
   condition: (_gameState, _playerState, instance) => !instance.isExhausted,
   cost: exhaustCost,
   execute: async (instance, gameState, playerState) => {
@@ -33,13 +33,13 @@ const effect_305110029_activate: CardEffect = {
     const targetId = selections[0];
     await AtomicEffectExecutor.execute(gameState, playerState.uid, {
       type: 'CHANGE_DAMAGE',
-      value: 1,
+      value: -1,
       turnDuration: 1,
       targetFilter: { gamecardId: targetId }
     }, instance);
     await AtomicEffectExecutor.execute(gameState, playerState.uid, {
       type: 'CHANGE_POWER',
-      value: 500,
+      value: -500,
       turnDuration: 1,
       targetFilter: { gamecardId: targetId }
     }, instance);

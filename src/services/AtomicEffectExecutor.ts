@@ -497,7 +497,7 @@ export class AtomicEffectExecutor {
     }
 
     let finalAmount = amount;
-    if (source === 'EFFECT' && dealer.effectDamageModifier) {
+    if (source === 'EFFECT' && targetPlayerUid !== dealerPlayerUid && dealer.effectDamageModifier) {
       finalAmount += dealer.effectDamageModifier;
     }
 
@@ -956,11 +956,6 @@ export class AtomicEffectExecutor {
         zone.data.forEach(card => {
           if (!card) return;
 
-          // Check for immunity to unit effects
-          if (card.isImmuneToUnitEffects && sourceCard && sourceCard.type === 'UNIT') {
-            if (card.gamecardId !== sourceCard.gamecardId) return;
-          }
-
           const isChosenEffectTarget = !!filter?.gamecardId || !!filter?.querySelection;
           if (
             isChosenEffectTarget &&
@@ -1400,9 +1395,16 @@ export class AtomicEffectExecutor {
         gameState.players[sourceOwnerUid]?.isGoddessMode
       ) {
         const identity = getCardIdentity(gameState, targetOwnerUid, card);
-        gameState.logs.push(`${identity} is unaffected by opponent card effects right now.`);
+        gameState.logs.push(`${identity} 不受对手卡牌效果影响。`);
         return true;
       }
+    }
+
+    if (card && sourceCard && card.isImmuneToUnitEffects && sourceCard.type === 'UNIT' && card.gamecardId !== sourceCard.gamecardId) {
+      const targetOwnerUid = this.findCardOwnerKey(gameState, card.gamecardId) || '';
+      const identity = targetOwnerUid ? getCardIdentity(gameState, targetOwnerUid, card) : `[${card.fullName}]`;
+      gameState.logs.push(`${identity} 不受其他单位效果影响。`);
+      return true;
     }
 
     if (card && sourceCard && (card as any).data?.unaffectedByOpponentCardEffects) {
@@ -1410,7 +1412,16 @@ export class AtomicEffectExecutor {
       const sourceOwnerUid = this.findCardOwnerKey(gameState, sourceCard.gamecardId);
       if (targetOwnerUid && sourceOwnerUid && targetOwnerUid !== sourceOwnerUid) {
         const identity = getCardIdentity(gameState, targetOwnerUid, card);
-        gameState.logs.push(`${identity} is unaffected by opponent card effects right now.`);
+        gameState.logs.push(`${identity} 不受对手卡牌效果影响。`);
+        return true;
+      }
+    }
+
+    if (card && sourceCard && (card as any).data?.unaffectedByOtherCardEffects) {
+      if (card.gamecardId !== sourceCard.gamecardId) {
+        const targetOwnerUid = this.findCardOwnerKey(gameState, card.gamecardId) || '';
+        const identity = targetOwnerUid ? getCardIdentity(gameState, targetOwnerUid, card) : `[${card.fullName}]`;
+        gameState.logs.push(`${identity} 不受这张卡以外的卡牌效果影响。`);
         return true;
       }
     }

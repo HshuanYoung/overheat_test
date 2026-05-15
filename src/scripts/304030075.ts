@@ -1,11 +1,12 @@
 import { Card, GameState, PlayerState, CardEffect, GameEvent } from '../types/game';
 import { AtomicEffectExecutor } from '../services/AtomicEffectExecutor';
+import { createChoiceQuery } from './BaseUtil';
 
 const trigger_304030075: CardEffect = {
   id: '304030075_trigger',
   type: 'TRIGGER',
   triggerLocation: ['ITEM'],
-  description: '当你的单位卡从侵蚀前区进入战场时，可以选择以下效果之一执行。同一选项每回合最多选择一次：a. 该单位在本回合获得全攻，力量+500 且获得【速攻】。b. 选择对手的一个非神位单位转为横置。c. 从墓地中选择一张「冒险家公会」卡牌放置在侵蚀前区。',
+  description: '当你的单位卡从侵蚀前区进入战场时，可以选择以下效果之一执行。同一选项每回合最多选择一次：a. 该单位在本回合伤害+1、力量+500且获得【速攻】。b. 选择对手的一个竖置非神蚀单位横置。c. 从墓地中选择一张「冒险家公会」卡牌放置在侵蚀前区。',
   triggerEvent: 'CARD_EROSION_TO_FIELD',
   isGlobal: true,
   isMandatory: false,
@@ -14,20 +15,13 @@ const trigger_304030075: CardEffect = {
   },
   execute: async (instance, gameState, playerState, event) => {
     const usageKeyPrefix = `turn_${gameState.turnCount}_304030075_${instance.gamecardId}_option_`;
-    const options: any[] = [];
+    const options: { id: string; label: string }[] = [];
 
     // Option A: Buff
     if (!gameState.effectUsage?.[usageKeyPrefix + 'a']) {
       options.push({
-        card: {
-          gamecardId: 'OPTION_A',
-          id: 'OPTION_A',
-          fullName: '选项A：力量+500，伤害+1，获得速攻',
-          type: 'STORY',
-          color: 'BLUE',
-          rarity: 'C'
-        } as any,
-        source: 'HAND' as any
+        id: 'OPTION_A',
+        label: '该单位+1/+500并获得速攻'
       });
     }
 
@@ -38,15 +32,8 @@ const trigger_304030075: CardEffect = {
 
     if (!gameState.effectUsage?.[usageKeyPrefix + 'b'] && hasExhaustTarget) {
       options.push({
-        card: {
-          gamecardId: 'OPTION_B',
-          id: 'OPTION_B',
-          fullName: '选项B：横置对手非神位单位',
-          type: 'STORY',
-          color: 'BLUE',
-          rarity: 'C'
-        } as any,
-        source: 'HAND' as any
+        id: 'OPTION_B',
+        label: '横置对手1个竖置非神蚀单位'
       });
     }
 
@@ -54,36 +41,25 @@ const trigger_304030075: CardEffect = {
     const hasGraveTarget = playerState.grave.some(c => c && c.faction === '冒险家公会');
     if (!gameState.effectUsage?.[usageKeyPrefix + 'c'] && hasGraveTarget) {
       options.push({
-        card: {
-          gamecardId: 'OPTION_C',
-          id: 'OPTION_C',
-          fullName: '选项C：回收墓地「冒险家公会」',
-          type: 'STORY',
-          color: 'BLUE',
-          rarity: 'C'
-        } as any,
-        source: 'HAND' as any
+        id: 'OPTION_C',
+        label: '墓地「冒险家公会」放入侵蚀区'
       });
     }
 
     if (options.length > 0) {
-      gameState.pendingQuery = {
-        id: Math.random().toString(36).substring(7),
-        type: 'SELECT_CARD',
-        playerUid: playerState.uid,
+      createChoiceQuery(
+        gameState,
+        playerState.uid,
+        '选择效果',
+        '请选择一个尚未在本回合使用的效果执行。',
         options,
-        title: '【龙翼冒险者协会】模式选择',
-        description: '请选择一个尚未在本回合使用的效果执行。',
-        minSelections: 1,
-        maxSelections: 1,
-        callbackKey: 'EFFECT_RESOLVE',
-        context: {
+        {
           sourceCardId: instance.gamecardId,
           effectId: '304030075_trigger',
           enteringCardId: event?.sourceCardId,
           step: 'RESOLVE_OPTION'
         }
-      };
+      );
     }
   },
   onQueryResolve: async (instance, gameState, playerState, selections, context) => {
@@ -134,7 +110,7 @@ const trigger_304030075: CardEffect = {
           playerUid: playerState.uid,
           options: AtomicEffectExecutor.enrichQueryOptions(gameState, playerState.uid, targets.map(t => ({ card: t, source: 'UNIT' as any }))),
           title: '选择横置目标',
-          description: '请选择对手的一个非神位单位。',
+          description: '请选择对手的一个竖置非神蚀单位。',
           minSelections: 1,
           maxSelections: 1,
           callbackKey: 'EFFECT_RESOLVE',

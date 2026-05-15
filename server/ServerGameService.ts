@@ -184,17 +184,36 @@ export const ServerGameService = {
     return undefined;
   },
 
+  isUnaffectedByCardEffect(gameState: GameState, target: Card, source?: Card, sourceOwnerUid?: string) {
+    if (!source || target.gamecardId === source.gamecardId) return false;
+    const targetOwnerUid = ServerGameService.findCardLocation(gameState, target.gamecardId)?.ownerUid;
+    const effectSourceOwnerUid = sourceOwnerUid || ServerGameService.findCardLocation(gameState, source.gamecardId)?.ownerUid;
+    if (!targetOwnerUid || !effectSourceOwnerUid) return false;
+
+    const data = (target as any).data || {};
+    if (data.unaffectedByOtherCardEffects) {
+      gameState.logs.push(`[${target.fullName}] 不受这张卡以外的卡牌效果影响。`);
+      return true;
+    }
+    if (targetOwnerUid === effectSourceOwnerUid) return false;
+    if (data.immuneToOpponentEffectsIfOpponentGoddess && gameState.players[effectSourceOwnerUid]?.isGoddessMode) {
+      gameState.logs.push(`[${target.fullName}] 因对手处于女神化状态而不受对手卡牌效果影响。`);
+      return true;
+    }
+    if (data.unaffectedByOpponentCardEffects) {
+      gameState.logs.push(`[${target.fullName}] 不受对手的卡牌效果影响。`);
+      return true;
+    }
+    if (data.unaffectedByOpponentColorEffects && source.color === data.unaffectedByOpponentColorEffects) {
+      gameState.logs.push(`[${target.fullName}] 不受对手宣言颜色的卡牌效果影响。`);
+      return true;
+    }
+    return false;
+  },
+
   isLegalDeclaredTarget(gameState: GameState, sourceCard: Card, target: Card) {
     if (target.gamecardId === sourceCard.gamecardId) return true;
     if (target.cardlocation === 'UNIT' && (target as any).cannotBeEffectTargetByEffect) return false;
-    if (target.isImmuneToUnitEffects && sourceCard.type === 'UNIT') return false;
-    const targetOwnerUid = ServerGameService.findCardLocation(gameState, target.gamecardId)?.ownerUid;
-    const sourceOwnerUid = ServerGameService.findCardLocation(gameState, sourceCard.gamecardId)?.ownerUid;
-    if (targetOwnerUid && sourceOwnerUid && targetOwnerUid !== sourceOwnerUid) {
-      if ((target as any).data?.unaffectedByOpponentCardEffects) return false;
-      if ((target as any).data?.immuneToOpponentEffectsIfOpponentGoddess && gameState.players[sourceOwnerUid]?.isGoddessMode) return false;
-      if ((target as any).data?.unaffectedByOpponentColorEffects === sourceCard.color) return false;
-    }
     return true;
   },
 
@@ -1146,6 +1165,12 @@ export const ServerGameService = {
     const index = sourceArray.findIndex(c => c && (c.gamecardId === cardId || c.id === cardId));
     if (index !== -1) {
       card = sourceArray[index];
+      if (options?.isEffect && options.effectSourceCardId) {
+        const sourceCard = ServerGameService.findCardById(gameState, options.effectSourceCardId);
+        if (sourceCard && ServerGameService.isUnaffectedByCardEffect(gameState, card, sourceCard, options.effectSourcePlayerUid)) {
+          return false;
+        }
+      }
       previousSourceCardIdForMove = card.gamecardId;
       if (sourceZone === 'UNIT' || sourceZone === 'ITEM' || sourceZone === 'EROSION_FRONT' || sourceZone === 'EROSION_BACK') {
         sourceArray[index] = null;
@@ -1580,6 +1605,7 @@ export const ServerGameService = {
 
   payCost(gameState: GameState, playerId: string, cost: number, paymentSelection: { feijingCardId?: string, exhaustUnitIds?: string[], erosionFrontIds?: string[] }, cardColor?: string, playingCardId?: string, options?: { excludeExhaustUnitIds?: string[] }): PaymentSummary {
     const player = gameState.players[playerId];
+    cardColor = cardColor === 'NONE' ? undefined : cardColor;
     const findPlayingCard = () => playingCardId
       ? player.hand.find(c => c.gamecardId === playingCardId) ||
         player.playZone.find(c => c.gamecardId === playingCardId) ||

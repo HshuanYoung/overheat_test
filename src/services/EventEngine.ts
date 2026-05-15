@@ -230,6 +230,12 @@ export class EventEngine {
           if ((card as any).data?.unaffectedByOpponentColorEffects !== undefined) {
             delete (card as any).data.unaffectedByOpponentColorEffects;
           }
+          if ((card as any).data?.unaffectedByOtherCardEffects !== undefined) {
+            delete (card as any).data.unaffectedByOtherCardEffects;
+          }
+          if ((card as any).data?.clearMirrorActiveTurn === gameState.turnCount) {
+            (card as any).data.unaffectedByOtherCardEffects = true;
+          }
           delete (card as any).__lockPowerToBaseSourceName;
           if (!card.baseColorReq) {
             card.baseColorReq = { ...(card.colorReq || {}) };

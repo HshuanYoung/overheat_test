@@ -79,7 +79,8 @@ const card: Card = {
         if (targetCard) {
           (targetCard as any).data = {
             ...((targetCard as any).data || {}),
-            clearMirrorActiveTurn: gameState.turnCount
+            clearMirrorActiveTurn: gameState.turnCount,
+            unaffectedByOtherCardEffects: true
           };
         }
 

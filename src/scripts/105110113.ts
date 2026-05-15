@@ -1,6 +1,6 @@
 import { Card, CardEffect } from '../types/game';
 import { AtomicEffectExecutor } from '../services/AtomicEffectExecutor';
-import { canPutItemOntoBattlefield, createChoiceQuery, createSelectCardQuery, revealDeckCards } from './BaseUtil';
+import { canPayAccessCost, canPutItemOntoBattlefield, createChoiceQuery, createSelectCardQuery, revealDeckCards } from './BaseUtil';
 import { moveCard } from './BaseUtil';
 
 const effect_105110113_continuous: CardEffect = {
@@ -36,11 +36,11 @@ const effect_105110113_use_erosion_item: CardEffect = {
     gameState.phase === 'MAIN' &&
     instance.cardlocation === 'UNIT' &&
     playerState.erosionFront.some(
-      (card): card is Card => !!card && card.type === 'ITEM' && canPutItemOntoBattlefield(playerState, card)
+      (card): card is Card => !!card && card.type === 'ITEM' && canPutItemOntoBattlefield(playerState, card) && canPayAccessCost(gameState, playerState, card.acValue || 0, undefined, card)
     ),
   execute: async (instance, gameState, playerState) => {
     const targets = playerState.erosionFront.filter(
-      (card): card is Card => !!card && card.type === 'ITEM' && canPutItemOntoBattlefield(playerState, card)
+      (card): card is Card => !!card && card.type === 'ITEM' && canPutItemOntoBattlefield(playerState, card) && canPayAccessCost(gameState, playerState, card.acValue || 0, undefined, card)
     );
     if (targets.length === 0) return;
 
@@ -79,12 +79,13 @@ const effect_105110113_use_erosion_item: CardEffect = {
           maxSelections: 1,
           callbackKey: 'EFFECT_RESOLVE',
           paymentCost: target.acValue,
-          paymentColor: target.color,
+          paymentColor: 'NONE',
           context: {
             sourceCardId: instance.gamecardId,
             effectId: '105110113_use_erosion_item',
             step: 'PAY_AND_USE_ITEM',
-            targetId: target.gamecardId
+            targetId: target.gamecardId,
+            useEffectiveCardCost: false
           }
         };
         return;

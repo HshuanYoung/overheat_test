@@ -832,7 +832,7 @@ export const PlayField: React.FC<PlayFieldProps> = ({
                   }}
                   className="absolute inset-[-0.15rem] z-10 flex min-w-[132px] items-center justify-center gap-1.5 rounded-xl border border-sky-400/60 bg-sky-500/25 px-3 py-1.5 text-sky-100 shadow-[0_0_26px_rgba(56,189,248,0.42)] transition-all hover:bg-sky-500/35 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:bg-sky-500/25 md:inset-[-0.25rem] md:min-w-[156px] md:gap-2 md:px-4 md:py-2"
                 >
-                  <Shield className="h-4 w-4" />
+                  {isDefensePromptActive ? <Shield className="h-4 w-4" /> : <Zap className="h-4 w-4" />}
                   <span className="text-xs font-black italic tracking-widest md:text-sm">
                     {isDefensePromptActive ? '放弃防御' : '忽略对抗'}
                   </span>

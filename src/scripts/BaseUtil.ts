@@ -90,6 +90,26 @@ export const isVirtualGodMarkReveal = (gameState: GameState, card: Card | undefi
     (card as any).data?.puppetRevealTurn === gameState.turnCount
   );
 
+export const withVirtualGodMarkReveal = async <T>(
+  gameState: GameState,
+  card: Card | undefined,
+  run: () => T | Promise<T>
+) => {
+  if (!card || !isVirtualGodMarkReveal(gameState, card) || card.godMark) {
+    return run();
+  }
+  const previous = card.godMark;
+  const previousBase = card.baseGodMark;
+  card.godMark = true;
+  card.baseGodMark = true;
+  try {
+    return await run();
+  } finally {
+    card.godMark = previous;
+    card.baseGodMark = previousBase;
+  }
+};
+
 export const enteredFromHand = (instance: Card, event?: any) =>
   event?.data?.sourceZone === 'HAND' ||
   (event?.data?.sourceZone === 'PLAY' && (instance as any).__playSnapshot?.sourceZone === 'HAND');
@@ -184,6 +204,38 @@ export const cannotBeChosenAsEffectTarget = (card: Card, sourceCard?: Card) =>
   card.cardlocation === 'UNIT' &&
   card.gamecardId !== sourceCard.gamecardId &&
   !!(card as any).cannotBeEffectTargetByEffect;
+
+export const isUnaffectedByCardEffect = (
+  gameState: GameState,
+  target: Card,
+  source?: Card,
+  sourceUid?: string
+) => {
+  if (!source || target.gamecardId === source.gamecardId) return false;
+  const targetUid = ownerUidOf(gameState, target);
+  const effectSourceUid = sourceUid || ownerUidOf(gameState, source);
+  if (!targetUid || !effectSourceUid) return false;
+
+  const data = (target as any).data || {};
+  if (data.unaffectedByOtherCardEffects) {
+    gameState.logs.push(`[${target.fullName}] 不受这张卡以外的卡牌效果影响。`);
+    return true;
+  }
+  if (targetUid === effectSourceUid) return false;
+  if (data.immuneToOpponentEffectsIfOpponentGoddess && gameState.players[effectSourceUid]?.isGoddessMode) {
+    gameState.logs.push(`[${target.fullName}] 因对手处于女神化状态而不受对手卡牌效果影响。`);
+    return true;
+  }
+  if (data.unaffectedByOpponentCardEffects) {
+    gameState.logs.push(`[${target.fullName}] 不受对手的卡牌效果影响。`);
+    return true;
+  }
+  if (data.unaffectedByOpponentColorEffects && source.color === data.unaffectedByOpponentColorEffects) {
+    gameState.logs.push(`[${target.fullName}] 不受对手宣言颜色的卡牌效果影响。`);
+    return true;
+  }
+  return false;
+};
 
 export const createSelectCardQuery = (
   gameState: GameState,
@@ -304,6 +356,9 @@ export const moveCard = (
   options?: { insertAtBottom?: boolean; faceDown?: boolean; toPlayerUid?: string }
 ) => {
   const targetPlayerUid = options?.toPlayerUid || ownerUid;
+  if (sourceCard && isUnaffectedByCardEffect(gameState, card, sourceCard, options?.toPlayerUid ? ownerUidOf(gameState, sourceCard) : undefined)) {
+    return;
+  }
   AtomicEffectExecutor.moveCard(
     gameState,
     ownerUid,
@@ -1000,23 +1055,7 @@ export const destroyByEffect = (gameState: GameState, target: Card, source: Card
     return;
   }
 
-  if (
-    sourceUid &&
-    sourceUid !== uid &&
-    gameState.players[sourceUid]?.isGoddessMode &&
-    data.immuneToOpponentEffectsIfOpponentGoddess
-  ) {
-    gameState.logs.push(`[${target.fullName}] 因对手处于女神化状态而不受对手卡牌效果影响。`);
-    return;
-  }
-
-  if (sourceUid && sourceUid !== uid && data.unaffectedByOpponentCardEffects) {
-    gameState.logs.push(`[${target.fullName}] 不受对手的卡牌效果影响。`);
-    return;
-  }
-
-  if (sourceUid && sourceUid !== uid && data.unaffectedByOpponentColorEffects && source.color === data.unaffectedByOpponentColorEffects) {
-    gameState.logs.push(`[${target.fullName}] 不受对手宣言颜色的卡牌效果影响。`);
+  if (isUnaffectedByCardEffect(gameState, target, source)) {
     return;
   }
 
