@@ -1,5 +1,5 @@
 import { DeckAiProfile } from '../types';
-import { cardText, effectHasTag, hasAny, hasRole, openUnitSlots, opponentHasTrait, opponentIs, readyDefenders } from './strategyUtils';
+import { cardText, effectHasTag, hasAny, hasRole, openUnitSlots, opponentErosion, opponentHasTrait, opponentIs, ownErosion, readyAttackers, readyDefenders } from './strategyUtils';
 
 export const overlordTotemProfile: DeckAiProfile = {
   id: 'overlord-totem',
@@ -103,19 +103,42 @@ export const overlordTotemProfile: DeckAiProfile = {
   },
   strategyHooks: {
     adjustTurnPlan: context => {
+      const notes: string[] = [];
+      let reserveDefendersDelta = 0;
+      let minMainEffectScoreDelta = 0;
+      let minBattleEffectScoreDelta = 0;
+      let attackBeforeDeveloping: boolean | undefined;
+      const boardOnline = context.plan.attackers >= 2 || context.plan.totalAvailableDamage >= 3;
+      const pressureReady =
+        boardOnline &&
+        (
+          context.plan.opponentErosion >= 5 ||
+          context.opponentDeckProfile?.archetype === 'engine' ||
+          context.opponentDeckProfile?.archetype === 'combo' ||
+          context.opponentDeckProfile?.archetype === 'control'
+        );
+
       if (context.opponentDeckProfile?.archetype === 'aggro') {
-        return {
-          reserveDefendersDelta: 1,
-          notes: ['totem hook: trade recursive bodies into aggro pressure'],
-        };
+        reserveDefendersDelta += 1;
+        notes.push('totem hook: trade recursive bodies into aggro pressure');
       }
       if (context.plan.attackers >= 2 && (context.opponentDeckProfile?.archetype === 'engine' || context.opponentDeckProfile?.archetype === 'combo')) {
-        return {
-          attackBeforeDeveloping: true,
-          notes: ['totem hook: pressure setup decks once board is established'],
-        };
+        attackBeforeDeveloping = true;
+        notes.push('totem hook: pressure setup decks once board is established');
       }
-      return undefined;
+      if (pressureReady) {
+        attackBeforeDeveloping = true;
+        reserveDefendersDelta -= 1;
+        minBattleEffectScoreDelta -= 0.5;
+        notes.push('totem route: recursive board shifts from setup into pressure');
+      }
+      if (!pressureReady && context.plan.ownDeck <= 12) {
+        minMainEffectScoreDelta -= 0.3;
+        notes.push('totem route: low deck relies on recursion instead of raw payments');
+      }
+      return notes.length
+        ? { attackBeforeDeveloping, reserveDefendersDelta, minMainEffectScoreDelta, minBattleEffectScoreDelta, notes }
+        : undefined;
     },
     adjustPlayableScore: context => {
       const card = context.card;
@@ -125,6 +148,8 @@ export const overlordTotemProfile: DeckAiProfile = {
       if (card.type === 'UNIT' && openUnitSlots(context) > 0) score += 2;
       if (hasRole(card, 'engine') || hasRole(card, 'combo_piece')) score += 2.5;
       if (hasRole(card, 'removal') && (opponentHasTrait(context, 'large-defenders') || opponentHasTrait(context, 'engine-density'))) score += 3;
+      if (card.type === 'UNIT' && opponentErosion(context) >= 5) score += (card.damage || 0) * 1.2;
+      if ((context.player?.deck.length || 0) <= 12 && (hasRole(card, 'draw') || hasRole(card, 'search'))) score -= 4;
       return score;
     },
     adjustAttackScore: context => {
@@ -159,6 +184,8 @@ export const overlordTotemProfile: DeckAiProfile = {
       if (effectHasTag(context, 'revive') || effectHasTag(context, 'summon')) score += openUnitSlots(context) > 0 ? 6 : -4;
       if (effectHasTag(context, 'buff') || effectHasTag(context, 'combat')) score += readyDefenders(context) >= 1 ? 2 : 0;
       if (effectHasTag(context, 'removal') && (opponentHasTrait(context, 'large-defenders') || opponentIs(context, 'engine', 'combo'))) score += 3;
+      if ((effectHasTag(context, 'buff') || effectHasTag(context, 'combat')) && (opponentErosion(context) >= 6 || readyAttackers(context) >= 2)) score += 3;
+      if ((effectHasTag(context, 'revive') || effectHasTag(context, 'summon')) && ownErosion(context) >= 6) score += 2;
       return score;
     },
   },

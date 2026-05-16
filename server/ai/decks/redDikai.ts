@@ -1,5 +1,5 @@
 import { DeckAiProfile } from '../types';
-import { cardCost, cardText, effectHasTag, hasAny, hasRole, opponentHasTrait, opponentIs } from './strategyUtils';
+import { cardCost, cardText, effectHasTag, hasAny, hasRole, opponentErosion, opponentHasTrait, opponentIs, readyAttackers } from './strategyUtils';
 
 export const redDikaiProfile: DeckAiProfile = {
   id: 'red-dikai',
@@ -101,22 +101,40 @@ export const redDikaiProfile: DeckAiProfile = {
   },
   strategyHooks: {
     adjustTurnPlan: context => {
+      const notes: string[] = [];
+      let reserveDefendersDelta = 0;
+      let minBattleEffectScoreDelta = 0;
+      let attackBeforeDeveloping: boolean | undefined;
+      const damageToCritical = Math.max(1, 10 - context.plan.opponentErosion);
+      const nearKill =
+        context.plan.lethalWindow ||
+        context.plan.totalAvailableDamage >= Math.max(1, damageToCritical - 1) ||
+        context.plan.opponentErosion >= 7;
+
       if (context.plan.attackers > 0 && context.plan.opponentErosion >= 5) {
-        return {
-          attackBeforeDeveloping: true,
-          reserveDefendersDelta: -1,
-          minBattleEffectScoreDelta: -0.8,
-          notes: ['red hook: push battle pressure near lethal range'],
-        };
+        attackBeforeDeveloping = true;
+        reserveDefendersDelta -= 1;
+        minBattleEffectScoreDelta -= 0.8;
+        notes.push('red hook: push battle pressure near lethal range');
       }
       if (context.opponentDeckProfile?.archetype === 'engine' || context.opponentDeckProfile?.archetype === 'combo') {
-        return {
-          attackBeforeDeveloping: context.plan.attackers > 0,
-          reserveDefendersDelta: -1,
-          notes: ['red hook: race setup deck'],
-        };
+        attackBeforeDeveloping = context.plan.attackers > 0;
+        reserveDefendersDelta -= 1;
+        notes.push('red hook: race setup deck');
       }
-      return undefined;
+      if (nearKill && context.plan.attackers > 0) {
+        attackBeforeDeveloping = true;
+        reserveDefendersDelta -= 3;
+        minBattleEffectScoreDelta -= 1.2;
+        notes.push('red route: commit attackers and battle tricks to close the game');
+      }
+      if (!nearKill && context.plan.ownDeck <= 6 && context.plan.opponentPotentialDamage > 0) {
+        reserveDefendersDelta += 1;
+        notes.push('red route: low deck only stabilizes when no kill line exists');
+      }
+      return notes.length
+        ? { attackBeforeDeveloping, reserveDefendersDelta, minBattleEffectScoreDelta, notes }
+        : undefined;
     },
     adjustPlayableScore: context => {
       const card = context.card;
@@ -127,6 +145,8 @@ export const redDikaiProfile: DeckAiProfile = {
       if (hasRole(card, 'removal') || hasRole(card, 'damage') || hasRole(card, 'finisher')) score += 3;
       if (hasAny(text, [/不能防御|cannot defend|重置|竖置|reset|ready/i])) score += 4;
       if (opponentIs(context, 'aggro') && card.type !== 'UNIT' && cardCost(card) > 3) score -= 3;
+      if ((card.damage || 0) >= 2 && opponentErosion(context) >= 5) score += 4;
+      if (hasRole(card, 'finisher') && readyAttackers(context) > 0) score += 4;
       return score;
     },
     adjustAttackScore: context => {
@@ -159,6 +179,7 @@ export const redDikaiProfile: DeckAiProfile = {
       if (effectHasTag(context, 'removal') || effectHasTag(context, 'tempo')) score += opponentHasTrait(context, 'large-defenders') ? 5 : 2.5;
       if (effectHasTag(context, 'draw') && (context.player?.deck.length || 0) <= 8) score -= 5;
       if (opponentIs(context, 'engine', 'combo') && effectHasTag(context, 'finisher')) score += 3;
+      if ((effectHasTag(context, 'combat') || effectHasTag(context, 'finisher') || effectHasTag(context, 'reset')) && opponentErosion(context) >= 6) score += 5;
       return score;
     },
   },

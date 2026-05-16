@@ -7,6 +7,18 @@ import { analyzePlayerDeckProfile } from './playerDeckProfile';
 const AI_SAMPLE_VERSION = 'hard-ai-beta-telemetry-v1';
 const MAX_SAMPLE_BATTLE_LOGS = Number(process.env.AI_SAMPLE_MAX_BATTLE_LOGS || 500);
 const MAX_SAMPLE_DECISION_LOGS = Number(process.env.AI_SAMPLE_MAX_DECISION_LOGS || 300);
+const NON_NORMAL_WIN_REASON_PATTERNS = [
+  /SURRENDER/i,
+  /CONCEDE/i,
+  /FORFEIT/i,
+  /TIMEOUT/i,
+  /MAX_/i,
+  /SIMULATION/i,
+  /ERROR/i,
+  /ABORT/i,
+  /CANCEL/i,
+  /^UNKNOWN$/i,
+];
 
 function hashText(text: string) {
   return crypto.createHash('sha256').update(text).digest('hex');
@@ -33,6 +45,17 @@ function deckHash(cards: Card[]) {
 
 function safeJson(value: unknown) {
   return JSON.stringify(value ?? null);
+}
+
+function isNormalWinReason(reason: string | undefined) {
+  if (!reason) return false;
+  return !NON_NORMAL_WIN_REASON_PATTERNS.some(pattern => pattern.test(reason));
+}
+
+function isNormalFinishedGame(gameState: GameState) {
+  return gameState.gameStatus === 2 &&
+    !!gameState.winnerId &&
+    isNormalWinReason(gameState.winReason);
 }
 
 function sanitizeText(text: string, gameState: GameState) {
@@ -124,9 +147,13 @@ function buildDiagnosis(gameState: GameState, aiLogs: AiDecisionLog[]) {
 
 export async function saveAiMatchSample(gameState: GameState, gameId?: string, history?: BattleLogEntry[]) {
   const matchId = gameState.gameId || gameId;
-  if (!matchId || (gameState as any).aiSampleSaved) return false;
+  if (!matchId || (gameState as any).aiSampleSaved || (gameState as any).aiSampleSkipped) return false;
   if (gameState.gameStatus !== 2) return false;
   if (gameState.mode !== 'practice' || gameState.botDifficulty !== 'hard') return false;
+  if (!isNormalFinishedGame(gameState)) {
+    (gameState as any).aiSampleSkipped = true;
+    return false;
+  }
 
   const bot = gameState.players.BOT_PLAYER;
   if (!bot) return false;
