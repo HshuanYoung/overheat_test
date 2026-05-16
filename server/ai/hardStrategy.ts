@@ -1,0 +1,1681 @@
+import { Card, CardEffect, EffectQuery, GameState, PlayerState } from '../../src/types/game';
+import {
+  BotDifficulty,
+  DeckAiCardScoreContext,
+  DeckAiEffectScoreContext,
+  DeckAiProfile,
+  DeckAiStrategyContext,
+  DeckAiTurnPlanSnapshot,
+  EffectPreferenceTag,
+  PlayerDeckProfile,
+  ScoredCard
+} from './types';
+import { getCardKnowledge, getCardKnowledgeValue } from './cardKnowledge';
+import { buildDynamicMatchupPlan, inferPlayerDeckProfile, mergeMatchupPlans } from './playerDeckProfile';
+
+const getCardCost = (card: Card) => Math.max(0, card.baseAcValue ?? card.acValue ?? 0);
+
+export const countErosion = (player: PlayerState) =>
+  player.erosionFront.filter(Boolean).length + player.erosionBack.filter(Boolean).length;
+
+export interface IncomingThreatEstimate {
+  attackers: number;
+  attackDamages: number[];
+  totalDamage: number;
+  damageAfterOneBlock: number;
+  damageAfterTwoBlocks: number;
+  damageAfterThreeBlocks: number;
+  defendersNeeded: number;
+  lethalWithoutBlocks: boolean;
+  lethalThroughOneBlock: boolean;
+  deckOutRisk: boolean;
+  erosionRisk: boolean;
+}
+
+export interface HardAiTurnPlan {
+  mode: 'lethal' | 'pressure' | 'defense' | 'stabilize' | 'setup' | 'develop';
+  opponentProfileId?: string;
+  ownDeck: number;
+  opponentDeck: number;
+  ownErosion: number;
+  opponentErosion: number;
+  attackers: number;
+  totalAvailableDamage: number;
+  damageToCritical: number;
+  lethalWindow: boolean;
+  opponentArchetype?: string;
+  opponentTraits?: string[];
+  likelyDefenders: number;
+  opponentPotentialDamage: number;
+  opponentDamageAfterOneBlock: number;
+  opponentDamageAfterTwoBlocks: number;
+  defendersNeededNextTurn: number;
+  opponentLethalWithoutBlocks: boolean;
+  opponentLethalThroughOneBlock: boolean;
+  desperationAttack: boolean;
+  attackBeforeDeveloping: boolean;
+  reserveDefenders: number;
+  minMainEffectScore: number;
+  minBattleEffectScore: number;
+  avoidSelfDraw: boolean;
+  avoidSearch: boolean;
+  reason: string;
+  notes: string[];
+}
+
+function isDamageFatal(damage: number, deckCount: number, erosionCount: number) {
+  if (damage <= 0) return false;
+  return damage >= deckCount || damage >= Math.max(1, 10 - erosionCount);
+}
+
+function canThreatenNextTurn(gameState: GameState, unit: Card | null | undefined) {
+  if (!unit || unit.canAttack === false || (unit.damage || 0) < 1) return false;
+  if ((unit as any).battleForbiddenByEffect) return false;
+  if ((unit as any).data?.cannotAttackOrDefendUntilTurn && (unit as any).data.cannotAttackOrDefendUntilTurn >= gameState.turnCount + 1) return false;
+  if ((unit as any).data?.cannotAttackThisTurn && (unit as any).data.cannotAttackThisTurn >= gameState.turnCount + 1) return false;
+  return true;
+}
+
+export function estimateIncomingThreat(gameState: GameState, defender: PlayerState, profile?: DeckAiProfile): IncomingThreatEstimate {
+  const opponent = getOpponent(gameState, defender);
+  const attackDamages = (opponent?.unitZone || [])
+    .filter(unit => canThreatenNextTurn(gameState, unit))
+    .map(unit => Math.max(0, unit?.damage || 0))
+    .sort((a, b) => b - a);
+  const totalDamage = attackDamages.reduce((sum, damage) => sum + damage, 0);
+  const damageAfterBlocks = (blocks: number) =>
+    Math.max(0, totalDamage - attackDamages.slice(0, blocks).reduce((sum, damage) => sum + damage, 0));
+  const ownErosion = countErosion(defender);
+  const criticalDeck = profile ? riskValue(profile, 'criticalDeck', 3) : 3;
+  const deckCount = defender.deck.length;
+  const damageAfterOneBlock = damageAfterBlocks(1);
+  const damageAfterTwoBlocks = damageAfterBlocks(2);
+  const damageAfterThreeBlocks = damageAfterBlocks(3);
+  const lethalWithoutBlocks = isDamageFatal(totalDamage, deckCount, ownErosion);
+  const lethalThroughOneBlock = isDamageFatal(damageAfterOneBlock, deckCount, ownErosion);
+  let defendersNeeded = 0;
+
+  for (let blocks = 0; blocks <= Math.min(3, attackDamages.length); blocks++) {
+    if (!isDamageFatal(damageAfterBlocks(blocks), deckCount, ownErosion)) {
+      defendersNeeded = blocks;
+      break;
+    }
+    defendersNeeded = Math.min(3, blocks + 1);
+  }
+
+  const deckOutRisk =
+    totalDamage > deckCount ||
+    damageAfterOneBlock > deckCount ||
+    deckCount <= criticalDeck;
+  const erosionRisk =
+    totalDamage >= Math.max(1, 10 - ownErosion) ||
+    damageAfterOneBlock >= Math.max(1, 10 - ownErosion);
+
+  return {
+    attackers: attackDamages.length,
+    attackDamages,
+    totalDamage,
+    damageAfterOneBlock,
+    damageAfterTwoBlocks,
+    damageAfterThreeBlocks,
+    defendersNeeded,
+    lethalWithoutBlocks,
+    lethalThroughOneBlock,
+    deckOutRisk,
+    erosionRisk,
+  };
+}
+
+function opponentProfileId(gameState: GameState, opponentUid?: string) {
+  if (!opponentUid) return undefined;
+  return (gameState as any).botDeckProfiles?.[opponentUid] ||
+    (gameState.players[opponentUid] as any)?.botDeckProfileId;
+}
+
+function getOpponentDeckProfile(gameState: GameState, opponentUid?: string) {
+  return inferPlayerDeckProfile(gameState, opponentUid);
+}
+
+function getActiveMatchupPlan(
+  gameState: GameState,
+  player: PlayerState,
+  profile: DeckAiProfile,
+  opponentDeckProfile?: PlayerDeckProfile
+) {
+  const opponentUid = gameState.playerIds.find(uid => uid !== player.uid);
+  const profileId = opponentProfileId(gameState, opponentUid);
+  const presetPlan = profileId ? profile.matchupPlans?.[profileId] : undefined;
+  const dynamicPlan = buildDynamicMatchupPlan(opponentDeckProfile || getOpponentDeckProfile(gameState, opponentUid), profile);
+  return mergeMatchupPlans(presetPlan, dynamicPlan);
+}
+
+function buildStrategyContext(
+  gameState: GameState,
+  player: PlayerState,
+  profile: DeckAiProfile,
+  matchupPlan?: ReturnType<typeof getActiveMatchupPlan>,
+  opponentDeckProfile?: PlayerDeckProfile
+): DeckAiStrategyContext {
+  const opponentUid = gameState.playerIds.find(uid => uid !== player.uid);
+  const opponent = opponentUid ? gameState.players[opponentUid] : undefined;
+  const resolvedOpponentProfile = opponentDeckProfile || getOpponentDeckProfile(gameState, opponentUid);
+  return {
+    gameState,
+    player,
+    opponent,
+    opponentDeckProfile: resolvedOpponentProfile,
+    matchupPlan: matchupPlan || getActiveMatchupPlan(gameState, player, profile, resolvedOpponentProfile),
+  };
+}
+
+function safeHookNumber(value: number | undefined) {
+  return typeof value === 'number' && Number.isFinite(value) ? value : 0;
+}
+
+function applyCardScoreHook(
+  profile: DeckAiProfile,
+  hookName: keyof Pick<
+    NonNullable<DeckAiProfile['strategyHooks']>,
+    | 'adjustCardValue'
+    | 'adjustPlayableScore'
+    | 'adjustAttackScore'
+    | 'adjustDefenseScore'
+    | 'adjustMulliganScore'
+    | 'adjustDiscardScore'
+    | 'adjustPaymentScore'
+  >,
+  context: DeckAiCardScoreContext
+) {
+  try {
+    return safeHookNumber(profile.strategyHooks?.[hookName]?.(context));
+  } catch {
+    return 0;
+  }
+}
+
+function applyEffectScoreHook(profile: DeckAiProfile, context: DeckAiEffectScoreContext) {
+  try {
+    return safeHookNumber(profile.strategyHooks?.adjustEffectScore?.(context));
+  } catch {
+    return 0;
+  }
+}
+
+function riskValue(profile: DeckAiProfile, key: keyof NonNullable<DeckAiProfile['riskThresholds']>, fallback: number) {
+  const value = profile.riskThresholds?.[key];
+  return typeof value === 'number' ? value : fallback;
+}
+
+function matchupRiskValue(
+  gameState: GameState,
+  player: PlayerState,
+  profile: DeckAiProfile,
+  key: 'stopSelfDrawAtDeck' | 'stopSearchAtDeck',
+  fallback: number
+) {
+  const matchup = getActiveMatchupPlan(gameState, player, profile);
+  const value = matchup?.[key] ?? profile.riskThresholds?.[key];
+  return typeof value === 'number' ? value : fallback;
+}
+
+export function buildTurnPlan(gameState: GameState, player: PlayerState, profile: DeckAiProfile): HardAiTurnPlan {
+  const opponentUid = gameState.playerIds.find(uid => uid !== player.uid);
+  const opponent = opponentUid ? gameState.players[opponentUid] : undefined;
+  const opponentDeckProfileId = opponentProfileId(gameState, opponentUid);
+  const opponentDeckProfile = getOpponentDeckProfile(gameState, opponentUid);
+  const matchup = getActiveMatchupPlan(gameState, player, profile, opponentDeckProfile);
+  const gamePlan = profile.gamePlan;
+  const attackers = player.unitZone.filter(unit => canUnitAttack(gameState, unit)) as Card[];
+  const ownErosion = countErosion(player);
+  const opponentErosion = opponent ? countErosion(opponent) : 0;
+  const totalAvailableDamage = attackers.reduce((sum, unit) => sum + (unit.damage || 0), 0);
+  const damageToCritical = Math.max(1, 10 - opponentErosion);
+  const erosionPressureWindow = totalAvailableDamage >= damageToCritical;
+  const lethalWindow = opponent ? totalAvailableDamage > opponent.deck.length : false;
+  const likelyDefenders = countLikelyDefenders(gameState, opponent);
+  const incomingThreat = estimateIncomingThreat(gameState, player, profile);
+  const opponentPotentialDamage = incomingThreat.totalDamage;
+
+  const lowDeck = riskValue(profile, 'lowDeck', 10);
+  const criticalDeck = riskValue(profile, 'criticalDeck', 3);
+  const reserveDeck = riskValue(profile, 'reserveDefendersAtDeck', lowDeck);
+  const highErosion = riskValue(profile, 'highErosion', 7);
+  const criticalErosion = riskValue(profile, 'criticalErosion', 9);
+  const stopSelfDrawAtDeck = matchup?.stopSelfDrawAtDeck ?? riskValue(profile, 'stopSelfDrawAtDeck', lowDeck);
+  const stopSearchAtDeck = matchup?.stopSearchAtDeck ?? riskValue(profile, 'stopSearchAtDeck', lowDeck);
+
+  const attackPriority = (gamePlan?.attackPriority ?? 0) + (matchup?.attackBias ?? 0);
+  const defensePriority = (gamePlan?.defensePriority ?? 0) + (matchup?.defenseBias ?? 0);
+  const effectPriority = (gamePlan?.effectPriority ?? 0) + (matchup?.effectBias ?? 0);
+  const closeGameBias = (gamePlan?.closeGameBias ?? 0) + (matchup?.closeGameBias ?? 0);
+  const reserveBias = (gamePlan?.defenderReserveBias ?? 0) + (matchup?.defenderReserveBias ?? 0);
+  const pressureLine = Math.max(5, 8 - Math.round(closeGameBias));
+  const ownDeckDanger = player.deck.length <= lowDeck;
+  const ownCritical = player.deck.length <= criticalDeck || ownErosion >= criticalErosion;
+  const opponentPressure = erosionPressureWindow || opponentErosion >= pressureLine || (opponent ? opponent.deck.length <= lowDeck : false);
+  const deckOutClock = player.deck.length <= Math.max(1, criticalDeck);
+  const canPressureBeforeDeckOut =
+    erosionPressureWindow ||
+    opponentErosion >= highErosion ||
+    (opponent ? opponent.deck.length <= lowDeck : false) ||
+    totalAvailableDamage >= Math.max(1, damageToCritical - 1);
+  const desperationAttack =
+    deckOutClock &&
+    attackers.length > 0 &&
+    (
+      canPressureBeforeDeckOut ||
+      opponentPotentialDamage <= 0 ||
+      incomingThreat.defendersNeeded === 0 ||
+      incomingThreat.defendersNeeded > attackers.length ||
+      incomingThreat.lethalThroughOneBlock
+    );
+
+  let mode: HardAiTurnPlan['mode'] = 'develop';
+  if (lethalWindow) mode = 'lethal';
+  else if (desperationAttack) mode = 'pressure';
+  else if (ownCritical || incomingThreat.lethalWithoutBlocks || incomingThreat.defendersNeeded >= 2) mode = 'defense';
+  else if (opponentPressure || ownDeckDanger) mode = 'pressure';
+  else if (gamePlan?.primaryGoal === 'boardControl' && likelyDefenders > 0) mode = 'stabilize';
+  else if (gamePlan?.mode === 'engine' || gamePlan?.mode === 'combo') mode = 'setup';
+
+  let attackBeforeDeveloping =
+    gameState.turnCount > 1 &&
+    attackers.length > 0 &&
+    (
+      lethalWindow ||
+      desperationAttack ||
+      opponentPressure ||
+      player.deck.length <= reserveDeck ||
+      (attackPriority + closeGameBias >= 2 && totalAvailableDamage >= Math.max(1, damageToCritical - 1))
+    );
+
+  let reserveDefenders = 0;
+  if (!lethalWindow && attackers.length > 0) {
+    if (player.deck.length <= reserveDeck) reserveDefenders += 1;
+    if (player.deck.length <= criticalDeck + 4) reserveDefenders += 1;
+    if (ownErosion >= highErosion) reserveDefenders += 1;
+    if (opponentPotentialDamage >= Math.max(4, 10 - ownErosion)) reserveDefenders += 1;
+    if (incomingThreat.lethalWithoutBlocks) reserveDefenders += 1;
+    if (incomingThreat.lethalThroughOneBlock) reserveDefenders += 1;
+    reserveDefenders = Math.max(reserveDefenders, incomingThreat.defendersNeeded);
+    if (gamePlan?.mode === 'control') reserveDefenders += 1;
+    if (gamePlan?.mode === 'aggro') reserveDefenders -= 1;
+    reserveDefenders += Math.round(reserveBias);
+  }
+  if (desperationAttack && !incomingThreat.lethalThroughOneBlock) {
+    reserveDefenders = 0;
+  } else if (desperationAttack) {
+    reserveDefenders = Math.min(reserveDefenders, Math.max(0, attackers.length - 1));
+  }
+  if (opponentPotentialDamage <= 0 && incomingThreat.attackers === 0 && !incomingThreat.lethalWithoutBlocks) {
+    reserveDefenders = 0;
+  }
+  if (
+    incomingThreat.defendersNeeded <= 1 &&
+    !ownCritical &&
+    ownErosion <= 3 &&
+    player.deck.length > criticalDeck &&
+    opponentPotentialDamage <= Math.max(5, 10 - ownErosion)
+  ) {
+    reserveDefenders = Math.min(reserveDefenders, 1);
+  }
+  if (opponent && (opponent.deck.length <= lowDeck || opponentErosion >= highErosion || totalAvailableDamage >= Math.max(1, damageToCritical - 2))) {
+    reserveDefenders = Math.max(
+      incomingThreat.defendersNeeded,
+      Math.min(reserveDefenders, likelyDefenders > 0 ? 1 : 0)
+    );
+  }
+  reserveDefenders = Math.max(0, Math.min(3, attackers.length, reserveDefenders));
+
+  let minMainEffectScore = Math.max(5.5, 8.5 - effectPriority * 0.6 + (ownDeckDanger ? 0.8 : 0));
+  let minBattleEffectScore = Math.max(7, 9.5 - effectPriority * 0.55 - (lethalWindow ? 0.8 : 0));
+  const notes = [
+    gamePlan?.mode ? `mode=${gamePlan.mode}` : undefined,
+    gamePlan?.primaryGoal ? `goal=${gamePlan.primaryGoal}` : undefined,
+    matchup ? (opponentDeckProfileId ? `matchup=${opponentDeckProfileId}` : 'matchup=dynamic') : undefined,
+    opponentDeckProfile ? `opponent=${opponentDeckProfile.archetype}` : undefined,
+    ownDeckDanger ? 'low deck' : undefined,
+    desperationAttack ? 'deck-out race' : undefined,
+    lethalWindow ? 'lethal window' : undefined,
+    !lethalWindow && erosionPressureWindow ? 'erosion pressure' : undefined,
+    incomingThreat.lethalWithoutBlocks ? 'incoming lethal' : undefined,
+    incomingThreat.defendersNeeded > 0 ? `need blockers=${incomingThreat.defendersNeeded}` : undefined,
+  ].filter(Boolean) as string[];
+  let avoidSelfDraw = player.deck.length <= stopSelfDrawAtDeck;
+  let avoidSearch = player.deck.length <= stopSearchAtDeck;
+
+  const turnPlanSnapshot: DeckAiTurnPlanSnapshot = {
+    mode,
+    ownDeck: player.deck.length,
+    opponentDeck: opponent?.deck.length || 0,
+    ownErosion,
+    opponentErosion,
+    attackers: attackers.length,
+    totalAvailableDamage,
+    likelyDefenders,
+    opponentPotentialDamage,
+    defendersNeededNextTurn: incomingThreat.defendersNeeded,
+    lethalWindow,
+  };
+  const strategyContext = buildStrategyContext(gameState, player, profile, matchup, opponentDeckProfile);
+  let turnAdjustment;
+  try {
+    turnAdjustment = profile.strategyHooks?.adjustTurnPlan?.({
+      ...strategyContext,
+      plan: turnPlanSnapshot,
+    });
+  } catch {
+    turnAdjustment = undefined;
+  }
+  if (turnAdjustment) {
+    if (turnAdjustment.mode) mode = turnAdjustment.mode;
+    if (typeof turnAdjustment.attackBeforeDeveloping === 'boolean') {
+      attackBeforeDeveloping = turnAdjustment.attackBeforeDeveloping;
+    }
+    if (typeof turnAdjustment.reserveDefendersDelta === 'number') {
+      reserveDefenders = Math.max(0, Math.min(3, attackers.length, reserveDefenders + Math.round(turnAdjustment.reserveDefendersDelta)));
+    }
+    if (typeof turnAdjustment.minMainEffectScoreDelta === 'number') {
+      minMainEffectScore = Math.max(4, minMainEffectScore + turnAdjustment.minMainEffectScoreDelta);
+    }
+    if (typeof turnAdjustment.minBattleEffectScoreDelta === 'number') {
+      minBattleEffectScore = Math.max(5, minBattleEffectScore + turnAdjustment.minBattleEffectScoreDelta);
+    }
+    if (typeof turnAdjustment.avoidSelfDraw === 'boolean') avoidSelfDraw = turnAdjustment.avoidSelfDraw;
+    if (typeof turnAdjustment.avoidSearch === 'boolean') avoidSearch = turnAdjustment.avoidSearch;
+    if (turnAdjustment.notes?.length) notes.push(...turnAdjustment.notes);
+  }
+
+  return {
+    mode,
+    opponentProfileId: opponentDeckProfileId,
+    ownDeck: player.deck.length,
+    opponentDeck: opponent?.deck.length || 0,
+    ownErosion,
+    opponentErosion,
+    attackers: attackers.length,
+    totalAvailableDamage,
+    damageToCritical,
+    lethalWindow,
+    opponentArchetype: opponentDeckProfile?.archetype,
+    opponentTraits: opponentDeckProfile?.traits,
+    likelyDefenders,
+    opponentPotentialDamage,
+    opponentDamageAfterOneBlock: incomingThreat.damageAfterOneBlock,
+    opponentDamageAfterTwoBlocks: incomingThreat.damageAfterTwoBlocks,
+    defendersNeededNextTurn: incomingThreat.defendersNeeded,
+    opponentLethalWithoutBlocks: incomingThreat.lethalWithoutBlocks,
+    opponentLethalThroughOneBlock: incomingThreat.lethalThroughOneBlock,
+    desperationAttack,
+    attackBeforeDeveloping,
+    reserveDefenders,
+    minMainEffectScore,
+    minBattleEffectScore,
+    avoidSelfDraw,
+    avoidSearch,
+    reason: `turn plan: ${mode}`,
+    notes,
+  };
+}
+
+export function scoreCardValue(card: Card | null | undefined, profile: DeckAiProfile, context: Partial<DeckAiStrategyContext> = {}) {
+  if (!card) return 0;
+  const weights = profile.weights;
+  const preferredIdBonus = profile.preferredCardIds?.[card.id] || profile.preferredCardIds?.[card.uniqueId] || 0;
+  const preserveBonus = profile.preserveCardIds?.[card.id] || profile.preserveCardIds?.[card.uniqueId] || 0;
+  const factionBonus = profile.preferredFactions?.includes(String(card.faction)) ? 2 : 0;
+  const knowledge = getCardKnowledge(card);
+  const effectBonus = (knowledge?.roles.length || 0) * weights.effectText;
+  const costBonus = Math.max(0, 6 - getCardCost(card)) * weights.lowCost;
+  const knowledgeBase = knowledge?.baseValue || 0;
+
+  let score = 0;
+
+  if (card.type === 'UNIT') {
+    score = (
+      knowledgeBase +
+      ((card.power || 0) / 1000) * weights.unitPower +
+      (card.damage || 0) * weights.unitDamage +
+      (card.isrush ? weights.unitRush : 0) +
+      (card.godMark ? weights.unitGodMark : 0) +
+      costBonus +
+      effectBonus +
+      factionBonus +
+      preferredIdBonus +
+      preserveBonus
+    );
+  } else if (card.type === 'ITEM') {
+    score = knowledgeBase + weights.itemValue + costBonus + effectBonus + factionBonus + preferredIdBonus + preserveBonus;
+  } else {
+    score = knowledgeBase + weights.storyValue + costBonus + effectBonus + factionBonus + preferredIdBonus + preserveBonus;
+  }
+
+  if (context.gameState && context.player) {
+    score += applyCardScoreHook(profile, 'adjustCardValue', {
+      ...context,
+      card,
+      score,
+      reason: 'value',
+    });
+  }
+
+  return score;
+}
+
+export function scorePlayableCard(gameState: GameState, player: PlayerState, card: Card, profile: DeckAiProfile) {
+  const opponentUid = gameState.playerIds.find(uid => uid !== player.uid);
+  const opponentDeckProfile = getOpponentDeckProfile(gameState, opponentUid);
+  const matchup = getActiveMatchupPlan(gameState, player, profile, opponentDeckProfile);
+  const strategyContext = buildStrategyContext(gameState, player, profile, matchup, opponentDeckProfile);
+  let score = scoreCardValue(card, profile, strategyContext);
+  const erosion = countErosion(player);
+  const knowledge = getCardKnowledge(card);
+  const gamePlan = profile.gamePlan;
+  const incomingThreat = estimateIncomingThreat(gameState, player, profile);
+  const developmentPriority = (gamePlan?.developmentPriority ?? 0) + (matchup?.developmentBias ?? 0);
+  const closeGameBias = (gamePlan?.closeGameBias ?? 0) + (matchup?.closeGameBias ?? 0);
+  score += (knowledge?.playPriority || 0) * 0.7;
+  score += developmentPriority * 0.8;
+
+  if (card.type === 'UNIT') {
+    const openSlots = player.unitZone.filter(slot => slot === null).length;
+    score += openSlots <= 1 ? -1.5 : 0;
+    if (gameState.turnCount <= 1 && !card.isrush) score -= 1;
+    if (knowledge?.roles.includes('engine') && openSlots > 0) score += 2;
+    if (gamePlan?.primaryGoal === 'damage') score += (card.damage || 0) * (1 + closeGameBias * 0.35);
+    if (gamePlan?.primaryGoal === 'boardControl') score += (card.power || 0) / 1800;
+  }
+
+  if (card.type === 'STORY') {
+    score += player.hand.length >= 6 ? 1.2 : 0;
+    if (knowledge?.roles.includes('removal')) score += 2;
+    if (knowledge?.roles.includes('draw') || knowledge?.roles.includes('search')) score += 1.5;
+  }
+
+  if ((knowledge?.roles.includes('draw') || knowledge?.roles.includes('search')) && player.deck.length <= matchupRiskValue(gameState, player, profile, 'stopSelfDrawAtDeck', 10)) {
+    score -= 4;
+  }
+
+  if (incomingThreat.defendersNeeded > 0) {
+    const cost = getCardCost(card);
+    const totalErosion = countErosion(player);
+    const canSafelyPayFromDeck = cost <= 0 || (player.deck.length > cost && totalErosion + cost < 10);
+    const addsReadyDefender = card.type === 'UNIT';
+    const readyDefenders = player.unitZone.filter(unit =>
+      unit &&
+      !unit.isExhausted &&
+      !(unit as any).battleForbiddenByEffect &&
+      !((unit as any).data?.cannotDefendTurn === gameState.turnCount) &&
+      !((unit as any).data?.cannotAttackOrDefendUntilTurn && (unit as any).data.cannotAttackOrDefendUntilTurn >= gameState.turnCount)
+    ).length;
+
+    if (!canSafelyPayFromDeck && cost > 0) {
+      score -= 18 + cost * 7;
+    }
+    if (!addsReadyDefender && incomingThreat.lethalWithoutBlocks) {
+      score -= 10;
+    }
+    if (addsReadyDefender && readyDefenders + 1 < incomingThreat.defendersNeeded) {
+      score -= 8;
+    }
+  }
+
+  if (erosion >= 8 && getCardCost(card) > 2) score -= 3;
+  score += applyCardScoreHook(profile, 'adjustPlayableScore', {
+    ...strategyContext,
+    card,
+    score,
+    reason: 'playable',
+  });
+  return score;
+}
+
+export function choosePlayableCard(
+  gameState: GameState,
+  player: PlayerState,
+  profile: DeckAiProfile,
+  difficulty: BotDifficulty,
+  canPlay: (card: Card) => boolean
+) {
+  const playable = player.hand.filter(canPlay);
+  if (difficulty !== 'hard') return playable[0];
+
+  const scored = playable
+    .map((card): ScoredCard => ({ card, score: scorePlayableCard(gameState, player, card, profile) }))
+    .sort((a, b) => b.score - a.score);
+
+  return scored[0]?.score > 0 ? scored[0].card : undefined;
+}
+
+function isEarlyUnit(card: Card, profile: DeckAiProfile) {
+  if (card.type !== 'UNIT') return false;
+  const cost = getCardCost(card);
+  if (cost <= 3) return true;
+  if (profile.gamePlan?.mode === 'aggro' && cost <= 4 && ((card.damage || 0) >= 2 || card.isrush)) return true;
+  return false;
+}
+
+function scoreMulliganKeep(card: Card, profile: DeckAiProfile, earlyUnitsInHand: number, player?: PlayerState, gameState?: GameState) {
+  const cost = getCardCost(card);
+  const knowledge = getCardKnowledge(card);
+  const mode = profile.gamePlan?.mode;
+  const goal = profile.gamePlan?.primaryGoal;
+  const strategyContext = gameState && player
+    ? buildStrategyContext(gameState, player, profile)
+    : { player };
+  let score = scoreCardValue(card, profile, strategyContext) * 0.65 + getCardKnowledgeValue(card, 'playPriority') * 0.35;
+
+  if (isEarlyUnit(card, profile)) score += mode === 'aggro' ? 24 : 16;
+  if (card.type === 'UNIT' && cost <= 4) score += 6;
+  if (card.type === 'UNIT' && goal === 'damage') score += (card.damage || 0) * 4;
+  if (card.isrush) score += 7;
+  if (knowledge?.roles.includes('engine')) score += mode === 'engine' || mode === 'combo' ? 12 : 5;
+  if (knowledge?.roles.includes('search') || knowledge?.roles.includes('draw')) score += earlyUnitsInHand > 0 ? 5 : -4;
+  if (knowledge?.roles.includes('removal')) score += 2;
+
+  if (card.type !== 'UNIT' && earlyUnitsInHand === 0) score -= mode === 'aggro' ? 24 : 14;
+  if (card.type === 'ITEM' && earlyUnitsInHand === 0) score -= 8;
+  if (cost >= 5) score -= mode === 'aggro' ? 18 : 10;
+  if (cost >= 5 && (profile.preserveCardIds?.[card.id] || profile.preferredCardIds?.[card.id])) score += 8;
+
+  score += applyCardScoreHook(profile, 'adjustMulliganScore', {
+    ...strategyContext,
+    card,
+    score,
+    reason: 'mulligan',
+    earlyUnitsInHand,
+  });
+
+  return score;
+}
+
+export function chooseMulliganCards(player: PlayerState, profile: DeckAiProfile, difficulty: BotDifficulty, gameState?: GameState) {
+  if (difficulty !== 'hard') return [] as Card[];
+  const hand = player.hand;
+  if (hand.length === 0) return [];
+
+  const mode = profile.gamePlan?.mode;
+  const requiredEarlyUnits = mode === 'aggro' ? 2 : mode === 'control' ? 1 : 1;
+  const earlyUnits = hand.filter(card => isEarlyUnit(card, profile));
+  const scored = hand
+    .map(card => ({
+      card,
+      score: scoreMulliganKeep(card, profile, earlyUnits.length, player, gameState),
+      early: isEarlyUnit(card, profile),
+    }))
+    .sort((a, b) => a.score - b.score);
+
+  const returning = new Set<Card>();
+  if (earlyUnits.length < requiredEarlyUnits) {
+    scored
+      .filter(entry => !entry.early)
+      .slice(0, Math.max(1, requiredEarlyUnits - earlyUnits.length + 1))
+      .forEach(entry => returning.add(entry.card));
+  }
+
+  const keepThreshold = mode === 'aggro' ? 22 : mode === 'control' ? 18 : 20;
+  for (const entry of scored) {
+    if (returning.size >= Math.max(1, hand.length - 1)) break;
+    if (entry.score < keepThreshold && (!entry.early || earlyUnits.length > requiredEarlyUnits)) {
+      returning.add(entry.card);
+    }
+  }
+
+  if (earlyUnits.length === 0 && returning.size === 0) {
+    scored.slice(0, Math.min(2, hand.length)).forEach(entry => returning.add(entry.card));
+  }
+
+  return [...returning];
+}
+
+export interface OpeningHandAssessment {
+  quality: number;
+  earlyUnits: number;
+  units: number;
+  engines: number;
+  interaction: number;
+  avgCost: number;
+  highCostCards: number;
+  severeBrick: boolean;
+  mildBrick: boolean;
+  notes: string[];
+}
+
+export interface OpeningHandSoftCompensationResult {
+  applied: boolean;
+  reason: string;
+  returned: Card[];
+  gained: Card[];
+  before: OpeningHandAssessment;
+  after: OpeningHandAssessment;
+  inspectedDeckCards: number;
+  extremeRescue: boolean;
+}
+
+function scoreOpeningCard(card: Card, profile: DeckAiProfile) {
+  const knowledge = getCardKnowledge(card);
+  const cost = getCardCost(card);
+  const mode = profile.gamePlan?.mode;
+  const goal = profile.gamePlan?.primaryGoal;
+  let score = scoreCardValue(card, profile) * 0.45 + getCardKnowledgeValue(card, 'playPriority') * 0.55;
+
+  if (isEarlyUnit(card, profile)) score += mode === 'aggro' ? 18 : 12;
+  if (card.type === 'UNIT' && cost <= 4) score += 5;
+  if (card.type === 'UNIT' && goal === 'damage') score += (card.damage || 0) * 3;
+  if (card.isrush) score += 5;
+  if (knowledge?.roles.includes('engine')) score += mode === 'engine' || mode === 'combo' ? 10 : 4;
+  if (knowledge?.roles.includes('resource')) score += mode === 'engine' || mode === 'combo' ? 6 : 2;
+  if (knowledge?.roles.includes('search') || knowledge?.roles.includes('draw')) score += 3;
+  if (knowledge?.roles.includes('removal') || knowledge?.roles.includes('tempo')) score += 3;
+  if (cost >= 5) score -= mode === 'aggro' ? 16 : 8;
+  if (cost >= 6) score -= 4;
+
+  return score;
+}
+
+export function assessOpeningHand(hand: Card[], profile: DeckAiProfile): OpeningHandAssessment {
+  const costs = hand.map(getCardCost);
+  const avgCost = costs.length > 0 ? costs.reduce((sum, cost) => sum + cost, 0) / costs.length : 0;
+  const units = hand.filter(card => card.type === 'UNIT').length;
+  const earlyUnits = hand.filter(card => isEarlyUnit(card, profile)).length;
+  const engines = hand.filter(card => {
+    const roles = getCardKnowledge(card)?.roles || [];
+    return roles.includes('engine') || roles.includes('resource') || roles.includes('combo_piece');
+  }).length;
+  const interaction = hand.filter(card => {
+    const roles = getCardKnowledge(card)?.roles || [];
+    return roles.includes('removal') || roles.includes('tempo') || roles.includes('protection');
+  }).length;
+  const highCostCards = costs.filter(cost => cost >= 5).length;
+  const mode = profile.gamePlan?.mode;
+  const needsEngine = mode === 'engine' || mode === 'combo' || profile.gamePlan?.primaryGoal === 'resourceLoop' || profile.gamePlan?.primaryGoal === 'comboSetup';
+  const avgScore = hand.length > 0
+    ? hand.reduce((sum, card) => sum + scoreOpeningCard(card, profile), 0) / hand.length
+    : 0;
+  const notes: string[] = [];
+  let quality =
+    avgScore +
+    earlyUnits * 8 +
+    units * 3 +
+    engines * (needsEngine ? 5 : 2) +
+    interaction * 2 -
+    Math.max(0, avgCost - 3.8) * 8 -
+    highCostCards * (mode === 'aggro' ? 4 : 2);
+
+  if (units === 0) {
+    quality -= 18;
+    notes.push('no units');
+  }
+  if (earlyUnits === 0) {
+    quality -= mode === 'aggro' ? 22 : 14;
+    notes.push('no early unit');
+  }
+  if (needsEngine && engines === 0) {
+    quality -= 10;
+    notes.push('missing engine');
+  }
+  if (avgCost >= 4.8) {
+    quality -= 12;
+    notes.push('high average cost');
+  }
+  if (highCostCards >= 3) {
+    quality -= 10;
+    notes.push('too many high-cost cards');
+  }
+
+  const severeBrick =
+    units === 0 ||
+    (earlyUnits === 0 && highCostCards >= 3) ||
+    avgCost >= 5 ||
+    quality < 22 ||
+    (needsEngine && engines === 0 && earlyUnits === 0);
+  const mildBrick =
+    severeBrick ||
+    earlyUnits === 0 ||
+    quality < 34 ||
+    avgCost >= 4.4 ||
+    (needsEngine && engines === 0);
+
+  return {
+    quality: Number(quality.toFixed(2)),
+    earlyUnits,
+    units,
+    engines,
+    interaction,
+    avgCost: Number(avgCost.toFixed(2)),
+    highCostCards,
+    severeBrick,
+    mildBrick,
+    notes,
+  };
+}
+
+export function applyOpeningHandSoftCompensation(
+  player: PlayerState,
+  profile: DeckAiProfile
+): OpeningHandSoftCompensationResult {
+  const before = assessOpeningHand(player.hand, profile);
+  const config = profile.softCompensation;
+  const disabledResult = (reason: string): OpeningHandSoftCompensationResult => ({
+    applied: false,
+    reason,
+    returned: [],
+    gained: [],
+    before,
+    after: before,
+    inspectedDeckCards: 0,
+    extremeRescue: false,
+  });
+
+  if (!config?.openingSmoothing || !profile.shareCode) return disabledResult('soft compensation disabled');
+  if (!before.mildBrick) return disabledResult('opening hand quality acceptable');
+  if (player.deck.length === 0 || player.hand.length === 0) return disabledResult('not enough cards to smooth');
+
+  const lookahead = Math.max(4, Math.min(config.openingLookahead || 8, player.deck.length));
+  const visibleTopDeck = player.deck.slice(Math.max(0, player.deck.length - lookahead));
+  const currentScored = player.hand
+    .map(card => ({ card, score: scoreOpeningCard(card, profile) }))
+    .sort((a, b) => a.score - b.score);
+  const candidateScored = visibleTopDeck
+    .map(card => ({ card, score: scoreOpeningCard(card, profile) }))
+    .sort((a, b) => b.score - a.score);
+
+  const returned: Card[] = [];
+  const gained: Card[] = [];
+  const maxConfigured = Math.max(1, config.maxOpeningReplacements || 1);
+  const extremeRescue = before.severeBrick && Math.random() < (config.extremeBrickRescueChance ?? 0.3);
+  const targetReplacements = Math.min(player.hand.length - 1, maxConfigured + (extremeRescue ? 1 : 0));
+  const usedCandidateIds = new Set<string>();
+  const usedReturnIds = new Set<string>();
+
+  for (let i = 0; i < targetReplacements; i++) {
+    const worst = currentScored.find(entry => !usedReturnIds.has(entry.card.gamecardId));
+    const best = candidateScored.find(entry => !usedCandidateIds.has(entry.card.gamecardId));
+    if (!worst || !best) break;
+
+    const requiredGain = i === 0
+      ? before.severeBrick ? 5 : 8
+      : 14;
+    if (best.score <= worst.score + requiredGain) break;
+
+    returned.push(worst.card);
+    gained.push(best.card);
+    usedReturnIds.add(worst.card.gamecardId);
+    usedCandidateIds.add(best.card.gamecardId);
+  }
+
+  if (returned.length === 0) return disabledResult('no soft replacement improved the hand enough');
+
+  for (const card of returned) {
+    const handIndex = player.hand.findIndex(candidate => candidate.gamecardId === card.gamecardId);
+    if (handIndex >= 0) {
+      player.hand.splice(handIndex, 1);
+      card.cardlocation = 'DECK';
+      card.displayState = 'FRONT_FACEDOWN';
+      player.deck.unshift(card);
+    }
+  }
+
+  for (const card of gained) {
+    const deckIndex = player.deck.findIndex(candidate => candidate.gamecardId === card.gamecardId);
+    if (deckIndex >= 0) {
+      player.deck.splice(deckIndex, 1);
+      card.cardlocation = 'HAND';
+      card.displayState = 'FRONT_FACEDOWN';
+      player.hand.push(card);
+    }
+  }
+
+  const after = assessOpeningHand(player.hand, profile);
+  return {
+    applied: true,
+    reason: before.severeBrick
+      ? 'Soft compensation replaced an extreme brick opening with a limited top-deck lookahead.'
+      : 'Soft compensation lightly smoothed a weak opening hand with a limited top-deck lookahead.',
+    returned,
+    gained,
+    before,
+    after,
+    inspectedDeckCards: lookahead,
+    extremeRescue,
+  };
+}
+
+export function canUnitAttack(gameState: GameState, unit: Card | null | undefined) {
+  if (!unit || unit.isExhausted || unit.canAttack === false) return false;
+  if ((unit as any).battleForbiddenByEffect) return false;
+  if ((unit as any).data?.cannotAttackThisTurn === gameState.turnCount) return false;
+  if ((unit as any).data?.cannotAttackOrDefendUntilTurn && (unit as any).data.cannotAttackOrDefendUntilTurn >= gameState.turnCount) return false;
+  if ((unit.damage || 0) < 1) return false;
+  const isRush = !!unit.isrush;
+  const wasPlayedThisTurn = unit.playedTurn === gameState.turnCount;
+  return isRush || !wasPlayedThisTurn;
+}
+
+function getOpponent(gameState: GameState, player: PlayerState) {
+  const opponentUid = gameState.playerIds.find(uid => uid !== player.uid);
+  return opponentUid ? gameState.players[opponentUid] : undefined;
+}
+
+function findCardInState(gameState: GameState, gamecardId?: string) {
+  if (!gamecardId) return undefined;
+  for (const player of Object.values(gameState.players)) {
+    const found = [
+      ...player.deck,
+      ...player.hand,
+      ...player.grave,
+      ...player.exile,
+      ...player.unitZone,
+      ...player.itemZone,
+      ...player.erosionFront,
+      ...player.erosionBack,
+      ...player.playZone,
+    ].find(card => card?.gamecardId === gamecardId);
+    if (found) return found;
+  }
+  return undefined;
+}
+
+function countLikelyDefenders(gameState: GameState, defender: PlayerState | undefined) {
+  if (!defender) return 0;
+  return defender.unitZone.filter(unit =>
+    unit &&
+    !unit.isExhausted &&
+    !(unit as any).battleForbiddenByEffect &&
+    !((unit as any).data?.cannotDefendTurn === gameState.turnCount) &&
+    !((unit as any).data?.cannotAttackOrDefendUntilTurn && (unit as any).data.cannotAttackOrDefendUntilTurn >= gameState.turnCount)
+  ).length;
+}
+
+export function scoreAttackCandidate(gameState: GameState, player: PlayerState, card: Card, profile: DeckAiProfile) {
+  const attackers = player.unitZone.filter(unit => canUnitAttack(gameState, unit)) as Card[];
+  const opponent = getOpponent(gameState, player);
+  const opponentUid = gameState.playerIds.find(uid => uid !== player.uid);
+  const opponentDeckProfile = getOpponentDeckProfile(gameState, opponentUid);
+  const matchup = getActiveMatchupPlan(gameState, player, profile, opponentDeckProfile);
+  const strategyContext = buildStrategyContext(gameState, player, profile, matchup, opponentDeckProfile);
+  const gamePlan = profile.gamePlan;
+  const opponentErosion = opponent ? countErosion(opponent) : 0;
+  const defenderCount = countLikelyDefenders(gameState, opponent);
+  const totalAvailableDamage = attackers.reduce((sum, unit) => sum + (unit.damage || 0), 0);
+  const damage = card.damage || 0;
+  const power = card.power || 0;
+  const cardValue = scoreCardValue(card, profile, strategyContext);
+  const preserveValue = getCardKnowledgeValue(card, 'preserveValue') + cardValue * 0.25;
+  const damageToCritical = Math.max(1, 10 - opponentErosion);
+  const lethalWindow = opponent ? totalAvailableDamage > opponent.deck.length : false;
+  const singleAttackThreat = opponent ? damage > opponent.deck.length : false;
+  const erosionPressureWindow = totalAvailableDamage >= damageToCritical;
+  const attackPriority = (gamePlan?.attackPriority ?? 0) + (matchup?.attackBias ?? 0);
+  const closeGameBias = (gamePlan?.closeGameBias ?? 0) + (matchup?.closeGameBias ?? 0);
+  const criticalDeck = riskValue(profile, 'criticalDeck', 3);
+  const lowDeck = riskValue(profile, 'lowDeck', 10);
+
+  let score = ((damage * 10 + power / 1000 + cardValue * 0.25) * profile.weights.attackBias);
+  score += damage * attackPriority * 1.6;
+  if (gamePlan?.primaryGoal === 'damage') score += damage * 2.2;
+  if (gamePlan?.primaryGoal === 'deckPressure' && opponent && opponent.deck.length <= riskValue(profile, 'lowDeck', 10)) {
+    score += damage * 2.5;
+  }
+  if (player.deck.length <= criticalDeck && opponent && (opponent.deck.length <= lowDeck || opponentErosion >= 7 || erosionPressureWindow)) {
+    score += damage * 7 + (singleAttackThreat ? 18 : 0);
+  }
+
+  if (singleAttackThreat) {
+    score += 45 + damage * (8 + closeGameBias);
+  } else if (lethalWindow) {
+    score += 18 + damage * (7 + closeGameBias * 0.7);
+    if (defenderCount > 0 && attackers.length > defenderCount) {
+      const forcesDefensePressure = opponentErosion + damage >= 9;
+      const baitValueBonus = Math.max(0, 22 - preserveValue) * (forcesDefensePressure ? 0.9 : 0.4);
+      score += baitValueBonus;
+      score -= preserveValue * 0.12;
+    }
+  } else {
+    const pressureBonus = opponentErosion >= 7 ? damage * 5 : opponentErosion >= 5 ? damage * 3 : damage;
+    score += pressureBonus + (erosionPressureWindow ? damage * 2 : 0);
+  }
+
+  if (defenderCount === 0) {
+    score += damage * 4;
+  }
+
+  score += applyCardScoreHook(profile, 'adjustAttackScore', {
+    ...strategyContext,
+    card,
+    score,
+    reason: 'attack',
+  });
+
+  return score;
+}
+
+export interface ActivatableEffectScore {
+  score: number;
+  reason: string;
+  notes: string[];
+}
+
+export interface ActivatableEffectContext {
+  opponent?: PlayerState;
+  targetCount?: number;
+  hasTargetSpec?: boolean;
+}
+
+function textHasAny(text: string, patterns: RegExp[]) {
+  return patterns.some(pattern => pattern.test(text));
+}
+
+function effectSearchText(card: Card, effect: CardEffect) {
+  return [
+    card.fullName,
+    effect.content,
+    effect.description,
+    effect.targetSpec?.title,
+    effect.targetSpec?.description,
+    effect.targetSpec?.modeTitle,
+    effect.targetSpec?.modeDescription,
+    ...(effect.targetSpec?.modeOptions || []).flatMap(mode => [mode.label, mode.description, mode.modeDescription]),
+  ]
+    .filter(Boolean)
+    .join(' ');
+}
+
+function effectTargetControllers(effect: CardEffect) {
+  const spec = effect.targetSpec;
+  if (!spec) return [];
+  const shapes = spec.modeOptions?.length
+    ? spec.modeOptions
+    : spec.targetGroups?.length
+      ? spec.targetGroups
+      : [spec];
+  return shapes.map(shape => shape.controller).filter(Boolean) as Array<'SELF' | 'OPPONENT' | 'ANY'>;
+}
+
+function estimateEffectPaymentCost(effect: CardEffect) {
+  const explicitCost = Number(effect.playCost || 0);
+  if (Number.isFinite(explicitCost) && explicitCost > 0) return explicitCost;
+
+  const text = `${effect.description || ''} ${effect.content || ''}`;
+  const match = text.match(/鏀粯\s*(\d+)\s*璐圭敤/) ||
+    text.match(/pay\s*(\d+)\s*(?:cost|resource)?/i);
+  const parsed = match ? Number(match[1]) : 0;
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function estimateDeckPaymentForEffect(player: PlayerState, sourceCard: Card, effect: CardEffect) {
+  const paymentCost = estimateEffectPaymentCost(effect);
+  if (paymentCost <= 0) return 0;
+
+  const sourceColor = sourceCard.color === 'NONE' ? undefined : sourceCard.color;
+  const hasFeijing = player.hand.some(card =>
+    card.gamecardId !== sourceCard.gamecardId &&
+    card.feijingMark &&
+    (!sourceColor || card.color === sourceColor)
+  );
+  const feijingReduction = hasFeijing ? 3 : 0;
+  const readyUnitPayment = player.unitZone
+    .filter((unit): unit is Card => !!unit && !unit.isExhausted && !(unit as any).data?.cannotExhaustByEffect)
+    .reduce((total, unit) => {
+      const data = (unit as any).data || {};
+      const accessMin = Math.max(1, Number(data.accessTapMinValue || 1));
+      const accessMax = data.accessTapColor && data.accessTapColor !== sourceColor
+        ? 1
+        : Math.max(accessMin, Number(data.accessTapValue || 1));
+      return total + accessMax;
+    }, 0);
+
+  return Math.max(0, paymentCost - feijingReduction - readyUnitPayment);
+}
+
+export function scoreActivatableEffect(
+  gameState: GameState,
+  player: PlayerState,
+  card: Card,
+  effect: CardEffect,
+  profile: DeckAiProfile,
+  context: ActivatableEffectContext = {}
+): ActivatableEffectScore {
+  const text = effectSearchText(card, effect);
+  const idText = effect.id || '';
+  const searchableText = `${text} ${idText}`;
+  const removalText = `${text} ${/destroy|banish|return|bounce|remove/i.test(idText) ? idText : ''}`;
+  const notes: string[] = [];
+  const tags = new Set<EffectPreferenceTag>();
+  const opponent = context.opponent;
+  const opponentUnits = opponent?.unitZone.filter(Boolean) as Card[] | undefined;
+  const ownAttackers = player.unitZone.filter(unit => canUnitAttack(gameState, unit)) as Card[];
+  const battleAttackers = gameState.battleState?.attackers?.filter(Boolean).length || 0;
+  const opponentErosion = opponent ? countErosion(opponent) : 0;
+  const totalAvailableDamage = ownAttackers.reduce((sum, unit) => sum + (unit.damage || 0), 0);
+  const damageToCritical = Math.max(1, 10 - opponentErosion);
+  const inLethalWindow = totalAvailableDamage >= damageToCritical;
+  const knowledge = getCardKnowledge(card);
+  const opponentUid = gameState.playerIds.find(uid => uid !== player.uid);
+  const opponentDeckProfile = getOpponentDeckProfile(gameState, opponentUid);
+  const matchup = getActiveMatchupPlan(gameState, player, profile, opponentDeckProfile);
+  const strategyContext = buildStrategyContext(gameState, player, profile, matchup, opponentDeckProfile);
+  const gamePlan = profile.gamePlan;
+  const cardValue = scoreCardValue(card, profile, strategyContext);
+  const targetCount = context.targetCount ?? 0;
+  const controllers = effectTargetControllers(effect);
+  const targetsSelfOnly = controllers.length > 0 && controllers.every(controller => controller === 'SELF');
+  const canTargetOpponent = controllers.length === 0 || controllers.some(controller => controller === 'OPPONENT' || controller === 'ANY');
+  const ownDeckRisk = deckPressurePenalty(player.deck.length, profile, matchup?.stopSelfDrawAtDeck);
+  const estimatedDeckPayment = estimateDeckPaymentForEffect(player, card, effect);
+
+  let score = 2 + profile.weights.effectText * 2 + Math.min(5, cardValue * 0.08);
+  score += ((gamePlan?.effectPriority ?? 0) + (matchup?.effectBias ?? 0)) * 0.8;
+
+  if (effect.id === '105110108_activate' && player.deck.length > 0) {
+    const nameCounts = player.deck.reduce((counts, deckCard) => {
+      counts.set(deckCard.fullName, (counts.get(deckCard.fullName) || 0) + 1);
+      return counts;
+    }, new Map<string, number>());
+    const bestCount = Math.max(0, ...nameCounts.values());
+    const hitRate = bestCount / player.deck.length;
+    const stopSelfDrawAtDeck = matchupRiskValue(gameState, player, profile, 'stopSelfDrawAtDeck', riskValue(profile, 'lowDeck', 10));
+    if (player.deck.length <= stopSelfDrawAtDeck) {
+      score += hitRate >= 0.45 ? 7 + bestCount : -12 * (0.45 - hitRate);
+    } else {
+      score += Math.min(4, bestCount);
+    }
+    notes.push(`declare hit ${bestCount}/${player.deck.length}`);
+  }
+
+  if (knowledge?.roles.includes('engine')) {
+    score += 4;
+    tags.add('engine');
+    notes.push('引擎牌');
+  }
+
+  if (textHasAny(searchableText, [/抽|抓|draw/i])) {
+    const handBonus = player.hand.length <= 3 ? 7 : player.hand.length <= 5 ? 4 : -1;
+    score += 5 + handBonus;
+    if (ownDeckRisk > 0) {
+      score -= canTargetOpponent ? ownDeckRisk * 0.45 : ownDeckRisk;
+      notes.push('卡组余量风险');
+    }
+    tags.add('draw');
+    notes.push('补充手牌');
+  }
+
+  if (textHasAny(searchableText, [/检索|搜索|卡组|牌库|加入手牌|search|deck/i])) {
+    score += 7 + (player.hand.length <= 4 ? 3 : 0);
+    if (ownDeckRisk > 0) {
+      score -= ownDeckRisk * 0.65;
+      notes.push('卡组余量风险');
+    }
+    tags.add('search');
+    notes.push('检索组件');
+  }
+
+  if (textHasAny(searchableText, [/免疫|不会被破坏|不能被破坏|保护|prevent|immune|protect|indestructible/i])) {
+    score += gameState.phase === 'BATTLE_FREE' ? 4 : -3;
+    tags.add('protection');
+    notes.push('保护效果');
+  }
+
+  if (canTargetOpponent && textHasAny(removalText, [/破坏|放置到墓地|送入墓地|除外|返回手牌|回手|destroy|banish|return|bounce|remove/i])) {
+    const bestOpponentThreat = Math.max(0, ...(opponentUnits || []).map(unit => scoreCardValue(unit, profile)));
+    score += (targetCount > 0 ? 8 : -8) + Math.min(10, bestOpponentThreat * 0.18);
+    tags.add('removal');
+    notes.push('处理威胁');
+  }
+
+  if (canTargetOpponent && textHasAny(searchableText, [/横置|不能攻击|不能防御|跳过|exhaust|cannot attack|cannot defend|skip/i])) {
+    score += (opponentUnits?.length || 0) > 0 ? 5 : 1;
+    tags.add('tempo');
+    notes.push('节奏压制');
+  }
+
+  if (textHasAny(searchableText, [/伤害\+|伤害\+\d|\+\d|追加.*伤害|damage|power/i])) {
+    score += inLethalWindow ? 9 : ownAttackers.length > 0 ? 4 : 1;
+    tags.add('combat');
+    tags.add('buff');
+    if (inLethalWindow) tags.add('finisher');
+    notes.push(inLethalWindow ? '斩杀窗口' : '提高战斗收益');
+  }
+
+  if (textHasAny(searchableText, [/重置|竖置|恢复|费用|支付|access|ready|resource|reset|boost/i])) {
+    score += 4;
+    tags.add('resource');
+    if (textHasAny(searchableText, [/重置|竖置|ready|reset/i])) tags.add('reset');
+    notes.push('资源转换');
+  }
+
+  if (textHasAny(searchableText, [/召唤|放置到战场|登场|play.*unit|summon|play_from/i])) {
+    const openSlots = player.unitZone.filter(slot => slot === null).length;
+    score += openSlots > 0 ? 6 + openSlots : -5;
+    tags.add('summon');
+    notes.push('展开场面');
+  }
+
+  if (textHasAny(searchableText, [/复生|复活|墓地.*战场|rebirth|revive|reanimate/i])) {
+    score += player.unitZone.filter(slot => slot === null).length > 0 ? 5 : -4;
+    tags.add('revive');
+    tags.add('summon');
+    notes.push('复生展开');
+  }
+
+  if (targetsSelfOnly && textHasAny(removalText, [/破坏|放置到墓地|送入墓地|除外|destroy|banish|return|bounce|remove/i])) {
+    score -= 4;
+  }
+
+  if (context.hasTargetSpec) {
+    score += targetCount > 0 ? Math.min(4, targetCount) : -20;
+  }
+
+  if (gamePlan?.primaryGoal === 'boardControl' && tags.has('removal')) score += 2;
+  if (gamePlan?.primaryGoal === 'damage' && (tags.has('combat') || tags.has('finisher'))) score += 2.5;
+  if (gamePlan?.primaryGoal === 'resourceLoop' && (tags.has('engine') || tags.has('resource') || tags.has('draw') || tags.has('search'))) score += 2;
+  if (gamePlan?.primaryGoal === 'comboSetup' && (tags.has('engine') || tags.has('summon') || tags.has('revive'))) score += 2;
+
+  if (effect.cost) {
+    score -= 3;
+    notes.push('有发动代价');
+  }
+
+  if (estimatedDeckPayment > 0 && !inLethalWindow) {
+    const stopSelfDrawAtDeck = matchupRiskValue(gameState, player, profile, 'stopSelfDrawAtDeck', riskValue(profile, 'lowDeck', 10));
+    const deckAfterPayment = player.deck.length - estimatedDeckPayment;
+    const erosionAfterPayment = countErosion(player) + estimatedDeckPayment;
+    if (deckAfterPayment <= 0 || erosionAfterPayment >= 10) {
+      score -= 90 + estimatedDeckPayment * 12;
+      notes.push(`effect deck payment unsafe-${estimatedDeckPayment}`);
+    } else if (player.deck.length <= stopSelfDrawAtDeck) {
+      const paymentRisk = deckPressurePenalty(deckAfterPayment, profile, stopSelfDrawAtDeck) + estimatedDeckPayment * 6;
+      score -= paymentRisk;
+      notes.push(`effect deck payment risk-${paymentRisk.toFixed(1)}`);
+    }
+  }
+
+  const preferences = profile.effectPreferences;
+  if (preferences) {
+    const preferredBias = effect.id ? preferences.preferredEffectIds?.[effect.id] || 0 : 0;
+    const avoidBias = effect.id ? preferences.avoidEffectIds?.[effect.id] || 0 : 0;
+    const lowDeckAvoidBias = effect.id ? preferences.lowDeckAvoidEffectIds?.[effect.id] || 0 : 0;
+    const phaseBias = preferences.phaseBias?.[gameState.phase as keyof NonNullable<typeof preferences.phaseBias>] || 0;
+    const tagBias = [...tags].reduce((sum, tag) => sum + (preferences.tagBias?.[tag] || 0), 0);
+    const costTolerance = effect.cost ? Math.min(3, Math.max(0, preferences.highCostTolerance || 0)) : 0;
+    const stopSelfDrawAtDeck = matchupRiskValue(gameState, player, profile, 'stopSelfDrawAtDeck', riskValue(profile, 'lowDeck', 10));
+    const criticalDeck = riskValue(profile, 'criticalDeck', 3);
+    const lowDeckAvoid =
+      lowDeckAvoidBias > 0 && player.deck.length <= stopSelfDrawAtDeck
+        ? lowDeckAvoidBias * (player.deck.length <= criticalDeck ? 1.5 : 1)
+        : 0;
+    const totalPreference = preferredBias - avoidBias - lowDeckAvoid + phaseBias + tagBias + costTolerance;
+
+    if (lowDeckAvoid > 0) {
+      notes.push(`low deck effect risk-${lowDeckAvoid.toFixed(1)}`);
+    }
+
+    if (totalPreference !== 0) {
+      score += totalPreference;
+      notes.push(`卡组偏好${totalPreference > 0 ? '+' : ''}${totalPreference.toFixed(1)}`);
+    }
+  }
+
+  const hookAdjustment = applyEffectScoreHook(profile, {
+    ...strategyContext,
+    card,
+    effect,
+    score,
+    tags: [...tags],
+    targetCount,
+    notes,
+  });
+  if (hookAdjustment !== 0) {
+    score += hookAdjustment;
+    notes.push(`专属策略${hookAdjustment > 0 ? '+' : ''}${hookAdjustment.toFixed(1)}`);
+  }
+
+  if (card.isExhausted) score -= 1.5;
+  const isFieldUnit = player.unitZone.some(unit => unit?.gamecardId === card.gamecardId);
+  if (card.type === 'UNIT' && isFieldUnit && canUnitAttack(gameState, card)) {
+    score -= (card.damage || 0) * 2.5 * profile.weights.attackBias;
+    notes.push('会占用可攻击单位');
+  }
+
+  if (countErosion(player) >= 8 && textHasAny(searchableText, [/侵蚀|受到.*伤害|self.*damage|lose/i])) {
+    score -= 8;
+    notes.push('高侵蚀风险');
+  }
+
+  const isDevelopmentEffect =
+    tags.has('draw') ||
+    tags.has('search') ||
+    tags.has('resource') ||
+    tags.has('engine') ||
+    tags.has('summon');
+  const isBattlePayEffect = textHasAny(searchableText, [/支付|费用|payment|cost/i]) || !!effect.cost;
+  if (
+    gameState.phase === 'BATTLE_FREE' &&
+    (ownAttackers.length > 0 || battleAttackers > 0) &&
+    isDevelopmentEffect &&
+    !tags.has('combat') &&
+    !tags.has('finisher') &&
+    !tags.has('removal')
+  ) {
+    score -= 22 + Math.max(ownAttackers.length, battleAttackers) * 3 + (isBattlePayEffect ? 6 : 0);
+    notes.push('战斗中保留攻击资源');
+  }
+
+  if (notes.length === 0) {
+    notes.push('稳定主动效果');
+  }
+
+  return {
+    score,
+    reason: `主动效果评分：${notes.join('、')}。`,
+    notes,
+  };
+}
+
+export function chooseAttacker(gameState: GameState, player: PlayerState, profile: DeckAiProfile, forced?: Card) {
+  if (forced) return forced;
+
+  const attackers = player.unitZone.filter(unit => canUnitAttack(gameState, unit)) as Card[];
+  const scored = attackers
+    .map(card => ({
+      card,
+      score: scoreAttackCandidate(gameState, player, card, profile),
+    }))
+    .sort((a, b) => b.score - a.score);
+
+  return scored[0]?.card;
+}
+
+export function chooseDefender(
+  gameState: GameState,
+  defender: PlayerState,
+  attackingUnits: Card[],
+  availableDefenders: Card[],
+  profile: DeckAiProfile,
+  difficulty: BotDifficulty
+) {
+  const totalAttackerPower = attackingUnits.reduce((sum, unit) => sum + (unit.power || 0), 0);
+  const totalAttackerDamage = attackingUnits.reduce((sum, unit) => sum + (unit.damage || 0), 0);
+
+  if (difficulty !== 'hard') {
+    return availableDefenders.find(card => (card.power || 0) > totalAttackerPower) ||
+      availableDefenders.find(card => (card.power || 0) === totalAttackerPower) ||
+      ((countErosion(defender) >= 7 || totalAttackerDamage >= 2)
+        ? [...availableDefenders].sort((a, b) => (a.power || 0) - (b.power || 0))[0]
+        : undefined);
+  }
+
+  const erosionAfterHit = countErosion(defender) + totalAttackerDamage;
+  const pressure = erosionAfterHit >= 8;
+  const danger = erosionAfterHit >= 9;
+  const critical = erosionAfterHit >= 10;
+  const lowDeck = riskValue(profile, 'lowDeck', 10);
+  const criticalDeck = riskValue(profile, 'criticalDeck', 3);
+  const defensePriority = profile.gamePlan?.defensePriority ?? 0;
+  const opponentUid = gameState.playerIds.find(uid => uid !== defender.uid);
+  const opponentDeckProfile = getOpponentDeckProfile(gameState, opponentUid);
+  const matchup = getActiveMatchupPlan(gameState, defender, profile, opponentDeckProfile);
+  const strategyContext = buildStrategyContext(gameState, defender, profile, matchup, opponentDeckProfile);
+  const deckCritical = defender.deck.length <= Math.max(totalAttackerDamage, criticalDeck);
+  const deckPressure = defender.deck.length <= Math.max(totalAttackerDamage + 5, lowDeck);
+  const incomingThreat = estimateIncomingThreat(gameState, defender, profile);
+  const largestIncomingDamage = incomingThreat.attackDamages[0] || totalAttackerDamage;
+  const preserveBoardForPlan =
+    profile.gamePlan?.mode === 'engine' ||
+    profile.gamePlan?.mode === 'combo' ||
+    profile.gamePlan?.primaryGoal === 'resourceLoop' ||
+    profile.gamePlan?.primaryGoal === 'comboSetup';
+  const mustSaveForLargerHit =
+    incomingThreat.defendersNeeded > 0 &&
+    availableDefenders.length <= incomingThreat.defendersNeeded &&
+    totalAttackerDamage < largestIncomingDamage;
+  const scored = availableDefenders.map(card => {
+    const power = card.power || 0;
+    const knowledge = getCardKnowledge(card);
+    const cardValue = getCardKnowledgeValue(card, 'preserveValue') + scoreCardValue(card, profile, strategyContext) * 0.35;
+    const wins = power > totalAttackerPower;
+    const trades = power === totalAttackerPower;
+    const sacrifice = power < totalAttackerPower;
+    const nonFatalHit = !critical && !deckCritical && !incomingThreat.lethalWithoutBlocks && !incomingThreat.lethalThroughOneBlock;
+    const remainingUnits = defender.unitZone.filter(unit => unit && unit.gamecardId !== card.gamecardId);
+    const remainingCounterDamage = remainingUnits
+      .filter(unit => canThreatenNextTurn(gameState, unit))
+      .reduce((sum, unit) => sum + (unit?.damage || 0), 0);
+    const cardCounterDamage = canThreatenNextTurn(gameState, card) ? (card.damage || 0) : 0;
+    const isEnginePiece = !!knowledge?.roles.some(role =>
+      role === 'engine' ||
+      role === 'resource' ||
+      role === 'combo_piece' ||
+      role === 'draw' ||
+      role === 'search'
+    );
+    let score = 0;
+
+    if (wins) score += 16 + defensePriority * 2;
+    if (trades) score += 10 + defensePriority;
+    if (deckCritical) score += 42 + totalAttackerDamage * 10;
+    else if (deckPressure) score += 18 + totalAttackerDamage * 5;
+    if (incomingThreat.lethalWithoutBlocks) score += 16 + incomingThreat.defendersNeeded * 8;
+    if (incomingThreat.lethalThroughOneBlock) score += 10;
+    if (mustSaveForLargerHit) score -= 24 + (largestIncomingDamage - totalAttackerDamage) * 6;
+    if (critical) score += 30 + totalAttackerDamage * 10;
+    else if (danger) score += 18 + totalAttackerDamage * 7;
+    else if (pressure) score += 8 + totalAttackerDamage * 4;
+    if (sacrifice && critical) score += 6;
+    if (sacrifice && !pressure && totalAttackerDamage < 2) score -= 8;
+    if (nonFatalHit && preserveBoardForPlan) {
+      if (sacrifice) {
+        score -= 8 + Math.min(18, cardValue * 0.25);
+        if (isEnginePiece) score -= 14;
+        if (remainingUnits.length === 0) score -= 14;
+        if (remainingCounterDamage === 0 && cardCounterDamage > 0) score -= 8 + cardCounterDamage * 5;
+        if (totalAttackerDamage <= 2) score -= 6;
+      } else if (trades && (isEnginePiece || remainingUnits.length === 0)) {
+        score -= 6 + (isEnginePiece ? 6 : 0);
+      }
+    }
+
+    const preserveMultiplier = (critical || deckCritical) ? 0.18 : (danger || deckPressure) ? 0.25 : 0.45;
+    score -= cardValue * preserveMultiplier * profile.weights.defenseBias;
+    score += applyCardScoreHook(profile, 'adjustDefenseScore', {
+      ...strategyContext,
+      card,
+      score,
+      reason: 'defense',
+      attackingUnits,
+      availableDefenders,
+    });
+    return { card, score };
+  }).sort((a, b) => b.score - a.score);
+
+  return scored[0]?.score > 0 ? scored[0].card : undefined;
+}
+
+function isSacrificeLikeQuery(query: EffectQuery) {
+  const text = `${query.title || ''} ${query.description || ''} ${query.callbackKey || ''}`;
+  return /费用|支付|弃置|丢弃|牺牲|放置到墓地|移动到墓地|cost|discard|sacrifice/i.test(text);
+}
+
+type QueryIntent = 'cost' | 'benefit' | 'revive' | 'search' | 'offense' | 'keep' | 'neutral';
+
+function queryText(query: EffectQuery) {
+  return [
+    query.title,
+    query.description,
+    query.callbackKey,
+    query.context?.effectId,
+    query.context?.step,
+    query.context?.costType,
+  ].filter(Boolean).join(' ');
+}
+
+function inferQueryIntent(query: EffectQuery): QueryIntent {
+  const text = queryText(query);
+  const step = String(query.context?.step || '');
+  const effectId = String(query.context?.effectId || '');
+  const semantic = `${step} ${effectId}`;
+  if (/103000189_grave_enter|EXILE_COST|BANISH_COST|COST_EXILE|COST_BANISH/i.test(semantic)) return 'cost';
+  if (/费用|支付|舍弃|弃置|牺牲|作为费用|放逐费用|选择放逐费用/i.test(text)) return 'cost';
+  if (isSacrificeLikeQuery(query) || /COST|PAYMENT|DISCARD|SACRIFICE/i.test(semantic)) return 'cost';
+  if (/KEEP|PRESERVE|SAVE|HOLD/i.test(semantic)) return 'keep';
+  if (/REVIVE|REBIRTH|REANIMATE|SUMMON|PLAY_FROM|PUT|TO_FIELD|ENTER|RETURN_FIELD|_plan|_rebirth/i.test(semantic)) return 'revive';
+  if (/SEARCH|RETURN|ADD|HAND|SALVAGE|RECOVER|_search|_return|_salvage/i.test(semantic)) return 'search';
+  if (/DESTROY|EXILE|BANISH|SILENCE|CANNOT|BOTTOM|BOUNCE|ZERO|REMOVE|OPPONENT|_destroy|_exile|_silence|_zero|cannot_defend|damage_zero/i.test(semantic)) return 'offense';
+  if (/BOOST|BUFF|POWER|DAMAGE|READY|RESET|RUSH|PROTECT|BLESS|SHENYI|SPIRIT|IMMUNE|_boost|_power|_ready|_reset|_protect|spirit_boost/i.test(semantic)) return 'benefit';
+  if (/鐮村潖|鏀剧疆鍒板鍦皘闄ゅ|涓嶈兘|鍔涢噺鍙樹负0/.test(text)) return 'offense';
+  if (/鍔涢噺\+|浼ゅ\+|鑾峰緱|閲嶇疆|绔栫疆|淇濇姢/.test(text)) return 'benefit';
+  if (/鏀剧疆鍒版垬鍦簗澧撳湴.*鎴樺満/.test(text)) return 'revive';
+  if (/鍔犲叆鎵嬬墝|妫€绱鎼滅储/.test(text)) return 'search';
+  return 'neutral';
+}
+
+function scoreChoiceOption(gameState: GameState, playerUid: string, query: EffectQuery, option: any, profile: DeckAiProfile) {
+  const optionText = `${option.id || ''} ${option.label || ''} ${option.detail || ''}`;
+  const player = gameState.players[playerUid];
+  const opponent = player ? getOpponent(gameState, player) : undefined;
+  const openSlots = player?.unitZone.filter(slot => slot === null).length || 0;
+  const attackers = player?.unitZone.filter(unit => canUnitAttack(gameState, unit)).length || 0;
+  const opponentErosion = opponent ? countErosion(opponent) : 0;
+  let score = 0;
+
+  if (/DECLARE_NAME/i.test(queryText(query)) && player) {
+    const declaredName = String(option.id || option.label || '');
+    const matchingCards = player.deck.filter(card => card.fullName === declaredName).length;
+    return matchingCards * 20 + (profile.preserveCardIds?.[declaredName] || 0);
+  }
+
+  if (/^(TOP|BOTTOM)$/i.test(option.id || '') && query.context?.targetId) {
+    const revealed = findCardInState(gameState, query.context.targetId);
+    const revealedValue = revealed
+      ? scoreCardValue(revealed, profile) + getCardKnowledgeValue(revealed, 'playPriority') * 0.5
+      : 0;
+    const keepThreshold = 42 + (player?.hand.length || 0) * 0.8;
+    return /^TOP$/i.test(option.id || '')
+      ? revealedValue
+      : keepThreshold - revealedValue;
+  }
+
+  if (/^YES$/i.test(option.id || '')) return 5;
+  if (/^NO$/i.test(option.id || '')) return -2;
+  if (/REVIVE|REBIRTH|SUMMON|PLAY|PUT|FIELD/i.test(optionText)) score += openSlots > 0 ? 8 + openSlots : -8;
+  if (/SEARCH|RETURN|ADD|HAND|SALVAGE|RECOVER/i.test(optionText)) score += (player?.hand.length || 0) <= 4 ? 6 : 3;
+  if (/BOOST|BUFF|POWER|DAMAGE|READY|RESET|RUSH|SHENYI|SPIRIT/i.test(optionText)) {
+    score += gameState.phase === 'BATTLE_FREE' || attackers > 0 ? 6 : 3;
+    if (opponentErosion >= 7) score += 2;
+  }
+  if (/DESTROY|EXILE|BANISH|SILENCE|CANNOT|REMOVE/i.test(optionText)) score += 5;
+  score += (profile.gamePlan?.effectPriority || 0) * 0.5;
+  return score;
+}
+
+function scoreQueryCardOption(
+  gameState: GameState,
+  playerUid: string,
+  query: EffectQuery,
+  option: any,
+  profile: DeckAiProfile,
+  intent: QueryIntent,
+  hasOwnCardOptions: boolean,
+  hasOpponentCardOptions: boolean
+) {
+  const card = option.card as Card | undefined;
+  if (!card) return 0;
+
+  const isMine = option.isMine !== false;
+  const cardValue = scoreCardValue(card, profile);
+  const preserveValue = getCardKnowledgeValue(card, 'preserveValue') + cardValue * 0.25;
+  const targetPriority = getCardKnowledgeValue(card, 'targetPriority') + cardValue * 0.35;
+  const playPriority = getCardKnowledgeValue(card, 'playPriority') + cardValue * 0.35;
+  const attackValue = (card.damage || 0) * 8 + (card.power || 0) / 900 + (canUnitAttack(gameState, card) ? 4 : 0);
+  const isFieldCard = card.cardlocation === 'UNIT' || card.cardlocation === 'ITEM';
+  const isHiddenResource = card.cardlocation === 'DECK' || card.cardlocation === 'GRAVE' || card.cardlocation === 'EROSION_FRONT' || card.cardlocation === 'EROSION_BACK';
+
+  if (intent === 'cost') {
+    return -preserveValue - (isFieldCard ? attackValue * 0.5 : 0);
+  }
+
+  if (intent === 'keep') {
+    return preserveValue + attackValue * 0.3;
+  }
+
+  if (intent === 'benefit') {
+    let score = playPriority + attackValue * 0.75 + preserveValue * 0.25;
+    if (isMine) score += 20;
+    else if (hasOwnCardOptions) score -= 60;
+    if (card.isExhausted) score += /READY|RESET|ready|reset/i.test(queryText(query)) ? 8 : -2;
+    if ((card.damage || 0) <= 0 && /DAMAGE|浼ゅ/i.test(queryText(query))) score -= 5;
+    return score;
+  }
+
+  if (intent === 'revive') {
+    let score = playPriority + preserveValue * 0.4 + attackValue * 0.5;
+    if (isMine) score += 12;
+    else if (hasOwnCardOptions) score -= 40;
+    if (card.type !== 'UNIT') score -= 4;
+    if (isHiddenResource) score += 3;
+    return score;
+  }
+
+  if (intent === 'search') {
+    let score = playPriority + cardValue * 0.35;
+    if (isMine) score += 10;
+    else if (hasOwnCardOptions) score -= 35;
+    if (card.type === 'UNIT' && profile.gamePlan?.primaryGoal === 'damage') score += (card.damage || 0) * 2;
+    if (card.type === 'ITEM' && profile.gamePlan?.primaryGoal === 'resourceLoop') score += 3;
+    return score;
+  }
+
+  if (intent === 'offense') {
+    let score = targetPriority + attackValue * 0.45;
+    if (!isMine) score += 20;
+    else if (hasOpponentCardOptions) score -= 55;
+    if (card.godMark) score += 2;
+    return score;
+  }
+
+  if (isMine && !hasOpponentCardOptions) {
+    return playPriority + preserveValue * 0.2;
+  }
+  if (!isMine && hasOpponentCardOptions) {
+    return targetPriority + 4;
+  }
+  return cardValue;
+}
+
+function deckPressurePenalty(deckCount: number, profile?: DeckAiProfile, stopAtOverride?: number) {
+  const criticalDeck = profile ? riskValue(profile, 'criticalDeck', 3) : 3;
+  const lowDeck = profile ? riskValue(profile, 'lowDeck', 10) : 10;
+  const stopAt = stopAtOverride ?? (profile ? riskValue(profile, 'stopSelfDrawAtDeck', lowDeck) : lowDeck);
+  if (deckCount <= criticalDeck) return 32;
+  if (deckCount <= Math.max(criticalDeck + 3, Math.floor(stopAt * 0.6))) return 22;
+  if (deckCount <= stopAt) return 13;
+  if (deckCount <= lowDeck + 5) return 5;
+  return 0;
+}
+
+function scorePlayerTargetOption(gameState: GameState, playerUid: string, query: EffectQuery, option: any, profile: DeckAiProfile) {
+  const optionId = option.card?.id || option.card?.gamecardId || option.id;
+  if (optionId !== 'PLAYER_SELF' && optionId !== 'PLAYER_OPPONENT') return undefined;
+
+  const player = gameState.players[playerUid];
+  const opponentUid = gameState.playerIds.find(uid => uid !== playerUid);
+  const opponent = opponentUid ? gameState.players[opponentUid] : undefined;
+  if (!player || !opponent) return optionId === 'PLAYER_SELF' ? 0 : 1;
+
+  const target = optionId === 'PLAYER_SELF' ? player : opponent;
+  const isSelf = target.uid === player.uid;
+  const text = `${query.title || ''} ${query.description || ''} ${query.callbackKey || ''} ${query.context?.effectId || ''} ${query.context?.step || ''}`;
+  const drawLike = /抽|充能|卡组顶|侵蚀|draw|recharge|deck|erosion/i.test(text);
+  const damageLike = /伤害|damage|DEAL_DAMAGE/i.test(text);
+  const skipDrawLike = /跳过|skip/i.test(text);
+
+  let score = isSelf ? 0 : 1;
+
+  if (damageLike) score += isSelf ? -40 : 40;
+  if (skipDrawLike) score += isSelf ? -20 : 20;
+
+  if (drawLike) {
+    if (isSelf) {
+      score += player.hand.length <= 2 ? 10 : player.hand.length <= 4 ? 4 : -3;
+      const stopSelfDrawAtDeck = matchupRiskValue(gameState, player, profile, 'stopSelfDrawAtDeck', 10);
+      score -= deckPressurePenalty(player.deck.length, profile, stopSelfDrawAtDeck);
+      if (countErosion(player) >= 7) score -= 8;
+    } else {
+      score += opponent.deck.length <= player.deck.length ? 8 : 2;
+      score += opponent.deck.length <= 10 ? 14 : opponent.deck.length <= 15 ? 7 : 0;
+      if (player.deck.length <= 12) score += 12;
+      if (countErosion(opponent) >= 7) score += 5;
+    }
+  }
+
+  return score;
+}
+
+export function chooseQuerySelections(
+  gameState: GameState,
+  playerUid: string,
+  query: EffectQuery,
+  profile: DeckAiProfile,
+  difficulty: BotDifficulty
+) {
+  const selectableOptions = (query.options || []).filter(option => !option.disabled);
+  const minSelections = query.minSelections ?? 1;
+  const maxSelections = query.maxSelections ?? minSelections;
+  const selectionCount = Math.max(0, Math.min(minSelections, maxSelections, selectableOptions.length));
+
+  if (query.callbackKey === 'TRIGGER_CHOICE') return ['YES'];
+  if (selectionCount === 0) return [];
+  if (difficulty !== 'hard') {
+    return selectableOptions
+      .slice(0, selectionCount)
+      .map(option => option.card?.gamecardId || option.id)
+      .filter(Boolean) as string[];
+  }
+
+  if (query.type === 'SELECT_CHOICE') {
+    const yes = selectableOptions.find(option => option.id === 'YES');
+    const no = selectableOptions.find(option => option.id === 'NO');
+    if (yes && no && /ATTACK_TARGET|TARGET_CHOICE|TRIGGER|SHENYI/i.test(query.callbackKey || '')) return ['YES'];
+    const scoredChoices = selectableOptions
+      .map(option => ({ option, score: scoreChoiceOption(gameState, playerUid, query, option, profile) }))
+      .sort((a, b) => b.score - a.score);
+    return [(scoredChoices[0].option.id || scoredChoices[0].option.card?.gamecardId)!].filter(Boolean);
+  }
+
+  const playerTargetOptions = selectableOptions
+    .map(option => ({ option, score: scorePlayerTargetOption(gameState, playerUid, query, option, profile) }))
+    .filter((entry): entry is { option: any; score: number } => entry.score !== undefined);
+  if (playerTargetOptions.length === selectableOptions.length && playerTargetOptions.length > 0) {
+    return playerTargetOptions
+      .sort((a, b) => b.score - a.score)
+      .slice(0, selectionCount)
+      .map(({ option }) => option.card?.gamecardId || option.id)
+      .filter(Boolean) as string[];
+  }
+
+  const intent = inferQueryIntent(query);
+  const hasOwnCardOptions = selectableOptions.some(option => option.card && option.isMine !== false);
+  const hasOpponentCardOptions = selectableOptions.some(option => option.card && option.isMine === false);
+  const scored = selectableOptions
+    .map(option => {
+      const card = option.card;
+      return {
+        option,
+        score: card
+          ? scoreQueryCardOption(gameState, playerUid, query, option, profile, intent, hasOwnCardOptions, hasOpponentCardOptions)
+          : 0,
+      };
+    })
+    .sort((a, b) => b.score - a.score);
+
+  return scored
+    .slice(0, selectionCount)
+    .map(({ option }) => option.card?.gamecardId || option.id)
+    .filter(Boolean) as string[];
+}
+
+export function chooseDiscardCard(player: PlayerState, profile: DeckAiProfile, difficulty: BotDifficulty) {
+  if (difficulty !== 'hard') return player.hand[0];
+  return [...player.hand].sort((a, b) =>
+    (getCardKnowledgeValue(a, 'discardValue') + scoreCardValue(a, profile) * 0.2) -
+    (getCardKnowledgeValue(b, 'discardValue') + scoreCardValue(b, profile) * 0.2)
+  )[0];
+}
+
+export function scorePaymentSacrificeValue(card: Card | null | undefined, profile: DeckAiProfile) {
+  if (!card) return 0;
+  return getCardKnowledgeValue(card, 'preserveValue') + scoreCardValue(card, profile) * 0.25;
+}
+
+export function scorePaymentExhaustValue(
+  gameState: GameState,
+  card: Card | null | undefined,
+  profile: DeckAiProfile,
+  difficulty: BotDifficulty
+) {
+  let score = scorePaymentSacrificeValue(card, profile);
+  if (difficulty === 'hard' && gameState.phase === 'MAIN' && canUnitAttack(gameState, card)) {
+    score += ((card?.damage || 0) * 9 + (card?.power || 0) / 1000) * profile.weights.attackBias;
+  }
+  return score;
+}

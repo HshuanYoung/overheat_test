@@ -10,6 +10,8 @@
     "resetcards": "tsx server/reset_all_user_cards.ts",
     "refillcards": "tsx server/refill_user_cards.ts",
     "generate:card-scripts": "tsx script/generate-card-scripts.ts",
+    "ai:evaluate": "tsx script/evaluate-ai.ts",
+    "ai:report-live": "tsx script/report-live-ai.ts",
     "dev": "concurrently \"npm run frontend\" \"npm run backend:dev\"",
     "close": "bash script/close-dev.sh",
     "frontend": "vite --port=3000 --host=0.0.0.0",

@@ -8,6 +8,14 @@ import { getAuthUser } from '../socket';
 import { Deck } from '../types/game';
 import { PageFallback } from './PageFallback';
 
+const AI_OPPONENT_DECKS = [
+  { id: 'white-temple', name: '纯白殿堂', detail: '稳健防守与场面控制' },
+  { id: 'blue-adventurer', name: '纯蓝冒险家', detail: '节奏展开与灵活交换' },
+  { id: 'red-dikai', name: '纯红迪凯', detail: '高速进攻与连续压制' },
+  { id: 'yellow-alchemy', name: '纯黄炼金', detail: '资源循环与后期续航' },
+  { id: 'overlord-totem', name: '霸者图腾', detail: '墓地复归与图腾压迫' },
+] as const;
+
 export const PracticeSetup: React.FC = () => {
   const navigate = useNavigate();
   const [myDecks, setMyDecks] = useState<Deck[]>([]);
@@ -16,11 +24,14 @@ export const PracticeSetup: React.FC = () => {
   const [starting, setStarting] = useState(false);
   const [deckDropdownOpen, setDeckDropdownOpen] = useState(false);
   const [turnTime, setTurnTime] = useState(300);
+  const [botDifficulty, setBotDifficulty] = useState<'simple' | 'hard'>('simple');
+  const [botDeckProfileId, setBotDeckProfileId] = useState<(typeof AI_OPPONENT_DECKS)[number]['id']>('white-temple');
 
   const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || '';
   const token = localStorage.getItem('token');
   const selectedDeck = myDecks.find(deck => deck.id === selectedDeckId) || null;
   const selectedDeckValidation = validateDeckForBattle(selectedDeck);
+  const selectedOpponentDeck = AI_OPPONENT_DECKS.find(deck => deck.id === botDeckProfileId) || AI_OPPONENT_DECKS[0];
 
   useEffect(() => {
     const loadDecks = async () => {
@@ -51,10 +62,15 @@ export const PracticeSetup: React.FC = () => {
         },
         body: JSON.stringify({ 
           deckId: selectedDeckId,
-          turnTimerLimit: turnTime
+          turnTimerLimit: turnTime,
+          botDifficulty,
+          botDeckProfileId: botDifficulty === 'hard' ? botDeckProfileId : undefined
         })
       });
       const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || '创建练习对局失败');
+      }
       navigate(`/battle/${data.gameId}`, { state: { deckId: selectedDeckId } });
     } catch (e: any) {
       console.error(e);
@@ -155,7 +171,7 @@ export const PracticeSetup: React.FC = () => {
           </button>
           <div>
             <h1 className="text-xl md:text-3xl font-black italic tracking-tighter uppercase">练习模式</h1>
-            <p className="text-zinc-500 text-[10px] md:text-sm font-bold tracking-widest leading-none">镜像对战练习</p>
+            <p className="text-zinc-500 text-[10px] md:text-sm font-bold tracking-widest leading-none">选择人机对手练习</p>
           </div>
         </div>
 
@@ -167,7 +183,11 @@ export const PracticeSetup: React.FC = () => {
           </div>
           <div>
             <h2 className="text-lg md:text-xl font-black italic tracking-tighter">人机对手</h2>
-            <p className="text-zinc-500 text-[10px] md:text-sm mt-1">机器人将镜像你的卡组进行对战</p>
+            <p className="text-zinc-500 text-[10px] md:text-sm mt-1">
+              {botDifficulty === 'hard'
+                ? `困难人机将使用「${selectedOpponentDeck.name}」作为对手卡组`
+                : '简单人机会镜像你的卡组进行对战'}
+            </p>
             <div className="flex flex-wrap justify-center md:justify-start gap-2 mt-2">
               <span className="px-2 py-0.5 bg-white/5 rounded text-[8px] md:text-[10px] text-zinc-500 font-bold uppercase tracking-widest">• 自动出牌</span>
               <span className="px-2 py-0.5 bg-white/5 rounded text-[8px] md:text-[10px] text-zinc-500 font-bold uppercase tracking-widest">• 无限重赛</span>
@@ -183,6 +203,65 @@ export const PracticeSetup: React.FC = () => {
         {selectedDeckId && !selectedDeckValidation.valid && (
           <div className="mb-6 p-3 rounded-xl border border-red-500/30 bg-red-900/20 text-red-300 text-sm">
             当前选中的卡组不可用于机器人对战：{selectedDeckValidation.error}
+          </div>
+        )}
+
+        <div className="mb-8 rounded-2xl border border-zinc-800 bg-zinc-900/50 p-5 md:p-6">
+          <div className="mb-4 flex items-center justify-between gap-3">
+            <h2 className="text-sm font-bold uppercase tracking-widest text-zinc-500">人机难度</h2>
+            <span className="text-xs font-bold text-zinc-500">
+              {botDifficulty === 'hard' ? '困难人机 Beta' : '简单策略'}
+            </span>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            {([
+              { id: 'simple', label: '简单', detail: '保持当前逻辑' },
+              { id: 'hard', label: '困难人机 Beta', detail: '启用评分策略' },
+            ] as const).map(option => {
+              const active = botDifficulty === option.id;
+              return (
+                <button
+                  key={option.id}
+                  type="button"
+                  onClick={() => setBotDifficulty(option.id)}
+                  className={cn(
+                    'rounded-xl border px-4 py-3 text-left transition-colors',
+                    active ? 'border-red-500/60 bg-red-600/20 text-white' : 'border-zinc-800 bg-black/20 text-zinc-400 hover:bg-white/5'
+                  )}
+                >
+                  <div className="text-sm font-black">{option.label}</div>
+                  <div className="mt-1 text-[10px] font-bold uppercase tracking-widest text-zinc-500">{option.detail}</div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {botDifficulty === 'hard' && (
+          <div className="mb-8 rounded-2xl border border-zinc-800 bg-zinc-900/50 p-5 md:p-6">
+            <div className="mb-4 flex items-center justify-between gap-3">
+              <h2 className="text-sm font-bold uppercase tracking-widest text-zinc-500">人机卡组</h2>
+              <span className="text-xs font-bold text-red-300">{selectedOpponentDeck.name}</span>
+            </div>
+            <div className="grid gap-3 md:grid-cols-2">
+              {AI_OPPONENT_DECKS.map(option => {
+                const active = botDeckProfileId === option.id;
+                return (
+                  <button
+                    key={option.id}
+                    type="button"
+                    onClick={() => setBotDeckProfileId(option.id)}
+                    className={cn(
+                      'rounded-xl border px-4 py-3 text-left transition-colors',
+                      active ? 'border-red-500/60 bg-red-600/20 text-white' : 'border-zinc-800 bg-black/20 text-zinc-400 hover:bg-white/5'
+                    )}
+                  >
+                    <div className="text-sm font-black">{option.name}</div>
+                    <div className="mt-1 text-[10px] font-bold uppercase tracking-widest text-zinc-500">{option.detail}</div>
+                  </button>
+                );
+              })}
+            </div>
           </div>
         )}
 

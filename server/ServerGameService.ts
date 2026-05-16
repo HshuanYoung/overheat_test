@@ -1,4 +1,4 @@
-import { GameState, PlayerState, Card, Deck, TriggerLocation, CardEffect, StackItem, GamePhase, GAME_TIMEOUTS, GameEvent, DeclaredEffectTarget, EffectTargetCandidate } from '../src/types/game';
+import { GameState, PlayerState, Card, Deck, TriggerLocation, CardEffect, StackItem, GamePhase, GAME_TIMEOUTS, GameEvent, DeclaredEffectTarget, EffectTargetCandidate, AiDecisionLog } from '../src/types/game';
 import { CARD_LIBRARY } from '../src/data/cards';
 import { EventEngine } from '../src/services/EventEngine';
 import { AtomicEffectExecutor } from '../src/services/AtomicEffectExecutor';
@@ -7,6 +7,26 @@ import { addBattleLog, cardToBattleLogRef, describeBattleLogTarget } from '../sr
 import { SERVER_CARD_LIBRARY } from './card_loader';
 import { GameService } from '../src/services/gameService';
 import { grantedTotemReviveFromGrave } from '../src/scripts/BaseUtil';
+import { BotDifficulty, DeckAiProfile } from './ai/types';
+import { getDeckAiProfile } from './ai/deckProfiles';
+import {
+  chooseAttacker,
+  chooseDefender,
+  chooseDiscardCard,
+  chooseMulliganCards,
+  chooseQuerySelections,
+  buildTurnPlan,
+  canUnitAttack,
+  countErosion,
+  estimateIncomingThreat,
+  scoreCardValue,
+  scoreActivatableEffect,
+  applyOpeningHandSoftCompensation,
+  scoreAttackCandidate,
+  scorePaymentExhaustValue,
+  scorePlayableCard,
+  scorePaymentSacrificeValue
+} from './ai/hardStrategy';
 
 type PaymentSummary = {
   success: boolean;
@@ -5952,6 +5972,7 @@ export const ServerGameService = {
     } else {
     }
 
+    ServerGameService.applyHardAiSoftOpeningCompensation(gameState, uid);
     player.mulliganDone = true;
 
     // Check if both players are done
@@ -5996,6 +6017,522 @@ export const ServerGameService = {
   },
 
   // Bot logic
+  getBotDifficulty(gameState: GameState, playerUid: string): BotDifficulty {
+    const player = gameState.players[playerUid] as (PlayerState & { botDifficulty?: BotDifficulty }) | undefined;
+    return player?.botDifficulty || gameState.botDifficulty || 'simple';
+  },
+
+  getBotProfile(gameState: GameState, playerUid: string): DeckAiProfile {
+    const player = gameState.players[playerUid] as (PlayerState & { botDeckProfileId?: string }) | undefined;
+    const profileId = player?.botDeckProfileId || gameState.botDeckProfiles?.[playerUid];
+    return getDeckAiProfile(profileId);
+  },
+
+  getAiCardName(card: Card | null | undefined) {
+    return card?.fullName || card?.id || '未知卡牌';
+  },
+
+  recordAiDecision(
+    gameState: GameState,
+    playerUid: string,
+    decision: Omit<AiDecisionLog, 'id' | 'turn' | 'playerUid' | 'playerName' | 'profileId' | 'difficulty' | 'phase' | 'createdAt'>
+  ) {
+    const player = gameState.players[playerUid];
+    if (!player) return;
+
+    gameState.aiDecisionLogs ??= [];
+    const profile = ServerGameService.getBotProfile(gameState, playerUid);
+    gameState.aiDecisionLogs.push({
+      id: `${gameState.gameId || 'game'}_${gameState.aiDecisionLogs.length + 1}`,
+      turn: gameState.turnCount,
+      playerUid,
+      playerName: player.displayName,
+      profileId: profile.id,
+      difficulty: ServerGameService.getBotDifficulty(gameState, playerUid),
+      phase: gameState.phase,
+      createdAt: Date.now(),
+      ...decision,
+    });
+
+    if (gameState.aiDecisionLogs.length > 300) {
+      gameState.aiDecisionLogs.splice(0, gameState.aiDecisionLogs.length - 300);
+    }
+  },
+
+  applyHardAiSoftOpeningCompensation(gameState: GameState, playerUid: string) {
+    const player = gameState.players[playerUid];
+    if (!player || ServerGameService.getBotDifficulty(gameState, playerUid) !== 'hard') return;
+    if ((player as any).hardAiSoftOpeningApplied) return;
+
+    const profile = ServerGameService.getBotProfile(gameState, playerUid);
+    if (!profile.softCompensation?.openingSmoothing) return;
+
+    (player as any).hardAiSoftOpeningApplied = true;
+    const result = applyOpeningHandSoftCompensation(player, profile);
+    if (!result.applied) {
+      if (result.before.severeBrick || result.before.mildBrick) {
+        ServerGameService.recordAiDecision(gameState, playerUid, {
+          action: 'SOFT_COMPENSATION_CHECK',
+          subject: '起手平滑检查',
+          reason: result.reason,
+          details: {
+            qualityBefore: result.before.quality,
+            earlyUnits: result.before.earlyUnits,
+            units: result.before.units,
+            engines: result.before.engines,
+            avgCost: result.before.avgCost,
+            notes: result.before.notes.join(', ') || 'none',
+            lookahead: result.inspectedDeckCards,
+          },
+        });
+      }
+      return;
+    }
+
+    ServerGameService.recordAiDecision(gameState, playerUid, {
+      action: 'SOFT_COMPENSATION',
+      subject: `${result.returned.length} opening card(s)`,
+      reason: result.reason,
+      details: {
+        returned: result.returned.length,
+        gained: result.gained.length,
+        qualityBefore: result.before.quality,
+        qualityAfter: result.after.quality,
+        earlyBefore: result.before.earlyUnits,
+        earlyAfter: result.after.earlyUnits,
+        enginesBefore: result.before.engines,
+        enginesAfter: result.after.engines,
+        avgCostBefore: result.before.avgCost,
+        avgCostAfter: result.after.avgCost,
+        lookahead: result.inspectedDeckCards,
+        extremeRescue: result.extremeRescue,
+      },
+      candidates: [
+        ...result.returned.map(card => ({
+          name: `返回:${ServerGameService.getAiCardName(card)}`,
+          note: 'soft smoothing',
+        })),
+        ...result.gained.map(card => ({
+          name: `获得:${ServerGameService.getAiCardName(card)}`,
+          note: 'soft smoothing',
+        })),
+      ],
+    });
+  },
+
+  describeAiSelection(gameState: GameState, query: any, selection: string) {
+    const option = (query.options || []).find((candidate: any) =>
+      candidate.id === selection || candidate.card?.gamecardId === selection
+    );
+    if (option?.card) return ServerGameService.getAiCardName(option.card);
+    if (option?.label) return option.label;
+    const card = ServerGameService.findCardById(gameState, selection);
+    return card ? ServerGameService.getAiCardName(card) : selection;
+  },
+
+  describeAiPaymentSelection(gameState: GameState, payment: { feijingCardId?: string; exhaustUnitIds?: string[]; erosionFrontIds?: string[] }) {
+    const parts: string[] = [];
+    if (payment.feijingCardId) {
+      parts.push(`费用替代:${ServerGameService.getAiCardName(ServerGameService.findCardById(gameState, payment.feijingCardId))}`);
+    }
+    if (payment.exhaustUnitIds?.length) {
+      parts.push(`横置:${payment.exhaustUnitIds.map(id => ServerGameService.getAiCardName(ServerGameService.findCardById(gameState, id))).join('、')}`);
+    }
+    if (payment.erosionFrontIds?.length) {
+      parts.push(`侵蚀支付:${payment.erosionFrontIds.map(id => ServerGameService.getAiCardName(ServerGameService.findCardById(gameState, id))).join('、')}`);
+    }
+    return parts.join('；') || '无需额外支付';
+  },
+
+  getBotEffectPaymentCost(effect: CardEffect) {
+    const explicitCost = Number(effect.playCost || 0);
+    if (Number.isFinite(explicitCost) && explicitCost > 0) return explicitCost;
+
+    const text = `${effect.description || ''} ${effect.content || ''}`;
+    const match = text.match(/支付\s*(\d+)\s*费用/) ||
+      text.match(/pay\s*(\d+)\s*(?:cost|resource)?/i);
+    const parsed = match ? Number(match[1]) : 0;
+    return Number.isFinite(parsed) ? parsed : 0;
+  },
+
+  canBotPayPositiveCost(gameState: GameState, player: PlayerState, cost: number, cardColor?: string, sourceCard?: Card) {
+    if (cost <= 0) return true;
+    const normalizedColor = cardColor === 'NONE' ? undefined : cardColor;
+    const sourceCardId = sourceCard?.gamecardId;
+
+    const hasSpecialSubstitute = player.hand.some(card =>
+      ServerGameService.canUse204000145AsPaymentSubstitute(card, normalizedColor, cost, sourceCardId) ||
+      ServerGameService.canUse205000136AsPaymentSubstitute(card, normalizedColor, cost, sourceCardId) ||
+      ServerGameService.canUseStoryPaymentSubstitute(card, sourceCard, cost, sourceCardId)
+    );
+    if (hasSpecialSubstitute) return true;
+
+    let remainingCost = cost;
+    const hasFeijing = player.hand.some(card =>
+      card.gamecardId !== sourceCardId &&
+      card.feijingMark &&
+      (!normalizedColor || card.color === normalizedColor)
+    );
+    if (hasFeijing) remainingCost = Math.max(0, remainingCost - 3);
+
+    const readyUnitPayment = player.unitZone
+      .filter((card): card is Card => !!card && !card.isExhausted && !(card as any).data?.cannotExhaustByEffect)
+      .reduce((total, card) => {
+        const data = (card as any).data || {};
+        const accessMin = Math.max(1, Number(data.accessTapMinValue || 1));
+        const accessMax = data.accessTapColor && data.accessTapColor !== normalizedColor
+          ? 1
+          : Math.max(accessMin, Number(data.accessTapValue || 1));
+        return total + accessMax;
+      }, 0);
+    remainingCost = Math.max(0, remainingCost - readyUnitPayment);
+    if (remainingCost <= 0) return true;
+    if (player.deck.length < remainingCost) return false;
+
+    const totalErosion = player.erosionFront.filter(Boolean).length + player.erosionBack.filter(Boolean).length;
+    const canUseWindProduction =
+      (player as any).windProductionTurn === gameState.turnCount &&
+      totalErosion + remainingCost === 10;
+    return canUseWindProduction || totalErosion + remainingCost < 10;
+  },
+
+  canBotPayQueryCost(gameState: GameState, playerUid: string, query: any) {
+    const paymentPlayerUid = query.context?.activationPlayerUid || playerUid;
+    const player = gameState.players[paymentPlayerUid];
+    if (!player) return false;
+
+    const paymentTargetId = query.context?.targetCardId || query.context?.targetId || query.context?.sourceCardId;
+    const paymentTarget = paymentTargetId ? ServerGameService.findCardById(gameState, paymentTargetId) : undefined;
+    const paymentCost = paymentTarget && query.context?.useEffectiveCardCost !== false
+      ? ServerGameService.getEffectivePlayCost(player, paymentTarget, gameState)
+      : Number(query.paymentCost || 0);
+
+    if (paymentCost < 0) {
+      const faceUpFrontCount = player.erosionFront.filter(card => card && card.displayState === 'FRONT_UPRIGHT').length;
+      return faceUpFrontCount >= Math.abs(paymentCost);
+    }
+
+    return ServerGameService.canBotPayPositiveCost(
+      gameState,
+      player,
+      paymentCost,
+      paymentTarget?.color || query.paymentColor,
+      paymentTarget
+    );
+  },
+
+  scoreBotPaymentSelectionRisk(
+    gameState: GameState,
+    playerUid: string,
+    payment: { feijingCardId?: string; exhaustUnitIds?: string[]; erosionFrontIds?: string[] },
+    options: { paymentCost?: number; paymentColor?: string; sourceCard?: Card; addedReadyDefenders?: number } = {}
+  ) {
+    const player = gameState.players[playerUid];
+    if (!player || ServerGameService.getBotDifficulty(gameState, playerUid) !== 'hard') {
+      return {
+        penalty: 0,
+        notes: [] as string[],
+        exhaustedUnits: [] as Card[],
+        estimatedDeckPayment: 0,
+        readyDefendersAfter: 0,
+        defensePressure: false,
+      };
+    }
+
+    const profile = ServerGameService.getBotProfile(gameState, playerUid);
+    const incomingThreat = estimateIncomingThreat(gameState, player, profile);
+    const ownErosion = countErosion(player);
+    const lowDeck = profile.riskThresholds?.lowDeck ?? 10;
+    const reserveDeck = profile.riskThresholds?.reserveDefendersAtDeck ?? lowDeck;
+    const defensePressure =
+      player.deck.length <= reserveDeck ||
+      incomingThreat.defendersNeeded > 0 ||
+      incomingThreat.lethalWithoutBlocks ||
+      incomingThreat.totalDamage >= Math.max(4, 10 - ownErosion);
+    const preserveBoardForPlan =
+      profile.gamePlan?.mode === 'engine' ||
+      profile.gamePlan?.mode === 'combo' ||
+      profile.gamePlan?.primaryGoal === 'resourceLoop' ||
+      profile.gamePlan?.primaryGoal === 'comboSetup';
+    const canDefendSoon = (unit: Card | null | undefined) => !!unit &&
+      !unit.isExhausted &&
+      !(unit as any).battleForbiddenByEffect &&
+      !((unit as any).data?.cannotDefendTurn === gameState.turnCount) &&
+      !((unit as any).data?.cannotAttackOrDefendUntilTurn && (unit as any).data.cannotAttackOrDefendUntilTurn >= gameState.turnCount);
+    const exhaustedUnits = (payment.exhaustUnitIds || [])
+      .map(id => ServerGameService.findCardById(gameState, id))
+      .filter((card): card is Card => !!card);
+    const exhaustedReadyDefenders = exhaustedUnits.filter(canDefendSoon).length;
+    const readyDefendersBefore = player.unitZone.filter(canDefendSoon).length + (options.addedReadyDefenders || 0);
+    const readyDefendersAfter = Math.max(0, readyDefendersBefore - exhaustedReadyDefenders);
+    const notes: string[] = [];
+    let penalty = 0;
+
+    if (defensePressure && exhaustedUnits.length > 0) {
+      for (const unit of exhaustedUnits) {
+        const cardValue = scoreCardValue(unit, profile);
+        const explicitPreserve = !!(
+          profile.preserveCardIds?.[unit.id] ||
+          profile.preserveCardIds?.[unit.uniqueId] ||
+          profile.preferredCardIds?.[unit.id] ||
+          profile.preferredCardIds?.[unit.uniqueId]
+        );
+        const newlyPlayed = unit.playedTurn === gameState.turnCount;
+        const highValueUnit = explicitPreserve || cardValue >= 34;
+        penalty += 8 + (unit.damage || 0) * 6 + (unit.power || 0) / 700;
+        if (newlyPlayed) penalty += 22;
+        if (explicitPreserve) penalty += 24;
+        if (preserveBoardForPlan && highValueUnit) penalty += 18;
+        if (preserveBoardForPlan && (unit.damage || 0) > 0) penalty += (unit.damage || 0) * 6;
+      }
+      if (exhaustedUnits.length >= 2) penalty += (exhaustedUnits.length - 1) * 12;
+      const missingDefenders = Math.max(0, incomingThreat.defendersNeeded - readyDefendersAfter);
+      if (missingDefenders > 0) penalty += missingDefenders * (incomingThreat.lethalWithoutBlocks ? 44 : 30);
+      if (incomingThreat.lethalThroughOneBlock && readyDefendersAfter < 2) penalty += 28;
+      if (incomingThreat.totalDamage >= Math.max(4, 10 - ownErosion) && readyDefendersAfter === 0) penalty += 36;
+      notes.push(`payment exhaust risk ${Math.round(penalty)}`);
+    }
+
+    const paymentCost = Number(options.paymentCost || 0);
+    let estimatedDeckPayment = 0;
+    if (paymentCost > 0) {
+      const paymentColor = options.paymentColor || options.sourceCard?.color;
+      const sourceCard = options.sourceCard;
+      const playingCardId = sourceCard?.gamecardId;
+      const feijingCard = payment.feijingCardId
+        ? ServerGameService.findCardById(gameState, payment.feijingCardId)
+        : undefined;
+      const feijingReduction = feijingCard
+        ? (
+          ServerGameService.canUse204000145AsPaymentSubstitute(feijingCard, paymentColor, paymentCost, playingCardId) ||
+          ServerGameService.canUse205000136AsPaymentSubstitute(feijingCard, paymentColor, paymentCost, playingCardId) ||
+          ServerGameService.canUseStoryPaymentSubstitute(feijingCard, sourceCard, paymentCost, playingCardId)
+        )
+          ? paymentCost
+          : 3
+        : 0;
+      const unitPayment = exhaustedUnits.reduce((total, unit) => {
+        const data = (unit as any).data || {};
+        const accessMin = Math.max(1, Number(data.accessTapMinValue || 1));
+        const accessMax = data.accessTapColor && data.accessTapColor !== paymentColor
+          ? 1
+          : Math.max(accessMin, Number(data.accessTapValue || 1));
+        return total + accessMax;
+      }, 0);
+      estimatedDeckPayment = Math.max(0, paymentCost - feijingReduction - unitPayment);
+    }
+
+    if (estimatedDeckPayment > 0 && defensePressure) {
+      const deckAfterPayment = player.deck.length - estimatedDeckPayment;
+      const erosionAfterPayment = countErosion(player) + estimatedDeckPayment;
+      if (deckAfterPayment <= 0 || erosionAfterPayment >= 10) {
+        penalty += 80 + estimatedDeckPayment * 12;
+        notes.push('unsafe deck payment');
+      } else if (player.deck.length <= (profile.riskThresholds?.stopSelfDrawAtDeck ?? lowDeck)) {
+        penalty += 10 + estimatedDeckPayment * 5;
+        notes.push('low deck payment');
+      }
+    }
+
+    return {
+      penalty,
+      notes,
+      exhaustedUnits,
+      estimatedDeckPayment,
+      readyDefendersAfter,
+      defensePressure,
+    };
+  },
+
+  getBotEffectAttemptKey(gameState: GameState, card: Card, effectIndex: number) {
+    return `${gameState.turnCount}:${gameState.phase}:${card.gamecardId}:${effectIndex}`;
+  },
+
+  getBotEffectAttempts(gameState: GameState, player: PlayerState) {
+    const statefulPlayer = player as any;
+    if (statefulPlayer.botEffectAttemptTurn !== gameState.turnCount) {
+      statefulPlayer.botEffectAttemptTurn = gameState.turnCount;
+      statefulPlayer.botEffectAttempts = {};
+      statefulPlayer.botEffectFailedIds = {};
+    }
+    statefulPlayer.botEffectAttempts ??= {};
+    return statefulPlayer.botEffectAttempts as Record<string, number>;
+  },
+
+  getBotEffectFailedIds(gameState: GameState, player: PlayerState) {
+    const statefulPlayer = player as any;
+    if (statefulPlayer.botEffectAttemptTurn !== gameState.turnCount) {
+      statefulPlayer.botEffectAttemptTurn = gameState.turnCount;
+      statefulPlayer.botEffectAttempts = {};
+      statefulPlayer.botEffectFailedIds = {};
+    }
+    statefulPlayer.botEffectFailedIds ??= {};
+    return statefulPlayer.botEffectFailedIds as Record<string, number>;
+  },
+
+  getEffectTargetCount(gameState: GameState, playerUid: string, sourceCard: Card, effect: CardEffect) {
+    if (!ServerGameService.hasPreselectTargetSpec(effect)) return undefined;
+    const spec = effect.targetSpec;
+    if (!spec) return 0;
+
+    if (spec.modeOptions?.length) {
+      const player = gameState.players[playerUid];
+      return spec.modeOptions.reduce((total, mode) => {
+        if (mode.condition && !mode.condition(gameState, player, sourceCard)) return total;
+        const candidates = ServerGameService.getTargetCandidates(gameState, playerUid, sourceCard, effect, mode);
+        return candidates.length >= (mode.minSelections ?? 0) ? total + candidates.length : total;
+      }, 0);
+    }
+
+    const firstTargetShape = spec.targetGroups?.[0] || spec;
+    const candidates = ServerGameService.getTargetCandidates(gameState, playerUid, sourceCard, effect, firstTargetShape);
+    return candidates.length >= (firstTargetShape.minSelections ?? 0) ? candidates.length : 0;
+  },
+
+  getBotActivatableEffectCandidates(gameState: GameState, playerUid: string) {
+    const player = gameState.players[playerUid];
+    if (!player || ServerGameService.getBotDifficulty(gameState, playerUid) !== 'hard') return [];
+    if (gameState.pendingQuery || gameState.isResolvingStack || gameState.currentProcessingItem) return [];
+    if (!['MAIN', 'BATTLE_FREE'].includes(gameState.phase)) return [];
+
+    const profile = ServerGameService.getBotProfile(gameState, playerUid);
+    const opponentUid = gameState.playerIds.find(uid => uid !== playerUid);
+    const opponent = opponentUid ? gameState.players[opponentUid] : undefined;
+    const attempts = ServerGameService.getBotEffectAttempts(gameState, player);
+    const failedEffectIds = ServerGameService.getBotEffectFailedIds(gameState, player);
+    const zones: Array<{ location: TriggerLocation; cards: (Card | null)[] }> = [
+      { location: 'UNIT', cards: player.unitZone },
+      { location: 'ITEM', cards: player.itemZone },
+      { location: 'EROSION_FRONT', cards: player.erosionFront },
+      { location: 'EROSION_BACK', cards: player.erosionBack },
+      { location: 'GRAVE', cards: player.grave },
+    ];
+
+    return zones.flatMap(({ location, cards }) =>
+      cards.flatMap(card => {
+        if (!card?.effects?.length) return [];
+        return card.effects.map((effect, effectIndex) => {
+          if (!(effect.type === 'ACTIVATE' || effect.type === 'ACTIVATED')) return undefined;
+          if (effect.id && failedEffectIds[effect.id]) return undefined;
+          const attemptKey = ServerGameService.getBotEffectAttemptKey(gameState, card, effectIndex);
+          if (attempts[attemptKey]) return undefined;
+          const rules = ServerGameService.checkEffectLimitsAndReqs(gameState, playerUid, card, effect, location);
+          if (!rules.valid) return undefined;
+          const paymentCost = ServerGameService.getBotEffectPaymentCost(effect);
+          if (paymentCost > 0 && !ServerGameService.canBotPayPositiveCost(gameState, player, paymentCost, card.color, card)) {
+            return undefined;
+          }
+          const projectedPayment = paymentCost > 0
+            ? ServerGameService.buildBotPaymentSelectionForPlayer(gameState, playerUid, {
+              paymentCost,
+              paymentColor: card.color,
+              context: {
+                cardId: card.gamecardId,
+                sourceCardId: card.gamecardId,
+                paymentTargetId: card.gamecardId,
+              },
+            })
+            : {};
+          const paymentRisk = paymentCost > 0
+            ? ServerGameService.scoreBotPaymentSelectionRisk(gameState, playerUid, projectedPayment, {
+              paymentCost,
+              paymentColor: card.color,
+              sourceCard: card,
+            })
+            : { penalty: 0, notes: [] as string[], estimatedDeckPayment: 0, readyDefendersAfter: undefined };
+          const targetCount = ServerGameService.getEffectTargetCount(gameState, playerUid, card, effect);
+          if (targetCount !== undefined && targetCount <= 0) return undefined;
+          const scored = scoreActivatableEffect(gameState, player, card, effect, profile, {
+            opponent,
+            targetCount,
+            hasTargetSpec: targetCount !== undefined,
+          });
+          const finalScore = scored.score - paymentRisk.penalty;
+          return {
+            card,
+            effect,
+            effectIndex,
+            location,
+            score: finalScore,
+            reason: scored.reason,
+            notes: [...scored.notes, ...paymentRisk.notes],
+            targetCount,
+            paymentCost,
+            projectedPayment,
+            paymentRisk,
+          };
+        }).filter(Boolean);
+      })
+    ).sort((a: any, b: any) => b.score - a.score);
+  },
+
+  async tryActivateBotEffect(
+    gameState: GameState,
+    playerUid: string,
+    phaseContext: string,
+    minScore: number,
+    onUpdate?: (state: GameState) => Promise<void>
+  ) {
+    const player = gameState.players[playerUid];
+    if (!player) return false;
+    const candidates = ServerGameService.getBotActivatableEffectCandidates(gameState, playerUid);
+    const chosen = candidates.find((candidate: any) => candidate.score >= minScore) as any;
+    if (!chosen) return false;
+
+    const attempts = ServerGameService.getBotEffectAttempts(gameState, player);
+    const attemptKey = ServerGameService.getBotEffectAttemptKey(gameState, chosen.card, chosen.effectIndex);
+    attempts[attemptKey] = (attempts[attemptKey] || 0) + 1;
+
+    ServerGameService.recordAiDecision(gameState, playerUid, {
+      action: 'ACTIVATE_EFFECT',
+      subject: `${ServerGameService.getAiCardName(chosen.card)} #${chosen.effectIndex + 1}`,
+      score: chosen.score,
+      reason: chosen.reason,
+      details: {
+        effectId: chosen.effect.id,
+        location: chosen.location,
+        phaseContext,
+        targetCount: chosen.targetCount,
+        paymentCost: chosen.paymentCost,
+        projectedPayment: ServerGameService.describeAiPaymentSelection(gameState, chosen.projectedPayment || {}),
+        paymentRisk: chosen.paymentRisk?.penalty ? Number(chosen.paymentRisk.penalty.toFixed(1)) : 0,
+        readyDefendersAfterPayment: chosen.paymentRisk?.readyDefendersAfter,
+        estimatedDeckPayment: chosen.paymentRisk?.estimatedDeckPayment,
+        notes: chosen.notes.join('、'),
+      },
+      candidates: candidates.slice(0, 3).map((candidate: any) => ({
+        name: `${ServerGameService.getAiCardName(candidate.card)} #${candidate.effectIndex + 1}`,
+        score: candidate.score,
+        note: candidate.notes.join('、'),
+      })),
+    });
+
+    try {
+      await ServerGameService.activateEffect(gameState, playerUid, chosen.card.gamecardId, chosen.effectIndex, undefined, undefined);
+      delete (player as any).lastBotEffectFailure;
+      return true;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      (player as any).lastBotEffectFailure = message;
+      if (chosen.effect.id) {
+        ServerGameService.getBotEffectFailedIds(gameState, player)[chosen.effect.id] = 1;
+      }
+      ServerGameService.recordAiDecision(gameState, playerUid, {
+        action: 'ACTIVATE_EFFECT_FAILED',
+        subject: `${ServerGameService.getAiCardName(chosen.card)} #${chosen.effectIndex + 1}`,
+        score: chosen.score,
+        reason: '主动效果通过评分筛选，但实际发动入口拒绝执行，跳过该效果继续行动。',
+        details: {
+          effectId: chosen.effect.id,
+          location: chosen.location,
+          phaseContext,
+          error: message,
+        },
+      });
+      return false;
+    }
+  },
+
   getBotQuerySelections(query: any): string[] {
     const selectableOptions = (query.options || []).filter((option: any) => !option.disabled);
     const minSelections = query.minSelections ?? 1;
@@ -6014,9 +6551,26 @@ export const ServerGameService = {
       .filter(Boolean);
   },
 
+  getBotQuerySelectionsForPlayer(gameState: GameState, playerUid: string, query: any): string[] {
+    return chooseQuerySelections(
+      gameState,
+      playerUid,
+      query,
+      ServerGameService.getBotProfile(gameState, playerUid),
+      ServerGameService.getBotDifficulty(gameState, playerUid)
+    );
+  },
+
   buildBotPaymentSelection(gameState: GameState, query: any) {
-    const player = gameState.players['BOT_PLAYER'];
+    return ServerGameService.buildBotPaymentSelectionForPlayer(gameState, 'BOT_PLAYER', query);
+  },
+
+  buildBotPaymentSelectionForPlayer(gameState: GameState, playerUid: string, query: any) {
+    const player = gameState.players[playerUid];
     if (!player) return {};
+
+    const difficulty = ServerGameService.getBotDifficulty(gameState, playerUid);
+    const profile = ServerGameService.getBotProfile(gameState, playerUid);
 
     const paymentCost = Number(query.paymentCost || 0);
     if (paymentCost === 0) return {};
@@ -6025,6 +6579,7 @@ export const ServerGameService = {
       const amount = Math.abs(paymentCost);
       const erosionFrontIds = player.erosionFront
         .filter((card): card is Card => !!card && card.displayState === 'FRONT_UPRIGHT')
+        .sort((a, b) => difficulty === 'hard' ? scorePaymentSacrificeValue(a, profile) - scorePaymentSacrificeValue(b, profile) : 0)
         .slice(0, amount)
         .map(card => card.gamecardId);
       return erosionFrontIds.length === amount ? { erosionFrontIds } : {};
@@ -6068,36 +6623,114 @@ export const ServerGameService = {
 
     const totalErosion = player.erosionFront.filter(c => c !== null).length + player.erosionBack.filter(c => c !== null).length;
     const canUseWindProduction = (player as any).windProductionTurn === gameState.turnCount;
+    const incomingThreat = estimateIncomingThreat(gameState, player, profile);
+    const opponentPotentialDamage = incomingThreat.totalDamage;
+    const ownErosion = countErosion(player);
+    const lowDeck = profile.riskThresholds?.lowDeck ?? 10;
+    const reserveDeck = profile.riskThresholds?.reserveDefendersAtDeck ?? lowDeck;
+    const stopSelfDrawAtDeck = profile.riskThresholds?.stopSelfDrawAtDeck ?? lowDeck;
+    const defensePressure = difficulty === 'hard' && (
+      player.deck.length <= reserveDeck ||
+      incomingThreat.defendersNeeded > 0 ||
+      incomingThreat.lethalWithoutBlocks ||
+      opponentPotentialDamage >= Math.max(4, 10 - ownErosion)
+    );
+    const preserveBoardForPlan = difficulty === 'hard' && (
+      profile.gamePlan?.mode === 'engine' ||
+      profile.gamePlan?.mode === 'combo' ||
+      profile.gamePlan?.primaryGoal === 'resourceLoop' ||
+      profile.gamePlan?.primaryGoal === 'comboSetup'
+    );
+    const canDefendSoon = (unit: Card | null | undefined) => !!unit &&
+      !unit.isExhausted &&
+      !(unit as any).battleForbiddenByEffect &&
+      !((unit as any).data?.cannotDefendTurn === gameState.turnCount) &&
+      !((unit as any).data?.cannotAttackOrDefendUntilTurn && (unit as any).data.cannotAttackOrDefendUntilTurn >= gameState.turnCount);
+    const readyDefendersBefore = player.unitZone.filter(canDefendSoon).length;
+    const deckPaymentWeight = difficulty === 'hard'
+      ? incomingThreat.deckOutRisk
+        ? 34
+        : player.deck.length <= stopSelfDrawAtDeck
+        ? 24
+        : totalErosion >= 7
+          ? 18
+          : 5
+      : 0;
     let bestSelection: { feijingCardId?: string; exhaustUnitIds?: string[] } | undefined;
     let bestRemaining = Number.POSITIVE_INFINITY;
+    let bestPaymentScore = Number.POSITIVE_INFINITY;
 
     const candidateCount = candidates.length;
+    let bestUnitValue = Number.POSITIVE_INFINITY;
     for (let mask = 0; mask < (1 << candidateCount); mask++) {
       const exhaustUnitIds: string[] = [];
+      let selectedUnitValue = 0;
       let selectedMin = 0;
       let selectedMax = 0;
+      let selectedReadyDefenders = 0;
 
       for (let i = 0; i < candidateCount; i++) {
         if ((mask & (1 << i)) === 0) continue;
         exhaustUnitIds.push(candidates[i].card.gamecardId);
+        if (difficulty === 'hard') {
+          const unit = candidates[i].card;
+          const baseUnitValue = scorePaymentExhaustValue(gameState, unit, profile, difficulty);
+          const cardValue = scoreCardValue(unit, profile);
+          const explicitPreserve = !!(
+            profile.preserveCardIds?.[unit.id] ||
+            profile.preserveCardIds?.[unit.uniqueId] ||
+            profile.preferredCardIds?.[unit.id] ||
+            profile.preferredCardIds?.[unit.uniqueId]
+          );
+          const newlyPlayed = unit.playedTurn === gameState.turnCount;
+          const highValueUnit = explicitPreserve || cardValue >= 34;
+          selectedUnitValue += defensePressure
+            ? baseUnitValue * 1.4 +
+              (unit.damage || 0) * 8 +
+              (unit.power || 0) / 600 +
+              (incomingThreat.defendersNeeded > 0 ? 22 : 0) +
+              (newlyPlayed ? 22 : 0) +
+              (explicitPreserve ? 24 : 0) +
+              (preserveBoardForPlan && highValueUnit ? 18 : 0) +
+              (preserveBoardForPlan ? (unit.damage || 0) * 6 : 0)
+            : baseUnitValue;
+          if (canDefendSoon(unit)) selectedReadyDefenders += 1;
+        }
         selectedMin += candidates[i].accessMin;
         selectedMax += candidates[i].accessMax;
       }
 
       if (selectedMin > remainingCost) continue;
+      if (defensePressure) {
+        const readyDefendersAfter = Math.max(0, readyDefendersBefore - selectedReadyDefenders);
+        const missingDefenders = Math.max(0, incomingThreat.defendersNeeded - readyDefendersAfter);
+        if (missingDefenders > 0) selectedUnitValue += missingDefenders * (incomingThreat.lethalWithoutBlocks ? 44 : 30);
+        if (incomingThreat.lethalThroughOneBlock && readyDefendersAfter < 2) selectedUnitValue += 28;
+        if (opponentPotentialDamage >= Math.max(4, 10 - ownErosion) && readyDefendersAfter === 0) selectedUnitValue += 36;
+        if (exhaustUnitIds.length >= 2) selectedUnitValue += (exhaustUnitIds.length - 1) * 12;
+      }
       const remainingAfterUnits = Math.max(0, remainingCost - selectedMax);
       if (remainingAfterUnits > player.deck.length) continue;
       if (remainingAfterUnits > 0 && !canUseWindProduction && remainingAfterUnits >= 10 - totalErosion) continue;
 
+      const paymentScore = selectedUnitValue + remainingAfterUnits * deckPaymentWeight + exhaustUnitIds.length * 0.1;
       if (
-        remainingAfterUnits < bestRemaining ||
-        (remainingAfterUnits === bestRemaining && exhaustUnitIds.length < (bestSelection?.exhaustUnitIds?.length ?? Number.POSITIVE_INFINITY))
+        paymentScore < bestPaymentScore ||
+        (paymentScore === bestPaymentScore && remainingAfterUnits < bestRemaining) ||
+        (
+          paymentScore === bestPaymentScore &&
+          remainingAfterUnits === bestRemaining &&
+          selectedUnitValue === bestUnitValue &&
+          exhaustUnitIds.length < (bestSelection?.exhaustUnitIds?.length ?? Number.POSITIVE_INFINITY)
+        )
       ) {
         bestSelection = {
           ...(feijingCard ? { feijingCardId: feijingCard.gamecardId } : {}),
           ...(exhaustUnitIds.length ? { exhaustUnitIds } : {})
         };
         bestRemaining = remainingAfterUnits;
+        bestUnitValue = selectedUnitValue;
+        bestPaymentScore = paymentScore;
       }
     }
 
@@ -6106,12 +6739,41 @@ export const ServerGameService = {
   },
 
   async botMove(gameState: GameState, onUpdate?: (state: GameState) => Promise<void>) {
-    const bot = gameState.players['BOT_PLAYER'];
+    return ServerGameService.botMoveForPlayer(gameState, 'BOT_PLAYER', onUpdate);
+  },
+
+  async botMoveForPlayer(gameState: GameState, playerUid: string, onUpdate?: (state: GameState) => Promise<void>) {
+    const bot = gameState.players[playerUid];
     if (!bot) return;
-    if (gameState.pendingQuery && gameState.pendingQuery.playerUid !== 'BOT_PLAYER') return;
+    if (gameState.pendingQuery && gameState.pendingQuery.playerUid !== playerUid) return;
+
+    const difficulty = ServerGameService.getBotDifficulty(gameState, playerUid);
+    const profile = ServerGameService.getBotProfile(gameState, playerUid);
+
+    if (gameState.phase === 'MULLIGAN' && !bot.mulliganDone) {
+      const returned = chooseMulliganCards(bot, profile, difficulty, gameState);
+      ServerGameService.recordAiDecision(gameState, playerUid, {
+        action: 'MULLIGAN',
+        subject: returned.length > 0 ? `${returned.length} cards` : 'keep',
+        reason: difficulty === 'hard'
+          ? 'Use deck profile to keep early units, engines, and playable pressure while replacing slow or unsupported cards.'
+          : 'Simple AI keeps its opening hand.',
+        details: {
+          returned: returned.length,
+          handSize: bot.hand.length,
+          kept: bot.hand.length - returned.length,
+        },
+        candidates: returned.slice(0, 4).map(card => ({
+          name: ServerGameService.getAiCardName(card),
+          score: scoreCardValue(card, profile),
+        })),
+      });
+      await ServerGameService.performMulligan(gameState, returned.map(card => card.gamecardId), playerUid);
+      return;
+    }
 
     // Handle Generic Queries (New)
-    if (gameState.pendingQuery && gameState.pendingQuery.playerUid === 'BOT_PLAYER') {
+    if (gameState.pendingQuery && gameState.pendingQuery.playerUid === playerUid) {
       const query = gameState.pendingQuery;
       // console.log(`[Bot] Handling query: ${query.type} (${query.callbackKey})`);
 
@@ -6119,56 +6781,160 @@ export const ServerGameService = {
 
       if (query.type === 'SELECT_PAYMENT') {
         if (query.callbackKey === 'DECLARE_DEFENSE_TAX_PAYMENT') {
+          ServerGameService.recordAiDecision(gameState, playerUid, {
+            action: 'DECLINE_DEFENSE_TAX',
+            subject: query.title || '宣言防御费用',
+            reason: '困难 AI 默认不为宣言防御追加支付费用，避免为低收益防御牺牲资源。',
+            details: {
+              callback: query.callbackKey,
+              paymentCost: Number(query.paymentCost || 0),
+            },
+          });
           gameState.pendingQuery = undefined;
           gameState.logs.push(`[Bot] 放弃支付宣言防御费用，不进行防御。`);
-          await ServerGameService.declareDefense(gameState, 'BOT_PLAYER', undefined);
+          await ServerGameService.declareDefense(gameState, playerUid, undefined);
           return;
         }
-        const payment = ServerGameService.buildBotPaymentSelection(gameState, query);
-        selections = [JSON.stringify(payment)];
+        const canPay = ServerGameService.canBotPayQueryCost(gameState, playerUid, query);
+        const payment = canPay ? ServerGameService.buildBotPaymentSelectionForPlayer(gameState, playerUid, query) : {};
+        selections = canPay ? [JSON.stringify(payment)] : [];
+        if (canPay) ServerGameService.recordAiDecision(gameState, playerUid, {
+          action: 'PAYMENT',
+          subject: query.title || '支付费用',
+          reason: difficulty === 'hard'
+            ? '按保留价值和本回合攻击机会选择最低代价的费用支付组合，尽量不横置关键攻击单位。'
+            : '简单 AI 使用可用的默认费用支付组合。',
+          details: {
+            callback: query.callbackKey,
+            paymentCost: Number(query.paymentCost || 0),
+            selection: ServerGameService.describeAiPaymentSelection(gameState, payment),
+          },
+        });
       } else if (query.callbackKey === 'TRIGGER_CHOICE') {
         selections = ['YES'];
+        ServerGameService.recordAiDecision(gameState, playerUid, {
+          action: 'TRIGGER_CHOICE',
+          subject: query.title || '发动提示',
+          reason: '自动确认可发动的触发效果，优先让卡组引擎继续运转。',
+          details: {
+            callback: query.callbackKey,
+            type: query.type,
+            selection: 'YES',
+          },
+        });
       } else if (query.options && query.options.length > 0) {
-        selections = ServerGameService.getBotQuerySelections(query);
+        selections = ServerGameService.getBotQuerySelectionsForPlayer(gameState, playerUid, query);
+        ServerGameService.recordAiDecision(gameState, playerUid, {
+          action: 'EFFECT_CHOICE',
+          subject: query.title || query.callbackKey || query.type,
+          reason: difficulty === 'hard'
+            ? '按效果语义、目标价值和费用倾向选择对象。'
+            : '简单 AI 选择列表中靠前的合法对象。',
+          details: {
+            callback: query.callbackKey,
+            type: query.type,
+            selected: selections.map(selection => ServerGameService.describeAiSelection(gameState, query, selection)).join('、') || '无',
+            options: (query.options || []).filter((option: any) => !option.disabled).length,
+          },
+          candidates: (query.options || [])
+            .filter((option: any) => !option.disabled)
+            .slice(0, 3)
+            .map((option: any) => ({
+              name: option.card ? ServerGameService.getAiCardName(option.card) : option.label || option.id || '选项',
+            })),
+        });
       }
 
       if ((query.minSelections ?? 1) > 0 && selections.length === 0) {
+        ServerGameService.recordAiDecision(gameState, playerUid, {
+          action: 'QUERY_FAILED',
+          subject: query.title || query.callbackKey || query.type,
+          reason: '没有找到满足最小选择数量的合法对象，自动处理失败。',
+          details: {
+            callback: query.callbackKey,
+            type: query.type,
+            minSelections: Number(query.minSelections ?? 1),
+            options: (query.options || []).filter((option: any) => !option.disabled).length,
+          },
+        });
         gameState.pendingQuery = undefined;
+        if (gameState.isResolvingStack || gameState.phase === 'COUNTERING') {
+          if (gameState.counterStack.length > 0) {
+            await ServerGameService.resolveCounterStack(gameState, onUpdate);
+          } else {
+            await ServerGameService.finishCounteringStack(gameState, onUpdate);
+          }
+        } else if (!gameState.isCountering) {
+          await ServerGameService.checkTriggeredEffects(gameState, onUpdate);
+        }
         gameState.logs.push(`[Bot错误] 自动处理效果失败：没有可选择的合法对象。`);
         return;
       }
 
-      await ServerGameService.handleQueryChoice(gameState, 'BOT_PLAYER', query.id, selections, onUpdate);
+      await ServerGameService.handleQueryChoice(gameState, playerUid, query.id, selections, onUpdate);
       return;
     }
 
     // Handle Countering (Bot chooses to pass priority)
     if (gameState.phase === 'COUNTERING') {
-      if (gameState.priorityPlayerId === 'BOT_PLAYER') {
+      if (gameState.priorityPlayerId === playerUid) {
         // console.log('[Bot] Passing confrontation priority');
-        await ServerGameService.passConfrontation(gameState, 'BOT_PLAYER', onUpdate);
+        await ServerGameService.passConfrontation(gameState, playerUid, onUpdate);
       }
       return;
     }
 
     // Handle Shenyi Choice (Bot chooses to confirm)
-    if (gameState.phase === 'SHENYI_CHOICE' && gameState.priorityPlayerId === 'BOT_PLAYER') {
-      await ServerGameService.advancePhase(gameState, 'CONFIRM_SHENYI', 'BOT_PLAYER');
+    if (gameState.phase === 'SHENYI_CHOICE' && gameState.priorityPlayerId === playerUid) {
+      await ServerGameService.advancePhase(gameState, 'CONFIRM_SHENYI', playerUid);
       return;
+    }
+
+    const turnPlan = difficulty === 'hard' ? buildTurnPlan(gameState, bot, profile) : undefined;
+    if (turnPlan && (gameState.phase === 'MAIN' || gameState.phase === 'BATTLE_DECLARATION')) {
+      const planLogKey = `${playerUid}:${gameState.turnCount}`;
+      if ((bot as any).lastBotTurnPlanLogKey !== planLogKey) {
+        (bot as any).lastBotTurnPlanLogKey = planLogKey;
+        ServerGameService.recordAiDecision(gameState, playerUid, {
+          action: 'TURN_PLAN',
+          subject: turnPlan.mode,
+          reason: turnPlan.reason,
+          details: {
+            opponentProfile: turnPlan.opponentProfileId || 'unknown',
+            opponentArchetype: turnPlan.opponentArchetype || 'unknown',
+            opponentTraits: turnPlan.opponentTraits?.join(', ') || 'none',
+            attackers: turnPlan.attackers,
+            totalDamage: turnPlan.totalAvailableDamage,
+            damageToCritical: turnPlan.damageToCritical,
+            lethalWindow: turnPlan.lethalWindow,
+            reserveDefenders: turnPlan.reserveDefenders,
+            defendersNeededNextTurn: turnPlan.defendersNeededNextTurn,
+            incomingDamage: turnPlan.opponentPotentialDamage,
+            damageAfterOneBlock: turnPlan.opponentDamageAfterOneBlock,
+            damageAfterTwoBlocks: turnPlan.opponentDamageAfterTwoBlocks,
+            incomingLethal: turnPlan.opponentLethalWithoutBlocks,
+            desperationAttack: turnPlan.desperationAttack,
+            attackBeforeDeveloping: turnPlan.attackBeforeDeveloping,
+            minMainEffectScore: Number(turnPlan.minMainEffectScore.toFixed(1)),
+            minBattleEffectScore: Number(turnPlan.minBattleEffectScore.toFixed(1)),
+            ownDeck: turnPlan.ownDeck,
+            opponentDeck: turnPlan.opponentDeck,
+            ownErosion: turnPlan.ownErosion,
+            opponentErosion: turnPlan.opponentErosion,
+            notes: turnPlan.notes.join(', '),
+          },
+        });
+      }
     }
 
     // Handle Defense Declaration (Smart Defense)
     if (gameState.phase === 'DEFENSE_DECLARATION') {
       const attackerUid = Object.keys(gameState.players).find(uid => gameState.players[uid].isTurn);
-      if (attackerUid && attackerUid !== 'BOT_PLAYER') {
+      if (attackerUid && attackerUid !== playerUid) {
         const attacker = gameState.players[attackerUid];
         const attackingUnits = (gameState.battleState?.attackers || []).map(id =>
           attacker.unitZone.find(c => c?.gamecardId === id)
         ).filter(Boolean) as Card[];
-        const totalAttackerPower = attackingUnits.reduce((sum, u) => sum + (u.power || 0), 0);
-        const totalAttackerDamage = attackingUnits.reduce((sum, u) => sum + (u.damage || 0), 0);
-        const botErosionCount = bot.erosionFront.filter(Boolean).length + bot.erosionBack.filter(Boolean).length;
-
         const lockedTargetId = gameState.battleState?.defenseLockedToTargetId;
         const minPower = gameState.battleState?.defensePowerRestriction || 0;
         const maxPower = gameState.battleState?.defenseMaxPowerRestriction;
@@ -6183,25 +6949,65 @@ export const ServerGameService = {
           (maxPower === undefined || (c.power || 0) < maxPower)
         );
 
-        // 1. Find best "Winner" (Power > Attacker)
-        let defender = availableDefenders.find(c => (c.power || 0) > totalAttackerPower);
-
-        // 2. If no winner, find a "Trader" (Power == Attacker)
-        if (!defender) {
-          defender = availableDefenders.find(c => (c.power || 0) === totalAttackerPower);
-        }
-
-        // 3. If still no defender, consider a "Sacrifice" block (Power < Attacker)
-        // Heuristic: Sacrifice if health is low (erosion >= 7) OR incoming damage is high (damage >= 2)
-        if (!defender && (botErosionCount >= 7 || totalAttackerDamage >= 2)) {
-          // Choose the weakest available unit to sacrifice
-          defender = [...availableDefenders].sort((a, b) => (a.power || 0) - (b.power || 0))[0];
-        }
+        const defender = chooseDefender(
+          gameState,
+          bot,
+          attackingUnits,
+          availableDefenders,
+          profile,
+          difficulty
+        );
+        const totalAttackerPower = attackingUnits.reduce((sum, unit) => sum + (unit.power || 0), 0);
+        const totalAttackerDamage = attackingUnits.reduce((sum, unit) => sum + (unit.damage || 0), 0);
+        const danger = countErosion(bot) + totalAttackerDamage >= 9;
 
         if (defender) {
-          await ServerGameService.declareDefense(gameState, 'BOT_PLAYER', defender.gamecardId);
+          ServerGameService.recordAiDecision(gameState, playerUid, {
+            action: 'DEFEND',
+            subject: ServerGameService.getAiCardName(defender),
+            score: (defender.power || 0) - totalAttackerPower,
+            reason: danger
+              ? '承受本次伤害会接近败北线，因此优先宣告防御。'
+              : '防御者的交换价值可接受，选择减少本次战斗伤害。',
+            details: {
+              incomingDamage: totalAttackerDamage,
+              attackerPower: totalAttackerPower,
+              defenderPower: defender.power || 0,
+              availableDefenders: availableDefenders.length,
+            },
+            candidates: availableDefenders
+              .slice()
+              .sort((a, b) => (b.power || 0) - (a.power || 0))
+              .slice(0, 3)
+              .map(card => ({
+                name: ServerGameService.getAiCardName(card),
+                score: card.power || 0,
+              })),
+          });
+          await ServerGameService.declareDefense(gameState, playerUid, defender.gamecardId);
         } else {
-          await ServerGameService.declareDefense(gameState, 'BOT_PLAYER', undefined);
+          ServerGameService.recordAiDecision(gameState, playerUid, {
+            action: 'DECLINE_DEFENSE',
+            subject: attackingUnits.map(unit => ServerGameService.getAiCardName(unit)).join('、') || '攻击',
+            reason: availableDefenders.length === 0
+              ? '没有可用防御者。'
+              : '防御评分不够高，保留单位价值优先于承受本次伤害。',
+            details: {
+              incomingDamage: totalAttackerDamage,
+              attackerPower: totalAttackerPower,
+              availableDefenders: availableDefenders.length,
+              erosionAfterHit: countErosion(bot) + totalAttackerDamage,
+            },
+            candidates: availableDefenders
+              .slice()
+              .sort((a, b) => (b.power || 0) - (a.power || 0))
+              .slice(0, 3)
+              .map(card => ({
+                name: ServerGameService.getAiCardName(card),
+                score: card.power || 0,
+              })),
+          });
+          await ServerGameService.declareDefense(gameState, playerUid, undefined);
         }
         return;
       }
@@ -6210,7 +7016,32 @@ export const ServerGameService = {
     // Handle Discard Phase
     if (gameState.phase === 'DISCARD' && bot.isTurn) {
       if (bot.hand.length > 6) {
-        await ServerGameService.discardCard(gameState, 'BOT_PLAYER', bot.hand[0].gamecardId);
+        const discard = chooseDiscardCard(bot, profile, difficulty);
+        if (discard) {
+          ServerGameService.recordAiDecision(gameState, playerUid, {
+            action: 'DISCARD',
+            subject: ServerGameService.getAiCardName(discard),
+            score: scoreCardValue(discard, profile),
+            reason: difficulty === 'hard'
+              ? '弃掉当前手牌中保留价值最低的牌，尽量保留核心组件和高收益牌。'
+              : '简单 AI 弃掉手牌中靠前的牌。',
+            details: {
+              handSize: bot.hand.length,
+            },
+            candidates: bot.hand
+              .map(card => ({
+                card,
+                score: scoreCardValue(card, profile),
+              }))
+              .sort((a, b) => a.score - b.score)
+              .slice(0, 3)
+              .map(({ card, score }) => ({
+                name: ServerGameService.getAiCardName(card),
+                score,
+              })),
+          });
+          await ServerGameService.discardCard(gameState, playerUid, discard.gamecardId);
+        }
       }
       return;
     }
@@ -6219,7 +7050,15 @@ export const ServerGameService = {
     if (gameState.phase === 'BATTLE_FREE' && !bot.isTurn) {
       if (gameState.battleState && gameState.battleState.askConfront === 'ASKING_OPPONENT') {
         // console.log('[Bot] Declining confrontation in BATTLE_FREE as Opponent');
-        await ServerGameService.advancePhase(gameState, 'DECLINE_CONFRONTATION', 'BOT_PLAYER');
+        ServerGameService.recordAiDecision(gameState, playerUid, {
+          action: 'PASS_BATTLE_WINDOW',
+          subject: '战斗自由时点',
+          reason: '防守方没有追加发动对抗效果，选择通过以进入下一步战斗结算。',
+          details: {
+            askConfront: gameState.battleState.askConfront,
+          },
+        });
+        await ServerGameService.advancePhase(gameState, 'DECLINE_CONFRONTATION', playerUid);
         return;
       }
     }
@@ -6228,30 +7067,359 @@ export const ServerGameService = {
 
     // Handle Erosion Phase
     if (gameState.phase === 'EROSION') {
-      await ServerGameService.handleErosionChoice(gameState, 'BOT_PLAYER', 'A');
+      const erosionCards = bot.erosionFront.filter((card): card is Card => !!card);
+      let erosionChoice: 'A' | 'B' | 'C' = 'A';
+      let selectedErosionCard: Card | undefined;
+      let erosionReason = 'clear erosion cards to grave';
+
+      if (difficulty === 'hard' && erosionCards.length > 0) {
+        const scoredErosionCards = [...erosionCards]
+          .map(card => ({
+            card,
+            score: scoreCardValue(card, profile) + scorePlayableCard(gameState, bot, card, profile) * 0.25,
+          }))
+          .sort((a, b) => b.score - a.score);
+        selectedErosionCard = scoredErosionCards[0]?.card;
+        const lowDeck = profile.riskThresholds?.lowDeck ?? 10;
+        const criticalDeck = profile.riskThresholds?.criticalDeck ?? 3;
+        const stopSelfDrawAtDeck = profile.riskThresholds?.stopSelfDrawAtDeck ?? lowDeck;
+        const deckDanger = bot.deck.length <= stopSelfDrawAtDeck;
+        const canUseChoiceC = bot.deck.length > Math.max(criticalDeck + 2, 5) && bot.erosionBack.filter(Boolean).length < 9;
+        const handPressure = bot.hand.length <= 2;
+        const ownUnits = bot.unitZone.filter(Boolean).length;
+        const readyDefenders = bot.unitZone.filter(unit =>
+          unit &&
+          !unit.isExhausted &&
+          !(unit as any).battleForbiddenByEffect &&
+          !((unit as any).data?.cannotDefendTurn === gameState.turnCount) &&
+          !((unit as any).data?.cannotAttackOrDefendUntilTurn && (unit as any).data.cannotAttackOrDefendUntilTurn >= gameState.turnCount)
+        ).length;
+        const opponentUid = gameState.playerIds.find(uid => uid !== playerUid);
+        const opponent = opponentUid ? gameState.players[opponentUid] : undefined;
+        const opponentUnits = opponent?.unitZone.filter(Boolean).length || 0;
+        const incomingThreat = estimateIncomingThreat(gameState, bot, profile);
+        const affordableHandUnits = bot.hand.filter(card => {
+          if (card.type !== 'UNIT') return false;
+          const effectiveCost = ServerGameService.getEffectivePlayCost(bot, card, gameState);
+          return effectiveCost <= 3;
+        }).length;
+        const needsTempoRecovery =
+          bot.hand.length <= 4 ||
+          affordableHandUnits === 0 ||
+          (ownUnits === 0 && opponentUnits >= 2);
+        const selectedScore = scoredErosionCards[0]?.score || 0;
+        const openUnitSlot = bot.unitZone.some(slot => slot === null);
+        const emergencyRecoveryCard = scoredErosionCards.find(({ card }) => {
+          if (!canUseChoiceC || !openUnitSlot || card.type !== 'UNIT') return false;
+          if (bot.factionLock && card.faction !== bot.factionLock) return false;
+          const effectiveCost = ServerGameService.getEffectivePlayCost(bot, card, gameState);
+          if (effectiveCost < 0) return true;
+          return ServerGameService.canBotPayPositiveCost(gameState, bot, effectiveCost, card.color, card);
+        })?.card;
+        const needsEmergencyRecovery =
+          !!emergencyRecoveryCard &&
+          incomingThreat.lethalWithoutBlocks &&
+          readyDefenders < Math.max(1, incomingThreat.defendersNeeded);
+
+        if (needsEmergencyRecovery) {
+          selectedErosionCard = emergencyRecoveryCard;
+          erosionChoice = 'C';
+          erosionReason = 'emergency defense: recover a playable unit from erosion despite low deck pressure';
+        } else if (deckDanger && selectedErosionCard) {
+          erosionChoice = 'B';
+          erosionReason = 'low deck: preserve the best erosion card without spending another deck card';
+        } else if (
+          canUseChoiceC &&
+          selectedErosionCard &&
+          (handPressure || (needsTempoRecovery && selectedScore >= 35))
+        ) {
+          erosionChoice = 'C';
+          erosionReason = 'tempo recovery: return a strong erosion card to hand before the board falls behind';
+        } else if (erosionCards.length >= 3 && selectedScore >= 35 && selectedErosionCard) {
+          erosionChoice = 'B';
+          erosionReason = 'preserve the best erosion card for future value';
+        }
+      }
+
+      ServerGameService.recordAiDecision(gameState, playerUid, {
+        action: 'EROSION_CHOICE',
+        subject: erosionChoice,
+        reason: '自动选择默认侵蚀处理路线，保持对局推进。',
+        details: {
+          erosionFront: bot.erosionFront.filter(Boolean).length,
+          erosionBack: bot.erosionBack.filter(Boolean).length,
+          selected: selectedErosionCard ? ServerGameService.getAiCardName(selectedErosionCard) : undefined,
+          ownDeck: bot.deck.length,
+          handSize: bot.hand.length,
+          erosionReason,
+        },
+      });
+      await ServerGameService.handleErosionChoice(gameState, playerUid, erosionChoice, selectedErosionCard?.gamecardId);
       return;
     }
 
     // Main Phase Logic
     if (gameState.phase === 'MAIN') {
-      const forcedAttackUnit = ServerGameService.getForcedAttackUnit(gameState, 'BOT_PLAYER');
+      const forcedAttackUnit = ServerGameService.getForcedAttackUnit(gameState, playerUid);
       if (forcedAttackUnit) {
-        await ServerGameService.advancePhase(gameState, 'DECLARE_BATTLE');
+        ServerGameService.recordAiDecision(gameState, playerUid, {
+          action: 'ENTER_BATTLE',
+          subject: ServerGameService.getAiCardName(forcedAttackUnit),
+          reason: '存在必须攻击的单位，优先进入战斗阶段满足强制攻击要求。',
+          details: {
+            forcedAttack: true,
+          },
+        });
+        await ServerGameService.advancePhase(gameState, 'DECLARE_BATTLE', playerUid);
         return;
       }
 
-      // Sequentially play all possible cards from hand
-      for (const card of bot.hand) {
-        const canPlay = ServerGameService.canPlayCard(gameState, bot, card);
-        if (canPlay.canPlay) {
-          try {
-            await ServerGameService.playCard(gameState, 'BOT_PLAYER', card.gamecardId, {});
-            // We return and let the next botMove tick handle the next card to ensure stack resolution
-            return;
-          } catch (e) {
-            // console.error('Bot failed to play card', e);
+      if (difficulty === 'hard' && (bot as any).botReservedAttackTurn === gameState.turnCount) {
+        ServerGameService.recordAiDecision(gameState, playerUid, {
+          action: 'END_TURN',
+          subject: 'reserved defenders',
+          reason: 'End the turn after holding ready units for defense; avoid spending reserved defenders on main-phase payments or effects.',
+          details: {
+            reservedDefenders: ((bot as any).botReservedDefenderIds || []).length,
+            turn: gameState.turnCount,
+          },
+        });
+        delete (bot as any).lastBotPlayFailure;
+        await ServerGameService.advancePhase(gameState, 'DECLARE_END', playerUid);
+        return;
+      }
+
+      if (difficulty === 'hard' && turnPlan && gameState.turnCount > 1 && (bot as any).botReservedAttackTurn !== gameState.turnCount) {
+        const attackCandidates = bot.unitZone.filter(unit => canUnitAttack(gameState, unit)) as Card[];
+        const shouldAttackBeforeDeveloping = turnPlan.attackBeforeDeveloping;
+
+        if (shouldAttackBeforeDeveloping) {
+          ServerGameService.recordAiDecision(gameState, playerUid, {
+            action: 'ENTER_BATTLE',
+            subject: `${attackCandidates.length} attackers`,
+            reason: `Follow turn plan (${turnPlan.mode}) and use the current attack window before main-phase development.`,
+            details: {
+              attackers: attackCandidates.length,
+              opponentErosion: turnPlan.opponentErosion,
+              totalAvailableDamage: turnPlan.totalAvailableDamage,
+              damageToCritical: turnPlan.damageToCritical,
+            lethalWindow: turnPlan.lethalWindow,
+            desperationAttack: turnPlan.desperationAttack,
+            ownDeck: bot.deck.length,
+              avoidSelfDraw: turnPlan.avoidSelfDraw,
+              avoidSearch: turnPlan.avoidSearch,
+            },
+            candidates: attackCandidates.slice(0, 3).map(card => ({
+              name: ServerGameService.getAiCardName(card),
+              score: scoreAttackCandidate(gameState, bot, card, profile),
+            })),
+          });
+          await ServerGameService.advancePhase(gameState, 'DECLARE_BATTLE', playerUid);
+          return;
+        }
+      }
+
+      if (difficulty === 'hard' && await ServerGameService.tryActivateBotEffect(gameState, playerUid, 'MAIN', turnPlan?.minMainEffectScore ?? 8.5, onUpdate)) {
+        return;
+      }
+
+      const canPayPlayCostForBot = (card: Card) => {
+        const effectiveCost = ServerGameService.getEffectivePlayCost(bot, card, gameState);
+        if (effectiveCost < 0) {
+          const faceUpFrontCount = bot.erosionFront.filter(erosionCard =>
+            erosionCard && erosionCard.displayState === 'FRONT_UPRIGHT'
+          ).length;
+          return faceUpFrontCount >= Math.abs(effectiveCost);
+        }
+        return ServerGameService.canBotPayPositiveCost(gameState, bot, effectiveCost, card.color, card);
+      };
+      const canPlayForBot = (card: Card) =>
+        ServerGameService.canPlayCard(gameState, bot, card).canPlay &&
+        canPayPlayCostForBot(card);
+      const playableCards = bot.hand.filter(canPlayForBot);
+      const playableCandidates = playableCards
+        .map(card => ({
+          card,
+          score: difficulty === 'hard'
+            ? scorePlayableCard(gameState, bot, card, profile)
+            : scoreCardValue(card, profile),
+        }))
+        .sort((a, b) => b.score - a.score);
+
+      const buildPlayOption = (card: Card) => {
+        const rawScore = difficulty === 'hard'
+          ? scorePlayableCard(gameState, bot, card, profile)
+          : scoreCardValue(card, profile);
+        const effectiveCost = ServerGameService.getEffectivePlayCost(bot, card, gameState);
+        const initialPaymentSelection = effectiveCost !== 0
+          ? ServerGameService.buildBotPaymentSelectionForPlayer(gameState, playerUid, {
+            paymentCost: effectiveCost,
+            paymentColor: card.color,
+            context: {
+              cardId: card.gamecardId,
+              sourceCardId: card.gamecardId,
+              paymentTargetId: card.gamecardId,
+            },
+          })
+          : {};
+        const exhaustedPaymentUnits = ((initialPaymentSelection as any).exhaustUnitIds || []) as string[];
+        const canDefendSoon = (unit: Card | null | undefined) => !!unit &&
+          !unit.isExhausted &&
+          !(unit as any).battleForbiddenByEffect &&
+          !((unit as any).data?.cannotDefendTurn === gameState.turnCount) &&
+          !((unit as any).data?.cannotAttackOrDefendUntilTurn && (unit as any).data.cannotAttackOrDefendUntilTurn >= gameState.turnCount);
+        const readyDefendersBefore = bot.unitZone.filter(canDefendSoon).length;
+        const paysWithDeck =
+          effectiveCost > 0 &&
+          !(initialPaymentSelection as any).feijingCardId &&
+          exhaustedPaymentUnits.length === 0 &&
+          !((initialPaymentSelection as any).erosionFrontIds || []).length;
+        const estimatedDeckPayment = paysWithDeck ? effectiveCost : 0;
+        const defensePaymentPressure = difficulty === 'hard' && !!turnPlan && (
+          turnPlan.mode === 'defense' ||
+          turnPlan.defendersNeededNextTurn > 0 ||
+          turnPlan.opponentLethalWithoutBlocks ||
+          turnPlan.opponentLethalThroughOneBlock
+        );
+        const lowDeckPaymentPressure = difficulty === 'hard' && !!turnPlan && !turnPlan.lethalWindow && !turnPlan.desperationAttack && (
+          turnPlan.avoidSelfDraw ||
+          bot.deck.length <= (profile.riskThresholds?.lowDeck ?? 10) ||
+          countErosion(bot) >= (profile.riskThresholds?.highErosion ?? 7)
+        );
+        const netReadyDefenders = (card.type === 'UNIT' ? 1 : 0) - exhaustedPaymentUnits.length;
+        const projectedReadyDefenders = Math.max(0, readyDefendersBefore + netReadyDefenders);
+        let defenseDevelopmentBonus = 0;
+        if (defensePaymentPressure && card.type === 'UNIT') {
+          const neededDefenders = turnPlan?.defendersNeededNextTurn || 0;
+          const missingBefore = Math.max(0, neededDefenders - readyDefendersBefore);
+          const missingAfter = Math.max(0, neededDefenders - projectedReadyDefenders);
+          const blockersAdded = Math.max(0, missingBefore - missingAfter);
+          if (blockersAdded > 0) {
+            defenseDevelopmentBonus += blockersAdded * (turnPlan?.opponentLethalWithoutBlocks ? 36 : 24);
+          }
+          if (readyDefendersBefore === 0 && projectedReadyDefenders > 0) defenseDevelopmentBonus += 18;
+          if ((turnPlan?.opponentDamageAfterOneBlock || 0) < (turnPlan?.opponentPotentialDamage || 0)) {
+            defenseDevelopmentBonus += Math.max(0, card.damage || 0) * 4 + Math.max(0, card.power || 0) / 800;
           }
         }
+        let defensivePaymentPenalty = 0;
+        if (defensePaymentPressure && exhaustedPaymentUnits.length > 0) {
+          defensivePaymentPenalty += exhaustedPaymentUnits.length * (turnPlan?.opponentLethalWithoutBlocks ? 22 : 12);
+          if (netReadyDefenders < 0) defensivePaymentPenalty += Math.abs(netReadyDefenders) * 34;
+          if ((turnPlan?.defendersNeededNextTurn || 0) > 0 && netReadyDefenders < 1) defensivePaymentPenalty += 12;
+        }
+        if ((defensePaymentPressure || lowDeckPaymentPressure) && estimatedDeckPayment > 0) {
+          const deckAfterPayment = bot.deck.length - estimatedDeckPayment;
+          const erosionAfterPayment = countErosion(bot) + estimatedDeckPayment;
+          const unsafeDeckPayment = deckAfterPayment <= 0 || erosionAfterPayment >= 10;
+          const stopDeckPaymentAt = profile.riskThresholds?.stopSelfDrawAtDeck ?? (profile.riskThresholds?.lowDeck ?? 10);
+          const criticalDeck = profile.riskThresholds?.criticalDeck ?? 3;
+          if (unsafeDeckPayment) defensivePaymentPenalty += 90 + estimatedDeckPayment * 12;
+          else if (defensePaymentPressure && deckAfterPayment <= Math.max(2, turnPlan?.opponentDamageAfterOneBlock || 0)) defensivePaymentPenalty += 24 + estimatedDeckPayment * 8;
+          if (!unsafeDeckPayment && lowDeckPaymentPressure && deckAfterPayment <= stopDeckPaymentAt) {
+            const nearCriticalDeck = deckAfterPayment <= criticalDeck + 2;
+            defensivePaymentPenalty += (nearCriticalDeck ? 34 : 12) + estimatedDeckPayment * (nearCriticalDeck ? 10 : 5);
+            if (card.type !== 'UNIT') defensivePaymentPenalty += 8;
+            if (card.type === 'UNIT' && (card.damage || 0) <= 1 && nearCriticalDeck) defensivePaymentPenalty += 8;
+          }
+          if (card.type === 'UNIT' && (turnPlan?.defendersNeededNextTurn || 0) > 1 && netReadyDefenders < (turnPlan?.defendersNeededNextTurn || 0)) {
+            defensivePaymentPenalty += 18;
+          }
+        }
+        return {
+          card,
+          rawScore,
+          score: rawScore + defenseDevelopmentBonus - defensivePaymentPenalty,
+          effectiveCost,
+          initialPaymentSelection,
+          defensivePaymentPenalty,
+          defenseDevelopmentBonus,
+          exhaustedPaymentUnits,
+          estimatedDeckPayment,
+          netReadyDefenders,
+          projectedReadyDefenders,
+        };
+      };
+
+      const rankedPlayOptions = difficulty === 'hard'
+        ? playableCandidates.map(candidate => buildPlayOption(candidate.card)).sort((a, b) => b.score - a.score)
+        : [];
+      const emergencyBlockerOption = difficulty === 'hard'
+        ? rankedPlayOptions.find(option => {
+          if (!turnPlan || option.card.type !== 'UNIT') return false;
+          if ((turnPlan.defendersNeededNextTurn || 0) <= 0 && !turnPlan.opponentLethalWithoutBlocks) return false;
+          if (option.projectedReadyDefenders <= 0 || option.netReadyDefenders <= 0) return false;
+          if (option.estimatedDeckPayment > 0 && (
+            bot.deck.length - option.estimatedDeckPayment <= 0 ||
+            countErosion(bot) + option.estimatedDeckPayment >= 10
+          )) return false;
+          return option.defenseDevelopmentBonus > 0;
+        })
+        : undefined;
+      const chosenPlayOption = difficulty === 'hard'
+        ? rankedPlayOptions.find(option => option.score > 0) || emergencyBlockerOption
+        : playableCards[0] ? buildPlayOption(playableCards[0]) : undefined;
+      const cardToPlay = chosenPlayOption?.card;
+
+      if (cardToPlay && chosenPlayOption) {
+        let playFailure: string | undefined;
+        const effectiveCost = chosenPlayOption.effectiveCost;
+        const initialPaymentSelection = chosenPlayOption.initialPaymentSelection;
+        ServerGameService.recordAiDecision(gameState, playerUid, {
+          action: 'PLAY_CARD',
+          subject: ServerGameService.getAiCardName(cardToPlay),
+          score: chosenPlayOption.score,
+          reason: difficulty === 'hard'
+            ? '选择当前评分最高的可打出牌，综合费用、身材、伤害、效果角色和卡组偏好。'
+            : '简单 AI 选择第一张可打出的牌。',
+          details: {
+            handSize: bot.hand.length,
+            playableCards: playableCandidates.length,
+            openUnitSlots: bot.unitZone.filter(slot => slot === null).length,
+            cost: effectiveCost,
+            type: cardToPlay.type,
+            initialPayment: ServerGameService.describeAiPaymentSelection(gameState, initialPaymentSelection),
+            rawScore: Number(chosenPlayOption.rawScore.toFixed(1)),
+            defensivePaymentPenalty: Number(chosenPlayOption.defensivePaymentPenalty.toFixed(1)),
+            defenseDevelopmentBonus: Number(chosenPlayOption.defenseDevelopmentBonus.toFixed(1)),
+            paymentExhaustsUnits: chosenPlayOption.exhaustedPaymentUnits.length,
+            estimatedDeckPayment: chosenPlayOption.estimatedDeckPayment,
+            netReadyDefenders: chosenPlayOption.netReadyDefenders,
+            projectedReadyDefenders: chosenPlayOption.projectedReadyDefenders,
+          },
+          candidates: (difficulty === 'hard' ? rankedPlayOptions : playableCandidates).slice(0, 3).map(candidate => ({
+            name: ServerGameService.getAiCardName(candidate.card),
+            score: candidate.score,
+          })),
+        });
+        try {
+          await ServerGameService.playCard(gameState, playerUid, cardToPlay.gamecardId, initialPaymentSelection);
+          // We return and let the next botMove tick handle the next card to ensure stack resolution
+          return;
+        } catch (e) {
+          playFailure = e instanceof Error ? e.message : String(e);
+          ServerGameService.recordAiDecision(gameState, playerUid, {
+            action: 'PLAY_CARD_FAILED',
+            subject: ServerGameService.getAiCardName(cardToPlay),
+            score: chosenPlayOption.score,
+            reason: '候选牌通过基础可打出检查，但实际执行 playCard 时失败，AI 跳过该牌继续判断战斗或结束回合。',
+            details: {
+              error: playFailure,
+              handSize: bot.hand.length,
+              playableCards: playableCandidates.length,
+              cost: effectiveCost,
+              type: cardToPlay.type,
+              initialPayment: ServerGameService.describeAiPaymentSelection(gameState, initialPaymentSelection),
+              rawScore: Number(chosenPlayOption.rawScore.toFixed(1)),
+              defensivePaymentPenalty: Number(chosenPlayOption.defensivePaymentPenalty.toFixed(1)),
+              defenseDevelopmentBonus: Number(chosenPlayOption.defenseDevelopmentBonus.toFixed(1)),
+              estimatedDeckPayment: chosenPlayOption.estimatedDeckPayment,
+            },
+          });
+        }
+        (bot as any).lastBotPlayFailure = playFailure;
+      } else {
+        delete (bot as any).lastBotPlayFailure;
       }
 
       // If no cards can be played, try to enter battle or end turn
@@ -6265,22 +7433,145 @@ export const ServerGameService = {
         return isRush || !wasPlayedThisTurn;
       });
 
-      if (gameState.turnCount > 1 && canAttack) {
+      if (gameState.turnCount > 1 && canAttack && (bot as any).botReservedAttackTurn !== gameState.turnCount) {
         // Enter battle phase only if we haven't already exhausted all attackers this AI iteration
         // To prevent infinite re-entry to BATTLE_DECLARATION from MAIN, we check if there's truly something new to do
         // console.log('[Bot] Entering Battle Phase');
-        await ServerGameService.advancePhase(gameState, 'DECLARE_BATTLE');
+        const attackCandidates = bot.unitZone.filter(unit => canUnitAttack(gameState, unit)) as Card[];
+        ServerGameService.recordAiDecision(gameState, playerUid, {
+          action: 'ENTER_BATTLE',
+          subject: `${attackCandidates.length} 个可攻击单位`,
+          reason: '没有更高优先级的可打出牌，且场上存在可攻击单位，进入战斗阶段推进伤害。',
+          details: {
+            playableCards: playableCandidates.length,
+            attackers: attackCandidates.length,
+          },
+          candidates: attackCandidates.slice(0, 3).map(card => ({
+            name: ServerGameService.getAiCardName(card),
+            score: scoreAttackCandidate(gameState, bot, card, profile),
+          })),
+        });
+        await ServerGameService.advancePhase(gameState, 'DECLARE_BATTLE', playerUid);
       } else {
         // console.log('[Bot] Ending Turn');
-        await ServerGameService.advancePhase(gameState, 'DECLARE_END');
+        ServerGameService.recordAiDecision(gameState, playerUid, {
+          action: 'END_TURN',
+          subject: '结束回合',
+          reason: (bot as any).lastBotPlayFailure
+            ? '存在可打出候选牌，但最高优先级牌执行失败且没有可攻击单位，结束回合。'
+            : gameState.turnCount <= 1
+            ? '首回合或当前规则限制下不进入战斗，结束回合。'
+            : '没有可打出的牌，也没有合适的可攻击单位，结束回合。',
+          details: {
+            playableCards: playableCandidates.length,
+            canAttack,
+            turn: gameState.turnCount,
+            playFailure: (bot as any).lastBotPlayFailure,
+          },
+        });
+        delete (bot as any).lastBotPlayFailure;
+        await ServerGameService.advancePhase(gameState, 'DECLARE_END', playerUid);
       }
       return;
     }
 
     // Battle Declaration Phase
     if (gameState.phase === 'BATTLE_DECLARATION' && bot.isTurn) {
-      const forcedAttackUnit = ServerGameService.getForcedAttackUnit(gameState, 'BOT_PLAYER');
-      const attacker = forcedAttackUnit || bot.unitZone.find(c => {
+      const forcedAttackUnit = ServerGameService.getForcedAttackUnit(gameState, playerUid);
+      const attackCandidates = bot.unitZone
+        .filter(unit => canUnitAttack(gameState, unit)) as Card[];
+      const scoredAttackers = attackCandidates
+        .map(card => ({
+          card,
+          score: scoreAttackCandidate(gameState, bot, card, profile),
+        }))
+        .sort((a, b) => b.score - a.score);
+      const opponentUid = gameState.playerIds.find(uid => uid !== playerUid);
+      const opponent = opponentUid ? gameState.players[opponentUid] : undefined;
+      const opponentErosion = opponent ? countErosion(opponent) : 0;
+      const totalAvailableDamage = attackCandidates.reduce((sum, unit) => sum + (unit.damage || 0), 0);
+      const likelyDefenders = opponent
+        ? opponent.unitZone.filter(unit =>
+          unit &&
+          !unit.isExhausted &&
+          !(unit as any).battleForbiddenByEffect &&
+          !((unit as any).data?.cannotDefendTurn === gameState.turnCount) &&
+          !((unit as any).data?.cannotAttackOrDefendUntilTurn && (unit as any).data.cannotAttackOrDefendUntilTurn >= gameState.turnCount)
+        ).length
+        : 0;
+      const damageToCritical = Math.max(1, 10 - opponentErosion);
+      const erosionPressureWindow = totalAvailableDamage >= damageToCritical;
+      const lethalWindow = opponent ? totalAvailableDamage > opponent.deck.length : false;
+      const ownErosion = turnPlan?.ownErosion ?? countErosion(bot);
+      const opponentPotentialDamage = turnPlan?.opponentPotentialDamage ?? (opponent
+        ? opponent.unitZone.filter(Boolean).reduce((sum, unit) => sum + (unit?.damage || 0), 0)
+        : 0);
+      const dynamicCounterPressure =
+        opponentPotentialDamage > 0 ||
+        !!turnPlan?.opponentLethalWithoutBlocks ||
+        !!turnPlan?.opponentLethalThroughOneBlock;
+      const shouldReserveDefenders =
+        difficulty === 'hard' &&
+        !forcedAttackUnit &&
+        !turnPlan?.desperationAttack &&
+        dynamicCounterPressure &&
+        !lethalWindow &&
+        !erosionPressureWindow &&
+        attackCandidates.length > 0 &&
+        (turnPlan?.reserveDefenders || 0) > 0;
+      const reserveCount = shouldReserveDefenders ? Math.min(turnPlan?.reserveDefenders || 0, attackCandidates.length) : 0;
+      const previousReservedIds = (bot as any).botReservedDefenderTurn === gameState.turnCount
+        ? new Set<string>((bot as any).botReservedDefenderIds || [])
+        : new Set<string>();
+      const reservedDefenderIds = new Set([...attackCandidates]
+        .filter(card => dynamicCounterPressure && previousReservedIds.has(card.gamecardId))
+        .map(card => card.gamecardId));
+      const shouldHoldOnlyAttacker =
+        difficulty === 'hard' &&
+        !forcedAttackUnit &&
+        !turnPlan?.desperationAttack &&
+        dynamicCounterPressure &&
+        !lethalWindow &&
+        !erosionPressureWindow &&
+        attackCandidates.length === 1 &&
+        (
+          previousReservedIds.has(attackCandidates[0].gamecardId) ||
+          (turnPlan?.reserveDefenders || 0) >= attackCandidates.length ||
+          (turnPlan?.mode === 'defense' && opponentPotentialDamage >= Math.max(4, 10 - ownErosion)) ||
+          bot.deck.length <= Math.max(4, opponentPotentialDamage + 2)
+        );
+
+      if (reservedDefenderIds.size === 0 && shouldHoldOnlyAttacker) {
+        reservedDefenderIds.add(attackCandidates[0].gamecardId);
+      }
+
+      if (reservedDefenderIds.size === 0 && reserveCount > 0) {
+        [...attackCandidates]
+          .sort((a, b) =>
+            (scoreCardValue(b, profile) + (b.power || 0) / 500 + (b.damage || 0) * 2) -
+            (scoreCardValue(a, profile) + (a.power || 0) / 500 + (a.damage || 0) * 2)
+          )
+          .slice(0, reserveCount)
+          .forEach(card => reservedDefenderIds.add(card.gamecardId));
+      }
+      if (reservedDefenderIds.size > 0) {
+        (bot as any).botReservedDefenderTurn = gameState.turnCount;
+        (bot as any).botReservedDefenderIds = [...reservedDefenderIds];
+      } else if ((bot as any).botReservedDefenderTurn === gameState.turnCount && (!dynamicCounterPressure || attackCandidates.length === 0)) {
+        delete (bot as any).botReservedDefenderIds;
+      }
+      const attackPool = reservedDefenderIds.size > 0
+        ? attackCandidates.filter(card => !reservedDefenderIds.has(card.gamecardId))
+        : attackCandidates;
+      const scoredAvailableAttackers = attackPool
+        .map(card => ({
+          card,
+          score: scoreAttackCandidate(gameState, bot, card, profile),
+        }))
+        .sort((a, b) => b.score - a.score);
+      const attacker = difficulty === 'hard'
+        ? forcedAttackUnit || scoredAvailableAttackers[0]?.card
+        : forcedAttackUnit || bot.unitZone.find(c => {
         if (!c || c.isExhausted || c.canAttack === false) return false;
         if ((c as any).battleForbiddenByEffect) return false;
         if ((c as any).data?.cannotAttackOrDefendUntilTurn && (c as any).data.cannotAttackOrDefendUntilTurn >= gameState.turnCount) return false;
@@ -6290,9 +7581,62 @@ export const ServerGameService = {
         return isRush || !wasPlayedThisTurn;
       });
       if (attacker) {
-        await ServerGameService.declareAttack(gameState, 'BOT_PLAYER', [attacker.gamecardId], false, undefined, undefined, onUpdate);
+        const chosen = scoredAvailableAttackers.find(candidate => candidate.card.gamecardId === attacker.gamecardId) ||
+          scoredAttackers.find(candidate => candidate.card.gamecardId === attacker.gamecardId);
+        ServerGameService.recordAiDecision(gameState, playerUid, {
+          action: 'ATTACK',
+          subject: ServerGameService.getAiCardName(attacker),
+          score: forcedAttackUnit ? undefined : chosen?.score,
+          reason: forcedAttackUnit
+            ? '该单位受到强制攻击要求，必须宣告攻击。'
+            : difficulty === 'hard'
+              ? lethalWindow
+                ? '当前总可攻击伤害接近胜利线，按斩杀压力和诱导防御价值安排攻击顺序。'
+                : '根据对手侵蚀压力、可防御者和单位价值选择本次攻击者。'
+              : '简单 AI 选择第一个可攻击单位。',
+          details: {
+            damage: attacker.damage || 0,
+            power: attacker.power || 0,
+            canAttackers: attackCandidates.length,
+            opponentErosion,
+            totalAvailableDamage,
+            likelyDefenders,
+            damageToCritical,
+            lethalWindow,
+            erosionPressureWindow,
+            reservedDefenders: reservedDefenderIds.size,
+            opponentPotentialDamage,
+            dynamicCounterPressure,
+            ownErosion,
+            planMode: turnPlan?.mode,
+          },
+          candidates: scoredAvailableAttackers.slice(0, 3).map(candidate => ({
+            name: ServerGameService.getAiCardName(candidate.card),
+            score: candidate.score,
+          })),
+        });
+        await ServerGameService.declareAttack(gameState, playerUid, [attacker.gamecardId], false, undefined, undefined, onUpdate);
       } else {
-        await ServerGameService.advancePhase(gameState, 'RETURN_MAIN');
+        if (reservedDefenderIds.size > 0) {
+          (bot as any).botReservedAttackTurn = gameState.turnCount;
+        }
+        ServerGameService.recordAiDecision(gameState, playerUid, {
+          action: reservedDefenderIds.size > 0 ? 'HOLD_ATTACKERS' : 'RETURN_MAIN',
+          subject: reservedDefenderIds.size > 0 ? `${reservedDefenderIds.size} reserved defenders` : '无攻击者',
+          reason: reservedDefenderIds.size > 0
+            ? 'Hold remaining ready units for defense because the current attack is not lethal and the opponent can pressure back.'
+            : '战斗宣言阶段没有合法攻击单位，返回主要阶段继续判断。',
+          details: {
+            canAttackers: attackCandidates.length,
+            reservedDefenders: reservedDefenderIds.size,
+            opponentPotentialDamage,
+            dynamicCounterPressure,
+            ownErosion,
+            ownDeck: bot.deck.length,
+            planMode: turnPlan?.mode,
+          },
+        });
+        await ServerGameService.advancePhase(gameState, 'RETURN_MAIN', playerUid);
       }
       return;
     }
@@ -6300,14 +7644,36 @@ export const ServerGameService = {
     // Battle Free Phase (as Turn Player)
     if (gameState.phase === 'BATTLE_FREE' && bot.isTurn) {
       if (!gameState.battleState?.askConfront) {
+        if (difficulty === 'hard' && await ServerGameService.tryActivateBotEffect(gameState, playerUid, 'BATTLE_FREE', turnPlan?.minBattleEffectScore ?? 9.5, onUpdate)) {
+          return;
+        }
+
         // Bot proposes calculation to give player a chance to counter
         // console.log('[Bot] Proposing damage calculation in BATTLE_FREE');
-        await ServerGameService.advancePhase(gameState, 'PROPOSE_DAMAGE_CALCULATION');
+        ServerGameService.recordAiDecision(gameState, playerUid, {
+          action: 'PROPOSE_DAMAGE',
+          subject: (gameState.battleState?.attackers || [])
+            .map(id => ServerGameService.getAiCardName(ServerGameService.findCardById(gameState, id)))
+            .join('、') || '战斗',
+          reason: '没有需要继续发动的战斗中效果，推进到伤害计算。',
+          details: {
+            attackers: gameState.battleState?.attackers?.length || 0,
+          },
+        });
+        await ServerGameService.advancePhase(gameState, 'PROPOSE_DAMAGE_CALCULATION', playerUid);
       } else if (gameState.battleState.askConfront === 'ASKING_TURN_PLAYER') {
         // Player declined, bot now asked if it wants to counter? 
         // Bot usually just declines to get to resolution.
         // console.log('[Bot] Declining confrontation in BATTLE_FREE (ASKING_TURN_PLAYER)');
-        await ServerGameService.advancePhase(gameState, 'DECLINE_CONFRONTATION');
+        ServerGameService.recordAiDecision(gameState, playerUid, {
+          action: 'PASS_BATTLE_WINDOW',
+          subject: '战斗自由时点',
+          reason: '对手已放弃对抗，AI 不追加发动效果，继续推进战斗结算。',
+          details: {
+            askConfront: gameState.battleState.askConfront,
+          },
+        });
+        await ServerGameService.advancePhase(gameState, 'DECLINE_CONFRONTATION', playerUid);
       }
       return;
     }
@@ -6336,7 +7702,15 @@ export const ServerGameService = {
     return array;
   },
 
-  async createPracticeGameState(deck: Card[], playerUid: string | number, playerName: string, turnTimerLimit?: number): Promise<GameState> {
+  async createPracticeGameState(
+    deck: Card[],
+    playerUid: string | number,
+    playerName: string,
+    turnTimerLimit?: number,
+    botDifficulty: BotDifficulty = 'simple',
+    botDeckProfileId?: string,
+    botDeck?: Card[]
+  ): Promise<GameState> {
     const playerUidStr = playerUid.toString();
     const initializedDeck = deck.map(card => ({
       ...card,
@@ -6359,6 +7733,28 @@ export const ServerGameService = {
       cardlocation: 'DECK',
       displayState: 'FRONT_FACEDOWN'
     }));
+    const initializedBotDeck = (botDeck || deck).map(card => ({
+      ...card,
+      baseColorReq: card.baseColorReq ?? { ...(card.colorReq || {}) },
+      basePower: card.basePower ?? card.power,
+      baseDamage: card.baseDamage ?? card.damage,
+      baseIsrush: card.baseIsrush ?? card.isrush,
+      isAnnihilation: card.isAnnihilation,
+      baseAnnihilation: card.baseAnnihilation ?? card.isAnnihilation,
+      isShenyi: card.isShenyi,
+      baseShenyi: card.baseShenyi ?? card.isShenyi,
+      isHeroic: card.isHeroic,
+      baseHeroic: card.baseHeroic ?? card.isHeroic,
+      hasAttackedThisTurn: false,
+      usedShenyiThisTurn: false,
+      baseCanAttack: card.baseCanAttack ?? card.canAttack,
+      baseGodMark: card.baseGodMark ?? card.godMark,
+      baseAcValue: card.baseAcValue ?? card.acValue,
+      baseCanActivateEffect: card.baseCanActivateEffect ?? card.canActivateEffect ?? true,
+      cardlocation: 'DECK',
+      displayState: 'FRONT_FACEDOWN'
+    }));
+    const botProfile = botDeckProfileId ? getDeckAiProfile(botDeckProfileId) : undefined;
 
     const myState: PlayerState = {
       uid: playerUidStr,
@@ -6383,8 +7779,8 @@ export const ServerGameService = {
 
     const botState: PlayerState = {
       uid: 'BOT_PLAYER',
-      displayName: '神蚀 AI',
-      deck: ServerGameService.assignGameCardIds(ServerGameService.shuffle([...initializedDeck])),
+      displayName: botProfile ? `${botProfile.displayName} AI` : '神蚀 AI',
+      deck: ServerGameService.assignGameCardIds(ServerGameService.shuffle([...initializedBotDeck])),
       hand: [],
       grave: [],
       exile: [],
@@ -6400,6 +7796,8 @@ export const ServerGameService = {
       isHandPublic: 0,
       timeRemaining: turnTimerLimit ? turnTimerLimit * 1000 : GAME_TIMEOUTS.MAIN_PHASE_TOTAL,
       confrontationStrategy: 'AUTO',
+      botDifficulty,
+      botDeckProfileId,
     };
 
     // Draw 4
@@ -6424,6 +7822,8 @@ export const ServerGameService = {
         'BOT_PLAYER': botState
       },
       mode: 'practice',
+      botDifficulty,
+      botDeckProfiles: botDeckProfileId ? { BOT_PLAYER: botDeckProfileId } : undefined,
       phaseTimerStart: 0,
       firstPlayerChoice: {
         chooserUid: playerUidStr,
