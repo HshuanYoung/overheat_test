@@ -1,5 +1,30 @@
-import { DeckAiProfile } from '../types';
-import { cardCost, cardText, effectHasTag, hasAny, hasRole, opponentHasTrait, opponentIs, readyDefenders } from './strategyUtils';
+import { DeckAiProfile, DeckAiQueryScoreContext } from '../types';
+import { cardCost, cardText, effectHasTag, hasAny, hasRole, opponentErosion, opponentHasTrait, opponentIs, readyAttackers, readyDefenders } from './strategyUtils';
+
+const PREFERRED_RESET_TARGET_IDS = new Set(['101130440', '101130458']);
+const RESET_TARGET_EFFECT_IDS = new Set([
+  '101130439_reset_hall',
+  '101130441_reset_boost',
+  '101130155_enter_reset',
+  '101000063_ten_reset_units',
+  '202000053_reset_after_destroy',
+]);
+
+function isResetTargetQuery(context: DeckAiQueryScoreContext) {
+  const effectId = String((context.query as any).context?.effectId || '');
+  if (RESET_TARGET_EFFECT_IDS.has(effectId)) return true;
+
+  const text = [
+    context.query.title,
+    context.query.description,
+    context.query.callbackKey,
+    effectId,
+    (context.query as any).context?.step,
+  ]
+    .filter(Boolean)
+    .join(' ');
+  return context.intent === 'benefit' && /reset|ready|重置|竖置|閲嶇疆|绔栫疆/i.test(text);
+}
 
 export const whiteTempleProfile: DeckAiProfile = {
   id: 'white-temple',
@@ -7,6 +32,20 @@ export const whiteTempleProfile: DeckAiProfile = {
   shareCode: 'GiZGyewEgAHuKBCRHfBXL0ZqofebNZYwojMMXA',
   notes: '偏防守和资源续航，保留高价值单位，倾向稳健防御。',
   preferredFactions: ['殿堂', '圣王国'],
+  preferredCardIds: {
+    '101100096': 12,
+    '201100037': 8,
+    '101130439': 8,
+    '101130440': 10,
+    '101130458': 9,
+  },
+  preserveCardIds: {
+    '101100096': 18,
+    '201100037': 14,
+    '101130439': 8,
+    '101130440': 12,
+    '101130458': 12,
+  },
   effectPreferences: {
     preferredEffectIds: {
       '101130439_reset_hall': 6,
@@ -20,7 +59,7 @@ export const whiteTempleProfile: DeckAiProfile = {
     avoidEffectIds: {
       '101000159_protect': 8,
       '201000059_prevent_destroy': 8,
-      '201100037_eclipse': 8,
+      '201100037_eclipse': 4,
     },
     tagBias: {
       reset: 3,
@@ -101,20 +140,41 @@ export const whiteTempleProfile: DeckAiProfile = {
   },
   strategyHooks: {
     adjustTurnPlan: context => {
+      const notes: string[] = [];
+      let reserveDefendersDelta = 0;
+      let minMainEffectScoreDelta = 0;
+      let minBattleEffectScoreDelta = 0;
+      let attackBeforeDeveloping: boolean | undefined;
+      const pressureReady =
+        context.plan.attackers >= 2 &&
+        (
+          context.plan.opponentErosion >= 6 ||
+          context.plan.totalAvailableDamage >= Math.max(1, 10 - context.plan.opponentErosion - 1) ||
+          context.plan.lethalWindow
+        );
+
       if (context.opponentDeckProfile?.archetype === 'aggro' || context.opponentDeckProfile?.traits.includes('burst-damage')) {
-        return {
-          reserveDefendersDelta: 1,
-          minBattleEffectScoreDelta: -0.4,
-          notes: ['white hook: hold blockers into burst damage'],
-        };
+        reserveDefendersDelta += 1;
+        minBattleEffectScoreDelta -= 0.4;
+        notes.push('white hook: hold blockers into burst damage');
       }
       if (context.opponentDeckProfile?.archetype === 'engine' || context.opponentDeckProfile?.archetype === 'combo') {
-        return {
-          minMainEffectScoreDelta: -0.3,
-          notes: ['white hook: use control effects before engine stabilizes'],
-        };
+        minMainEffectScoreDelta -= 0.3;
+        notes.push('white hook: use control effects before engine stabilizes');
       }
-      return undefined;
+      if (pressureReady) {
+        attackBeforeDeveloping = true;
+        reserveDefendersDelta -= 1;
+        minBattleEffectScoreDelta -= 0.5;
+        notes.push('white route: convert stabilized hall board into reset pressure');
+      }
+      if (context.plan.ownDeck <= 12 && !pressureReady) {
+        reserveDefendersDelta += 1;
+        notes.push('white route: low deck keeps one more defender before attacking');
+      }
+      return notes.length
+        ? { attackBeforeDeveloping, reserveDefendersDelta, minMainEffectScoreDelta, minBattleEffectScoreDelta, notes }
+        : undefined;
     },
     adjustPlayableScore: context => {
       const card = context.card;
@@ -125,6 +185,7 @@ export const whiteTempleProfile: DeckAiProfile = {
       if (hasRole(card, 'removal') && (opponentIs(context, 'engine', 'combo') || opponentHasTrait(context, 'large-defenders'))) score += 3;
       if (opponentIs(context, 'aggro') && card.type !== 'UNIT' && readyDefenders(context) === 0 && cardCost(card) > 2) score -= 4;
       if (hasAny(text, [/殿堂|圣王国/]) && cardCost(card) <= 4) score += 1.5;
+      if (['101130439', '101130440', '101130458'].includes(card.id)) score += readyAttackers(context) > 0 ? 3 : 1.5;
       return score;
     },
     adjustAttackScore: context => {
@@ -154,8 +215,28 @@ export const whiteTempleProfile: DeckAiProfile = {
       let score = 0;
       if ((effectHasTag(context, 'protection') || effectHasTag(context, 'removal')) && opponentIs(context, 'aggro', 'tempo')) score += 4;
       if (effectHasTag(context, 'reset') || effectHasTag(context, 'resource')) score += 1.5;
+      if (effectHasTag(context, 'reset') && (opponentErosion(context) >= 6 || readyAttackers(context) >= 2)) score += 4;
+      if (effectHasTag(context, 'buff') && opponentErosion(context) >= 6) score += 2;
       if (effectHasTag(context, 'draw') && (context.player?.deck.length || 0) <= 12) score -= 4;
       return score;
+    },
+    adjustQueryScore: context => {
+      const card = context.option?.card;
+      if (!card || !isResetTargetQuery(context)) return 0;
+      if (context.option?.isMine === false) return 0;
+
+      if (PREFERRED_RESET_TARGET_IDS.has(card.id)) {
+        let score = 70;
+        if (card.isExhausted) score += 18;
+        if (card.id === '101130440') score += 14;
+        if (card.id === '101130458') {
+          const opponentNonGodUnits = context.opponent?.unitZone.filter(unit => unit && !unit.godMark).length || 0;
+          score += opponentNonGodUnits > 0 ? 18 : 6;
+        }
+        return score;
+      }
+
+      return context.intent === 'benefit' ? -10 : 0;
     },
   },
 };

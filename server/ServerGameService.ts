@@ -27,6 +27,7 @@ import {
   scorePlayableCard,
   scorePaymentSacrificeValue
 } from './ai/hardStrategy';
+import { getComboAllianceAttack, getBestComboOpportunity, describeComboForDecision } from './ai/comboKnowledge';
 
 type PaymentSummary = {
   success: boolean;
@@ -6533,6 +6534,101 @@ export const ServerGameService = {
     }
   },
 
+  async tryPlayBotBattleStory(
+    gameState: GameState,
+    playerUid: string,
+    phaseContext: string,
+    minScore: number,
+    onUpdate?: (state: GameState) => Promise<void>
+  ) {
+    const player = gameState.players[playerUid];
+    if (!player || !player.isTurn || gameState.phase !== 'BATTLE_FREE') return false;
+
+    const difficulty = ServerGameService.getBotDifficulty(gameState, playerUid);
+    const profile = ServerGameService.getBotProfile(gameState, playerUid);
+    if (difficulty !== 'hard') return false;
+
+    const canPayPlayCost = (card: Card) => {
+      const effectiveCost = ServerGameService.getEffectivePlayCost(player, card, gameState);
+      if (effectiveCost < 0) {
+        const faceUpFrontCount = player.erosionFront.filter(erosionCard =>
+          erosionCard && erosionCard.displayState === 'FRONT_UPRIGHT'
+        ).length;
+        return faceUpFrontCount >= Math.abs(effectiveCost);
+      }
+      return ServerGameService.canBotPayPositiveCost(gameState, player, effectiveCost, card.color, card);
+    };
+
+    const candidates = player.hand
+      .filter(card =>
+        card.type === 'STORY' &&
+        ServerGameService.canPlayCard(gameState, player, card).canPlay &&
+        canPayPlayCost(card)
+      )
+      .map(card => {
+        const effectiveCost = ServerGameService.getEffectivePlayCost(player, card, gameState);
+        const initialPaymentSelection = effectiveCost !== 0
+          ? ServerGameService.buildBotPaymentSelectionForPlayer(gameState, playerUid, {
+            paymentCost: effectiveCost,
+            paymentColor: card.color,
+            context: {
+              cardId: card.gamecardId,
+              sourceCardId: card.gamecardId,
+              paymentTargetId: card.gamecardId,
+            },
+          })
+          : {};
+        return {
+          card,
+          score: scorePlayableCard(gameState, player, card, profile),
+          effectiveCost,
+          initialPaymentSelection,
+        };
+      })
+      .sort((a, b) => b.score - a.score);
+
+    const chosen = candidates.find(candidate => candidate.score >= minScore);
+    if (!chosen) return false;
+
+    const combo = getBestComboOpportunity(gameState, player, profile);
+    ServerGameService.recordAiDecision(gameState, playerUid, {
+      action: 'PLAY_BATTLE_STORY',
+      subject: ServerGameService.getAiCardName(chosen.card),
+      score: chosen.score,
+      reason: 'Hard AI plays a high-value story during the battle free window instead of limiting itself to field effects.',
+      details: {
+        phaseContext,
+        cost: chosen.effectiveCost,
+        initialPayment: ServerGameService.describeAiPaymentSelection(gameState, chosen.initialPaymentSelection),
+        combo: describeComboForDecision(combo),
+        battleAttackers: gameState.battleState?.attackers?.length || 0,
+      },
+      candidates: candidates.slice(0, 3).map(candidate => ({
+        name: ServerGameService.getAiCardName(candidate.card),
+        score: candidate.score,
+      })),
+    });
+
+    try {
+      await ServerGameService.playCard(gameState, playerUid, chosen.card.gamecardId, chosen.initialPaymentSelection);
+      return true;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      ServerGameService.recordAiDecision(gameState, playerUid, {
+        action: 'PLAY_BATTLE_STORY_FAILED',
+        subject: ServerGameService.getAiCardName(chosen.card),
+        score: chosen.score,
+        reason: 'Battle story passed scoring but playCard rejected it; skip this story for the current decision.',
+        details: {
+          phaseContext,
+          error: message,
+          cost: chosen.effectiveCost,
+        },
+      });
+      return false;
+    }
+  },
+
   getBotQuerySelections(query: any): string[] {
     const selectableOptions = (query.options || []).filter((option: any) => !option.disabled);
     const minSelections = query.minSelections ?? 1;
@@ -6579,7 +6675,7 @@ export const ServerGameService = {
       const amount = Math.abs(paymentCost);
       const erosionFrontIds = player.erosionFront
         .filter((card): card is Card => !!card && card.displayState === 'FRONT_UPRIGHT')
-        .sort((a, b) => difficulty === 'hard' ? scorePaymentSacrificeValue(a, profile) - scorePaymentSacrificeValue(b, profile) : 0)
+        .sort((a, b) => difficulty === 'hard' ? scorePaymentSacrificeValue(a, profile, gameState, player) - scorePaymentSacrificeValue(b, profile, gameState, player) : 0)
         .slice(0, amount)
         .map(card => card.gamecardId);
       return erosionFrontIds.length === amount ? { erosionFrontIds } : {};
@@ -6917,6 +7013,13 @@ export const ServerGameService = {
             attackBeforeDeveloping: turnPlan.attackBeforeDeveloping,
             minMainEffectScore: Number(turnPlan.minMainEffectScore.toFixed(1)),
             minBattleEffectScore: Number(turnPlan.minBattleEffectScore.toFixed(1)),
+            comboId: turnPlan.comboId || 'none',
+            comboReady: !!turnPlan.comboReady,
+            comboPayoffPlayable: !!turnPlan.comboPayoffPlayable,
+            comboNotes: turnPlan.comboNotes?.join(', ') || 'none',
+            tacticalLine: turnPlan.tacticalLine || 'develop',
+            tacticalScore: turnPlan.tacticalScore === undefined ? 0 : Number(turnPlan.tacticalScore.toFixed(1)),
+            tacticalNotes: turnPlan.tacticalNotes?.join(', ') || 'none',
             ownDeck: turnPlan.ownDeck,
             opponentDeck: turnPlan.opponentDeck,
             ownErosion: turnPlan.ownErosion,
@@ -7016,7 +7119,7 @@ export const ServerGameService = {
     // Handle Discard Phase
     if (gameState.phase === 'DISCARD' && bot.isTurn) {
       if (bot.hand.length > 6) {
-        const discard = chooseDiscardCard(bot, profile, difficulty);
+        const discard = chooseDiscardCard(bot, profile, difficulty, gameState);
         if (discard) {
           ServerGameService.recordAiDecision(gameState, playerUid, {
             action: 'DISCARD',
@@ -7569,6 +7672,42 @@ export const ServerGameService = {
           score: scoreAttackCandidate(gameState, bot, card, profile),
         }))
         .sort((a, b) => b.score - a.score);
+      const comboAllianceAttack = difficulty === 'hard' && !forcedAttackUnit
+        ? getComboAllianceAttack(gameState, bot, profile, attackCandidates)
+        : undefined;
+      if (comboAllianceAttack) {
+        comboAllianceAttack.attackers.forEach(card => reservedDefenderIds.delete(card.gamecardId));
+        ServerGameService.recordAiDecision(gameState, playerUid, {
+          action: 'COMBO_ALLIANCE_ATTACK',
+          subject: comboAllianceAttack.attackers.map(card => ServerGameService.getAiCardName(card)).join(' + '),
+          score: comboAllianceAttack.score,
+          reason: `Declare alliance attack to open ${comboAllianceAttack.comboName}.`,
+          details: {
+            comboId: comboAllianceAttack.comboId,
+            attackers: comboAllianceAttack.attackers.length,
+            reasons: comboAllianceAttack.reasons.join(', ') || 'none',
+            opponentErosion,
+            totalAvailableDamage,
+            likelyDefenders,
+            reservedDefenders: reservedDefenderIds.size,
+            planMode: turnPlan?.mode,
+          },
+          candidates: comboAllianceAttack.attackers.map(card => ({
+            name: ServerGameService.getAiCardName(card),
+            score: scoreAttackCandidate(gameState, bot, card, profile),
+          })),
+        });
+        await ServerGameService.declareAttack(
+          gameState,
+          playerUid,
+          comboAllianceAttack.attackers.map(card => card.gamecardId),
+          true,
+          undefined,
+          undefined,
+          onUpdate
+        );
+        return;
+      }
       const attacker = difficulty === 'hard'
         ? forcedAttackUnit || scoredAvailableAttackers[0]?.card
         : forcedAttackUnit || bot.unitZone.find(c => {
@@ -7644,6 +7783,10 @@ export const ServerGameService = {
     // Battle Free Phase (as Turn Player)
     if (gameState.phase === 'BATTLE_FREE' && bot.isTurn) {
       if (!gameState.battleState?.askConfront) {
+        if (difficulty === 'hard' && await ServerGameService.tryPlayBotBattleStory(gameState, playerUid, 'BATTLE_FREE', turnPlan?.minBattleEffectScore ?? 9.5, onUpdate)) {
+          return;
+        }
+
         if (difficulty === 'hard' && await ServerGameService.tryActivateBotEffect(gameState, playerUid, 'BATTLE_FREE', turnPlan?.minBattleEffectScore ?? 9.5, onUpdate)) {
           return;
         }

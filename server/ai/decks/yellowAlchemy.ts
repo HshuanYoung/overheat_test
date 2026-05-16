@@ -1,5 +1,5 @@
 import { DeckAiProfile } from '../types';
-import { cardCost, effectHasTag, hasRole, openUnitSlots, opponentHasTrait, opponentIs, readyDefenders } from './strategyUtils';
+import { cardCost, effectHasTag, hasRole, openUnitSlots, opponentErosion, opponentHasTrait, opponentIs, ownErosion, readyAttackers, readyDefenders } from './strategyUtils';
 
 export const yellowAlchemyProfile: DeckAiProfile = {
   id: 'yellow-alchemy',
@@ -112,20 +112,38 @@ export const yellowAlchemyProfile: DeckAiProfile = {
   },
   strategyHooks: {
     adjustTurnPlan: context => {
+      const notes: string[] = [];
+      let reserveDefendersDelta = 0;
+      let minMainEffectScoreDelta = 0;
+      let attackBeforeDeveloping: boolean | undefined;
+      const engineOnline = context.plan.attackers >= 2 || context.plan.totalAvailableDamage >= 3;
+      const convertToPressure =
+        engineOnline &&
+        (
+          context.plan.opponentErosion >= 5 ||
+          context.plan.ownDeck <= 14 ||
+          context.opponentDeckProfile?.archetype === 'control' ||
+          context.opponentDeckProfile?.archetype === 'engine'
+        );
+
       if (context.opponentDeckProfile?.archetype === 'aggro') {
-        return {
-          reserveDefendersDelta: 1,
-          minMainEffectScoreDelta: 0.2,
-          notes: ['yellow hook: slow engine line until blockers are stable'],
-        };
+        reserveDefendersDelta += 1;
+        minMainEffectScoreDelta += 0.2;
+        notes.push('yellow hook: slow engine line until blockers are stable');
       }
       if (context.opponentDeckProfile?.archetype === 'control' || context.opponentDeckProfile?.archetype === 'midrange') {
-        return {
-          minMainEffectScoreDelta: -0.4,
-          notes: ['yellow hook: lean into resource engine against slower decks'],
-        };
+        minMainEffectScoreDelta -= 0.4;
+        notes.push('yellow hook: lean into resource engine against slower decks');
       }
-      return undefined;
+      if (convertToPressure) {
+        attackBeforeDeveloping = true;
+        reserveDefendersDelta -= context.plan.ownDeck <= 14 ? 0 : 1;
+        minMainEffectScoreDelta += context.plan.ownDeck <= 14 ? 0.4 : 0;
+        notes.push('yellow route: convert engine resources into attacks before self-deck pressure');
+      }
+      return notes.length
+        ? { attackBeforeDeveloping, reserveDefendersDelta, minMainEffectScoreDelta, notes }
+        : undefined;
     },
     adjustPlayableScore: context => {
       const card = context.card;
@@ -134,6 +152,8 @@ export const yellowAlchemyProfile: DeckAiProfile = {
       if (hasRole(card, 'draw') || hasRole(card, 'search')) score += (context.player?.deck.length || 0) > 14 ? 3.5 : -4;
       if (card.type === 'ITEM') score += 2.5;
       if (card.type === 'UNIT' && openUnitSlots(context) > 0 && hasRole(card, 'combo_piece')) score += 2;
+      if (card.type === 'UNIT' && (context.player?.hand.length || 0) >= 5 && opponentErosion(context) >= 4) score += (card.damage || 0) * 1.5;
+      if ((ownErosion(context) >= 7 || (context.player?.deck.length || 0) <= 14) && (hasRole(card, 'draw') || hasRole(card, 'search'))) score -= 5;
       if (opponentIs(context, 'aggro') && readyDefenders(context) === 0 && card.type !== 'UNIT') score -= 5;
       return score;
     },
@@ -164,6 +184,8 @@ export const yellowAlchemyProfile: DeckAiProfile = {
       if (effectHasTag(context, 'engine') || effectHasTag(context, 'resource') || effectHasTag(context, 'summon')) score += 4;
       if (effectHasTag(context, 'draw') || effectHasTag(context, 'search')) score += (context.player?.deck.length || 0) > 14 ? 3 : -6;
       if (effectHasTag(context, 'removal') && (opponentIs(context, 'aggro') || opponentHasTrait(context, 'large-defenders'))) score += 3;
+      if ((effectHasTag(context, 'combat') || effectHasTag(context, 'buff')) && (readyAttackers(context) >= 2 || opponentErosion(context) >= 6)) score += 3;
+      if ((effectHasTag(context, 'engine') || effectHasTag(context, 'resource')) && (context.player?.deck.length || 0) <= 12) score -= 4;
       return score;
     },
   },

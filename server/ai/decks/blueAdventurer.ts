@@ -1,5 +1,5 @@
 import { DeckAiProfile } from '../types';
-import { cardCost, cardText, effectHasTag, hasAny, hasRole, openUnitSlots, opponentHasTrait, opponentIs } from './strategyUtils';
+import { cardCost, cardText, effectHasTag, hasAny, hasRole, openUnitSlots, opponentErosion, opponentHasTrait, opponentIs, readyAttackers } from './strategyUtils';
 
 export const blueAdventurerProfile: DeckAiProfile = {
   id: 'blue-adventurer',
@@ -105,20 +105,43 @@ export const blueAdventurerProfile: DeckAiProfile = {
   },
   strategyHooks: {
     adjustTurnPlan: context => {
+      const notes: string[] = [];
+      let reserveDefendersDelta = 0;
+      let minMainEffectScoreDelta = 0;
+      let minBattleEffectScoreDelta = 0;
+      let attackBeforeDeveloping: boolean | undefined;
+      const pressureReady =
+        context.plan.attackers > 0 &&
+        (
+          context.plan.opponentErosion >= 4 ||
+          context.plan.totalAvailableDamage >= Math.max(1, 10 - context.plan.opponentErosion - 2) ||
+          context.opponentDeckProfile?.archetype === 'engine' ||
+          context.opponentDeckProfile?.archetype === 'combo' ||
+          context.opponentDeckProfile?.archetype === 'control'
+        );
+
       if (context.opponentDeckProfile?.archetype === 'engine' || context.opponentDeckProfile?.archetype === 'combo') {
-        return {
-          attackBeforeDeveloping: context.plan.attackers > 0,
-          minMainEffectScoreDelta: -0.3,
-          notes: ['blue hook: convert tempo into pressure against setup decks'],
-        };
+        attackBeforeDeveloping = context.plan.attackers > 0;
+        minMainEffectScoreDelta -= 0.3;
+        notes.push('blue hook: convert tempo into pressure against setup decks');
       }
       if (context.opponentDeckProfile?.archetype === 'aggro') {
-        return {
-          reserveDefendersDelta: 1,
-          notes: ['blue hook: preserve tempo blocker against aggro'],
-        };
+        reserveDefendersDelta += 1;
+        notes.push('blue hook: preserve tempo blocker against aggro');
       }
-      return undefined;
+      if (pressureReady) {
+        attackBeforeDeveloping = true;
+        reserveDefendersDelta -= 1;
+        minBattleEffectScoreDelta -= 0.4;
+        notes.push('blue route: turn tempo board into erosion pressure');
+      }
+      if (context.plan.ownDeck <= 12 && !context.plan.lethalWindow && context.opponentDeckProfile?.archetype === 'aggro') {
+        reserveDefendersDelta += 1;
+        notes.push('blue route: low deck respects aggro crackback');
+      }
+      return notes.length
+        ? { attackBeforeDeveloping, reserveDefendersDelta, minMainEffectScoreDelta, minBattleEffectScoreDelta, notes }
+        : undefined;
     },
     adjustPlayableScore: context => {
       const card = context.card;
@@ -128,6 +151,8 @@ export const blueAdventurerProfile: DeckAiProfile = {
       if (card.type === 'UNIT' && openUnitSlots(context) > 0 && hasAny(text, [/冒险家|委托|erosion|侵蚀/])) score += 2;
       if (hasRole(card, 'search') || hasRole(card, 'draw')) score += context.player && context.player.hand.length <= 5 ? 3 : 0.8;
       if (hasRole(card, 'tempo') || hasRole(card, 'removal')) score += opponentHasTrait(context, 'large-defenders') ? 3 : 1.5;
+      if (card.type === 'UNIT' && (card.damage || 0) >= 2 && opponentErosion(context) >= 4) score += 3;
+      if ((hasRole(card, 'search') || hasRole(card, 'draw')) && (context.player?.deck.length || 0) <= 14) score -= 3;
       if (opponentIs(context, 'aggro') && cardCost(card) >= 5) score -= 5;
       return score;
     },
@@ -158,6 +183,7 @@ export const blueAdventurerProfile: DeckAiProfile = {
       if (effectHasTag(context, 'tempo') && opponentHasTrait(context, 'large-defenders')) score += 4;
       if (effectHasTag(context, 'draw') && (context.player?.deck.length || 0) <= 13) score -= 4;
       if (opponentIs(context, 'engine', 'combo') && (effectHasTag(context, 'tempo') || effectHasTag(context, 'removal'))) score += 3;
+      if ((effectHasTag(context, 'tempo') || effectHasTag(context, 'combat')) && (opponentErosion(context) >= 5 || readyAttackers(context) >= 2)) score += 3;
       return score;
     },
   },

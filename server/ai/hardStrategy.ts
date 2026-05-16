@@ -3,6 +3,7 @@ import {
   BotDifficulty,
   DeckAiCardScoreContext,
   DeckAiEffectScoreContext,
+  DeckAiQueryScoreContext,
   DeckAiProfile,
   DeckAiStrategyContext,
   DeckAiTurnPlanSnapshot,
@@ -12,6 +13,12 @@ import {
 } from './types';
 import { getCardKnowledge, getCardKnowledgeValue } from './cardKnowledge';
 import { buildDynamicMatchupPlan, inferPlayerDeckProfile, mergeMatchupPlans } from './playerDeckProfile';
+import { scoreEffectTimingWindow } from './effectTimingKnowledge';
+import {
+  getBestComboOpportunity,
+  scoreComboCard,
+  scoreComboEffect,
+} from './comboKnowledge';
 
 const getCardCost = (card: Card) => Math.max(0, card.baseAcValue ?? card.acValue ?? 0);
 
@@ -59,6 +66,13 @@ export interface HardAiTurnPlan {
   minBattleEffectScore: number;
   avoidSelfDraw: boolean;
   avoidSearch: boolean;
+  comboId?: string;
+  comboReady?: boolean;
+  comboPayoffPlayable?: boolean;
+  comboNotes?: string[];
+  tacticalLine?: string;
+  tacticalScore?: number;
+  tacticalNotes?: string[];
   reason: string;
   notes: string[];
 }
@@ -201,6 +215,14 @@ function applyEffectScoreHook(profile: DeckAiProfile, context: DeckAiEffectScore
   }
 }
 
+function applyQueryScoreHook(profile: DeckAiProfile, context: DeckAiQueryScoreContext) {
+  try {
+    return safeHookNumber(profile.strategyHooks?.adjustQueryScore?.(context));
+  } catch {
+    return 0;
+  }
+}
+
 function riskValue(profile: DeckAiProfile, key: keyof NonNullable<DeckAiProfile['riskThresholds']>, fallback: number) {
   const value = profile.riskThresholds?.[key];
   return typeof value === 'number' ? value : fallback;
@@ -216,6 +238,110 @@ function matchupRiskValue(
   const matchup = getActiveMatchupPlan(gameState, player, profile);
   const value = matchup?.[key] ?? profile.riskThresholds?.[key];
   return typeof value === 'number' ? value : fallback;
+}
+
+export interface TacticalTurnSearchResult {
+  line: 'lethal' | 'erosion-lethal' | 'combo' | 'stabilize' | 'pressure' | 'develop';
+  score: number;
+  forceAttackBeforeDeveloping?: boolean;
+  reserveDefenders?: number;
+  minMainEffectScoreDelta?: number;
+  minBattleEffectScoreDelta?: number;
+  notes: string[];
+}
+
+export function analyzeOneTurnTactics(
+  gameState: GameState,
+  player: PlayerState,
+  profile: DeckAiProfile
+): TacticalTurnSearchResult {
+  const opponent = getOpponent(gameState, player);
+  const attackers = player.unitZone.filter(unit => canUnitAttack(gameState, unit)) as Card[];
+  const attackerDamage = attackers
+    .map(unit => Math.max(0, unit.damage || 0))
+    .sort((a, b) => b - a);
+  const totalDamage = attackerDamage.reduce((sum, damage) => sum + damage, 0);
+  const opponentErosion = opponent ? countErosion(opponent) : 0;
+  const damageToCritical = Math.max(1, 10 - opponentErosion);
+  const likelyDefenders = countLikelyDefenders(gameState, opponent);
+  const damageThroughLikelyDefenders = Math.max(
+    0,
+    totalDamage - attackerDamage.slice(0, likelyDefenders).reduce((sum, damage) => sum + damage, 0)
+  );
+  const incomingThreat = estimateIncomingThreat(gameState, player, profile);
+  const combo = getBestComboOpportunity(gameState, player, profile);
+  const notes: string[] = [];
+
+  if (opponent && totalDamage > opponent.deck.length) {
+    notes.push(`deck lethal damage=${totalDamage}/${opponent.deck.length}`);
+    return {
+      line: 'lethal',
+      score: 130 + totalDamage * 5,
+      forceAttackBeforeDeveloping: true,
+      reserveDefenders: 0,
+      minMainEffectScoreDelta: -2,
+      minBattleEffectScoreDelta: -3,
+      notes,
+    };
+  }
+
+  if (totalDamage >= damageToCritical || damageThroughLikelyDefenders >= damageToCritical) {
+    notes.push(`erosion lethal damage=${totalDamage}/${damageToCritical}`);
+    if (likelyDefenders > 0) notes.push(`through defenders=${damageThroughLikelyDefenders}`);
+    return {
+      line: 'erosion-lethal',
+      score: 112 + totalDamage * 4 - likelyDefenders * 5,
+      forceAttackBeforeDeveloping: true,
+      reserveDefenders: 0,
+      minMainEffectScoreDelta: -1.5,
+      minBattleEffectScoreDelta: -2.5,
+      notes,
+    };
+  }
+
+  if (combo?.wantsAllianceAttack || combo?.payoffPlayableNow) {
+    notes.push(`combo ${combo.name}`);
+    if (combo.reasons.length) notes.push(combo.reasons.join('|'));
+    return {
+      line: 'combo',
+      score: combo.score,
+      forceAttackBeforeDeveloping: true,
+      reserveDefenders: Math.max(0, Math.min(1, attackers.length - 2)),
+      minBattleEffectScoreDelta: -4,
+      notes,
+    };
+  }
+
+  if (incomingThreat.lethalWithoutBlocks || incomingThreat.defendersNeeded >= 2) {
+    notes.push(`incoming lethal=${incomingThreat.lethalWithoutBlocks}`);
+    notes.push(`need blockers=${incomingThreat.defendersNeeded}`);
+    return {
+      line: 'stabilize',
+      score: 85 + incomingThreat.defendersNeeded * 12,
+      forceAttackBeforeDeveloping: false,
+      reserveDefenders: Math.min(3, Math.max(incomingThreat.defendersNeeded, 1)),
+      minMainEffectScoreDelta: -1,
+      notes,
+    };
+  }
+
+  if (attackers.length > 0 && (opponentErosion >= 6 || (opponent && opponent.deck.length <= riskValue(profile, 'lowDeck', 10)))) {
+    notes.push(`pressure damage=${totalDamage}`);
+    return {
+      line: 'pressure',
+      score: 45 + totalDamage * 4 + opponentErosion * 2,
+      forceAttackBeforeDeveloping: true,
+      reserveDefenders: incomingThreat.defendersNeeded > 0 ? Math.min(1, incomingThreat.defendersNeeded) : 0,
+      minBattleEffectScoreDelta: -1,
+      notes,
+    };
+  }
+
+  return {
+    line: 'develop',
+    score: 10 + attackers.length * 2,
+    notes: ['no forcing tactic'],
+  };
 }
 
 export function buildTurnPlan(gameState: GameState, player: PlayerState, profile: DeckAiProfile): HardAiTurnPlan {
@@ -344,6 +470,31 @@ export function buildTurnPlan(gameState: GameState, player: PlayerState, profile
   let avoidSelfDraw = player.deck.length <= stopSelfDrawAtDeck;
   let avoidSearch = player.deck.length <= stopSearchAtDeck;
 
+  const tactical = analyzeOneTurnTactics(gameState, player, profile);
+  if (tactical.line !== 'develop') {
+    notes.push(`tactical=${tactical.line}`);
+    notes.push(...tactical.notes.map(note => `tactical ${note}`));
+  }
+  if (tactical.line === 'lethal' || tactical.line === 'erosion-lethal') {
+    mode = 'lethal';
+  } else if (tactical.line === 'combo' && mode !== 'defense') {
+    mode = 'pressure';
+  } else if (tactical.line === 'stabilize') {
+    mode = incomingThreat.lethalWithoutBlocks ? 'defense' : 'stabilize';
+  }
+  if (typeof tactical.forceAttackBeforeDeveloping === 'boolean') {
+    attackBeforeDeveloping = tactical.forceAttackBeforeDeveloping;
+  }
+  if (typeof tactical.reserveDefenders === 'number') {
+    reserveDefenders = Math.max(0, Math.min(3, attackers.length, tactical.reserveDefenders));
+  }
+  if (typeof tactical.minMainEffectScoreDelta === 'number') {
+    minMainEffectScore = Math.max(4, minMainEffectScore + tactical.minMainEffectScoreDelta);
+  }
+  if (typeof tactical.minBattleEffectScoreDelta === 'number') {
+    minBattleEffectScore = Math.max(4.5, minBattleEffectScore + tactical.minBattleEffectScoreDelta);
+  }
+
   const turnPlanSnapshot: DeckAiTurnPlanSnapshot = {
     mode,
     ownDeck: player.deck.length,
@@ -386,6 +537,22 @@ export function buildTurnPlan(gameState: GameState, player: PlayerState, profile
     if (turnAdjustment.notes?.length) notes.push(...turnAdjustment.notes);
   }
 
+  const combo = getBestComboOpportunity(gameState, player, profile);
+  if (combo?.partial) {
+    notes.push(`combo=${combo.name}`);
+    if (combo.reasons.length) notes.push(`combo reasons=${combo.reasons.join('|')}`);
+    if (combo.wantsAllianceAttack) {
+      mode = mode === 'defense' && incomingThreat.lethalWithoutBlocks ? 'stabilize' : 'pressure';
+      attackBeforeDeveloping = true;
+      reserveDefenders = Math.max(0, Math.min(reserveDefenders, Math.max(0, attackers.length - 2)));
+      minBattleEffectScore = Math.min(minBattleEffectScore, 5.5);
+      notes.push('combo wants alliance attack');
+    } else if (combo.payoffPlayableNow) {
+      minBattleEffectScore = Math.min(minBattleEffectScore, 4.5);
+      notes.push('combo payoff playable');
+    }
+  }
+
   return {
     mode,
     opponentProfileId: opponentDeckProfileId,
@@ -413,6 +580,13 @@ export function buildTurnPlan(gameState: GameState, player: PlayerState, profile
     minBattleEffectScore,
     avoidSelfDraw,
     avoidSearch,
+    comboId: combo?.id,
+    comboReady: combo?.ready,
+    comboPayoffPlayable: combo?.payoffPlayableNow,
+    comboNotes: combo?.reasons,
+    tacticalLine: tactical.line,
+    tacticalScore: tactical.score,
+    tacticalNotes: tactical.notes,
     reason: `turn plan: ${mode}`,
     notes,
   };
@@ -451,6 +625,7 @@ export function scoreCardValue(card: Card | null | undefined, profile: DeckAiPro
   }
 
   if (context.gameState && context.player) {
+    score += scoreComboCard(context.gameState, context.player, card, profile, 'value');
     score += applyCardScoreHook(profile, 'adjustCardValue', {
       ...context,
       card,
@@ -460,6 +635,213 @@ export function scoreCardValue(card: Card | null | undefined, profile: DeckAiPro
   }
 
   return score;
+}
+
+function cardSearchText(card: Card) {
+  return [
+    card.id,
+    card.uniqueId,
+    card.fullName,
+    card.specialName,
+    card.faction,
+    card.color,
+    ...(card.effects || []).flatMap(effect => [
+      effect.id,
+      effect.content,
+      effect.description,
+      effect.triggerEvent,
+      effect.targetSpec?.title,
+      effect.targetSpec?.description,
+      effect.targetSpec?.modeTitle,
+      effect.targetSpec?.modeDescription,
+      ...(effect.targetSpec?.modeOptions || []).flatMap(mode => [mode.id, mode.label, mode.description, mode.modeDescription]),
+    ]),
+  ]
+    .filter(Boolean)
+    .join(' ');
+}
+
+function countCardsInZones(player: PlayerState | undefined, zones: string[] | undefined) {
+  if (!player) return 0;
+  const wanted = new Set(zones && zones.length > 0 ? zones : ['UNIT', 'ITEM', 'GRAVE', 'EROSION_FRONT', 'EROSION_BACK', 'PLAY']);
+  let count = 0;
+  if (wanted.has('UNIT')) count += player.unitZone.filter(Boolean).length;
+  if (wanted.has('ITEM')) count += player.itemZone.filter(Boolean).length;
+  if (wanted.has('GRAVE')) count += player.grave.filter(Boolean).length;
+  if (wanted.has('EXILE')) count += player.exile.filter(Boolean).length;
+  if (wanted.has('HAND')) count += player.hand.filter(Boolean).length;
+  if (wanted.has('DECK')) count += player.deck.filter(Boolean).length;
+  if (wanted.has('EROSION_FRONT')) count += player.erosionFront.filter(Boolean).length;
+  if (wanted.has('EROSION_BACK')) count += player.erosionBack.filter(Boolean).length;
+  if (wanted.has('PLAY')) count += player.playZone.filter(Boolean).length;
+  return count;
+}
+
+function estimateEffectTargetCount(gameState: GameState, player: PlayerState, card: Card, effect: CardEffect) {
+  const spec = effect.targetSpec;
+  if (!spec) return 0;
+
+  const opponent = getOpponent(gameState, player);
+  const shapes = spec.modeOptions?.length
+    ? spec.modeOptions
+    : spec.targetGroups?.length
+      ? spec.targetGroups
+      : [spec];
+
+  let bestCount = 0;
+  for (const shape of shapes) {
+    const option = shape as any;
+    try {
+      if (typeof option.condition === 'function' && !option.condition(gameState, player, card)) {
+        continue;
+      }
+    } catch {
+      continue;
+    }
+
+    if (typeof option.getCandidates === 'function') {
+      try {
+        bestCount = Math.max(bestCount, option.getCandidates(gameState, player, card)?.length || 0);
+        continue;
+      } catch {
+        // Fall back to broad zone counting below.
+      }
+    }
+
+    const controller = option.controller || spec.controller || 'ANY';
+    const zones = option.zones || spec.zones;
+    if (controller === 'SELF') {
+      bestCount = Math.max(bestCount, countCardsInZones(player, zones));
+    } else if (controller === 'OPPONENT') {
+      bestCount = Math.max(bestCount, countCardsInZones(opponent, zones));
+    } else {
+      bestCount = Math.max(bestCount, countCardsInZones(player, zones) + countCardsInZones(opponent, zones));
+    }
+  }
+
+  return bestCount;
+}
+
+function bestStoryEffectTimingScore(gameState: GameState, player: PlayerState, card: Card) {
+  const effects = card.effects || [];
+  if (effects.length === 0) return 0;
+  return effects.reduce((best, effect) => {
+    const targetCount = estimateEffectTargetCount(gameState, player, card, effect);
+    const timing = scoreEffectTimingWindow(gameState, player, card, effect, {
+      targetCount,
+      hasTargetSpec: !!effect.targetSpec,
+    });
+    return Math.max(best, timing.score);
+  }, -20);
+}
+
+function scoreStoryPlayDiscipline(gameState: GameState, player: PlayerState, card: Card, profile: DeckAiProfile) {
+  const opponent = getOpponent(gameState, player);
+  const knowledge = getCardKnowledge(card);
+  const roles = new Set(knowledge?.roles || []);
+  const text = cardSearchText(card);
+  const upper = text.toUpperCase();
+  const opponentUnits = opponent?.unitZone.filter(Boolean).length || 0;
+  const opponentItems = opponent?.itemZone.filter(Boolean).length || 0;
+  const opponentFieldTargets = opponentUnits + opponentItems + (opponent?.playZone.filter(Boolean).length || 0);
+  const ownUnits = player.unitZone.filter(Boolean).length;
+  const openUnitSlots = player.unitZone.filter(slot => slot === null).length;
+  const ownAttackers = player.unitZone.filter(unit => canUnitAttack(gameState, unit)) as Card[];
+  const battleAttackers = gameState.battleState?.attackers?.filter(Boolean).length || 0;
+  const opponentErosion = opponent ? countErosion(opponent) : 0;
+  const totalAvailableDamage = ownAttackers.reduce((sum, unit) => sum + (unit.damage || 0), 0);
+  const damageToCritical = Math.max(1, 10 - opponentErosion);
+  const closeToLethal = !!opponent && (
+    totalAvailableDamage >= damageToCritical - 1 ||
+    opponent.deck.length <= Math.max(4, totalAvailableDamage + 1)
+  );
+  const comboScore = scoreComboCard(gameState, player, card, profile, 'playable');
+  const timingScore = bestStoryEffectTimingScore(gameState, player, card);
+  const phase = gameState.phase;
+
+  const isRemoval = roles.has('removal') || textHasAny(upper, [/DESTROY|BANISH|EXILE|RETURN.*HAND|BOUNCE|REMOVE|鐮村潖|闄ゅ|杩斿洖|鍥炴墜/]);
+  const isDrawSearch = roles.has('draw') || roles.has('search') || textHasAny(upper, [/DRAW|SEARCH|DECK.*HAND|HAND.*DECK|鎶絴鎶搢|妫€绱鎼滅储|鍔犲叆鎵嬬墝/]);
+  const isProtection = roles.has('protection') || textHasAny(upper, [/PREVENT|PROTECT|IMMUNE|INDESTRUCTIBLE|CANNOT.*DESTROY|鍏嶇柅|淇濇姢|涓嶄細琚牬鍧?/]);
+  const isCounter = textHasAny(upper, [/COUNTER|NEGATE|CANCEL|RESPONSE|CONFRONT|反击|对抗/]);
+  const isCombat = roles.has('damage') || roles.has('finisher') || textHasAny(upper, [/COMBAT|BATTLE|ATTACK|DAMAGE|POWER|\+\d|ADD_POWER|ADD_DAMAGE|READY|RESET|浼ゅ|鍔涢噺|閲嶇疆|绔栫疆/]);
+  const isResourceSetup = roles.has('engine') || roles.has('resource') || textHasAny(upper, [/RESOURCE|ACCESS|READY|RESET|COST|SUMMON|REVIVE|REANIMATE|PLAY.*UNIT|璧勬簮|璐圭敤|鍙敜|澶嶇敓|澶嶆椿|鏀剧疆鍒版垬鍦?/]);
+  const isBoardSetup = isResourceSetup || textHasAny(upper, [/UNIT|BATTLEFIELD|GRAVE|PLAY_FROM|鎴樺満|澧撳湴/]);
+
+  let score = -48;
+  let clearReasonScore = 0;
+
+  if (comboScore >= 80) {
+    clearReasonScore += 58 + comboScore * 0.15;
+  } else if (comboScore > 0) {
+    clearReasonScore += comboScore * 0.35;
+  } else if (comboScore < 0) {
+    clearReasonScore += comboScore * 0.55;
+  }
+
+  if (phase === 'MAIN') {
+    if (isRemoval) {
+      clearReasonScore += opponentFieldTargets > 0 ? 28 + Math.min(10, opponentFieldTargets * 2.5) : -30;
+    }
+    if (isDrawSearch) {
+      const needsCards = player.hand.length <= 3;
+      const supportsPlan = profile.gamePlan?.primaryGoal === 'resourceLoop' || profile.gamePlan?.primaryGoal === 'comboSetup';
+      clearReasonScore += needsCards ? 22 : supportsPlan ? 12 : -10;
+      if (player.deck.length <= matchupRiskValue(gameState, player, profile, 'stopSearchAtDeck', 10)) clearReasonScore -= 20;
+    }
+    if (isBoardSetup) {
+      clearReasonScore += openUnitSlots > 0 || ownUnits <= 2 ? 16 : -8;
+      if (profile.gamePlan?.mode === 'engine' || profile.gamePlan?.mode === 'combo') clearReasonScore += 6;
+    }
+    if ((isCombat || isProtection || isCounter) && !closeToLethal) {
+      clearReasonScore -= 18;
+    }
+    if (closeToLethal && (isCombat || roles.has('finisher'))) {
+      clearReasonScore += 24;
+    }
+  } else if (phase === 'BATTLE_FREE') {
+    if (battleAttackers > 0 && (isCombat || isProtection || isRemoval || isCounter || roles.has('finisher'))) {
+      clearReasonScore += 38 + Math.min(12, battleAttackers * 4);
+      if (closeToLethal) clearReasonScore += 16;
+    }
+    if (isDrawSearch || isResourceSetup || isBoardSetup) {
+      clearReasonScore -= comboScore >= 80 ? 0 : 34;
+    }
+    if (battleAttackers === 0 && comboScore < 80) {
+      clearReasonScore -= 22;
+    }
+    if (isRemoval && opponentFieldTargets === 0) {
+      clearReasonScore -= 20;
+    }
+  } else if (phase === 'COUNTERING') {
+    if (isCounter || isProtection || isRemoval || isCombat) {
+      clearReasonScore += 28;
+    }
+    if ((isDrawSearch || isResourceSetup || isBoardSetup) && !isCounter) {
+      clearReasonScore -= 30;
+    }
+  } else {
+    clearReasonScore -= 18;
+  }
+
+  if (timingScore !== 0) {
+    clearReasonScore += Math.max(-18, Math.min(18, timingScore * 1.25));
+  }
+
+  if (isDrawSearch && player.deck.length <= matchupRiskValue(gameState, player, profile, 'stopSelfDrawAtDeck', 10)) {
+    clearReasonScore -= 14;
+  }
+
+  const hasClearPurpose =
+    comboScore >= 80 ||
+    clearReasonScore >= 22 ||
+    (phase === 'MAIN' && (isRemoval || isDrawSearch || isBoardSetup) && clearReasonScore >= 12) ||
+    (phase === 'BATTLE_FREE' && battleAttackers > 0 && (isCombat || isProtection || isRemoval || isCounter));
+
+  if (!hasClearPurpose) {
+    score -= 18;
+  }
+
+  return score + clearReasonScore;
 }
 
 export function scorePlayableCard(gameState: GameState, player: PlayerState, card: Card, profile: DeckAiProfile) {
@@ -487,9 +869,7 @@ export function scorePlayableCard(gameState: GameState, player: PlayerState, car
   }
 
   if (card.type === 'STORY') {
-    score += player.hand.length >= 6 ? 1.2 : 0;
-    if (knowledge?.roles.includes('removal')) score += 2;
-    if (knowledge?.roles.includes('draw') || knowledge?.roles.includes('search')) score += 1.5;
+    score += scoreStoryPlayDiscipline(gameState, player, card, profile);
   }
 
   if ((knowledge?.roles.includes('draw') || knowledge?.roles.includes('search')) && player.deck.length <= matchupRiskValue(gameState, player, profile, 'stopSelfDrawAtDeck', 10)) {
@@ -521,6 +901,7 @@ export function scorePlayableCard(gameState: GameState, player: PlayerState, car
   }
 
   if (erosion >= 8 && getCardCost(card) > 2) score -= 3;
+  score += scoreComboCard(gameState, player, card, profile, 'playable');
   score += applyCardScoreHook(profile, 'adjustPlayableScore', {
     ...strategyContext,
     card,
@@ -577,6 +958,7 @@ function scoreMulliganKeep(card: Card, profile: DeckAiProfile, earlyUnitsInHand:
   if (card.type === 'ITEM' && earlyUnitsInHand === 0) score -= 8;
   if (cost >= 5) score -= mode === 'aggro' ? 18 : 10;
   if (cost >= 5 && (profile.preserveCardIds?.[card.id] || profile.preferredCardIds?.[card.id])) score += 8;
+  if (gameState && player) score += scoreComboCard(gameState, player, card, profile, 'mulligan');
 
   score += applyCardScoreHook(profile, 'adjustMulliganScore', {
     ...strategyContext,
@@ -876,6 +1258,111 @@ function findCardInState(gameState: GameState, gamecardId?: string) {
   return undefined;
 }
 
+function findCardOwnerUid(gameState: GameState, card: Card | null | undefined) {
+  if (!card?.gamecardId) return undefined;
+  return Object.values(gameState.players).find(player =>
+    [
+      ...player.deck,
+      ...player.hand,
+      ...player.grave,
+      ...player.exile,
+      ...player.unitZone,
+      ...player.itemZone,
+      ...player.erosionFront,
+      ...player.erosionBack,
+      ...player.playZone,
+    ].some(candidate => candidate?.gamecardId === card.gamecardId)
+  )?.uid;
+}
+
+function optionIsMine(gameState: GameState, playerUid: string, option: any) {
+  if (typeof option.isMine === 'boolean') return option.isMine;
+  return option.card ? findCardOwnerUid(gameState, option.card) === playerUid : false;
+}
+
+function isBoardPresenceCard(card: Card | null | undefined) {
+  return !!card && (card.cardlocation === 'UNIT' || card.cardlocation === 'ITEM');
+}
+
+function profileCardBias(profile: DeckAiProfile, card: Card | null | undefined) {
+  if (!card) return { preserve: 0, preferred: 0 };
+  return {
+    preserve: profile.preserveCardIds?.[card.id] || profile.preserveCardIds?.[card.uniqueId] || 0,
+    preferred: profile.preferredCardIds?.[card.id] || profile.preferredCardIds?.[card.uniqueId] || 0,
+  };
+}
+
+function canDefendSoon(gameState: GameState, unit: Card | null | undefined) {
+  return !!unit &&
+    !unit.isExhausted &&
+    !(unit as any).battleForbiddenByEffect &&
+    !((unit as any).data?.cannotDefendTurn === gameState.turnCount) &&
+    !((unit as any).data?.cannotAttackOrDefendUntilTurn && (unit as any).data.cannotAttackOrDefendUntilTurn >= gameState.turnCount);
+}
+
+function scoreStrategicBoardPresenceValue(
+  gameState: GameState,
+  playerUid: string,
+  card: Card | null | undefined,
+  profile: DeckAiProfile,
+  context: Partial<DeckAiStrategyContext> = {}
+) {
+  if (!card || !isBoardPresenceCard(card) || findCardOwnerUid(gameState, card) !== playerUid) return 0;
+
+  const player = gameState.players[playerUid];
+  const knowledge = getCardKnowledge(card);
+  const roles = knowledge?.roles || [];
+  const { preserve, preferred } = profileCardBias(profile, card);
+  const cardValue = scoreCardValue(card, profile, {
+    gameState,
+    player,
+    ...context,
+  });
+  const ownUnits = player?.unitZone.filter(Boolean) as Card[] | undefined;
+  const ownGodMarks = ownUnits?.filter(unit => unit.godMark) || [];
+  const planWantsBoard =
+    profile.gamePlan?.mode === 'engine' ||
+    profile.gamePlan?.mode === 'combo' ||
+    profile.gamePlan?.primaryGoal === 'resourceLoop' ||
+    profile.gamePlan?.primaryGoal === 'comboSetup';
+
+  let score = getCardKnowledgeValue(card, 'preserveValue') + cardValue * 0.35;
+
+  if (card.type === 'UNIT') {
+    score += (card.damage || 0) * 6 + (card.power || 0) / 900;
+    if (canUnitAttack(gameState, card)) score += 6 + (card.damage || 0) * 4;
+    if (canDefendSoon(gameState, card)) score += 5;
+    if (card.playedTurn === gameState.turnCount) score += 10;
+  }
+
+  if (card.godMark) score += 38;
+  if (preserve > 0) score += 18 + preserve;
+  if (preferred > 0) score += 8 + Math.min(16, preferred * 0.6);
+  if (roles.includes('engine')) score += 18;
+  if (roles.includes('combo_piece')) score += 16;
+  if (roles.includes('resource')) score += 10;
+  if (roles.includes('finisher')) score += 12;
+  if (roles.includes('protection')) score += 10;
+  if (roles.includes('draw') || roles.includes('search')) score += 8;
+  if (planWantsBoard && roles.some(role => role === 'engine' || role === 'combo_piece' || role === 'resource')) {
+    score += 14;
+  }
+  if (card.type === 'UNIT' && ownUnits?.length === 1) score += 12;
+  if (card.godMark && ownGodMarks.length === 1) score += 14;
+
+  return score;
+}
+
+function isLikelyOwnBoardLossQuery(query: EffectQuery, intent: QueryIntent) {
+  if (intent === 'cost') return true;
+  if (intent !== 'offense') return false;
+  const text = queryText(query);
+  if (/RETURN|BOUNCE|HAND|READY|RESET|PROTECT|BUFF|BOOST|POWER|DAMAGE_ZERO|CANNOT_DEFEND/i.test(text)) {
+    return false;
+  }
+  return /DESTROY|EXILE|BANISH|REMOVE|BOTTOM|GRAVE|SACRIFICE|DISCARD|KILL|TRIBUTE|TO_GRAVE|SEND/i.test(text);
+}
+
 function countLikelyDefenders(gameState: GameState, defender: PlayerState | undefined) {
   if (!defender) return 0;
   return defender.unitZone.filter(unit =>
@@ -940,6 +1427,7 @@ export function scoreAttackCandidate(gameState: GameState, player: PlayerState, 
     score += damage * 4;
   }
 
+  score += scoreComboCard(gameState, player, card, profile, 'attack');
   score += applyCardScoreHook(profile, 'adjustAttackScore', {
     ...strategyContext,
     card,
@@ -1190,6 +1678,15 @@ export function scoreActivatableEffect(
     }
   }
 
+  const timingScore = scoreEffectTimingWindow(gameState, player, card, effect, {
+    targetCount,
+    hasTargetSpec: context.hasTargetSpec,
+  });
+  if (timingScore.score !== 0) {
+    score += timingScore.score;
+    notes.push(...timingScore.notes);
+  }
+
   const preferences = profile.effectPreferences;
   if (preferences) {
     const preferredBias = effect.id ? preferences.preferredEffectIds?.[effect.id] || 0 : 0;
@@ -1214,6 +1711,12 @@ export function scoreActivatableEffect(
       score += totalPreference;
       notes.push(`卡组偏好${totalPreference > 0 ? '+' : ''}${totalPreference.toFixed(1)}`);
     }
+  }
+
+  const comboEffect = scoreComboEffect(gameState, player, card, effect, profile);
+  if (comboEffect.score !== 0) {
+    score += comboEffect.score;
+    notes.push(`combo${comboEffect.score > 0 ? '+' : ''}${comboEffect.score.toFixed(1)}${comboEffect.note ? ` ${comboEffect.note}` : ''}`);
   }
 
   const hookAdjustment = applyEffectScoreHook(profile, {
@@ -1332,7 +1835,11 @@ export function chooseDefender(
   const scored = availableDefenders.map(card => {
     const power = card.power || 0;
     const knowledge = getCardKnowledge(card);
-    const cardValue = getCardKnowledgeValue(card, 'preserveValue') + scoreCardValue(card, profile, strategyContext) * 0.35;
+    const boardPresenceValue = scoreStrategicBoardPresenceValue(gameState, defender.uid, card, profile, strategyContext);
+    const cardValue =
+      getCardKnowledgeValue(card, 'preserveValue') +
+      scoreCardValue(card, profile, strategyContext) * 0.35 +
+      boardPresenceValue * 0.28;
     const wins = power > totalAttackerPower;
     const trades = power === totalAttackerPower;
     const sacrifice = power < totalAttackerPower;
@@ -1374,6 +1881,11 @@ export function chooseDefender(
         score -= 6 + (isEnginePiece ? 6 : 0);
       }
     }
+    if (nonFatalHit && boardPresenceValue >= 58) {
+      if (sacrifice) score -= 18 + Math.min(28, boardPresenceValue * 0.28);
+      else if (trades) score -= 10 + Math.min(18, boardPresenceValue * 0.18);
+      if (card.godMark) score -= 16;
+    }
 
     const preserveMultiplier = (critical || deckCritical) ? 0.18 : (danger || deckPressure) ? 0.25 : 0.45;
     score -= cardValue * preserveMultiplier * profile.weights.defenseBias;
@@ -1397,6 +1909,7 @@ function isSacrificeLikeQuery(query: EffectQuery) {
 }
 
 type QueryIntent = 'cost' | 'benefit' | 'revive' | 'search' | 'offense' | 'keep' | 'neutral';
+const ELEMENT_MAGIC_INSTRUCTOR_EFFECT_ID = '105110112_activate';
 
 function queryText(query: EffectQuery) {
   return [
@@ -1429,6 +1942,50 @@ function inferQueryIntent(query: EffectQuery): QueryIntent {
   return 'neutral';
 }
 
+function scoreElementMagicInstructorModeChoice(
+  gameState: GameState,
+  playerUid: string,
+  query: EffectQuery,
+  option: any,
+  profile: DeckAiProfile
+) {
+  if (query.context?.effectId !== ELEMENT_MAGIC_INSTRUCTOR_EFFECT_ID || query.context?.step !== 'CHOOSE_MODE') {
+    return undefined;
+  }
+
+  const player = gameState.players[playerUid];
+  if (!player) return undefined;
+
+  const weakUnits = Object.values(gameState.players)
+    .flatMap(state => state.unitZone)
+    .filter((unit): unit is Card => !!unit && (unit.power || 0) <= 1500);
+  const opponentWeakUnits = weakUnits.filter(unit => findCardOwnerUid(gameState, unit) !== playerUid);
+  const ownWeakUnits = weakUnits.filter(unit => findCardOwnerUid(gameState, unit) === playerUid);
+  const optionId = String(option.id || option.label || '').toUpperCase();
+
+  if (optionId === 'DRAW') {
+    const deckRisk = deckPressurePenalty(player.deck.length, profile);
+    return 14 + (player.hand.length <= 2 ? 6 : player.hand.length <= 4 ? 3 : 0) - deckRisk * 0.35;
+  }
+
+  if (optionId === 'DAMAGE') {
+    const opponent = getOpponent(gameState, player);
+    const opponentErosion = opponent ? countErosion(opponent) : 0;
+    return 15 + (opponentErosion >= 8 ? 10 : opponentErosion >= 6 ? 5 : 0);
+  }
+
+  if (optionId === 'DESTROY') {
+    if (opponentWeakUnits.length === 0) {
+      return -120 - ownWeakUnits.length * 18;
+    }
+    const bestOpponentTarget = Math.max(0, ...opponentWeakUnits.map(unit => scoreCardValue(unit, profile) + (unit.damage || 0) * 6));
+    const discardPenalty = player.hand.length <= 1 ? 18 : player.hand.length <= 3 ? 12 : 8;
+    return 16 + Math.min(18, bestOpponentTarget * 0.25) - discardPenalty;
+  }
+
+  return undefined;
+}
+
 function scoreChoiceOption(gameState: GameState, playerUid: string, query: EffectQuery, option: any, profile: DeckAiProfile) {
   const optionText = `${option.id || ''} ${option.label || ''} ${option.detail || ''}`;
   const player = gameState.players[playerUid];
@@ -1437,6 +1994,9 @@ function scoreChoiceOption(gameState: GameState, playerUid: string, query: Effec
   const attackers = player?.unitZone.filter(unit => canUnitAttack(gameState, unit)).length || 0;
   const opponentErosion = opponent ? countErosion(opponent) : 0;
   let score = 0;
+
+  const elementInstructorScore = scoreElementMagicInstructorModeChoice(gameState, playerUid, query, option, profile);
+  if (elementInstructorScore !== undefined) return elementInstructorScore;
 
   if (/DECLARE_NAME/i.test(queryText(query)) && player) {
     const declaredName = String(option.id || option.label || '');
@@ -1481,7 +2041,7 @@ function scoreQueryCardOption(
   const card = option.card as Card | undefined;
   if (!card) return 0;
 
-  const isMine = option.isMine !== false;
+  const isMine = optionIsMine(gameState, playerUid, option);
   const cardValue = scoreCardValue(card, profile);
   const preserveValue = getCardKnowledgeValue(card, 'preserveValue') + cardValue * 0.25;
   const targetPriority = getCardKnowledgeValue(card, 'targetPriority') + cardValue * 0.35;
@@ -1489,9 +2049,15 @@ function scoreQueryCardOption(
   const attackValue = (card.damage || 0) * 8 + (card.power || 0) / 900 + (canUnitAttack(gameState, card) ? 4 : 0);
   const isFieldCard = card.cardlocation === 'UNIT' || card.cardlocation === 'ITEM';
   const isHiddenResource = card.cardlocation === 'DECK' || card.cardlocation === 'GRAVE' || card.cardlocation === 'EROSION_FRONT' || card.cardlocation === 'EROSION_BACK';
+  const ownBoardPresenceValue = isMine
+    ? scoreStrategicBoardPresenceValue(gameState, playerUid, card, profile)
+    : 0;
 
   if (intent === 'cost') {
-    return -preserveValue - (isFieldCard ? attackValue * 0.5 : 0);
+    return -preserveValue -
+      (isFieldCard ? attackValue * 0.5 : 0) -
+      ownBoardPresenceValue * 0.95 -
+      (card.godMark && isMine ? 24 : 0);
   }
 
   if (intent === 'keep') {
@@ -1526,10 +2092,23 @@ function scoreQueryCardOption(
   }
 
   if (intent === 'offense') {
+    const unsafeOwnRemoval =
+      isMine &&
+      query.context?.effectId === ELEMENT_MAGIC_INSTRUCTOR_EFFECT_ID &&
+      query.context?.step === 'DESTROY_UNIT';
+    if (unsafeOwnRemoval) {
+      return -140 - preserveValue - attackValue - ownBoardPresenceValue * 1.25;
+    }
+
+    if (isMine && isLikelyOwnBoardLossQuery(query, intent)) {
+      return -110 - preserveValue - attackValue - ownBoardPresenceValue * 1.15;
+    }
+
     let score = targetPriority + attackValue * 0.45;
     if (!isMine) score += 20;
     else if (hasOpponentCardOptions) score -= 55;
-    if (card.godMark) score += 2;
+    else score -= 35 + ownBoardPresenceValue * 0.35;
+    if (!isMine && card.godMark) score += 4;
     return score;
   }
 
@@ -1616,8 +2195,21 @@ export function chooseQuerySelections(
     const yes = selectableOptions.find(option => option.id === 'YES');
     const no = selectableOptions.find(option => option.id === 'NO');
     if (yes && no && /ATTACK_TARGET|TARGET_CHOICE|TRIGGER|SHENYI/i.test(query.callbackKey || '')) return ['YES'];
+    const player = gameState.players[playerUid];
+    const strategyContext = player ? buildStrategyContext(gameState, player, profile) : { gameState };
     const scoredChoices = selectableOptions
-      .map(option => ({ option, score: scoreChoiceOption(gameState, playerUid, query, option, profile) }))
+      .map(option => {
+        const baseScore = scoreChoiceOption(gameState, playerUid, query, option, profile);
+        return {
+          option,
+          score: baseScore + applyQueryScoreHook(profile, {
+            ...strategyContext,
+            query,
+            option,
+            score: baseScore,
+          }),
+        };
+      })
       .sort((a, b) => b.score - a.score);
     return [(scoredChoices[0].option.id || scoredChoices[0].option.card?.gamecardId)!].filter(Boolean);
   }
@@ -1634,19 +2226,50 @@ export function chooseQuerySelections(
   }
 
   const intent = inferQueryIntent(query);
-  const hasOwnCardOptions = selectableOptions.some(option => option.card && option.isMine !== false);
-  const hasOpponentCardOptions = selectableOptions.some(option => option.card && option.isMine === false);
+  const hasOwnCardOptions = selectableOptions.some(option => option.card && optionIsMine(gameState, playerUid, option));
+  const hasOpponentCardOptions = selectableOptions.some(option => option.card && !optionIsMine(gameState, playerUid, option));
+  const player = gameState.players[playerUid];
+  const strategyContext = player ? buildStrategyContext(gameState, player, profile) : { gameState };
   const scored = selectableOptions
     .map(option => {
       const card = option.card;
+      const baseScore = card
+        ? scoreQueryCardOption(gameState, playerUid, query, option, profile, intent, hasOwnCardOptions, hasOpponentCardOptions)
+        : 0;
       return {
         option,
-        score: card
-          ? scoreQueryCardOption(gameState, playerUid, query, option, profile, intent, hasOwnCardOptions, hasOpponentCardOptions)
-          : 0,
+        score: baseScore + applyQueryScoreHook(profile, {
+          ...strategyContext,
+          query,
+          option,
+          score: baseScore,
+          intent,
+        }),
       };
     })
     .sort((a, b) => b.score - a.score);
+
+  if (
+    isLikelyOwnBoardLossQuery(query, intent) &&
+    scored.length > 0 &&
+    scored.every(entry => !entry.option.card || optionIsMine(gameState, playerUid, entry.option))
+  ) {
+    const selected = scored.slice(0, selectionCount).filter(entry => entry.option.card);
+    const onlyProtectedChoices = selected.length > 0 && selected.every(entry => {
+      const card = entry.option.card as Card;
+      return card.godMark || scoreStrategicBoardPresenceValue(gameState, playerUid, card, profile) >= 58;
+    });
+    if (onlyProtectedChoices) return [];
+  }
+
+  if (
+    query.context?.effectId === ELEMENT_MAGIC_INSTRUCTOR_EFFECT_ID &&
+    query.context?.step === 'DESTROY_UNIT' &&
+    scored.length > 0 &&
+    scored.every(entry => !entry.option.card || optionIsMine(gameState, playerUid, entry.option))
+  ) {
+    return [];
+  }
 
   return scored
     .slice(0, selectionCount)
@@ -1654,17 +2277,53 @@ export function chooseQuerySelections(
     .filter(Boolean) as string[];
 }
 
-export function chooseDiscardCard(player: PlayerState, profile: DeckAiProfile, difficulty: BotDifficulty) {
+export function chooseDiscardCard(player: PlayerState, profile: DeckAiProfile, difficulty: BotDifficulty, gameState?: GameState) {
   if (difficulty !== 'hard') return player.hand[0];
   return [...player.hand].sort((a, b) =>
-    (getCardKnowledgeValue(a, 'discardValue') + scoreCardValue(a, profile) * 0.2) -
-    (getCardKnowledgeValue(b, 'discardValue') + scoreCardValue(b, profile) * 0.2)
+    (
+      getCardKnowledgeValue(a, 'discardValue') +
+      scoreCardValue(a, profile, gameState ? { gameState, player } : {}) * 0.2 +
+      scoreComboCard(gameState, player, a, profile, 'discard')
+    ) -
+    (
+      getCardKnowledgeValue(b, 'discardValue') +
+      scoreCardValue(b, profile, gameState ? { gameState, player } : {}) * 0.2 +
+      scoreComboCard(gameState, player, b, profile, 'discard')
+    )
   )[0];
 }
 
-export function scorePaymentSacrificeValue(card: Card | null | undefined, profile: DeckAiProfile) {
+function findOwnerOfCard(gameState: GameState | undefined, card: Card | null | undefined) {
+  if (!gameState || !card) return undefined;
+  return Object.values(gameState.players).find(player =>
+    [
+      ...player.hand,
+      ...player.grave,
+      ...player.exile,
+      ...player.unitZone,
+      ...player.itemZone,
+      ...player.erosionFront,
+      ...player.erosionBack,
+      ...player.playZone,
+    ].some(candidate => candidate?.gamecardId === card.gamecardId)
+  );
+}
+
+export function scorePaymentSacrificeValue(
+  card: Card | null | undefined,
+  profile: DeckAiProfile,
+  gameState?: GameState,
+  player?: PlayerState
+) {
   if (!card) return 0;
-  return getCardKnowledgeValue(card, 'preserveValue') + scoreCardValue(card, profile) * 0.25;
+  const owner = player || findOwnerOfCard(gameState, card);
+  const boardPresenceValue = gameState && owner
+    ? scoreStrategicBoardPresenceValue(gameState, owner.uid, card, profile)
+    : 0;
+  return getCardKnowledgeValue(card, 'preserveValue') +
+    scoreCardValue(card, profile, gameState && owner ? { gameState, player: owner } : {}) * 0.25 +
+    boardPresenceValue * 0.8 +
+    scoreComboCard(gameState, owner, card, profile, 'paymentSacrifice');
 }
 
 export function scorePaymentExhaustValue(
@@ -1673,9 +2332,17 @@ export function scorePaymentExhaustValue(
   profile: DeckAiProfile,
   difficulty: BotDifficulty
 ) {
-  let score = scorePaymentSacrificeValue(card, profile);
+  const owner = findOwnerOfCard(gameState, card);
+  let score = scorePaymentSacrificeValue(card, profile, gameState, owner);
+  if (difficulty === 'hard' && owner && card?.cardlocation === 'UNIT') {
+    const boardPresenceValue = scoreStrategicBoardPresenceValue(gameState, owner.uid, card, profile);
+    score += boardPresenceValue * 0.45;
+    if (card.godMark) score += 18;
+    if (canDefendSoon(gameState, card)) score += 6 + (card.damage || 0) * 4;
+  }
   if (difficulty === 'hard' && gameState.phase === 'MAIN' && canUnitAttack(gameState, card)) {
     score += ((card?.damage || 0) * 9 + (card?.power || 0) / 1000) * profile.weights.attackBias;
   }
+  score += scoreComboCard(gameState, owner, card, profile, 'paymentExhaust');
   return score;
 }

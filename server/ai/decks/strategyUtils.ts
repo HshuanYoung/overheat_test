@@ -46,6 +46,32 @@ export function openUnitSlots(context: DeckAiCardScoreContext | DeckAiEffectScor
   return context.player?.unitZone.filter(slot => slot === null).length || 0;
 }
 
+export function erosionCount(player: DeckAiCardScoreContext['player']) {
+  return (player?.erosionFront.filter(Boolean).length || 0) + (player?.erosionBack.filter(Boolean).length || 0);
+}
+
+export function ownErosion(context: DeckAiCardScoreContext | DeckAiEffectScoreContext) {
+  return erosionCount(context.player);
+}
+
+export function opponentErosion(context: DeckAiCardScoreContext | DeckAiEffectScoreContext) {
+  return erosionCount(context.opponent);
+}
+
+export function readyAttackers(context: DeckAiCardScoreContext | DeckAiEffectScoreContext) {
+  const turn = context.gameState?.turnCount || 0;
+  return context.player?.unitZone.filter(unit =>
+    unit &&
+    !unit.isExhausted &&
+    unit.canAttack !== false &&
+    (unit.damage || 0) > 0 &&
+    !((unit as any).battleForbiddenByEffect) &&
+    !((unit as any).data?.cannotAttackThisTurn === turn) &&
+    !((unit as any).data?.cannotAttackOrDefendUntilTurn && (unit as any).data.cannotAttackOrDefendUntilTurn >= turn) &&
+    (!!unit.isrush || unit.playedTurn !== turn)
+  ).length || 0;
+}
+
 export function readyDefenders(context: DeckAiCardScoreContext | DeckAiEffectScoreContext) {
   const turn = context.gameState?.turnCount || 0;
   return context.player?.unitZone.filter(unit =>
