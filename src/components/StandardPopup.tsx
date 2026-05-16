@@ -1,16 +1,60 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, Check, Shield, Sword, Zap, Trash2, Flag, Loader2, Sparkles } from 'lucide-react';
+import {
+  X,
+  Shield,
+  Sword,
+  Zap,
+  Trash2,
+  Loader2,
+  Sparkles,
+  PackagePlus,
+  RotateCcw,
+  Undo2,
+  Hand,
+  User,
+  Users,
+  FileText,
+  Box,
+  Flame,
+  Layers,
+  LucideIcon
+} from 'lucide-react';
 import { cn } from '../lib/utils';
 import { Card } from '../types/game';
 import { CardComponent } from './Card';
+
+type PopupOption = {
+  id?: string;
+  label?: string;
+  icon?: string;
+  detail?: string;
+  card?: Card;
+  source?: string;
+  ownerName?: string;
+  isMine?: boolean;
+  slotNumber?: number;
+  slotLabel?: string;
+  zoneLabel?: string;
+  disabled?: boolean;
+  disabledReason?: string;
+};
+
+type VisualOptionMeta = {
+  eyebrow: string;
+  title: string;
+  detail?: string;
+  Icon: LucideIcon;
+  accent: string;
+  glow: string;
+};
 
 interface StandardPopupProps {
   isOpen: boolean;
   onClose?: () => void;
   title: string;
   description?: string;
-  mode: 'double_selection' | 'card_selection' | 'card_display' | 'payment_selection' | 'player_selection';
+  mode: 'double_selection' | 'card_selection' | 'card_display' | 'payment_selection' | 'player_selection' | 'choice_selection';
   
   // Double Selection props
   confirmText?: string;
@@ -23,6 +67,7 @@ interface StandardPopupProps {
   // Card Selection & Display props
   cards?: Card[];
   cardMeta?: Record<string, { ownerName?: string; slotLabel?: string; zoneLabel?: string; isMine?: boolean; isFaceDown?: boolean }>;
+  options?: PopupOption[];
   selectedIds?: string[];
   highlightedIds?: string[];
   minSelections?: number;
@@ -44,6 +89,201 @@ interface StandardPopupProps {
   isHidden?: boolean;
 }
 
+const getOptionId = (option: PopupOption) => option.card?.gamecardId || option.card?.id || option.id || '';
+
+const isPlayerOption = (option: PopupOption) => {
+  const id = option.card?.id || option.card?.gamecardId || option.id;
+  return id === 'PLAYER_SELF' || id === 'PLAYER_OPPONENT';
+};
+
+const getChoiceIcon = (option: PopupOption): LucideIcon => {
+  const value = `${option.icon || ''} ${option.id || ''} ${option.label || ''}`.toUpperCase();
+  if (value.includes('DRAW') || value.includes('抽')) return PackagePlus;
+  if (value.includes('DESTROY') || value.includes('破坏')) return Trash2;
+  if (value.includes('DAMAGE') || value.includes('伤害')) return Sword;
+  if (value.includes('EXHAUST') || value.includes('横置') || value.includes('VERTICAL') || value.includes('重置')) return RotateCcw;
+  if (value.includes('RETURN') || value.includes('BOUNCE') || value.includes('回手') || value.includes('返回') || value.includes('置底') || value.includes('置顶')) return Undo2;
+  if (value.includes('UNIT') || value.includes('单位')) return Shield;
+  if (value.includes('STORY') || value.includes('故事')) return FileText;
+  if (value.includes('ITEM') || value.includes('道具')) return Box;
+  if (value.includes('MILL') || value.includes('墓地')) return Layers;
+  if (value.includes('YES') || value.includes('发动') || value.includes('使用')) return Zap;
+  return Hand;
+};
+
+const getVisualOptionMeta = (option: PopupOption): VisualOptionMeta => {
+  const id = option.card?.id || option.id || '';
+  const label = option.label || option.card?.fullName || id || '选项';
+  const detail = option.detail || option.disabledReason;
+
+  if (isPlayerOption(option)) {
+    const self = id === 'PLAYER_SELF';
+    return {
+      eyebrow: self ? '我方玩家' : '对手玩家',
+      title: option.card?.fullName || option.ownerName || (self ? '我方玩家' : '对手玩家'),
+      detail: option.ownerName && option.ownerName !== option.card?.fullName ? option.ownerName : (self ? '选择我方作为目标' : '选择对手作为目标'),
+      Icon: self ? User : Users,
+      accent: self ? 'from-sky-500 via-blue-600 to-cyan-500' : 'from-rose-500 via-red-600 to-orange-500',
+      glow: self ? 'shadow-[0_0_35px_rgba(14,165,233,0.28)]' : 'shadow-[0_0_35px_rgba(244,63,94,0.28)]'
+    };
+  }
+
+  switch (id) {
+    case 'OPTION_A':
+      return {
+        eyebrow: '选项A',
+        title: label,
+        detail: detail || '强化进入战场的单位',
+        Icon: Flame,
+        accent: 'from-amber-500 via-orange-500 to-red-500',
+        glow: 'shadow-[0_0_35px_rgba(249,115,22,0.32)]'
+      };
+    case 'OPTION_B':
+      return {
+        eyebrow: '选项B',
+        title: label,
+        detail: detail || '横置对手单位',
+        Icon: RotateCcw,
+        accent: 'from-cyan-500 via-sky-500 to-blue-600',
+        glow: 'shadow-[0_0_35px_rgba(14,165,233,0.32)]'
+      };
+    case 'OPTION_C':
+      return {
+        eyebrow: '选项C',
+        title: label,
+        detail: detail || '从墓地移动卡牌',
+        Icon: Layers,
+        accent: 'from-emerald-500 via-teal-500 to-green-600',
+        glow: 'shadow-[0_0_35px_rgba(16,185,129,0.32)]'
+      };
+    case 'MODE_A':
+      return {
+        eyebrow: '模式A',
+        title: label,
+        detail: detail || '抽卡与侵蚀区操作',
+        Icon: PackagePlus,
+        accent: 'from-violet-500 via-fuchsia-500 to-pink-500',
+        glow: 'shadow-[0_0_35px_rgba(217,70,239,0.3)]'
+      };
+    case 'MODE_B':
+      return {
+        eyebrow: '模式B',
+        title: label,
+        detail: detail || '破坏指定目标',
+        Icon: Trash2,
+        accent: 'from-rose-500 via-red-500 to-orange-600',
+        glow: 'shadow-[0_0_35px_rgba(244,63,94,0.3)]'
+      };
+    case 'MODE_EXHAUST':
+      return {
+        eyebrow: '模式A',
+        title: label,
+        detail: detail || '横置目标单位',
+        Icon: RotateCcw,
+        accent: 'from-cyan-500 via-sky-500 to-blue-600',
+        glow: 'shadow-[0_0_35px_rgba(14,165,233,0.32)]'
+      };
+    case 'MODE_BOUNCE':
+      return {
+        eyebrow: '模式B',
+        title: label,
+        detail: detail || '返回手牌',
+        Icon: Undo2,
+        accent: 'from-emerald-500 via-teal-500 to-green-600',
+        glow: 'shadow-[0_0_35px_rgba(16,185,129,0.32)]'
+      };
+    default: {
+      const Icon = getChoiceIcon(option);
+      const isType = id === 'UNIT' || id === 'STORY' || id === 'ITEM';
+      const isDanger = Icon === Trash2 || Icon === Sword;
+      const isMove = Icon === RotateCcw || Icon === Undo2 || Icon === Layers;
+      return {
+        eyebrow: isType ? '卡片种类' : '效果选项',
+        title: label,
+        detail,
+        Icon,
+        accent: isDanger
+          ? 'from-red-500 via-rose-500 to-orange-500'
+          : isMove
+            ? 'from-emerald-500 via-teal-500 to-sky-500'
+            : isType
+              ? 'from-indigo-500 via-sky-500 to-cyan-500'
+              : 'from-[#f27d26] via-amber-500 to-yellow-500',
+        glow: isDanger
+          ? 'shadow-[0_0_35px_rgba(244,63,94,0.26)]'
+          : isMove
+            ? 'shadow-[0_0_35px_rgba(20,184,166,0.24)]'
+            : 'shadow-[0_0_35px_rgba(242,125,38,0.24)]'
+      };
+    }
+  }
+};
+
+const VisualOptionCard: React.FC<{
+  option: PopupOption;
+  isSelected: boolean;
+  selectionOrder: number;
+  onClick?: () => void;
+}> = ({ option, isSelected, selectionOrder, onClick }) => {
+  const meta = getVisualOptionMeta(option);
+  const Icon = meta.Icon;
+  const metaLine = [option.ownerName, option.slotLabel || option.zoneLabel || option.source].filter(Boolean).join(' · ');
+
+  return (
+    <motion.button
+      type="button"
+      whileHover={option.disabled ? undefined : { y: -10, scale: 1.05 }}
+      whileTap={option.disabled ? undefined : { scale: 0.95 }}
+      onClick={option.disabled ? undefined : onClick}
+      disabled={option.disabled}
+      className={cn(
+        "relative w-full aspect-[3/4] overflow-hidden rounded-xl md:rounded-2xl border-2 bg-zinc-950 text-left transition-all",
+        option.disabled ? "cursor-not-allowed opacity-45 grayscale" : "cursor-pointer hover:opacity-100",
+        isSelected
+          ? "border-[#f27d26] shadow-[0_0_30px_rgba(242,125,38,0.45)] scale-105"
+          : cn("border-white/10 opacity-85", meta.glow)
+      )}
+    >
+      <div className={cn("absolute inset-0 bg-gradient-to-br opacity-90", meta.accent)} />
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(255,255,255,0.28),_transparent_45%)]" />
+      <div className="absolute inset-x-4 top-4 h-px bg-white/30" />
+      <div className="absolute inset-x-4 bottom-4 h-px bg-black/25" />
+      <div className="relative z-10 flex h-full flex-col items-center justify-between px-3 py-4 text-center text-white md:px-4 md:py-5">
+        <div className="w-full">
+          <div className="text-[9px] md:text-[10px] font-black uppercase tracking-[0.28em] text-white/75">
+            {meta.eyebrow}
+          </div>
+          <div className="mt-2 line-clamp-3 text-sm md:text-base font-black leading-tight">
+            {meta.title}
+          </div>
+        </div>
+        <div className="flex h-20 w-20 items-center justify-center rounded-full border border-white/30 bg-black/20 backdrop-blur-sm md:h-24 md:w-24">
+          <Icon className="h-10 w-10 md:h-12 md:w-12" />
+        </div>
+        <div className="w-full rounded-xl border border-white/15 bg-black/25 px-2.5 py-2 backdrop-blur-sm">
+          {(meta.detail || metaLine) && (
+            <div className="line-clamp-3 text-[10px] md:text-xs font-bold leading-relaxed text-white/90">
+              {meta.detail || metaLine}
+            </div>
+          )}
+          {meta.detail && metaLine && (
+            <div className="mt-1 line-clamp-1 text-[9px] md:text-[10px] font-black tracking-wide text-white/60">
+              {metaLine}
+            </div>
+          )}
+        </div>
+      </div>
+      {isSelected && (
+        <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/35 backdrop-blur-[2px] pointer-events-none">
+          <div className="w-12 h-12 rounded-full bg-[#f27d26] text-black flex items-center justify-center shadow-2xl">
+            <span className="text-2xl font-black italic leading-none">{selectionOrder}</span>
+          </div>
+        </div>
+      )}
+    </motion.button>
+  );
+};
+
 export const StandardPopup: React.FC<StandardPopupProps> = ({
   isOpen,
   onClose,
@@ -58,6 +298,7 @@ export const StandardPopup: React.FC<StandardPopupProps> = ({
   confirmDisabled = false,
   cards = [],
   cardMeta = {},
+  options,
   selectedIds = [],
   highlightedIds = [],
   minSelections = 0,
@@ -73,6 +314,22 @@ export const StandardPopup: React.FC<StandardPopupProps> = ({
   isHidden = false
 }) => {
   if (!isOpen) return null;
+
+  const renderedOptions: PopupOption[] = options || cards.map(card => ({
+    id: card.gamecardId || card.id,
+    card,
+    ...(cardMeta[card.gamecardId || card.id] || {})
+  }));
+
+  const handleOptionClick = (option: PopupOption, e?: React.MouseEvent) => {
+    if (option.disabled) return;
+    if (option.card) {
+      onCardClick?.(option.card, e);
+      return;
+    }
+    const optionId = getOptionId(option);
+    onCardClick?.({ gamecardId: optionId, id: optionId, fullName: option.label || optionId, type: 'UNIT', color: 'NONE' } as Card, e);
+  };
 
   return (
     <AnimatePresence>
@@ -130,7 +387,7 @@ export const StandardPopup: React.FC<StandardPopupProps> = ({
 
             <div className="flex items-center justify-center gap-3 mb-2">
               {mode === 'double_selection' && <Sparkles className="w-6 h-6 text-[#f27d26] animate-pulse" />}
-              {mode === 'card_selection' && <Zap className="w-6 h-6 text-[#f27d26]" />}
+              {(mode === 'card_selection' || mode === 'player_selection' || mode === 'choice_selection') && <Zap className="w-6 h-6 text-[#f27d26]" />}
               {mode === 'payment_selection' && <Loader2 className="w-6 h-6 text-[#f27d26] animate-spin" />}
               <h2 className="text-xl md:text-3xl font-black italic uppercase tracking-tighter text-white">
                 {title}
@@ -144,7 +401,7 @@ export const StandardPopup: React.FC<StandardPopupProps> = ({
             )}
 
             {/* Selection Status */}
-            {(mode === 'card_selection' || mode === 'player_selection') && maxSelections > 0 && (
+            {(mode === 'card_selection' || mode === 'player_selection' || mode === 'choice_selection') && maxSelections > 0 && (
               <div className="mt-4 px-4 py-1.5 bg-white/5 rounded-full border border-white/10 text-[10px] md:text-xs font-black text-zinc-500 uppercase tracking-widest">
                 选择进度: {selectedIds.length} / {maxSelections} (至少 {minSelections})
               </div>
@@ -194,33 +451,51 @@ export const StandardPopup: React.FC<StandardPopupProps> = ({
                   </button>
                 </div>
               </div>
-            ) : (mode === 'card_selection' || mode === 'card_display') ? (
-              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-6 md:gap-10 place-items-center">
-                {cards.map((card, i) => {
-                  const isSelected = selectedIds.includes(card.gamecardId);
-                  const selectionOrder = selectedIds.indexOf(card.gamecardId) + 1;
-                  const meta = cardMeta[card.gamecardId || card.id] || {};
+            ) : (mode === 'card_selection' || mode === 'card_display' || mode === 'player_selection' || mode === 'choice_selection') ? (
+              <div className="grid grid-cols-2 lg:grid-cols-5 gap-5 md:gap-8 place-items-center">
+                {renderedOptions.map((option, i) => {
+                  const card = option.card;
+                  const optionId = getOptionId(option);
+                  const isSelected = selectedIds.includes(optionId);
+                  const selectionOrder = selectedIds.indexOf(optionId) + 1;
+                  const meta = card ? (cardMeta[card.gamecardId || card.id] || option || {}) : option;
+                  const shouldDrawOption = mode === 'choice_selection' || mode === 'player_selection' || isPlayerOption(option) || !card;
+
+                  if (shouldDrawOption) {
+                    return (
+                      <VisualOptionCard
+                        key={`${optionId || i}-${i}`}
+                        option={option}
+                        isSelected={isSelected}
+                        selectionOrder={selectionOrder}
+                        onClick={() => handleOptionClick(option)}
+                      />
+                    );
+                  }
+
+                  if (!card) return null;
+
                   const locationText = [meta.ownerName, meta.slotLabel || meta.zoneLabel].filter(Boolean).join(' · ');
                   const isFaceDown =
                     !!meta.isFaceDown ||
                     meta.zoneLabel === 'EROSION_BACK' ||
                     meta.zoneLabel === '侵蚀区背面';
-                  const isHiddenDisplay = mode === 'card_display' && isFaceDown;
                   
                   return (
                     <motion.div
-                      key={`${card.gamecardId}-${i}`}
-                      whileHover={{ y: -10, scale: 1.05 }}
-                      whileTap={{ scale: 0.95 }}
+                      key={`${card.gamecardId || card.id}-${i}`}
+                      whileHover={option.disabled ? undefined : { y: -10, scale: 1.05 }}
+                      whileTap={option.disabled ? undefined : { scale: 0.95 }}
                       onClick={(e) => {
-                        onCardClick?.(card, e);
+                        handleOptionClick(option, e);
                       }}
                       onMouseEnter={() => onCardHover?.(card)}
                       onMouseLeave={() => onCardHover?.(null)}
                       className={cn(
                         "w-full aspect-[3/4] rounded-xl md:rounded-2xl overflow-hidden border-2 transition-all relative shrink-0",
                         highlightedIds.includes(card.gamecardId) && "z-20 !border-yellow-400 ring-2 ring-yellow-400 shadow-[0_0_20px_rgba(250,204,21,0.95)]",
-                        isSelected 
+                        option.disabled && "opacity-40 grayscale cursor-not-allowed",
+                        isSelected
                           ? "border-[#f27d26] shadow-[0_0_30px_rgba(242,125,38,0.4)] scale-105" 
                           : cn("border-white/5 opacity-80 hover:opacity-100", "cursor-pointer")
                       )}
@@ -251,41 +526,15 @@ export const StandardPopup: React.FC<StandardPopupProps> = ({
               </div>
             ) : mode === 'payment_selection' ? (
               null // children already rendered above
-            ) : mode === 'player_selection' ? (
-              <div className="flex justify-center gap-12 py-8">
-                {cards.map((playerCard, i) => {
-                   const isSelected = selectedIds.includes(playerCard.gamecardId);
-                   return (
-                    <motion.div
-                      key={i}
-                      whileHover={{ scale: 1.1, y: -10 }}
-                      onClick={() => onCardClick?.(playerCard)}
-                      className={cn(
-                        "w-48 aspect-[3/4] bg-zinc-800 rounded-3xl flex flex-col items-center justify-center p-6 border-2 transition-all cursor-pointer",
-                        isSelected ? "border-[#f27d26] shadow-[0_0_40px_rgba(242,125,38,0.3)]" : "border-white/10 hover:border-white/20"
-                      )}
-                    >
-                      <div className="w-24 h-24 rounded-full bg-zinc-700 mb-6 flex items-center justify-center overflow-hidden border-4 border-white/5">
-                        <img 
-                          src={playerCard.id === 'PLAYER_SELF' ? '/assets/icons/myself.JPG' : '/assets/icons/opponent.JPG'} 
-                          alt="player"
-                          className="w-full h-full object-cover"
-                        />
-                      </div>
-                      <span className="text-[#f27d26] font-black italic uppercase tracking-widest text-center">{playerCard.fullName}</span>
-                    </motion.div>
-                   )
-                })}
-              </div>
             ) : null}
           </div>
 
           {/* Footer Actions */}
-          {(mode === 'card_selection' || mode === 'player_selection' || mode === 'payment_selection') && (
+          {(mode === 'card_selection' || mode === 'player_selection' || mode === 'choice_selection' || mode === 'payment_selection') && (
             <div className="relative z-10 p-6 md:p-8 border-t border-white/5 bg-black/20 flex flex-col items-center gap-4 shrink-0">
               <button
                 onClick={onSelectionComplete}
-                disabled={(mode === 'card_selection' || mode === 'player_selection') && selectedIds.length < minSelections}
+                disabled={(mode === 'card_selection' || mode === 'player_selection' || mode === 'choice_selection') && selectedIds.length < minSelections}
                 className="px-12 py-4 bg-[#f27d26] text-white font-black italic uppercase tracking-[0.2em] rounded-xl hover:bg-[#f27d26]/80 transition-all disabled:opacity-30 disabled:cursor-not-allowed shadow-xl shadow-[#f27d26]/20 hover:scale-105 active:scale-95"
               >
                 {mode === 'payment_selection' ? '确认支付' : '确认选择'}
