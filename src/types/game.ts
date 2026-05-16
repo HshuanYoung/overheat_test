@@ -382,6 +382,8 @@ export interface PlayerState {
   unitFromGraveToFieldTurn?: number;
   skipDrawPhase?: boolean;
   confrontationStrategy?: 'ON' | 'AUTO' | 'OFF';
+  botDifficulty?: 'simple' | 'hard';
+  botDeckProfileId?: string;
 }
 
 export type StackItemType = 'PLAY' | 'EFFECT' | 'ATTACK' | 'PHASE_END';
@@ -454,6 +456,27 @@ export type GamePhase =
   | 'INIT'
   | 'SHENYI_CHOICE';
 
+export interface AiDecisionLog {
+  id: string;
+  turn: number;
+  playerUid: string;
+  playerName?: string;
+  profileId?: string;
+  difficulty?: 'simple' | 'hard';
+  phase: GamePhase;
+  action: string;
+  subject?: string;
+  score?: number;
+  reason: string;
+  details?: Record<string, string | number | boolean | null | undefined>;
+  candidates?: {
+    name: string;
+    score?: number;
+    note?: string;
+  }[];
+  createdAt: number;
+}
+
 export interface TriggeredEffectRecord {
   card: Card;
   effect: CardEffect;
@@ -487,6 +510,8 @@ export interface GameState {
   winSourceCardName?: string;
   logs: Array<string | BattleLogEntry>;
   mode?: string;
+  botDifficulty?: 'simple' | 'hard';
+  botDeckProfiles?: Record<string, string>;
   status?: string;
   roomCode?: string;
   participantIds?: string[];
@@ -534,6 +559,7 @@ export interface GameState {
   mainPhaseTimeRemaining?: number;
   previousPhase?: GamePhase;
   pendingQuery?: EffectQuery;
+  aiDecisionLogs?: AiDecisionLog[];
   pendingShenyi?: PendingShenyi;
   mulliganRevealStartedAt?: number;
   turnTimerLimit?: number; // Total seconds for turn timer (180-999)

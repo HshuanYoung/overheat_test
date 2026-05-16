@@ -38,6 +38,35 @@ async function initDB() {
         `);
         // console.log("✅ Games table ensured");
 
+        await conn.query(`
+            CREATE TABLE IF NOT EXISTS ai_match_samples (
+                id VARCHAR(64) PRIMARY KEY,
+                game_id VARCHAR(64) NOT NULL,
+                created_at BIGINT NOT NULL,
+                finished_at BIGINT NOT NULL,
+                mode VARCHAR(32),
+                bot_profile_id VARCHAR(64),
+                bot_difficulty VARCHAR(16),
+                opponent_archetype VARCHAR(32),
+                opponent_traits JSON,
+                player_deck_hash VARCHAR(64),
+                winner_side VARCHAR(16),
+                win_reason VARCHAR(64),
+                turn_count INT,
+                final_phase VARCHAR(32),
+                ai_decision_logs JSON,
+                battle_logs JSON,
+                final_board JSON,
+                diagnosis JSON,
+                ai_version VARCHAR(64),
+                INDEX idx_ai_samples_created_at (created_at),
+                INDEX idx_ai_samples_bot_profile (bot_profile_id),
+                INDEX idx_ai_samples_opponent_archetype (opponent_archetype),
+                INDEX idx_ai_samples_win_reason (win_reason)
+            )
+        `);
+        // console.log("✅ AI match samples table ensured");
+
         // 3. Create decks table
         await conn.query(`
             CREATE TABLE IF NOT EXISTS decks (

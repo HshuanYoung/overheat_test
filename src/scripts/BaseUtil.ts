@@ -959,6 +959,7 @@ export const grantedTotemReviveFromGrave = (): CardEffect => ({
     instance.type === 'UNIT' &&
     instance.fullName.includes('图腾') &&
     hasActiveTotemReviveGrant(gameState, playerState) &&
+    playerState.hand.length >= 2 &&
     canPutUnitOntoBattlefield(playerState, instance),
   cost: discardHandCost(2),
   execute: async (instance, gameState, playerState) => {

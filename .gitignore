@@ -2,6 +2,7 @@ assets/
 node_modules/
 build/
 dist/
+reports/
 *.log
 .env*
 pics/*
