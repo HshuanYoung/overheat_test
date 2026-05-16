@@ -1,13 +1,13 @@
-name: Daily Overheat Deploy
+name: Overheat Deploy
 
 on:
-  schedule:
-    # 04:00 Asia/Shanghai, which is 20:00 UTC on the previous day.
-    - cron: '0 20 * * *'
+  push:
+    branches:
+      - main
   workflow_dispatch:
 
 concurrency:
-  group: daily-overheat-deploy
+  group: overheat-deploy
   cancel-in-progress: false
 
 jobs:
@@ -47,11 +47,11 @@ jobs:
           server_port: ${{ secrets.MAIL_PORT }}
           username: ${{ secrets.MAIL_USERNAME }}
           password: ${{ secrets.MAIL_PASSWORD }}
-          subject: '[Overheat] Daily deploy failed'
+          subject: '[Overheat] Deploy failed'
           to: 2032461502@qq.com
           from: Overheat Deploy <${{ secrets.MAIL_USERNAME }}>
           body: |
-            Daily Overheat deploy failed.
+            Overheat deploy failed.
 
             Repository: ${{ github.repository }}
             Workflow: ${{ github.workflow }}
