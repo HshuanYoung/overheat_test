@@ -1,13 +1,17 @@
 import {
   buildTurnPlan,
   chooseDefender,
+  choosePlayableCard,
   chooseQuerySelections,
+  scoreActivatableEffect,
   scorePlayableCard,
+  scorePaymentSacrificeValue,
   scorePaymentExhaustValue,
 } from '../server/ai/hardStrategy';
 import { getDeckAiProfile } from '../server/ai/deckProfiles';
 import { scoreEffectTimingWindow } from '../server/ai/effectTimingKnowledge';
 import { getComboAllianceAttack, KNOWN_COMBO_CARD_IDS } from '../server/ai/comboKnowledge';
+import { ServerGameService } from '../server/ServerGameService';
 
 type ScenarioResult = {
   name: string;
@@ -57,6 +61,17 @@ function story(overrides: Record<string, any> = {}) {
     acValue: overrides.acValue ?? 1,
     baseAcValue: overrides.baseAcValue ?? overrides.acValue ?? 1,
     effects: overrides.effects || [],
+    ...overrides,
+  };
+}
+
+function effect(overrides: Record<string, any> = {}) {
+  seq += 1;
+  return {
+    id: overrides.id || `TEST_EFFECT_${seq}`,
+    type: overrides.type || 'ACTIVATE',
+    description: overrides.description || '',
+    content: overrides.content || '',
     ...overrides,
   };
 }
@@ -379,6 +394,250 @@ function testBattleCombatStoryBeatsSetupStory(): ScenarioResult {
   );
 }
 
+function testEclipseWaitsForProtectedAllianceWindow(): ScenarioResult {
+  const profile = getDeckAiProfile('white-temple');
+  const smile = unit({
+    id: KNOWN_COMBO_CARD_IDS.smileKoriel,
+    uniqueId: `${KNOWN_COMBO_CARD_IDS.smileKoriel}:N`,
+    fullName: 'Smile Koriel',
+    damage: 1,
+    color: 'WHITE',
+    playedTurn: 1,
+    godMark: true,
+  });
+  const partner = unit({ id: 'ECLIPSE_PARTNER', fullName: 'White Partner', damage: 2, color: 'WHITE', playedTurn: 1 });
+  const eclipseEffect = effect({
+    id: KNOWN_COMBO_CARD_IDS.eclipseEffect,
+    description: 'combo board wipe destroy all opponent units',
+    content: 'DESTROY_CARD COMBO',
+  });
+  const eclipse = story({
+    id: KNOWN_COMBO_CARD_IDS.eclipse,
+    uniqueId: `${KNOWN_COMBO_CARD_IDS.eclipse}:N`,
+    fullName: 'Eclipse',
+    effects: [eclipseEffect],
+  });
+  const opponentA = unit({ id: 'ECLIPSE_TARGET_A', power: 2500, damage: 2 });
+  const opponentB = unit({ id: 'ECLIPSE_TARGET_B', power: 1500, damage: 1 });
+  const mainState = game(
+    {
+      hand: [eclipse],
+      unitZone: [smile, partner, null, null, null, null],
+      erosionBack: erosionCards(3, 'BOT_ECLIPSE_MAIN'),
+    },
+    { unitZone: [opponentA, opponentB, null, null, null, null] },
+    { phase: 'MAIN' }
+  );
+  const battleState = game(
+    {
+      hand: [eclipse],
+      unitZone: [smile, partner, null, null, null, null],
+      erosionBack: erosionCards(3, 'BOT_ECLIPSE_BATTLE'),
+    },
+    { unitZone: [opponentA, opponentB, null, null, null, null] },
+    {
+      phase: 'BATTLE_FREE',
+      battleState: { isAlliance: true, attackers: [smile.gamecardId, partner.gamecardId] },
+    }
+  );
+  const mainPlayable = scorePlayableCard(mainState, mainState.players.BOT, eclipse as any, profile);
+  const battleEffect = scoreActivatableEffect(
+    battleState,
+    battleState.players.BOT,
+    eclipse as any,
+    eclipseEffect as any,
+    profile,
+    { opponent: battleState.players.P1, targetCount: 2, hasTargetSpec: false }
+  ).score;
+  return assertScenario(
+    'eclipse waits for protected smile alliance window',
+    mainPlayable < 0 && battleEffect > 80 && battleEffect > mainPlayable + 100,
+    `mainPlayable=${mainPlayable.toFixed(1)}, battleEffect=${battleEffect.toFixed(1)}`
+  );
+}
+
+function testBlueCounterStoryRequiresCounterWindow(): ScenarioResult {
+  const profile = getDeckAiProfile('blue-adventurer');
+  const counterEffect = effect({
+    id: '204000145_counter_silence',
+    description: 'counter target effect and silence it',
+    content: 'COUNTER_EFFECT SILENCE',
+  });
+  const counterStory = story({
+    id: '204000145',
+    fullName: 'Counter Silence Story',
+    color: 'BLUE',
+    effects: [counterEffect],
+  });
+  const mainState = game({ hand: [counterStory] }, {}, { phase: 'MAIN' });
+  const counterState = game({ hand: [counterStory] }, {}, { phase: 'COUNTERING', currentTurnPlayer: 1 });
+  const mainScore = scorePlayableCard(mainState, mainState.players.BOT, counterStory as any, profile);
+  const counterScore = scoreActivatableEffect(
+    counterState,
+    counterState.players.BOT,
+    counterStory as any,
+    counterEffect as any,
+    profile,
+    { opponent: counterState.players.P1, targetCount: 1, hasTargetSpec: true }
+  ).score;
+  return assertScenario(
+    'blue counter story is held outside counter window',
+    mainScore < 0 && counterScore > 20 && counterScore > mainScore + 40,
+    `main=${mainScore.toFixed(1)}, counter=${counterScore.toFixed(1)}`
+  );
+}
+
+function testPreventDestroyWaitsForThreatWindow(): ScenarioResult {
+  const profile = getDeckAiProfile('white-temple');
+  const defender = unit({ id: 'PROTECTED_UNIT', damage: 2, power: 3000, playedTurn: 1 });
+  const attacker = unit({ id: 'THREAT_ATTACKER', damage: 2, power: 3500 });
+  const preventEffect = effect({
+    id: '201000059_prevent_destroy',
+    description: 'prevent destroy and protect unit during battle',
+    content: 'PREVENT_DESTROY PROTECT COMBAT',
+  });
+  const preventStory = story({ id: '201000059', fullName: 'Prevent Destroy Story', effects: [preventEffect] });
+  const mainState = game({ hand: [preventStory], unitZone: [defender, null, null, null, null, null] }, {}, { phase: 'MAIN' });
+  const battleState = game(
+    { hand: [preventStory], unitZone: [defender, null, null, null, null, null] },
+    { unitZone: [attacker, null, null, null, null, null] },
+    { phase: 'BATTLE_FREE', battleState: { attackers: [defender.gamecardId] } }
+  );
+  const mainScore = scoreActivatableEffect(
+    mainState,
+    mainState.players.BOT,
+    preventStory as any,
+    preventEffect as any,
+    profile,
+    { opponent: mainState.players.P1, targetCount: 1, hasTargetSpec: true }
+  ).score;
+  const battleScore = scoreActivatableEffect(
+    battleState,
+    battleState.players.BOT,
+    preventStory as any,
+    preventEffect as any,
+    profile,
+    { opponent: battleState.players.P1, targetCount: 1, hasTargetSpec: true }
+  ).score;
+  return assertScenario(
+    'prevent-destroy story waits for real threat window',
+    mainScore < 0 && battleScore > 20 && battleScore > mainScore + 35,
+    `main=${mainScore.toFixed(1)}, battle=${battleScore.toFixed(1)}`
+  );
+}
+
+function testRedCannotDefendNeedsTargetInClosingWindow(): ScenarioResult {
+  const profile = getDeckAiProfile('red-dikai');
+  const source = unit({ id: '102050427', color: 'RED', damage: 2, power: 2500, playedTurn: 1 });
+  const helper = unit({ id: 'RED_HELPER_ATTACKER', color: 'RED', damage: 1, power: 1500, playedTurn: 1 });
+  const blocker = unit({ id: 'TARGET_BLOCKER', power: 4000, damage: 1 });
+  const cannotDefend = effect({
+    id: '102050427_cannot_defend',
+    description: 'target opponent unit cannot defend this turn',
+    content: 'CANNOT_DEFEND FINISHER',
+    targetSpec: { controller: 'OPPONENT', zones: ['UNIT'], minSelections: 1, maxSelections: 1 },
+  });
+  const targetState = game(
+    { unitZone: [source, helper, null, null, null, null] },
+    { unitZone: [blocker, null, null, null, null, null], erosionBack: erosionCards(7, 'P1_RED_CLOSE') },
+    { phase: 'BATTLE_DECLARATION' }
+  );
+  const noTargetState = game(
+    { unitZone: [source, helper, null, null, null, null] },
+    { unitZone: [null, null, null, null, null, null], erosionBack: erosionCards(7, 'P1_RED_CLOSE_EMPTY') },
+    { phase: 'BATTLE_DECLARATION' }
+  );
+  const targetScore = scoreActivatableEffect(
+    targetState,
+    targetState.players.BOT,
+    source as any,
+    cannotDefend as any,
+    profile,
+    { opponent: targetState.players.P1, targetCount: 1, hasTargetSpec: true }
+  ).score;
+  const noTargetScore = scoreActivatableEffect(
+    noTargetState,
+    noTargetState.players.BOT,
+    source as any,
+    cannotDefend as any,
+    profile,
+    { opponent: noTargetState.players.P1, targetCount: 0, hasTargetSpec: true }
+  ).score;
+  return assertScenario(
+    'red cannot-defend effect needs a target and rewards closing window',
+    targetScore > 20 && noTargetScore < 0 && targetScore > noTargetScore + 35,
+    `target=${targetScore.toFixed(1)}, noTarget=${noTargetScore.toFixed(1)}`
+  );
+}
+
+function testYellowReviveMainPhaseNotBattleSetup(): ScenarioResult {
+  const profile = getDeckAiProfile('yellow-alchemy');
+  const attacker = unit({ id: 'YELLOW_ATTACKER_FOR_REVIVE', color: 'YELLOW', damage: 1, playedTurn: 1 });
+  const reviveTarget = unit({ id: 'YELLOW_REVIVE_TARGET', color: 'YELLOW', damage: 2, cardlocation: 'GRAVE' });
+  const reviveEffect = effect({
+    id: '305110028_revive',
+    description: 'revive unit from graveyard to field',
+    content: 'REVIVE SUMMON GRAVE_TO_FIELD',
+    targetSpec: { controller: 'SELF', zones: ['GRAVE'], minSelections: 1, maxSelections: 1 },
+  });
+  const memoryDoll = story({ id: '305110028', fullName: 'Memory Doll', type: 'ITEM', effects: [reviveEffect] });
+  const mainState = game(
+    { hand: [memoryDoll], grave: [reviveTarget], unitZone: [null, null, null, null, null, null] },
+    {},
+    { phase: 'MAIN' }
+  );
+  const battleState = game(
+    { hand: [memoryDoll], grave: [reviveTarget], unitZone: [attacker, null, null, null, null, null] },
+    {},
+    { phase: 'BATTLE_FREE', battleState: { attackers: [attacker.gamecardId] } }
+  );
+  const mainScore = scoreActivatableEffect(
+    mainState,
+    mainState.players.BOT,
+    memoryDoll as any,
+    reviveEffect as any,
+    profile,
+    { opponent: mainState.players.P1, targetCount: 1, hasTargetSpec: true }
+  ).score;
+  const battleScore = scoreActivatableEffect(
+    battleState,
+    battleState.players.BOT,
+    memoryDoll as any,
+    reviveEffect as any,
+    profile,
+    { opponent: battleState.players.P1, targetCount: 1, hasTargetSpec: true }
+  ).score;
+  return assertScenario(
+    'yellow revive setup is main-phase memory, not battle free filler',
+    mainScore > 20 && battleScore < mainScore - 30,
+    `main=${mainScore.toFixed(1)}, battle=${battleScore.toFixed(1)}`
+  );
+}
+
+function testTotemPrepareStoryMainNotBattleFiller(): ScenarioResult {
+  const profile = getDeckAiProfile('overlord-totem');
+  const attacker = unit({ id: 'TOTEM_ATTACKER_FOR_PREPARE', damage: 2, playedTurn: 1 });
+  const prepareEffect = effect({
+    id: '203080083_prepare',
+    description: 'search deck for totem resource setup',
+    content: 'SEARCH DECK_TO_HAND RESOURCE SETUP',
+  });
+  const prepareStory = story({ id: '203080083', fullName: 'Totem Prepare', effects: [prepareEffect] });
+  const mainState = game({ hand: [prepareStory], unitZone: [null, null, null, null, null, null] }, {}, { phase: 'MAIN' });
+  const battleState = game(
+    { hand: [prepareStory], unitZone: [attacker, null, null, null, null, null] },
+    {},
+    { phase: 'BATTLE_FREE', battleState: { attackers: [attacker.gamecardId] } }
+  );
+  const mainScore = scorePlayableCard(mainState, mainState.players.BOT, prepareStory as any, profile);
+  const battleScore = scorePlayableCard(battleState, battleState.players.BOT, prepareStory as any, profile);
+  return assertScenario(
+    'totem preparation story is main-phase setup, not battle filler',
+    mainScore > 0 && battleScore < 0 && mainScore > battleScore + 40,
+    `main=${mainScore.toFixed(1)}, battle=${battleScore.toFixed(1)}`
+  );
+}
+
 function testWhiteTemplePrefersKeyResetTargets(): ScenarioResult {
   const profile = getDeckAiProfile('white-temple');
   const source = unit({ id: '101130439', fullName: 'Hall Knight Source', damage: 1, isExhausted: false });
@@ -445,6 +704,228 @@ function testWhiteTempleMultiResetTakesBothKeyTargets(): ScenarioResult {
     'white temple multi reset chooses magic spear and hero sword first',
     selectedIds.includes('101130440') && selectedIds.includes('101130458'),
     `selected=${selectedIds.join(',') || 'none'}`
+  );
+}
+
+function testWhiteTemplePlaysArcherBeforeHandTargets(): ScenarioResult {
+  const profile = getDeckAiProfile('white-temple');
+  const archer = unit({
+    id: '101130202',
+    fullName: '南征军的弓兵',
+    faction: '圣王国',
+    acValue: 3,
+    baseAcValue: 3,
+    damage: 2,
+    cardlocation: 'HAND',
+  });
+  const rookie = unit({
+    id: '101130233',
+    fullName: '坚定的新人卫士',
+    faction: '圣王国',
+    acValue: 3,
+    baseAcValue: 3,
+    damage: 1,
+    feijingMark: true,
+    cardlocation: 'HAND',
+  });
+  const shield = unit({
+    id: '101130200',
+    fullName: '圣王国的盾兵',
+    faction: '圣王国',
+    acValue: 2,
+    baseAcValue: 2,
+    damage: 1,
+    cardlocation: 'HAND',
+  });
+  const state = game({ hand: [rookie, shield, archer], unitZone: [null, null, null, null, null, null] });
+  const chosen = choosePlayableCard(state, state.players.BOT, profile, 'hard', () => true);
+  const archerScore = scorePlayableCard(state, state.players.BOT, archer as any, profile);
+  const rookieScore = scorePlayableCard(state, state.players.BOT, rookie as any, profile);
+  return assertScenario(
+    'white temple plays archer before its hand-to-field targets',
+    chosen?.id === '101130202' && archerScore > rookieScore + 25,
+    `chosen=${chosen?.fullName || 'none'}, archer=${archerScore.toFixed(1)}, rookie=${rookieScore.toFixed(1)}`
+  );
+}
+
+function testWhiteTempleOptionalArcherTriggerSelectsTarget(): ScenarioResult {
+  const profile = getDeckAiProfile('white-temple');
+  const archer = unit({
+    id: '101130202',
+    fullName: '南征军的弓兵',
+    faction: '圣王国',
+    cardlocation: 'UNIT',
+  });
+  const rookie = unit({
+    id: '101130233',
+    fullName: '坚定的新人卫士',
+    faction: '圣王国',
+    acValue: 3,
+    baseAcValue: 3,
+    damage: 1,
+    cardlocation: 'HAND',
+  });
+  const magicSpear = unit({
+    id: '101130440',
+    fullName: '殿堂骑士·魔枪',
+    faction: '圣王国',
+    acValue: 2,
+    baseAcValue: 2,
+    damage: 2,
+    cardlocation: 'HAND',
+  });
+  const state = game({
+    hand: [rookie, magicSpear],
+    unitZone: [archer, null, null, null, null, null],
+  });
+  const query = {
+    id: 'white_archer_hand_to_field',
+    type: 'SELECT_CARD',
+    playerUid: 'BOT',
+    title: '选择放置到战场的单位',
+    description: '选择你的手牌中的1张AC+3以下<圣王国>非神蚀单位卡，将其放置到战场。',
+    callbackKey: 'EFFECT_RESOLVE',
+    minSelections: 0,
+    maxSelections: 1,
+    context: { sourceCardId: archer.gamecardId, effectId: '101130202_hand_to_field' },
+    options: [
+      { card: rookie, isMine: true },
+      { card: magicSpear, isMine: true },
+    ],
+  };
+  const selected = chooseQuerySelections(state, 'BOT', query as any, profile, 'hard');
+  const selectedCard = [rookie, magicSpear].find(card => card.gamecardId === selected[0]);
+  return assertScenario(
+    'white temple optional archer trigger chooses the best hand target',
+    selectedCard?.id === '101130440',
+    `selected=${selectedCard?.fullName || selected.join(',') || 'none'}`
+  );
+}
+
+function testWhiteTempleProtectsArcherLineFromPayment(): ScenarioResult {
+  const profile = getDeckAiProfile('white-temple');
+  const archer = unit({
+    id: '101130202',
+    fullName: '南征军的弓兵',
+    faction: '圣王国',
+    cardlocation: 'HAND',
+  });
+  const rookie = unit({
+    id: '101130233',
+    fullName: '坚定的新人卫士',
+    faction: '圣王国',
+    acValue: 3,
+    baseAcValue: 3,
+    damage: 1,
+    feijingMark: true,
+    cardlocation: 'HAND',
+  });
+  const expendableFeijing = unit({
+    id: 'WHITE_EXPENDABLE_FEIJING',
+    fullName: 'Expendable Feijing',
+    faction: '女神教会',
+    acValue: 3,
+    baseAcValue: 3,
+    damage: 1,
+    feijingMark: true,
+    cardlocation: 'HAND',
+  });
+  const state = game({ hand: [archer, rookie, expendableFeijing] });
+  const rookieScore = scorePaymentSacrificeValue(rookie as any, profile, state, state.players.BOT);
+  const expendableScore = scorePaymentSacrificeValue(expendableFeijing as any, profile, state, state.players.BOT);
+  return assertScenario(
+    'white temple payment keeps archer hand-to-field target in hand',
+    rookieScore > expendableScore + 20,
+    `rookie=${rookieScore.toFixed(1)}, expendable=${expendableScore.toFixed(1)}`
+  );
+}
+
+function testWhiteTempleEscortTargetsOpponentFirst(): ScenarioResult {
+  const profile = getDeckAiProfile('white-temple');
+  const escort = unit({ id: '101140151', fullName: '教会的押送人', faction: '女神教会', cardlocation: 'UNIT' });
+  const ownKeyUnit = unit({
+    id: '101130440',
+    fullName: '殿堂骑士·魔枪',
+    faction: '圣王国',
+    damage: 2,
+    power: 2500,
+    cardlocation: 'UNIT',
+  });
+  const opponentThreat = unit({
+    id: 'OPPONENT_THREAT',
+    fullName: 'Opponent Threat',
+    damage: 2,
+    power: 3000,
+    cardlocation: 'UNIT',
+  });
+  const state = game(
+    { unitZone: [escort, ownKeyUnit, null, null, null, null] },
+    { unitZone: [opponentThreat, null, null, null, null, null] }
+  );
+  const query = {
+    id: 'white_escort_exile',
+    type: 'SELECT_CARD',
+    playerUid: 'BOT',
+    title: '选择放逐目标',
+    description: '选择战场上的1张《教会的押送人》以外的卡。',
+    callbackKey: 'EFFECT_RESOLVE',
+    minSelections: 1,
+    maxSelections: 1,
+    context: { sourceCardId: escort.gamecardId, effectId: '101140151_enter_exile' },
+    options: [
+      { card: ownKeyUnit, isMine: true },
+      { card: opponentThreat, isMine: false },
+    ],
+  };
+  const selected = chooseQuerySelections(state, 'BOT', query as any, profile, 'hard');
+  const selectedCard = [ownKeyUnit, opponentThreat].find(card => card.gamecardId === selected[0]);
+  return assertScenario(
+    'white temple escort exiles opponent target before own unit',
+    selectedCard?.gamecardId === opponentThreat.gamecardId,
+    `selected=${selectedCard?.fullName || selected.join(',') || 'none'}`
+  );
+}
+
+function testBotDoesNotAlwaysSpendFeijing(): ScenarioResult {
+  const profile = getDeckAiProfile('white-temple');
+  const feijing = unit({
+    id: '101130233',
+    fullName: '坚定的新人卫士',
+    faction: '圣王国',
+    color: 'WHITE',
+    feijingMark: true,
+    cardlocation: 'HAND',
+  });
+  const sourceCard = story({
+    id: 'WHITE_COST_ONE_STORY',
+    fullName: 'White Cost One Story',
+    color: 'WHITE',
+    acValue: 1,
+    baseAcValue: 1,
+    cardlocation: 'HAND',
+  });
+  const state = game({
+    hand: [sourceCard, feijing],
+    deck: deckCards(20, 'BOT_FEIJING_PAYMENT'),
+    botDifficulty: 'hard',
+    botDeckProfileId: profile.id,
+  }, {}, {
+    botDifficulty: 'hard',
+    botDeckProfiles: { BOT: profile.id },
+  });
+  const payment = ServerGameService.buildBotPaymentSelectionForPlayer(state, 'BOT', {
+    paymentCost: 1,
+    paymentColor: 'WHITE',
+    context: {
+      cardId: sourceCard.gamecardId,
+      sourceCardId: sourceCard.gamecardId,
+      paymentTargetId: sourceCard.gamecardId,
+    },
+  }) as any;
+  return assertScenario(
+    'hard AI does not spend feijing for every small payment',
+    !payment.feijingCardId,
+    `payment=${JSON.stringify(payment)}`
   );
 }
 
@@ -595,8 +1076,19 @@ const scenarios = [
   testBattleFreeHoldsSetupStory,
   testMainRemovalStoryNeedsTarget,
   testBattleCombatStoryBeatsSetupStory,
+  testEclipseWaitsForProtectedAllianceWindow,
+  testBlueCounterStoryRequiresCounterWindow,
+  testPreventDestroyWaitsForThreatWindow,
+  testRedCannotDefendNeedsTargetInClosingWindow,
+  testYellowReviveMainPhaseNotBattleSetup,
+  testTotemPrepareStoryMainNotBattleFiller,
   testWhiteTemplePrefersKeyResetTargets,
   testWhiteTempleMultiResetTakesBothKeyTargets,
+  testWhiteTemplePlaysArcherBeforeHandTargets,
+  testWhiteTempleOptionalArcherTriggerSelectsTarget,
+  testWhiteTempleProtectsArcherLineFromPayment,
+  testWhiteTempleEscortTargetsOpponentFirst,
+  testBotDoesNotAlwaysSpendFeijing,
   testPaymentProtectsGodMark,
   testDefenseDoesNotThrowGodMarkOnNonLethalHit,
   testFiveDeckProfilesProduceTurnPlans,

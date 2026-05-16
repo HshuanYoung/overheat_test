@@ -223,6 +223,17 @@ function applyQueryScoreHook(profile: DeckAiProfile, context: DeckAiQueryScoreCo
   }
 }
 
+function selectScoredEntries<T extends { score: number }>(scored: T[], requiredCount: number, maxCount: number) {
+  const selected: T[] = [];
+  for (const entry of scored) {
+    if (selected.length < requiredCount || (selected.length < maxCount && entry.score > 0)) {
+      selected.push(entry);
+    }
+    if (selected.length >= maxCount) break;
+  }
+  return selected;
+}
+
 function riskValue(profile: DeckAiProfile, key: keyof NonNullable<DeckAiProfile['riskThresholds']>, fallback: number) {
   const value = profile.riskThresholds?.[key];
   return typeof value === 'number' ? value : fallback;
@@ -758,6 +769,11 @@ function scoreStoryPlayDiscipline(gameState: GameState, player: PlayerState, car
   const comboScore = scoreComboCard(gameState, player, card, profile, 'playable');
   const timingScore = bestStoryEffectTimingScore(gameState, player, card);
   const phase = gameState.phase;
+  const hasBattleContext =
+    battleAttackers > 0 ||
+    phase === 'BATTLE_DECLARATION' ||
+    phase === 'DEFENSE_DECLARATION' ||
+    phase === 'DAMAGE_CALCULATION';
 
   const isRemoval = roles.has('removal') || textHasAny(upper, [/DESTROY|BANISH|EXILE|RETURN.*HAND|BOUNCE|REMOVE|鐮村潖|闄ゅ|杩斿洖|鍥炴墜/]);
   const isDrawSearch = roles.has('draw') || roles.has('search') || textHasAny(upper, [/DRAW|SEARCH|DECK.*HAND|HAND.*DECK|鎶絴鎶搢|妫€绱鎼滅储|鍔犲叆鎵嬬墝/]);
@@ -795,6 +811,12 @@ function scoreStoryPlayDiscipline(gameState: GameState, player: PlayerState, car
     if ((isCombat || isProtection || isCounter) && !closeToLethal) {
       clearReasonScore -= 18;
     }
+    if (isCounter && comboScore < 80) {
+      clearReasonScore -= 30;
+    }
+    if (isProtection && !closeToLethal && comboScore < 80) {
+      clearReasonScore -= 18;
+    }
     if (closeToLethal && (isCombat || roles.has('finisher'))) {
       clearReasonScore += 24;
     }
@@ -809,18 +831,33 @@ function scoreStoryPlayDiscipline(gameState: GameState, player: PlayerState, car
     if (battleAttackers === 0 && comboScore < 80) {
       clearReasonScore -= 22;
     }
+    if (battleAttackers === 0 && (isCounter || isProtection || isCombat) && comboScore < 80) {
+      clearReasonScore -= 24;
+    }
     if (isRemoval && opponentFieldTargets === 0) {
       clearReasonScore -= 20;
     }
   } else if (phase === 'COUNTERING') {
     if (isCounter || isProtection || isRemoval || isCombat) {
-      clearReasonScore += 28;
+      clearReasonScore += isCounter || isProtection ? 42 : 28;
     }
     if ((isDrawSearch || isResourceSetup || isBoardSetup) && !isCounter) {
       clearReasonScore -= 30;
     }
   } else {
     clearReasonScore -= 18;
+  }
+
+  if (isCounter && phase !== 'COUNTERING' && !(phase === 'BATTLE_FREE' && battleAttackers > 0) && comboScore < 80) {
+    clearReasonScore -= 18;
+  }
+
+  if (isProtection && !hasBattleContext && phase !== 'COUNTERING' && !closeToLethal && comboScore < 80) {
+    clearReasonScore -= 14;
+  }
+
+  if ((isCombat || roles.has('finisher')) && !hasBattleContext && !closeToLethal && comboScore < 80) {
+    clearReasonScore -= 10;
   }
 
   if (timingScore !== 0) {
@@ -1686,6 +1723,65 @@ export function scoreActivatableEffect(
     score += timingScore.score;
     notes.push(...timingScore.notes);
   }
+  const timingTags = new Set(timingScore.tags);
+  const validCounterWindow =
+    gameState.phase === 'COUNTERING' ||
+    (gameState.phase === 'BATTLE_FREE' && battleAttackers > 0);
+  const validProtectionWindow =
+    gameState.phase === 'COUNTERING' ||
+    battleAttackers > 0 ||
+    gameState.phase === 'DEFENSE_DECLARATION' ||
+    gameState.phase === 'DAMAGE_CALCULATION';
+
+  if (timingTags.has('counter') && !validCounterWindow) {
+    score -= 22;
+    notes.push('counter held for chain/battle window');
+  }
+
+  if (timingTags.has('protection') && !validProtectionWindow && !inLethalWindow) {
+    score -= 16;
+    notes.push('protection held until real threat');
+  }
+
+  if (
+    (timingTags.has('combat') || timingTags.has('buff') || timingTags.has('finisher')) &&
+    battleAttackers === 0 &&
+    gameState.phase === 'BATTLE_FREE' &&
+    !inLethalWindow
+  ) {
+    score -= 14;
+    notes.push('combat effect needs an attacker');
+  }
+
+  if (
+    (timingTags.has('engine') || timingTags.has('draw') || timingTags.has('search') || timingTags.has('resource') || timingTags.has('summon') || timingTags.has('revive')) &&
+    (gameState.phase === 'BATTLE_FREE' || gameState.phase === 'COUNTERING') &&
+    !timingTags.has('combo') &&
+    !timingTags.has('counter') &&
+    !timingTags.has('combat') &&
+    !timingTags.has('protection')
+  ) {
+    score -= gameState.phase === 'COUNTERING' ? 18 : 10;
+    notes.push('setup effect held outside main phase');
+  }
+
+  if (
+    context.hasTargetSpec &&
+    targetCount <= 0 &&
+    (timingTags.has('removal') || timingTags.has('tempo') || tags.has('removal') || tags.has('tempo'))
+  ) {
+    score -= 18;
+    notes.push('effect has no valid tactical target');
+  }
+
+  if (
+    targetCount > 0 &&
+    inLethalWindow &&
+    (timingTags.has('tempo') || timingTags.has('removal') || tags.has('tempo') || tags.has('removal'))
+  ) {
+    score += 6;
+    notes.push('targeted effect supports closing window');
+  }
 
   const preferences = profile.effectPreferences;
   if (preferences) {
@@ -1931,9 +2027,9 @@ function inferQueryIntent(query: EffectQuery): QueryIntent {
   if (/费用|支付|舍弃|弃置|牺牲|作为费用|放逐费用|选择放逐费用/i.test(text)) return 'cost';
   if (isSacrificeLikeQuery(query) || /COST|PAYMENT|DISCARD|SACRIFICE/i.test(semantic)) return 'cost';
   if (/KEEP|PRESERVE|SAVE|HOLD/i.test(semantic)) return 'keep';
+  if (/DESTROY|EXILE|BANISH|SILENCE|CANNOT|BOTTOM|BOUNCE|ZERO|REMOVE|OPPONENT|_destroy|_exile|_silence|_zero|cannot_defend|damage_zero/i.test(semantic)) return 'offense';
   if (/REVIVE|REBIRTH|REANIMATE|SUMMON|PLAY_FROM|PUT|TO_FIELD|ENTER|RETURN_FIELD|_plan|_rebirth/i.test(semantic)) return 'revive';
   if (/SEARCH|RETURN|ADD|HAND|SALVAGE|RECOVER|_search|_return|_salvage/i.test(semantic)) return 'search';
-  if (/DESTROY|EXILE|BANISH|SILENCE|CANNOT|BOTTOM|BOUNCE|ZERO|REMOVE|OPPONENT|_destroy|_exile|_silence|_zero|cannot_defend|damage_zero/i.test(semantic)) return 'offense';
   if (/BOOST|BUFF|POWER|DAMAGE|READY|RESET|RUSH|PROTECT|BLESS|SHENYI|SPIRIT|IMMUNE|_boost|_power|_ready|_reset|_protect|spirit_boost/i.test(semantic)) return 'benefit';
   if (/鐮村潖|鏀剧疆鍒板鍦皘闄ゅ|涓嶈兘|鍔涢噺鍙樹负0/.test(text)) return 'offense';
   if (/鍔涢噺\+|浼ゅ\+|鑾峰緱|閲嶇疆|绔栫疆|淇濇姢/.test(text)) return 'benefit';
@@ -2180,13 +2276,14 @@ export function chooseQuerySelections(
   const selectableOptions = (query.options || []).filter(option => !option.disabled);
   const minSelections = query.minSelections ?? 1;
   const maxSelections = query.maxSelections ?? minSelections;
-  const selectionCount = Math.max(0, Math.min(minSelections, maxSelections, selectableOptions.length));
+  const requiredSelectionCount = Math.max(0, Math.min(minSelections, maxSelections, selectableOptions.length));
+  const maxSelectionCount = Math.max(requiredSelectionCount, Math.min(maxSelections, selectableOptions.length));
 
   if (query.callbackKey === 'TRIGGER_CHOICE') return ['YES'];
-  if (selectionCount === 0) return [];
+  if (maxSelectionCount === 0) return [];
   if (difficulty !== 'hard') {
     return selectableOptions
-      .slice(0, selectionCount)
+      .slice(0, requiredSelectionCount)
       .map(option => option.card?.gamecardId || option.id)
       .filter(Boolean) as string[];
   }
@@ -2211,16 +2308,18 @@ export function chooseQuerySelections(
         };
       })
       .sort((a, b) => b.score - a.score);
-    return [(scoredChoices[0].option.id || scoredChoices[0].option.card?.gamecardId)!].filter(Boolean);
+    return selectScoredEntries(scoredChoices, requiredSelectionCount, maxSelectionCount)
+      .map(({ option }) => option.id || option.card?.gamecardId)
+      .filter(Boolean) as string[];
   }
 
   const playerTargetOptions = selectableOptions
     .map(option => ({ option, score: scorePlayerTargetOption(gameState, playerUid, query, option, profile) }))
     .filter((entry): entry is { option: any; score: number } => entry.score !== undefined);
   if (playerTargetOptions.length === selectableOptions.length && playerTargetOptions.length > 0) {
-    return playerTargetOptions
-      .sort((a, b) => b.score - a.score)
-      .slice(0, selectionCount)
+    const scoredPlayerTargets = playerTargetOptions
+      .sort((a, b) => b.score - a.score);
+    return selectScoredEntries(scoredPlayerTargets, requiredSelectionCount, maxSelectionCount)
       .map(({ option }) => option.card?.gamecardId || option.id)
       .filter(Boolean) as string[];
   }
@@ -2254,7 +2353,8 @@ export function chooseQuerySelections(
     scored.length > 0 &&
     scored.every(entry => !entry.option.card || optionIsMine(gameState, playerUid, entry.option))
   ) {
-    const selected = scored.slice(0, selectionCount).filter(entry => entry.option.card);
+    const selected = selectScoredEntries(scored, requiredSelectionCount, maxSelectionCount)
+      .filter(entry => entry.option.card);
     const onlyProtectedChoices = selected.length > 0 && selected.every(entry => {
       const card = entry.option.card as Card;
       return card.godMark || scoreStrategicBoardPresenceValue(gameState, playerUid, card, profile) >= 58;
@@ -2271,26 +2371,27 @@ export function chooseQuerySelections(
     return [];
   }
 
-  return scored
-    .slice(0, selectionCount)
+  return selectScoredEntries(scored, requiredSelectionCount, maxSelectionCount)
     .map(({ option }) => option.card?.gamecardId || option.id)
     .filter(Boolean) as string[];
 }
 
 export function chooseDiscardCard(player: PlayerState, profile: DeckAiProfile, difficulty: BotDifficulty, gameState?: GameState) {
   if (difficulty !== 'hard') return player.hand[0];
-  return [...player.hand].sort((a, b) =>
-    (
-      getCardKnowledgeValue(a, 'discardValue') +
-      scoreCardValue(a, profile, gameState ? { gameState, player } : {}) * 0.2 +
-      scoreComboCard(gameState, player, a, profile, 'discard')
-    ) -
-    (
-      getCardKnowledgeValue(b, 'discardValue') +
-      scoreCardValue(b, profile, gameState ? { gameState, player } : {}) * 0.2 +
-      scoreComboCard(gameState, player, b, profile, 'discard')
-    )
-  )[0];
+  const scoreDiscardValue = (card: Card) => {
+    const strategyContext = gameState ? buildStrategyContext(gameState, player, profile) : {};
+    const baseScore =
+      getCardKnowledgeValue(card, 'discardValue') +
+      scoreCardValue(card, profile, gameState ? { gameState, player } : {}) * 0.2 +
+      scoreComboCard(gameState, player, card, profile, 'discard');
+    return baseScore + applyCardScoreHook(profile, 'adjustDiscardScore', {
+      ...strategyContext,
+      card,
+      score: baseScore,
+      reason: 'discard',
+    });
+  };
+  return [...player.hand].sort((a, b) => scoreDiscardValue(a) - scoreDiscardValue(b))[0];
 }
 
 function findOwnerOfCard(gameState: GameState | undefined, card: Card | null | undefined) {
@@ -2320,10 +2421,19 @@ export function scorePaymentSacrificeValue(
   const boardPresenceValue = gameState && owner
     ? scoreStrategicBoardPresenceValue(gameState, owner.uid, card, profile)
     : 0;
-  return getCardKnowledgeValue(card, 'preserveValue') +
+  const baseScore = getCardKnowledgeValue(card, 'preserveValue') +
     scoreCardValue(card, profile, gameState && owner ? { gameState, player: owner } : {}) * 0.25 +
     boardPresenceValue * 0.8 +
     scoreComboCard(gameState, owner, card, profile, 'paymentSacrifice');
+  if (!gameState || !owner) return baseScore;
+
+  const strategyContext = buildStrategyContext(gameState, owner, profile);
+  return baseScore + applyCardScoreHook(profile, 'adjustPaymentScore', {
+    ...strategyContext,
+    card,
+    score: baseScore,
+    reason: 'paymentSacrifice',
+  });
 }
 
 export function scorePaymentExhaustValue(

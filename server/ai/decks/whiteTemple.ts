@@ -1,7 +1,19 @@
 import { DeckAiProfile, DeckAiQueryScoreContext } from '../types';
-import { cardCost, cardText, effectHasTag, hasAny, hasRole, opponentErosion, opponentHasTrait, opponentIs, readyAttackers, readyDefenders } from './strategyUtils';
+import { Card } from '../../../src/types/game';
+import { cardCost, cardText, effectHasTag, hasAny, hasRole, openUnitSlots, opponentErosion, opponentHasTrait, opponentIs, readyAttackers, readyDefenders } from './strategyUtils';
 
 const PREFERRED_RESET_TARGET_IDS = new Set(['101130440', '101130458']);
+const SAINT_KINGDOM_ARCHER_ID = '101130202';
+const SAINT_KINGDOM_ARCHER_EFFECT_ID = '101130202_hand_to_field';
+const CHURCH_ESCORT_EFFECT_ID = '101140151_enter_exile';
+const SAINT_KINGDOM_ARCHER_TARGET_PRIORITY: Record<string, number> = {
+  '101130440': 22,
+  '101130458': 21,
+  '101130104': 17,
+  '101130439': 16,
+  '101130200': 14,
+  '101130233': 12,
+};
 const RESET_TARGET_EFFECT_IDS = new Set([
   '101130439_reset_hall',
   '101130441_reset_boost',
@@ -26,6 +38,43 @@ function isResetTargetQuery(context: DeckAiQueryScoreContext) {
   return context.intent === 'benefit' && /reset|ready|重置|竖置|閲嶇疆|绔栫疆/i.test(text);
 }
 
+function isSaintKingdomArcherTarget(card: Card | null | undefined) {
+  return !!card &&
+    card.id !== SAINT_KINGDOM_ARCHER_ID &&
+    card.type === 'UNIT' &&
+    card.faction === '圣王国' &&
+    !card.godMark &&
+    cardCost(card) <= 3;
+}
+
+function isHandCard(card: Card | null | undefined) {
+  return !card?.cardlocation || card.cardlocation === 'HAND';
+}
+
+function archerTargetPriority(card: Card | null | undefined) {
+  if (!isSaintKingdomArcherTarget(card)) return 0;
+  return SAINT_KINGDOM_ARCHER_TARGET_PRIORITY[card.id] ||
+    8 +
+    (card.damage || 0) * 2 +
+    Math.max(0, Math.min(4, 4 - cardCost(card)));
+}
+
+function handHasArcher(player: DeckAiQueryScoreContext['player']) {
+  return !!player?.hand.some(card => card.id === SAINT_KINGDOM_ARCHER_ID);
+}
+
+function bestArcherTargetInHand(player: DeckAiQueryScoreContext['player']) {
+  const targets = player?.hand.filter(isSaintKingdomArcherTarget) || [];
+  return targets.reduce<Card | undefined>((best, card) =>
+    archerTargetPriority(card) > archerTargetPriority(best) ? card : best,
+    undefined
+  );
+}
+
+function hasLiveArcherLine(context: { player?: DeckAiQueryScoreContext['player'] }) {
+  return handHasArcher(context.player) && !!bestArcherTargetInHand(context.player);
+}
+
 export const whiteTempleProfile: DeckAiProfile = {
   id: 'white-temple',
   displayName: '纯白殿堂',
@@ -35,6 +84,7 @@ export const whiteTempleProfile: DeckAiProfile = {
   preferredCardIds: {
     '101100096': 12,
     '201100037': 8,
+    '101130202': 11,
     '101130439': 8,
     '101130440': 10,
     '101130458': 9,
@@ -42,23 +92,29 @@ export const whiteTempleProfile: DeckAiProfile = {
   preserveCardIds: {
     '101100096': 18,
     '201100037': 14,
+    '101130202': 10,
     '101130439': 8,
     '101130440': 12,
     '101130458': 12,
   },
   effectPreferences: {
     preferredEffectIds: {
+      '101100096_alliance_protect': 3,
+      '101100096_reset_after_attack': 4,
       '101130439_reset_hall': 6,
       '101130441_reset_boost': 6,
       '101130440_reset_boost': 5,
+      '101130458_reset_silence': 4,
       '201000056_search': 4,
+      '201000059_prevent_destroy': 3,
       '201130038_blessing': 3,
       '101000487_grave_exile_boost': 2,
       '101140152_silence_god': 3,
+      '201100037_eclipse': 2,
     },
     avoidEffectIds: {
-      '101000159_protect': 8,
-      '201000059_prevent_destroy': 8,
+      '101000159_protect': 2,
+      '201000059_prevent_destroy': 2,
       '201100037_eclipse': 4,
     },
     tagBias: {
@@ -179,6 +235,8 @@ export const whiteTempleProfile: DeckAiProfile = {
     adjustPlayableScore: context => {
       const card = context.card;
       const text = cardText(card);
+      const liveArcherLine = hasLiveArcherLine(context) && openUnitSlots(context) >= 2;
+      const bestArcherTarget = bestArcherTargetInHand(context.player);
       let score = 0;
       if (card.type === 'UNIT' && ((card.power || 0) >= 5000 || hasRole(card, 'defender'))) score += 3.5;
       if (hasRole(card, 'protection')) score += opponentIs(context, 'aggro', 'tempo') ? 3 : 1.2;
@@ -186,6 +244,13 @@ export const whiteTempleProfile: DeckAiProfile = {
       if (opponentIs(context, 'aggro') && card.type !== 'UNIT' && readyDefenders(context) === 0 && cardCost(card) > 2) score -= 4;
       if (hasAny(text, [/殿堂|圣王国/]) && cardCost(card) <= 4) score += 1.5;
       if (['101130439', '101130440', '101130458'].includes(card.id)) score += readyAttackers(context) > 0 ? 3 : 1.5;
+      if (card.id === SAINT_KINGDOM_ARCHER_ID) {
+        score += bestArcherTarget && openUnitSlots(context) >= 2
+          ? 42 + archerTargetPriority(bestArcherTarget)
+          : -8;
+      } else if (liveArcherLine && isSaintKingdomArcherTarget(card)) {
+        score -= 18 + Math.min(10, archerTargetPriority(card) * 0.3);
+      }
       return score;
     },
     adjustAttackScore: context => {
@@ -209,7 +274,19 @@ export const whiteTempleProfile: DeckAiProfile = {
       if (card.type === 'UNIT' && cardCost(card) <= 4) score += 7;
       if (hasRole(card, 'protection') || hasRole(card, 'removal')) score += 4;
       if (opponentIs(context, 'aggro') && card.type !== 'UNIT') score -= 4;
+      if (card.id === SAINT_KINGDOM_ARCHER_ID && bestArcherTargetInHand(context.player)) score += 8;
+      if (isSaintKingdomArcherTarget(card) && handHasArcher(context.player)) score += 4;
       return score;
+    },
+    adjustDiscardScore: context => {
+      if (context.card.id === SAINT_KINGDOM_ARCHER_ID && isHandCard(context.card) && bestArcherTargetInHand(context.player)) return 28;
+      if (isSaintKingdomArcherTarget(context.card) && isHandCard(context.card) && handHasArcher(context.player)) return 16;
+      return 0;
+    },
+    adjustPaymentScore: context => {
+      if (context.card.id === SAINT_KINGDOM_ARCHER_ID && isHandCard(context.card) && bestArcherTargetInHand(context.player)) return 40;
+      if (isSaintKingdomArcherTarget(context.card) && isHandCard(context.card) && handHasArcher(context.player)) return 30;
+      return 0;
     },
     adjustEffectScore: context => {
       let score = 0;
@@ -222,7 +299,23 @@ export const whiteTempleProfile: DeckAiProfile = {
     },
     adjustQueryScore: context => {
       const card = context.option?.card;
-      if (!card || !isResetTargetQuery(context)) return 0;
+      const effectId = String((context.query as any).context?.effectId || '');
+      if (!card) return 0;
+      if (effectId === SAINT_KINGDOM_ARCHER_EFFECT_ID) {
+        if (context.option?.isMine === false) return -80;
+        if (!isSaintKingdomArcherTarget(card)) return -80;
+        return 80 + archerTargetPriority(card);
+      }
+      if (effectId === CHURCH_ESCORT_EFFECT_ID) {
+        const hasOpponentTargets = !!context.opponent?.unitZone.some(unit => !!unit) ||
+          !!context.opponent?.itemZone.some(item => !!item);
+        return context.option?.isMine === false
+          ? 90 + (card.godMark ? 8 : 0) + (card.damage || 0) * 5 + (card.power || 0) / 900
+          : hasOpponentTargets
+            ? -140
+            : -20;
+      }
+      if (!isResetTargetQuery(context)) return 0;
       if (context.option?.isMine === false) return 0;
 
       if (PREFERRED_RESET_TARGET_IDS.has(card.id)) {

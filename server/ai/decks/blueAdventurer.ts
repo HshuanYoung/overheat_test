@@ -9,6 +9,8 @@ export const blueAdventurerProfile: DeckAiProfile = {
   preferredFactions: ['冒险家'],
   effectPreferences: {
     preferredEffectIds: {
+      'gensou_swallow_counter': 3,
+      '204000145_counter_silence': 3,
       'aketi_play_from_erosion': 5,
       'aketi_goddess_bounce': 5,
       'seii_from_erosion': 5,
