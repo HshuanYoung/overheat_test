@@ -6687,25 +6687,40 @@ export const ServerGameService = {
     const playingCard = playingCardId ? ServerGameService.findCardById(gameState, playingCardId) : sourceCard;
     const cardColor = query.paymentColor || playingCard?.color || sourceCard?.color;
 
-    const feijingCard = player.hand.find(card => {
-      if (!card || card.gamecardId === playingCardId) return false;
-      return (
-        ServerGameService.canUse204000145AsPaymentSubstitute(card, cardColor, paymentCost, playingCardId) ||
-        ServerGameService.canUse205000136AsPaymentSubstitute(card, cardColor, paymentCost, playingCardId) ||
-        ServerGameService.canUseStoryPaymentSubstitute(card, playingCard, paymentCost, playingCardId) ||
-        (card.feijingMark && (!cardColor || card.color === cardColor))
+    const feijingCandidates = player.hand
+      .filter(card => {
+        if (!card || card.gamecardId === playingCardId) return false;
+        return (
+          ServerGameService.canUse204000145AsPaymentSubstitute(card, cardColor, paymentCost, playingCardId) ||
+          ServerGameService.canUse205000136AsPaymentSubstitute(card, cardColor, paymentCost, playingCardId) ||
+          ServerGameService.canUseStoryPaymentSubstitute(card, playingCard, paymentCost, playingCardId) ||
+          (card.feijingMark && (!cardColor || card.color === cardColor))
+        );
+      })
+      .sort((a, b) => difficulty === 'hard'
+        ? scorePaymentSacrificeValue(a, profile, gameState, player) - scorePaymentSacrificeValue(b, profile, gameState, player)
+        : 0
       );
-    });
+    const onlyFeijingPayment = !!playingCard?.effects?.some(effect => effect.content === 'ONLY_FEIJING_PAYMENT');
+    const feijingRoutes = difficulty === 'hard'
+      ? [
+        ...(onlyFeijingPayment ? [] : [undefined]),
+        ...feijingCandidates,
+      ] as (Card | undefined)[]
+      : [
+        feijingCandidates[0],
+      ] as (Card | undefined)[];
+    if (onlyFeijingPayment && feijingCandidates.length === 0) return {};
 
-    const reduction = feijingCard
-      ? ((ServerGameService.canUse204000145AsPaymentSubstitute(feijingCard, cardColor, paymentCost, playingCardId) ||
-          ServerGameService.canUse205000136AsPaymentSubstitute(feijingCard, cardColor, paymentCost, playingCardId) ||
-          ServerGameService.canUseStoryPaymentSubstitute(feijingCard, playingCard, paymentCost, playingCardId))
-          ? paymentCost
-          : 3)
-      : 0;
+    const getFeijingReduction = (feijingCard: Card | undefined) =>
+      feijingCard
+        ? ((ServerGameService.canUse204000145AsPaymentSubstitute(feijingCard, cardColor, paymentCost, playingCardId) ||
+            ServerGameService.canUse205000136AsPaymentSubstitute(feijingCard, cardColor, paymentCost, playingCardId) ||
+            ServerGameService.canUseStoryPaymentSubstitute(feijingCard, playingCard, paymentCost, playingCardId))
+            ? paymentCost
+            : 3)
+        : 0;
 
-    const remainingCost = Math.max(0, paymentCost - reduction);
     const candidates = player.unitZone
       .filter((card): card is Card => !!card && !card.isExhausted && !(card as any).data?.cannotExhaustByEffect)
       .map(card => {
@@ -6758,80 +6773,88 @@ export const ServerGameService = {
 
     const candidateCount = candidates.length;
     let bestUnitValue = Number.POSITIVE_INFINITY;
-    for (let mask = 0; mask < (1 << candidateCount); mask++) {
-      const exhaustUnitIds: string[] = [];
-      let selectedUnitValue = 0;
-      let selectedMin = 0;
-      let selectedMax = 0;
-      let selectedReadyDefenders = 0;
+    for (const feijingCard of feijingRoutes) {
+      const reduction = getFeijingReduction(feijingCard);
+      const remainingCost = Math.max(0, paymentCost - reduction);
+      const feijingValue = difficulty === 'hard' && feijingCard
+        ? scorePaymentSacrificeValue(feijingCard, profile, gameState, player) + (onlyFeijingPayment ? 0 : 18)
+        : 0;
 
-      for (let i = 0; i < candidateCount; i++) {
-        if ((mask & (1 << i)) === 0) continue;
-        exhaustUnitIds.push(candidates[i].card.gamecardId);
-        if (difficulty === 'hard') {
-          const unit = candidates[i].card;
-          const baseUnitValue = scorePaymentExhaustValue(gameState, unit, profile, difficulty);
-          const cardValue = scoreCardValue(unit, profile);
-          const explicitPreserve = !!(
-            profile.preserveCardIds?.[unit.id] ||
-            profile.preserveCardIds?.[unit.uniqueId] ||
-            profile.preferredCardIds?.[unit.id] ||
-            profile.preferredCardIds?.[unit.uniqueId]
-          );
-          const newlyPlayed = unit.playedTurn === gameState.turnCount;
-          const highValueUnit = explicitPreserve || cardValue >= 34;
-          selectedUnitValue += defensePressure
-            ? baseUnitValue * 1.4 +
-              (unit.damage || 0) * 8 +
-              (unit.power || 0) / 600 +
-              (incomingThreat.defendersNeeded > 0 ? 22 : 0) +
-              (newlyPlayed ? 22 : 0) +
-              (explicitPreserve ? 24 : 0) +
-              (preserveBoardForPlan && highValueUnit ? 18 : 0) +
-              (preserveBoardForPlan ? (unit.damage || 0) * 6 : 0)
-            : baseUnitValue;
-          if (canDefendSoon(unit)) selectedReadyDefenders += 1;
+      for (let mask = 0; mask < (1 << candidateCount); mask++) {
+        const exhaustUnitIds: string[] = [];
+        let selectedUnitValue = 0;
+        let selectedMin = 0;
+        let selectedMax = 0;
+        let selectedReadyDefenders = 0;
+
+        for (let i = 0; i < candidateCount; i++) {
+          if ((mask & (1 << i)) === 0) continue;
+          exhaustUnitIds.push(candidates[i].card.gamecardId);
+          if (difficulty === 'hard') {
+            const unit = candidates[i].card;
+            const baseUnitValue = scorePaymentExhaustValue(gameState, unit, profile, difficulty);
+            const cardValue = scoreCardValue(unit, profile);
+            const explicitPreserve = !!(
+              profile.preserveCardIds?.[unit.id] ||
+              profile.preserveCardIds?.[unit.uniqueId] ||
+              profile.preferredCardIds?.[unit.id] ||
+              profile.preferredCardIds?.[unit.uniqueId]
+            );
+            const newlyPlayed = unit.playedTurn === gameState.turnCount;
+            const highValueUnit = explicitPreserve || cardValue >= 34;
+            selectedUnitValue += defensePressure
+              ? baseUnitValue * 1.4 +
+                (unit.damage || 0) * 8 +
+                (unit.power || 0) / 600 +
+                (incomingThreat.defendersNeeded > 0 ? 22 : 0) +
+                (newlyPlayed ? 22 : 0) +
+                (explicitPreserve ? 24 : 0) +
+                (preserveBoardForPlan && highValueUnit ? 18 : 0) +
+                (preserveBoardForPlan ? (unit.damage || 0) * 6 : 0)
+              : baseUnitValue;
+            if (canDefendSoon(unit)) selectedReadyDefenders += 1;
+          }
+          selectedMin += candidates[i].accessMin;
+          selectedMax += candidates[i].accessMax;
         }
-        selectedMin += candidates[i].accessMin;
-        selectedMax += candidates[i].accessMax;
-      }
 
-      if (selectedMin > remainingCost) continue;
-      if (defensePressure) {
-        const readyDefendersAfter = Math.max(0, readyDefendersBefore - selectedReadyDefenders);
-        const missingDefenders = Math.max(0, incomingThreat.defendersNeeded - readyDefendersAfter);
-        if (missingDefenders > 0) selectedUnitValue += missingDefenders * (incomingThreat.lethalWithoutBlocks ? 44 : 30);
-        if (incomingThreat.lethalThroughOneBlock && readyDefendersAfter < 2) selectedUnitValue += 28;
-        if (opponentPotentialDamage >= Math.max(4, 10 - ownErosion) && readyDefendersAfter === 0) selectedUnitValue += 36;
-        if (exhaustUnitIds.length >= 2) selectedUnitValue += (exhaustUnitIds.length - 1) * 12;
-      }
-      const remainingAfterUnits = Math.max(0, remainingCost - selectedMax);
-      if (remainingAfterUnits > player.deck.length) continue;
-      if (remainingAfterUnits > 0 && !canUseWindProduction && remainingAfterUnits >= 10 - totalErosion) continue;
+        if (selectedMin > remainingCost) continue;
+        if (defensePressure) {
+          const readyDefendersAfter = Math.max(0, readyDefendersBefore - selectedReadyDefenders);
+          const missingDefenders = Math.max(0, incomingThreat.defendersNeeded - readyDefendersAfter);
+          if (missingDefenders > 0) selectedUnitValue += missingDefenders * (incomingThreat.lethalWithoutBlocks ? 44 : 30);
+          if (incomingThreat.lethalThroughOneBlock && readyDefendersAfter < 2) selectedUnitValue += 28;
+          if (opponentPotentialDamage >= Math.max(4, 10 - ownErosion) && readyDefendersAfter === 0) selectedUnitValue += 36;
+          if (exhaustUnitIds.length >= 2) selectedUnitValue += (exhaustUnitIds.length - 1) * 12;
+        }
+        const remainingAfterUnits = Math.max(0, remainingCost - selectedMax);
+        if (remainingAfterUnits > player.deck.length) continue;
+        if (remainingAfterUnits > 0 && !canUseWindProduction && remainingAfterUnits >= 10 - totalErosion) continue;
 
-      const paymentScore = selectedUnitValue + remainingAfterUnits * deckPaymentWeight + exhaustUnitIds.length * 0.1;
-      if (
-        paymentScore < bestPaymentScore ||
-        (paymentScore === bestPaymentScore && remainingAfterUnits < bestRemaining) ||
-        (
-          paymentScore === bestPaymentScore &&
-          remainingAfterUnits === bestRemaining &&
-          selectedUnitValue === bestUnitValue &&
-          exhaustUnitIds.length < (bestSelection?.exhaustUnitIds?.length ?? Number.POSITIVE_INFINITY)
-        )
-      ) {
-        bestSelection = {
-          ...(feijingCard ? { feijingCardId: feijingCard.gamecardId } : {}),
-          ...(exhaustUnitIds.length ? { exhaustUnitIds } : {})
-        };
-        bestRemaining = remainingAfterUnits;
-        bestUnitValue = selectedUnitValue;
-        bestPaymentScore = paymentScore;
+        const paymentScore = feijingValue + selectedUnitValue + remainingAfterUnits * deckPaymentWeight + exhaustUnitIds.length * 0.1;
+        if (
+          paymentScore < bestPaymentScore ||
+          (paymentScore === bestPaymentScore && remainingAfterUnits < bestRemaining) ||
+          (
+            paymentScore === bestPaymentScore &&
+            remainingAfterUnits === bestRemaining &&
+            selectedUnitValue === bestUnitValue &&
+            exhaustUnitIds.length < (bestSelection?.exhaustUnitIds?.length ?? Number.POSITIVE_INFINITY)
+          )
+        ) {
+          bestSelection = {
+            ...(feijingCard ? { feijingCardId: feijingCard.gamecardId } : {}),
+            ...(exhaustUnitIds.length ? { exhaustUnitIds } : {})
+          };
+          bestRemaining = remainingAfterUnits;
+          bestUnitValue = selectedUnitValue;
+          bestPaymentScore = paymentScore;
+        }
       }
     }
 
     if (bestSelection) return bestSelection;
-    return feijingCard ? { feijingCardId: feijingCard.gamecardId } : {};
+    return {};
   },
 
   async botMove(gameState: GameState, onUpdate?: (state: GameState) => Promise<void>) {

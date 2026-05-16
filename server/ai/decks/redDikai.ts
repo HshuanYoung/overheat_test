@@ -11,7 +11,9 @@ export const redDikaiProfile: DeckAiProfile = {
     preferredEffectIds: {
       '102050432_reset_attack_unit': 10,
       '102050427_cannot_defend': 7,
+      '102050091_battle_save': 4,
       '102000146_exile_destroy': 5,
+      '102050087_destroy': 5,
       '202000035_destroy': 5,
       '202050034_destroy_god': 4,
       '102050089_damage_search': 3,

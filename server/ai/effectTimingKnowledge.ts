@@ -16,6 +16,7 @@ export type EffectTimingTag =
   | 'damage'
   | 'finisher'
   | 'combo'
+  | 'reset'
   | 'setup'
   | 'risk';
 
@@ -76,20 +77,80 @@ const MANUAL_EFFECT_TIMING_OVERRIDES: Record<string, {
     phaseBias: { MAIN: 7, BATTLE_FREE: -6, COUNTERING: -8 },
     reasons: ['hall reset is a main-phase sequencing tool'],
   },
+  '101130440_reset_boost': {
+    tags: ['resource', 'combat', 'buff'],
+    phaseBias: { BATTLE_DECLARATION: 5, BATTLE_FREE: 6, DAMAGE_CALCULATION: 5, MAIN: -2 },
+    reasons: ['magic spear reset boost should convert an attack/reset turn, not idle setup'],
+  },
+  '101130458_reset_silence': {
+    tags: ['tempo', 'resource'],
+    phaseBias: { MAIN: 5, BATTLE_DECLARATION: 4, BATTLE_FREE: 3, COUNTERING: 2 },
+    reasons: ['hero sword reset/silence should answer a meaningful unit or push a pressure turn'],
+  },
   '101140152_silence_god': {
     tags: ['tempo', 'removal'],
     phaseBias: { MAIN: 5, BATTLE_DECLARATION: 3, COUNTERING: 3 },
     reasons: ['silence should be saved for a meaningful god-mark threat'],
+  },
+  '201000059_prevent_destroy': {
+    tags: ['protection', 'combat', 'counter'],
+    phaseBias: { BATTLE_FREE: 9, COUNTERING: 9, MAIN: -9 },
+    reasons: ['prevent-destroy story is held for battle or chain protection'],
   },
   '201100037_eclipse': {
     tags: ['removal', 'combo', 'finisher'],
     phaseBias: { BATTLE_FREE: 12, MAIN: -10, COUNTERING: -8 },
     reasons: ['eclipse is best used in the protected smile alliance battle window'],
   },
+  'gensou_swallow_counter': {
+    tags: ['counter', 'protection', 'removal'],
+    phaseBias: { COUNTERING: 13, BATTLE_FREE: 4, MAIN: -14 },
+    reasons: ['fantasy swallow is a counter effect and should wait for a chain window'],
+  },
+  '204000145_counter_silence': {
+    tags: ['counter', 'tempo'],
+    phaseBias: { COUNTERING: 13, BATTLE_FREE: 4, MAIN: -14 },
+    reasons: ['counter silence is reserved for opposing effects or battle interaction'],
+  },
   '105110112_activate': {
     tags: ['draw', 'damage', 'removal'],
     phaseBias: { MAIN: 5, BATTLE_FREE: -5 },
     reasons: ['element instructor mode choice is a main-phase value/removal decision'],
+  },
+  '105120167_activate': {
+    tags: ['engine', 'resource', 'summon'],
+    phaseBias: { MAIN: 8, BATTLE_FREE: -8, COUNTERING: -9 },
+    reasons: ['great alchemist activation is a main-phase engine conversion'],
+  },
+  '105120168_activate': {
+    tags: ['engine', 'resource'],
+    phaseBias: { MAIN: 7, BATTLE_FREE: -7, COUNTERING: -9 },
+    reasons: ['alchemy knight activation should be sequenced in main phase'],
+  },
+  '205110042_activate': {
+    tags: ['resource', 'setup'],
+    phaseBias: { MAIN: 7, BATTLE_FREE: -8, COUNTERING: -9 },
+    reasons: ['re-prepare is setup and should not interrupt battle math'],
+  },
+  '305000018_replace_damage': {
+    tags: ['protection', 'counter'],
+    phaseBias: { COUNTERING: 10, BATTLE_FREE: 9, MAIN: -10 },
+    reasons: ['damage replacement barrier is held for incoming damage windows'],
+  },
+  '305110028_revive': {
+    tags: ['revive', 'summon', 'setup'],
+    phaseBias: { MAIN: 9, BATTLE_FREE: -9, COUNTERING: -10 },
+    reasons: ['memory doll revive is main-phase board development'],
+  },
+  '305110029_activate': {
+    tags: ['removal', 'damage'],
+    phaseBias: { MAIN: 5, BATTLE_DECLARATION: 2, BATTLE_FREE: 2 },
+    reasons: ['auto turret should fire only when damage/removal has a real target'],
+  },
+  '305120030_activate': {
+    tags: ['engine', 'resource'],
+    phaseBias: { MAIN: 9, BATTLE_FREE: -9, COUNTERING: -10 },
+    reasons: ['immortal alchemy cauldron is a main-phase engine activation'],
   },
   'aketi_play_from_erosion': {
     tags: ['resource', 'summon', 'setup'],
@@ -106,10 +167,100 @@ const MANUAL_EFFECT_TIMING_OVERRIDES: Record<string, {
     phaseBias: { MAIN: 6, BATTLE_FREE: -5 },
     reasons: ['blue support swap is a main-phase setup effect'],
   },
+  '104030459_swap_activate': {
+    tags: ['engine', 'tempo'],
+    phaseBias: { MAIN: 7, BATTLE_FREE: -6, COUNTERING: -8 },
+    reasons: ['treasure hunter swap is main-phase tempo setup'],
+  },
+  '304020009_activate': {
+    tags: ['engine', 'resource'],
+    phaseBias: { MAIN: 7, BATTLE_FREE: -8, COUNTERING: -9 },
+    reasons: ['trade scale value effect belongs in main sequencing'],
+  },
   '104020066_activate_1': {
     tags: ['engine', 'resource'],
     phaseBias: { MAIN: 6, BATTLE_FREE: -5 },
     reasons: ['merchant value effect belongs in main sequencing'],
+  },
+  '102050091_battle_save': {
+    tags: ['protection', 'combat'],
+    phaseBias: { BATTLE_FREE: 9, COUNTERING: 6, MAIN: -9 },
+    reasons: ['Dikai battle save protects an actual battle commitment'],
+  },
+  '102050427_cannot_defend': {
+    tags: ['tempo', 'finisher'],
+    phaseBias: { MAIN: 5, BATTLE_DECLARATION: 6, BATTLE_FREE: 4 },
+    reasons: ['cannot-defend effect is strongest when converting pressure into lethal damage'],
+  },
+  '102050432_reset_attack_unit': {
+    tags: ['reset', 'combat', 'finisher'],
+    phaseBias: { BATTLE_DECLARATION: 7, BATTLE_FREE: 8, DAMAGE_CALCULATION: 5, MAIN: 1 },
+    reasons: ['reset attack unit should extend an active red pressure turn'],
+  },
+  '102050087_destroy': {
+    tags: ['removal', 'tempo'],
+    phaseBias: { MAIN: 6, BATTLE_DECLARATION: 3, BATTLE_FREE: 3 },
+    reasons: ['ambush destroy should clear a relevant opposing unit'],
+  },
+  '202000035_destroy': {
+    tags: ['removal'],
+    phaseBias: { MAIN: 6, BATTLE_DECLARATION: 2, BATTLE_FREE: 2 },
+    reasons: ['beast subjugation is removal and needs a meaningful target'],
+  },
+  '202050034_destroy_god': {
+    tags: ['removal', 'tempo'],
+    phaseBias: { MAIN: 7, BATTLE_DECLARATION: 4, BATTLE_FREE: 3 },
+    reasons: ['fragment hunt is saved for god-mark or high-value threats'],
+  },
+  '103080184_totem_grant': {
+    tags: ['engine', 'resource', 'setup'],
+    phaseBias: { MAIN: 8, BATTLE_FREE: -8, COUNTERING: -9 },
+    reasons: ['totem grant is a main-phase recursion setup effect'],
+  },
+  '103080184_granted_totem_revive': {
+    tags: ['revive', 'summon'],
+    phaseBias: { MAIN: 7, BATTLE_FREE: -4 },
+    reasons: ['granted totem revive is board rebuilding, usually before combat'],
+  },
+  '103080211_rebirth': {
+    tags: ['revive', 'summon'],
+    phaseBias: { MAIN: 9, BATTLE_FREE: -8, COUNTERING: -9 },
+    reasons: ['wood rebirth should rebuild board in main phase'],
+  },
+  '103080212_plan': {
+    tags: ['engine', 'search', 'setup'],
+    phaseBias: { MAIN: 8, BATTLE_FREE: -8, COUNTERING: -9 },
+    reasons: ['totem planner searches/setup in main phase'],
+  },
+  '103080258_boost_return': {
+    tags: ['combat', 'buff', 'resource'],
+    phaseBias: { BATTLE_FREE: 7, DAMAGE_CALCULATION: 5, MAIN: -3 },
+    reasons: ['totem stun boost/return is a battle value effect'],
+  },
+  '203000051_destroy_except_highest': {
+    tags: ['removal', 'risk'],
+    phaseBias: { MAIN: 5, BATTLE_FREE: -3, COUNTERING: -8 },
+    reasons: ['survival story is board reset and should be checked before combat'],
+  },
+  '203000075_choice': {
+    tags: ['summon', 'revive', 'resource'],
+    phaseBias: { MAIN: 8, BATTLE_FREE: -8, COUNTERING: -9 },
+    reasons: ['earth spirit descent is main-phase board setup'],
+  },
+  '203000126_ritual': {
+    tags: ['revive', 'summon', 'setup'],
+    phaseBias: { MAIN: 9, BATTLE_FREE: -9, COUNTERING: -10 },
+    reasons: ['great shaman ritual is main-phase recursion setup'],
+  },
+  '203000129_trample': {
+    tags: ['combat', 'finisher'],
+    phaseBias: { BATTLE_FREE: 9, BATTLE_DECLARATION: 5, DAMAGE_CALCULATION: 5, MAIN: -7 },
+    reasons: ['overlord trample is a combat finisher, not main setup'],
+  },
+  '203080083_prepare': {
+    tags: ['search', 'resource', 'setup'],
+    phaseBias: { MAIN: 9, BATTLE_FREE: -9, COUNTERING: -10 },
+    reasons: ['descent preparation is main-phase setup/search'],
   },
 };
 
@@ -341,6 +492,16 @@ export function scoreEffectTimingWindow(
   const opponentErosion = opponent ? countErosion(opponent) : 0;
   const opponentDeck = opponent?.deck.length || 0;
   const ownErosion = countErosion(player);
+  const targetCount = context.targetCount || 0;
+  const hasTarget = !context.hasTargetSpec || targetCount > 0;
+  const hasBattleContext =
+    battleAttackers > 0 ||
+    phase === 'BATTLE_DECLARATION' ||
+    phase === 'DEFENSE_DECLARATION' ||
+    phase === 'DAMAGE_CALCULATION';
+  const closeByErosion = opponentErosion >= 7;
+  const closeByDeck = opponentDeck <= Math.max(4, ownReadyAttackers + 2);
+  const closeToWin = !!opponent && (closeByErosion || closeByDeck);
   const notes: string[] = [];
 
   let score = timing.phaseBias[phase] || 0;
@@ -363,11 +524,41 @@ export function scoreEffectTimingWindow(
     if (battleAttackers > 0 && tags.has('setup') && !tags.has('combat') && !tags.has('removal') && !tags.has('protection')) {
       score -= 8 + battleAttackers * 2;
     }
+    if (
+      battleAttackers === 0 &&
+      (tags.has('combat') || tags.has('buff') || tags.has('protection') || tags.has('counter') || tags.has('finisher')) &&
+      !tags.has('combo')
+    ) {
+      score -= 10;
+    }
   }
 
   if (phase === 'COUNTERING') {
     if (tags.has('counter') || tags.has('protection') || tags.has('tempo')) score += 6;
     if (tags.has('setup') && !tags.has('counter')) score -= 10;
+  }
+
+  if (tags.has('counter')) {
+    const validCounterWindow = phase === 'COUNTERING' || (phase === 'BATTLE_FREE' && battleAttackers > 0);
+    if (validCounterWindow) score += 5;
+    else score -= 12;
+  }
+
+  if (tags.has('protection')) {
+    const validProtectionWindow = phase === 'COUNTERING' || hasBattleContext;
+    if (validProtectionWindow) score += 3;
+    else score -= 8;
+  }
+
+  if (
+    (tags.has('draw') || tags.has('search') || tags.has('engine') || tags.has('resource') || tags.has('summon') || tags.has('revive')) &&
+    (phase === 'BATTLE_FREE' || phase === 'COUNTERING') &&
+    !tags.has('combo') &&
+    !tags.has('counter') &&
+    !tags.has('combat') &&
+    !tags.has('protection')
+  ) {
+    score -= phase === 'COUNTERING' ? 14 : 8;
   }
 
   if ((tags.has('draw') || tags.has('search')) && phase === 'MAIN') {
@@ -376,21 +567,33 @@ export function scoreEffectTimingWindow(
   }
 
   if ((tags.has('removal') || tags.has('tempo')) && context.hasTargetSpec) {
-    score += context.targetCount && context.targetCount > 0 ? Math.min(5, context.targetCount * 1.5) : -8;
+    score += hasTarget ? Math.min(5, targetCount * 1.5) : -12;
   }
 
   if ((tags.has('removal') || tags.has('tempo')) && opponentUnits === 0) {
-    score -= 4;
+    score -= hasTarget ? 4 : 8;
   }
 
   if ((tags.has('combat') || tags.has('buff')) && phase === 'MAIN' && ownReadyAttackers === 0) {
     score -= 4;
   }
 
+  if (
+    (tags.has('combat') || tags.has('buff') || tags.has('finisher')) &&
+    !hasBattleContext &&
+    !closeToWin &&
+    !tags.has('setup') &&
+    !tags.has('combo')
+  ) {
+    score -= 8;
+  }
+
   if ((tags.has('damage') || tags.has('finisher') || tags.has('combat')) && opponent) {
-    const closeByErosion = opponentErosion >= 7;
-    const closeByDeck = opponentDeck <= Math.max(4, ownReadyAttackers + 2);
-    if (closeByErosion || closeByDeck) score += 5;
+    if (closeToWin) score += 5;
+  }
+
+  if ((tags.has('tempo') || tags.has('removal')) && closeToWin && hasTarget) {
+    score += 4;
   }
 
   if (tags.has('risk') && phase !== 'MAIN' && !tags.has('finisher')) {

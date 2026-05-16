@@ -11,6 +11,7 @@ export const overlordTotemProfile: DeckAiProfile = {
     preferredEffectIds: {
       '103080211_rebirth': 9,
       '103080212_plan': 7,
+      '103080184_totem_grant': 8,
       '103080184_granted_totem_revive': 8,
       '103080183_destroy': 5,
       '103080258_boost_return': 4,
@@ -18,6 +19,7 @@ export const overlordTotemProfile: DeckAiProfile = {
       '103090180_ten_revive': 8,
       '203000075_choice': 8,
       '203000076_spirit_boost': 6,
+      '203000051_destroy_except_highest': 5,
       '203000126_ritual': 8,
       '203080083_prepare': 7,
       '203000129_trample': 5,

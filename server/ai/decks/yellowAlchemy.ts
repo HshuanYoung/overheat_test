@@ -17,8 +17,10 @@ export const yellowAlchemyProfile: DeckAiProfile = {
       '305120030_activate': 7,
       '105110112_activate': 5,
       '105110108_activate': 4,
+      '205110042_activate': 3,
+      '305000018_replace_damage': 3,
+      '305110028_revive': 6,
       '305110029_activate': 3,
-      '205110042_activate': 2,
     },
     avoidEffectIds: {
       '105120167_last_resort': 20,
