@@ -11,6 +11,9 @@ import { generateToken, verifyToken } from './auth';
 import { initServerCardLibrary, SERVER_CARD_LIBRARY } from './card_loader';
 import { getLiveCardVariations } from './card_inventory';
 import { isCardVisibleInCatalog } from '../src/lib/cardCatalogFilters';
+import { decodeDeckShareCode } from '../src/lib/deckShareCode';
+import { AI_DECK_PROFILES } from './ai/deckProfiles';
+import { saveAiMatchSample } from './ai/liveMatchSamples';
 import {
     createVerificationCode,
     getVerificationCodeExpireMs,
@@ -152,6 +155,46 @@ async function validateUserDeck(uId: string, dId: string): Promise<{ valid: bool
     } catch (err) {
         // console.error('Validate deck error:', err);
         return { valid: false, error: '数据库错误' };
+    }
+}
+
+function getServerCatalogRefs() {
+    return [...new Set(
+        Object.values(SERVER_CARD_LIBRARY)
+            .map(card => card?.uniqueId)
+            .filter((ref): ref is string => !!ref)
+    )].sort((a, b) => a.localeCompare(b));
+}
+
+function resolveAiOpponentDeck(profileId?: string): { valid: boolean; profileId?: string; displayName?: string; cards?: Card[]; error?: string } {
+    const profile = AI_DECK_PROFILES.find(candidate => candidate.id === profileId) || AI_DECK_PROFILES[0];
+    if (!profile?.shareCode) {
+        return { valid: false, error: '未找到可用的人机卡组' };
+    }
+
+    try {
+        const refs = decodeDeckShareCode(profile.shareCode, getServerCatalogRefs());
+        const cards = refs
+            .map(ref => SERVER_CARD_LIBRARY[ref])
+            .filter((card): card is Card => !!card);
+        if (cards.length !== refs.length) {
+            return { valid: false, error: `${profile.displayName} 包含服务器未找到的卡牌` };
+        }
+
+        const validation = ServerGameService.validateDeck(cards);
+        if (!validation.valid) {
+            return { valid: false, error: `${profile.displayName} 卡组不合法：${validation.error}` };
+        }
+
+        return {
+            valid: true,
+            profileId: profile.id,
+            displayName: profile.displayName,
+            cards,
+        };
+    } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        return { valid: false, error: `${profile.displayName} 分享码解析失败：${message}` };
     }
 }
 
@@ -856,6 +899,14 @@ async function syncAndSaveState(gameId: string, gameState: any) {
         lastSyncedLogIndex.set(gameId, MAX_DB_LOGS);
     }
 
+    if (gameState.gameStatus === 2) {
+        try {
+            await saveAiMatchSample(gameState, gameId, history);
+        } catch (err) {
+            console.error(`[AI Sample] Failed to save sample for ${gameId}:`, err);
+        }
+    }
+
     // 5. Persist the pruned state to MariaDB
     await pool.query('UPDATE games SET state = ? WHERE id = ?', [JSON.stringify(gameState), gameId]);
 
@@ -1231,18 +1282,37 @@ app.post('/api/games/practice', async (req, res): Promise<void> => {
     if (!user) { return; }
 
     const { deckId, turnTimerLimit } = req.body;
+    const botDifficulty = req.body?.botDifficulty === 'hard' ? 'hard' : 'simple';
+    const requestedBotDeckProfileId = typeof req.body?.botDeckProfileId === 'string' ? req.body.botDeckProfileId : undefined;
     if (!deckId) { res.status(400).json({ error: '请选择卡组' }); return; }
 
     try {
         const validation = await validateUserDeck(user.userId, deckId);
         if (!validation.valid) { res.status(400).json({ error: validation.error }); return; }
 
+        const aiOpponentDeck = botDifficulty === 'hard'
+            ? resolveAiOpponentDeck(requestedBotDeckProfileId)
+            : undefined;
+        if (aiOpponentDeck && !aiOpponentDeck.valid) {
+            res.status(400).json({ error: aiOpponentDeck.error || '人机卡组不可用' });
+            return;
+        }
+
         const gameId = 'practice_' + Math.random().toString(36).substring(2, 9);
-        const gameState = await ServerGameService.createPracticeGameState(validation.cards!, user.userId, user.displayName, turnTimerLimit);
+        const gameState = await ServerGameService.createPracticeGameState(
+            validation.cards!,
+            user.userId,
+            user.displayName,
+            turnTimerLimit,
+            botDifficulty,
+            aiOpponentDeck?.profileId,
+            aiOpponentDeck?.cards
+        );
         gameState.gameId = gameId;
+        ServerGameService.applyHardAiSoftOpeningCompensation(gameState, 'BOT_PLAYER');
 
         await pool.query('INSERT INTO games (id, state, status) VALUES (?, ?, 0)', [gameId, JSON.stringify(gameState)]);
-        res.json({ gameId });
+        res.json({ gameId, botDeckProfileId: aiOpponentDeck?.profileId, botDeckName: aiOpponentDeck?.displayName });
     } catch (err) {
         console.error('Create practice game error:', err);
         res.status(500).json({ error: 'Internal server error' });
@@ -1717,6 +1787,7 @@ app.post('/api/games', async (req, res): Promise<void> => {
 
     try {
         const mode = req.body?.practice ? 'practice' : 'match';
+        const botDifficulty = req.body?.botDifficulty === 'hard' ? 'hard' : 'simple';
         const prefix = mode === 'practice' ? 'practice_' : 'match_';
         const gameId = prefix + Math.random().toString(36).substring(2, 9);
         const initialState = {
@@ -1728,6 +1799,7 @@ app.post('/api/games', async (req, res): Promise<void> => {
             currentTurnPlayer: 0,
             logs: [],
             mode,
+            botDifficulty: mode === 'practice' ? botDifficulty : undefined,
             counterStack: [],
             isCountering: 0,
             effectUsage: {}
@@ -2641,6 +2713,7 @@ io.on('connection', (socket) => {
                                 const botPlayer = createInitialPlayer(deckCards, '机器人', !isFirst, gameState.turnTimerLimit);
                                 botPlayer.uid = 'BOT_PLAYER';
                                 botPlayer.mulliganDone = true;
+                                botPlayer.botDifficulty = gameState.botDifficulty === 'hard' ? 'hard' : 'simple';
                                 gameState.players['BOT_PLAYER'] = botPlayer;
                             }
 

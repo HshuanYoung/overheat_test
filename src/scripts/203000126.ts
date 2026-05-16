@@ -7,6 +7,7 @@ const cardEffects: CardEffect[] = [story('203000126_ritual', '同名1回合1次�
     nameContains(card, '霸者') &&
     canPutUnitOntoBattlefield(playerState, card)
   );
+  if (candidates.length === 0) return;
   gameState.pendingQuery = {
     id: Math.random().toString(36).substring(7),
     type: 'SELECT_CARD',

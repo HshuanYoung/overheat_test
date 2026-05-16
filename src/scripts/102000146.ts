@@ -1,5 +1,5 @@
 import { Card, CardEffect } from '../types/game';
-import { AtomicEffectExecutor, createSelectCardQuery, destroyByEffect, erosionCost, getOpponentUid, isNonGodUnit, moveCard, ownUnits } from './BaseUtil';
+import { AtomicEffectExecutor, createSelectCardQuery, destroyByEffect, erosionCost, faceUpErosion, getOpponentUid, isNonGodUnit, moveCard, ownUnits } from './BaseUtil';
 
 const cardEffects: CardEffect[] = [{
   id: '102000146_exile_destroy',
@@ -10,7 +10,9 @@ const cardEffects: CardEffect[] = [{
   description: '将这个单位放逐并侵蚀1：选择对手1个非神蚀单位破坏。',
   condition: (gameState, playerState, instance) => {
     const opponent = gameState.players[getOpponentUid(gameState, playerState.uid)];
-    return instance.cardlocation === 'UNIT' && ownUnits(opponent).some(isNonGodUnit);
+    return instance.cardlocation === 'UNIT' &&
+      faceUpErosion(playerState).length >= 1 &&
+      ownUnits(opponent).some(isNonGodUnit);
   },
   cost: erosionCost(1),
   execute: async (instance, gameState, playerState) => {
