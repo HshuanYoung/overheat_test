@@ -617,19 +617,53 @@ async function testHardAiChoosesConfrontationFieldEffect(): Promise<ScenarioResu
 
 function testPreventDestroyWaitsForThreatWindow(): ScenarioResult {
   const profile = getDeckAiProfile('white-temple');
-  const defender = unit({ id: 'PROTECTED_UNIT', damage: 2, power: 3000, playedTurn: 1 });
+  const protectedUnit = unit({ id: '101000501', fullName: 'White Tiger', damage: 2, power: 3500, godMark: true, playedTurn: 1 });
+  const lowValueUnit = unit({ id: 'LOW_VALUE_PROTECTED_UNIT', damage: 1, power: 1000, playedTurn: 1 });
   const attacker = unit({ id: 'THREAT_ATTACKER', damage: 2, power: 3500 });
+  const lowAttacker = unit({ id: 'LOW_THREAT_ATTACKER', damage: 1, power: 2500 });
   const preventEffect = effect({
     id: '201000059_prevent_destroy',
     description: 'prevent destroy and protect unit during battle',
     content: 'PREVENT_DESTROY PROTECT COMBAT',
+    targetSpec: {
+      title: 'choose protected unit',
+      description: 'choose your unit to prevent next destroy',
+      minSelections: 1,
+      maxSelections: 1,
+      zones: ['UNIT'],
+      controller: 'SELF',
+    },
   });
   const preventStory = story({ id: '201000059', fullName: 'Prevent Destroy Story', effects: [preventEffect] });
-  const mainState = game({ hand: [preventStory], unitZone: [defender, null, null, null, null, null] }, {}, { phase: 'MAIN' });
-  const battleState = game(
-    { hand: [preventStory], unitZone: [defender, null, null, null, null, null] },
+  const mainState = game({ hand: [preventStory], unitZone: [protectedUnit, null, null, null, null, null] }, {}, { phase: 'MAIN' });
+  const noThreatBattleState = game(
+    { hand: [preventStory], unitZone: [protectedUnit, null, null, null, null, null] },
     { unitZone: [attacker, null, null, null, null, null] },
-    { phase: 'BATTLE_FREE', battleState: { attackers: [defender.gamecardId] } }
+    { phase: 'BATTLE_FREE', battleState: { attackers: [protectedUnit.gamecardId] } }
+  );
+  const lowThreatBattleState = game(
+    { hand: [preventStory], unitZone: [lowValueUnit, null, null, null, null, null] },
+    { unitZone: [lowAttacker, null, null, null, null, null] },
+    {
+      phase: 'BATTLE_FREE',
+      battleState: {
+        attackers: [lowValueUnit.gamecardId],
+        defender: lowAttacker.gamecardId,
+        resolvedUnitIds: [],
+      },
+    }
+  );
+  const highThreatBattleState = game(
+    { hand: [preventStory], unitZone: [protectedUnit, null, null, null, null, null] },
+    { unitZone: [attacker, null, null, null, null, null] },
+    {
+      phase: 'BATTLE_FREE',
+      battleState: {
+        attackers: [protectedUnit.gamecardId],
+        defender: attacker.gamecardId,
+        resolvedUnitIds: [],
+      },
+    }
   );
   const mainScore = scoreActivatableEffect(
     mainState,
@@ -639,18 +673,160 @@ function testPreventDestroyWaitsForThreatWindow(): ScenarioResult {
     profile,
     { opponent: mainState.players.P1, targetCount: 1, hasTargetSpec: true }
   ).score;
-  const battleScore = scoreActivatableEffect(
-    battleState,
-    battleState.players.BOT,
+  const noThreatBattleScore = scorePlayableCard(
+    noThreatBattleState,
+    noThreatBattleState.players.BOT,
     preventStory as any,
-    preventEffect as any,
-    profile,
-    { opponent: battleState.players.P1, targetCount: 1, hasTargetSpec: true }
-  ).score;
+    profile
+  );
+  const lowThreatBattleScore = scorePlayableCard(
+    lowThreatBattleState,
+    lowThreatBattleState.players.BOT,
+    preventStory as any,
+    profile
+  );
+  const highThreatBattleScore = scorePlayableCard(
+    highThreatBattleState,
+    highThreatBattleState.players.BOT,
+    preventStory as any,
+    profile
+  );
   return assertScenario(
-    'prevent-destroy story waits for real threat window',
-    mainScore < 0 && battleScore > 20 && battleScore > mainScore + 35,
-    `main=${mainScore.toFixed(1)}, battle=${battleScore.toFixed(1)}`
+    'prevent-destroy story waits for high-value destruction threat',
+    mainScore < 0 &&
+      noThreatBattleScore < 18 &&
+      lowThreatBattleScore < 18 &&
+      highThreatBattleScore > 35 &&
+      highThreatBattleScore > lowThreatBattleScore + 45,
+    `main=${mainScore.toFixed(1)}, noThreat=${noThreatBattleScore.toFixed(1)}, lowThreat=${lowThreatBattleScore.toFixed(1)}, highThreat=${highThreatBattleScore.toFixed(1)}`
+  );
+}
+
+async function testPreventDestroyConfrontationRequiresHighValueThreat(): Promise<ScenarioResult> {
+  const preventEffect = effect({
+    id: '201000059_prevent_destroy',
+    description: 'prevent destroy and protect unit during battle',
+    content: 'PREVENT_DESTROY PROTECT COMBAT',
+    targetSpec: {
+      title: 'choose protected unit',
+      description: 'choose your unit to prevent next destroy',
+      minSelections: 1,
+      maxSelections: 1,
+      zones: ['UNIT'],
+      controller: 'SELF',
+    },
+  });
+  const noThreatStory = story({ id: '201000059', fullName: 'Prevent Destroy Story', effects: [preventEffect] });
+  const noThreatUnit = unit({ id: '101000501', fullName: 'White Tiger', damage: 2, power: 3500, godMark: true });
+  const noThreatState = game(
+    { hand: [noThreatStory], unitZone: [noThreatUnit, null, null, null, null, null], botDifficulty: 'hard', botDeckProfileId: 'white-temple' },
+    {},
+    {
+      phase: 'COUNTERING',
+      previousPhase: 'BATTLE_FREE',
+      priorityPlayerId: 'BOT',
+      botDifficulty: 'hard',
+      counterStack: [{ type: 'PHASE_END', ownerUid: 'P1', timestamp: Date.now() }],
+    }
+  );
+
+  const destroyEffect = effect({
+    id: 'opponent_destroy_unit',
+    type: 'ACTIVATE',
+    description: 'destroy target unit',
+    content: 'DESTROY_UNIT',
+  });
+  const opponentSource = unit({ id: 'OPP_DESTROY_SOURCE', color: 'RED', effects: [destroyEffect] });
+  const threatenedUnit = unit({ id: '101000501', fullName: 'White Tiger', damage: 2, power: 3500, godMark: true });
+  const threatStory = story({ id: '201000059', fullName: 'Prevent Destroy Story', effects: [preventEffect] });
+  const threatState = game(
+    { hand: [threatStory], unitZone: [threatenedUnit, null, null, null, null, null], botDifficulty: 'hard', botDeckProfileId: 'white-temple' },
+    { unitZone: [opponentSource, null, null, null, null, null] },
+    {
+      phase: 'COUNTERING',
+      previousPhase: 'BATTLE_FREE',
+      priorityPlayerId: 'BOT',
+      botDifficulty: 'hard',
+      counterStack: [{
+        type: 'EFFECT',
+        ownerUid: 'P1',
+        card: opponentSource,
+        effectIndex: 0,
+        declaredTargets: [{
+          gamecardId: threatenedUnit.gamecardId,
+          ownerUid: 'BOT',
+          zone: 'UNIT',
+          sourceCardId: opponentSource.gamecardId,
+          sourceCardName: opponentSource.fullName,
+          effectIndex: 0,
+        }],
+        timestamp: Date.now(),
+      }],
+    }
+  );
+
+  const noThreatScore = ServerGameService.getBotStoryPlayCandidates(noThreatState, 'BOT')[0]?.score ?? -999;
+  const noThreatUsed = await ServerGameService.tryUseBotConfrontationAction(noThreatState, 'BOT', 18);
+  const threatScore = ServerGameService.getBotStoryPlayCandidates(threatState, 'BOT')[0]?.score ?? -999;
+  const threatUsed = await ServerGameService.tryUseBotConfrontationAction(threatState, 'BOT', 18);
+
+  return assertScenario(
+    'prevent-destroy confrontation story requires high-value destruction threat',
+    noThreatScore < 18 && !noThreatUsed && threatScore >= 18 && threatUsed && threatState.pendingQuery?.callbackKey === 'DECLARE_EFFECT_TARGETS',
+    `noThreat=${noThreatScore.toFixed(1)}, noThreatUsed=${noThreatUsed}, threat=${threatScore.toFixed(1)}, threatUsed=${threatUsed}, query=${threatState.pendingQuery?.callbackKey}`
+  );
+}
+
+function testPreventDestroySelectsThreatenedHighValueUnit(): ScenarioResult {
+  const profile = getDeckAiProfile('white-temple');
+  const threatened = unit({ id: '101130440', fullName: 'Threatened Magic Spear', damage: 2, power: 3200, playedTurn: 1 });
+  const decoyCore = unit({ id: '101000501', fullName: 'White Tiger Decoy', damage: 3, power: 5000, godMark: true, playedTurn: 1 });
+  const destroyEffect = effect({
+    id: 'opponent_destroy_unit',
+    type: 'ACTIVATE',
+    description: 'destroy target unit',
+    content: 'DESTROY_UNIT',
+  });
+  const opponentSource = unit({ id: 'OPP_DESTROY_SOURCE', color: 'RED', effects: [destroyEffect] });
+  const state = game(
+    { unitZone: [threatened, decoyCore, null, null, null, null], botDeckProfileId: 'white-temple' },
+    { unitZone: [opponentSource, null, null, null, null, null] },
+    {
+      phase: 'COUNTERING',
+      priorityPlayerId: 'BOT',
+      counterStack: [{
+        type: 'EFFECT',
+        ownerUid: 'P1',
+        card: opponentSource,
+        effectIndex: 0,
+        declaredTargets: [{
+          gamecardId: threatened.gamecardId,
+          ownerUid: 'BOT',
+          zone: 'UNIT',
+          sourceCardId: opponentSource.gamecardId,
+          sourceCardName: opponentSource.fullName,
+          effectIndex: 0,
+        }],
+        timestamp: Date.now(),
+      }],
+    }
+  );
+  const query = {
+    type: 'SELECT_CARD',
+    options: [
+      { card: decoyCore, source: 'UNIT', isMine: true },
+      { card: threatened, source: 'UNIT', isMine: true },
+    ],
+    minSelections: 1,
+    maxSelections: 1,
+    callbackKey: 'DECLARE_EFFECT_TARGETS',
+    context: { effectId: '201000059_prevent_destroy' },
+  };
+  const selected = chooseQuerySelections(state, 'BOT', query as any, profile, 'hard');
+  return assertScenario(
+    'prevent-destroy target selection follows the explicit destruction threat',
+    selected[0] === threatened.gamecardId,
+    `selected=${selected[0]}, threatened=${threatened.gamecardId}, decoy=${decoyCore.gamecardId}`
   );
 }
 
@@ -1340,6 +1516,8 @@ const scenarios: ScenarioRun[] = [
   testHardAiPassesLowValueConfrontationStory,
   testHardAiChoosesConfrontationFieldEffect,
   testPreventDestroyWaitsForThreatWindow,
+  testPreventDestroyConfrontationRequiresHighValueThreat,
+  testPreventDestroySelectsThreatenedHighValueUnit,
   testRedCannotDefendNeedsTargetInClosingWindow,
   testYellowReviveMainPhaseNotBattleSetup,
   testTotemPrepareStoryMainNotBattleFiller,
