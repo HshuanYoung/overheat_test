@@ -3,6 +3,36 @@ import { AtomicEffectExecutor } from '../services/AtomicEffectExecutor';
 import { canPayAccessCost, canPutItemOntoBattlefield, createChoiceQuery, createSelectCardQuery, revealDeckCards } from './BaseUtil';
 import { moveCard } from './BaseUtil';
 
+const canMeetColorRequirement = (playerState: any, card: Card) => {
+  const availableColors: Record<string, number> = { RED: 0, WHITE: 0, YELLOW: 0, BLUE: 0, GREEN: 0, NONE: 0 };
+  let omniColorCount = 0;
+
+  playerState.unitZone.forEach((unit: Card | null) => {
+    if (!unit) return;
+    const isOmni = String(unit.id) === '105000481' || unit.effects?.some(effect => effect.id === '105000481_omni');
+    if (isOmni) {
+      omniColorCount += 1;
+      return;
+    }
+    if (unit.color !== 'NONE') {
+      availableColors[unit.color] = (availableColors[unit.color] || 0) + 1;
+    }
+  });
+
+  let totalDeficit = 0;
+  for (const [color, reqCount] of Object.entries(card.colorReq || {})) {
+    totalDeficit += Math.max(0, Number(reqCount) - (availableColors[color] || 0));
+  }
+
+  return totalDeficit <= omniColorCount;
+};
+
+const canUseErosionItem = (gameState: any, playerState: any, card: Card) =>
+  card.type === 'ITEM' &&
+  canPutItemOntoBattlefield(playerState, card) &&
+  canMeetColorRequirement(playerState, card) &&
+  canPayAccessCost(gameState, playerState, card.acValue || 0, undefined, card);
+
 const effect_105110113_continuous: CardEffect = {
   id: '105110113_continuous',
   type: 'CONTINUOUS',
@@ -36,11 +66,11 @@ const effect_105110113_use_erosion_item: CardEffect = {
     gameState.phase === 'MAIN' &&
     instance.cardlocation === 'UNIT' &&
     playerState.erosionFront.some(
-      (card): card is Card => !!card && card.type === 'ITEM' && canPutItemOntoBattlefield(playerState, card) && canPayAccessCost(gameState, playerState, card.acValue || 0, undefined, card)
+      (card): card is Card => !!card && canUseErosionItem(gameState, playerState, card)
     ),
   execute: async (instance, gameState, playerState) => {
     const targets = playerState.erosionFront.filter(
-      (card): card is Card => !!card && card.type === 'ITEM' && canPutItemOntoBattlefield(playerState, card) && canPayAccessCost(gameState, playerState, card.acValue || 0, undefined, card)
+      (card): card is Card => !!card && canUseErosionItem(gameState, playerState, card)
     );
     if (targets.length === 0) return;
 
@@ -65,7 +95,7 @@ const effect_105110113_use_erosion_item: CardEffect = {
       const target = AtomicEffectExecutor.findCardById(gameState, selections[0]);
       if (!target || target.cardlocation !== 'EROSION_FRONT' || target.type !== 'ITEM') return;
 
-      if (!canPutItemOntoBattlefield(playerState, target)) return;
+      if (!canUseErosionItem(gameState, playerState, target)) return;
 
       if ((target.acValue || 0) > 0) {
         gameState.pendingQuery = {
@@ -109,7 +139,7 @@ const effect_105110113_use_erosion_item: CardEffect = {
 
     const target = AtomicEffectExecutor.findCardById(gameState, context.targetId);
     if (!target || target.cardlocation !== 'EROSION_FRONT' || target.type !== 'ITEM') return;
-    if (!canPutItemOntoBattlefield(playerState, target)) return;
+    if (!canUseErosionItem(gameState, playerState, target)) return;
 
     await AtomicEffectExecutor.execute(
       gameState,
