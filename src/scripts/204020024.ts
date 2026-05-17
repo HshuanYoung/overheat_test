@@ -1,5 +1,6 @@
 import { Card, GameState, PlayerState, CardEffect } from '../types/game';
 import { AtomicEffectExecutor } from '../services/AtomicEffectExecutor';
+import { standardizeChoiceOptions } from './BaseUtil';
 
 const effect_204020024_activate: CardEffect = {
   id: '204020024_activate',
@@ -50,21 +51,23 @@ const effect_204020024_activate: CardEffect = {
       return;
     }
 
+    const choiceContext = {
+      sourceCardId: instance.gamecardId,
+      effectId: '204020024_activate',
+      step: 'CHOICE'
+    };
+
     gameState.pendingQuery = {
       id: Math.random().toString(36).substring(7),
       type: 'SELECT_CHOICE',
       playerUid: playerState.uid,
-      options: choiceOptions,
+      options: standardizeChoiceOptions(gameState, choiceOptions, choiceContext),
       title: '请选择发动模式',
       description: 'a. 横置非神位单位 | b. 回手横置非神位卡牌',
       minSelections: 1,
       maxSelections: 1,
       callbackKey: 'EFFECT_RESOLVE',
-      context: {
-        sourceCardId: instance.gamecardId,
-        effectId: '204020024_activate',
-        step: 'CHOICE'
-      }
+      context: choiceContext
     };
   },
   onQueryResolve: async (instance: Card, gameState: GameState, playerState: PlayerState, selections: string[], context: any) => {

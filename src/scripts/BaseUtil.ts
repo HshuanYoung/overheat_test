@@ -5,6 +5,18 @@ import { EventEngine } from '../services/EventEngine';
 
 const VIRTUAL_GOD_MARK_IDS = new Set(['105000472', '105000473']);
 
+export type ChoiceOptionInput = {
+  id?: string;
+  value?: string;
+  sourceCardNo?: string;
+  optionCode?: string;
+  label?: string;
+  icon?: string;
+  detail?: string;
+  disabled?: boolean;
+  disabledReason?: string;
+};
+
 export const getOpponentUid = (gameState: GameState, playerUid: string) =>
   Object.keys(gameState.players).find(uid => uid !== playerUid)!;
 
@@ -272,19 +284,67 @@ export const createSelectCardQuery = (
   };
 };
 
+export const choiceOptionCode = (index: number) => {
+  let value = Math.max(0, index);
+  let code = '';
+
+  do {
+    code = String.fromCharCode(65 + (value % 26)) + code;
+    value = Math.floor(value / 26) - 1;
+  } while (value >= 0);
+
+  return code;
+};
+
+export const getChoiceSourceCardNo = (
+  gameState: GameState,
+  context?: any,
+  fallbackCardNo = 'SYSTEM'
+) => {
+  if (context?.sourceCardNo) return String(context.sourceCardNo);
+
+  const sourceCardId = context?.sourceCardId || context?.cardId || context?.subCardId;
+  const sourceCard = sourceCardId ? AtomicEffectExecutor.findCardById(gameState, sourceCardId) : undefined;
+
+  return sourceCard?.id || fallbackCardNo;
+};
+
+export const standardizeChoiceOptions = (
+  gameState: GameState,
+  options: ChoiceOptionInput[],
+  context?: any,
+  fallbackCardNo?: string
+) => {
+  const querySourceCardNo = getChoiceSourceCardNo(gameState, context, fallbackCardNo);
+
+  return options.map((option, index) => {
+    const sourceCardNo = option.sourceCardNo || querySourceCardNo;
+    const optionCode = option.optionCode || choiceOptionCode(index);
+    const value = option.value ?? option.id ?? option.label ?? optionCode;
+
+    return {
+      ...option,
+      id: `${sourceCardNo}_option_${optionCode}`,
+      value: String(value),
+      sourceCardNo,
+      optionCode
+    };
+  });
+};
+
 export const createChoiceQuery = (
   gameState: GameState,
   playerUid: string,
   title: string,
   description: string,
-  options: { id: string; label: string }[],
+  options: ChoiceOptionInput[],
   context: any
 ) => {
   gameState.pendingQuery = {
     id: Math.random().toString(36).substring(7),
     type: 'SELECT_CHOICE',
     playerUid,
-    options,
+    options: standardizeChoiceOptions(gameState, options, context),
     title,
     description,
     minSelections: 1,

@@ -1,5 +1,6 @@
 import { Card, GameState, PlayerState, CardEffect, TriggerLocation } from '../types/game';
 import { AtomicEffectExecutor } from '../services/AtomicEffectExecutor';
+import { standardizeChoiceOptions } from './BaseUtil';
 
 const effect_204000025_activation: CardEffect = {
   id: 'kaguya_flowering_silence',
@@ -152,20 +153,24 @@ const effect_204000025_activation: CardEffect = {
           }
           gameState.logs.push(`[${instance.fullName}] 封印了 [${target.fullName}] 的“启”效果。`);
         } else if (activateEffects.length > 1) {
+          const choiceContext = {
+            effectId: 'kaguya_flowering_silence',
+            sourceCardId: instance.gamecardId,
+            targetId,
+            step: 'SELECT_EFFECT'
+          };
+
           gameState.pendingQuery = {
             id: Math.random().toString(36).substring(7),
             type: 'SELECT_CHOICE',
             playerUid: playerState.uid,
-            options: activateEffects.map(e => ({ id: e.id, label: e.description })),
+            options: standardizeChoiceOptions(gameState, activateEffects.map(e => ({ id: e.id, label: e.description })), choiceContext),
             title: '选择效果',
             description: '请选择要封印的“启”效果。',
+            minSelections: 1,
+            maxSelections: 1,
             callbackKey: 'EFFECT_RESOLVE',
-            context: {
-              effectId: 'kaguya_flowering_silence',
-              sourceCardId: instance.gamecardId,
-              targetId,
-              step: 'SELECT_EFFECT'
-            }
+            context: choiceContext
           };
         }
       }

@@ -411,6 +411,9 @@ export interface EffectQuery {
   playerUid: string;
   options: {
     id?: string;
+    value?: string;
+    sourceCardNo?: string;
+    optionCode?: string;
     label?: string;
     icon?: string;
     detail?: string;

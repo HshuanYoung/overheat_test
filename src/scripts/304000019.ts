@@ -1,6 +1,7 @@
 import { Card, GameState, PlayerState, CardEffect } from '../types/game';
 import { AtomicEffectExecutor } from '../services/AtomicEffectExecutor';
 import { EventEngine } from '../services/EventEngine';
+import { standardizeChoiceOptions } from './BaseUtil';
 import { canPayAccessCost, canPutItemOntoBattlefield } from './BaseUtil';
 
 const isNonCombat = (gameState: GameState, cardId: string) => {
@@ -174,20 +175,22 @@ const handActivationEffect: CardEffect = {
         return;
       }
 
+      const choiceContext = { ...context, sourceCardId: card.gamecardId, step: 3 };
+
       gameState.pendingQuery = {
         id: Math.random().toString(36).substring(7),
         type: 'SELECT_CHOICE',
         playerUid: playerState.uid,
-        options: [
+        options: standardizeChoiceOptions(gameState, [
           { id: '__NO_EQUIP__', label: '不装备' },
           ...units.map(u => ({ id: u.gamecardId, label: u.fullName }))
-        ],
+        ], choiceContext),
         title: '是否装备',
         description: '可以选择不装备，或选择一个单位进行装备。',
         minSelections: 1,
         maxSelections: 1,
         callbackKey: 'ACTIVATE_COST_RESOLVE',
-        context: { ...context, step: 3 }
+        context: choiceContext
       };
     } else if (context.step === 3) {
       // Step 3: Finalize equipment

@@ -1,5 +1,6 @@
 import { Card, GameState, PlayerState, CardEffect, GameEvent, TriggerLocation } from '../types/game';
 import { AtomicEffectExecutor } from '../services/AtomicEffectExecutor';
+import { standardizeChoiceOptions } from './BaseUtil';
 
 const trigger_104010170: CardEffect = {
   id: '舞姬触发',
@@ -69,24 +70,26 @@ const trigger_104010170: CardEffect = {
         if (hasSpace && hasHand) {
           // Note: The prompt says "Afterwards, you can choose to activate", which implies an optional prompt.
           // Since onQueryResolve can trigger another query, we do that.
+          const choiceContext = {
+            sourceCardId: instance.gamecardId,
+            effectId: '舞姬触发',
+            step: 2
+          };
+
           gameState.pendingQuery = {
             id: Math.random().toString(36).substring(7),
             type: 'SELECT_CHOICE', // Ask if user wants to place a card
             playerUid: playerState.uid,
-            options: [
+            options: standardizeChoiceOptions(gameState, [
               { id: 'yes', label: '发动（从手牌放置卡牌到侵蚀区）' },
               { id: 'no', label: '不发动' }
-            ],
+            ], choiceContext),
             title: '后续效果发动',
             description: '是否从手牌中选择一张卡牌放置在侵蚀前区？',
             minSelections: 1,
             maxSelections: 1,
             callbackKey: 'EFFECT_RESOLVE',
-            context: {
-              sourceCardId: instance.gamecardId,
-              effectId: '舞姬触发',
-              step: 2
-            }
+            context: choiceContext
           };
         }
       }

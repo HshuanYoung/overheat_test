@@ -1,5 +1,6 @@
 import { Card, GameState, PlayerState, CardEffect } from '../types/game';
 import { AtomicEffectExecutor } from '../services/AtomicEffectExecutor';
+import { standardizeChoiceOptions } from './BaseUtil';
 
 const effect_204020023_activate: CardEffect = {
   id: '204020023_activate',
@@ -11,11 +12,19 @@ const effect_204020023_activate: CardEffect = {
     const activatedInGoddess = !!((instance as any).__playSnapshot?.isGoddessMode ?? playerState.isGoddessMode);
     const selectorUid = activatedInGoddess ? playerState.uid : opponentUid;
 
+    const choiceContext = {
+      sourceCardId: instance.gamecardId,
+      effectId: '204020023_activate',
+      step: 'CHOOSE_MODE',
+      opponentUid,
+      selectorUid
+    };
+
     gameState.pendingQuery = {
       id: Math.random().toString(36).substring(7),
       type: 'SELECT_CHOICE',
       playerUid: selectorUid,
-      options: [
+      options: standardizeChoiceOptions(gameState, [
         {
           id: 'MODE_A',
           label: '抽3张并充能2张',
@@ -28,19 +37,13 @@ const effect_204020023_activate: CardEffect = {
           detail: '选择1个横置单位并破坏。',
           icon: 'destroy'
         }
-      ],
+      ], choiceContext),
       title: '公平交易：选择效果',
       description: '请选择一个效果以执行。',
       minSelections: 1,
       maxSelections: 1,
       callbackKey: 'EFFECT_RESOLVE',
-      context: {
-        sourceCardId: instance.gamecardId,
-        effectId: '204020023_activate',
-        step: 'CHOOSE_MODE',
-        opponentUid,
-        selectorUid
-      }
+      context: choiceContext
     };
   },
   onQueryResolve: async (instance: Card, gameState: GameState, playerState: PlayerState, selections: string[], context: any) => {

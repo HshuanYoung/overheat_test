@@ -26,6 +26,9 @@ import { CardComponent } from './Card';
 
 type PopupOption = {
   id?: string;
+  value?: string;
+  sourceCardNo?: string;
+  optionCode?: string;
   label?: string;
   icon?: string;
   detail?: string;
@@ -47,6 +50,69 @@ type VisualOptionMeta = {
   Icon: LucideIcon;
   accent: string;
   glow: string;
+};
+
+const STANDARD_CHOICE_VISUALS: Record<string, Partial<VisualOptionMeta>> = {
+  '105110112_option_A': {
+    detail: '抽取新的手牌资源',
+    Icon: PackagePlus,
+    accent: 'from-sky-500 via-cyan-500 to-blue-600',
+    glow: 'shadow-[0_0_35px_rgba(14,165,233,0.3)]'
+  },
+  '105110112_option_B': {
+    detail: '对目标造成伤害',
+    Icon: Sword,
+    accent: 'from-red-500 via-rose-500 to-orange-500',
+    glow: 'shadow-[0_0_35px_rgba(244,63,94,0.3)]'
+  },
+  '105110112_option_C': {
+    detail: '破坏指定目标',
+    Icon: Trash2,
+    accent: 'from-zinc-600 via-red-700 to-orange-600',
+    glow: 'shadow-[0_0_35px_rgba(220,38,38,0.3)]'
+  },
+  '304030075_option_A': {
+    detail: '强化进入战场的单位',
+    Icon: Flame,
+    accent: 'from-amber-500 via-orange-500 to-red-500',
+    glow: 'shadow-[0_0_35px_rgba(249,115,22,0.32)]'
+  },
+  '304030075_option_B': {
+    detail: '横置对手单位',
+    Icon: RotateCcw,
+    accent: 'from-cyan-500 via-sky-500 to-blue-600',
+    glow: 'shadow-[0_0_35px_rgba(14,165,233,0.32)]'
+  },
+  '304030075_option_C': {
+    detail: '从墓地移动卡牌',
+    Icon: Layers,
+    accent: 'from-emerald-500 via-teal-500 to-green-600',
+    glow: 'shadow-[0_0_35px_rgba(16,185,129,0.32)]'
+  },
+  '204020023_option_A': {
+    detail: '抽卡与侵蚀区操作',
+    Icon: PackagePlus,
+    accent: 'from-violet-500 via-fuchsia-500 to-pink-500',
+    glow: 'shadow-[0_0_35px_rgba(217,70,239,0.3)]'
+  },
+  '204020023_option_B': {
+    detail: '破坏指定目标',
+    Icon: Trash2,
+    accent: 'from-rose-500 via-red-500 to-orange-600',
+    glow: 'shadow-[0_0_35px_rgba(244,63,94,0.3)]'
+  },
+  '204020024_option_A': {
+    detail: '横置目标单位',
+    Icon: RotateCcw,
+    accent: 'from-cyan-500 via-sky-500 to-blue-600',
+    glow: 'shadow-[0_0_35px_rgba(14,165,233,0.32)]'
+  },
+  '204020024_option_B': {
+    detail: '返回手牌',
+    Icon: Undo2,
+    accent: 'from-emerald-500 via-teal-500 to-green-600',
+    glow: 'shadow-[0_0_35px_rgba(16,185,129,0.32)]'
+  }
 };
 
 interface StandardPopupProps {
@@ -97,7 +163,7 @@ const isPlayerOption = (option: PopupOption) => {
 };
 
 const getChoiceIcon = (option: PopupOption): LucideIcon => {
-  const value = `${option.icon || ''} ${option.id || ''} ${option.label || ''}`.toUpperCase();
+  const value = `${option.icon || ''} ${option.value || ''} ${option.id || ''} ${option.label || ''}`.toUpperCase();
   if (value.includes('DRAW') || value.includes('抽')) return PackagePlus;
   if (value.includes('DESTROY') || value.includes('破坏')) return Trash2;
   if (value.includes('DAMAGE') || value.includes('伤害')) return Sword;
@@ -113,8 +179,13 @@ const getChoiceIcon = (option: PopupOption): LucideIcon => {
 
 const getVisualOptionMeta = (option: PopupOption): VisualOptionMeta => {
   const id = option.card?.id || option.id || '';
+  const semanticId = String(option.value || id).toUpperCase();
   const label = option.label || option.card?.fullName || id || '选项';
   const detail = option.detail || option.disabledReason;
+  const standardEyebrow = option.sourceCardNo && option.optionCode
+    ? `${option.sourceCardNo} / OPTION ${option.optionCode}`
+    : undefined;
+  const standardVisual = id ? STANDARD_CHOICE_VISUALS[id] : undefined;
 
   if (isPlayerOption(option)) {
     const self = id === 'PLAYER_SELF';
@@ -128,10 +199,22 @@ const getVisualOptionMeta = (option: PopupOption): VisualOptionMeta => {
     };
   }
 
-  switch (id) {
+  if (standardVisual) {
+    const Icon = standardVisual.Icon || getChoiceIcon(option);
+    return {
+      eyebrow: standardEyebrow || standardVisual.eyebrow || '效果选项',
+      title: label,
+      detail: detail || standardVisual.detail,
+      Icon,
+      accent: standardVisual.accent || 'from-slate-700 via-cyan-700 to-blue-700',
+      glow: standardVisual.glow || 'shadow-[0_0_35px_rgba(242,125,38,0.24)]'
+    };
+  }
+
+  switch (semanticId) {
     case 'OPTION_A':
       return {
-        eyebrow: '选项A',
+        eyebrow: standardEyebrow || '选项A',
         title: label,
         detail: detail || '强化进入战场的单位',
         Icon: Flame,
@@ -140,7 +223,7 @@ const getVisualOptionMeta = (option: PopupOption): VisualOptionMeta => {
       };
     case 'OPTION_B':
       return {
-        eyebrow: '选项B',
+        eyebrow: standardEyebrow || '选项B',
         title: label,
         detail: detail || '横置对手单位',
         Icon: RotateCcw,
@@ -149,7 +232,7 @@ const getVisualOptionMeta = (option: PopupOption): VisualOptionMeta => {
       };
     case 'OPTION_C':
       return {
-        eyebrow: '选项C',
+        eyebrow: standardEyebrow || '选项C',
         title: label,
         detail: detail || '从墓地移动卡牌',
         Icon: Layers,
@@ -158,7 +241,7 @@ const getVisualOptionMeta = (option: PopupOption): VisualOptionMeta => {
       };
     case 'MODE_A':
       return {
-        eyebrow: '模式A',
+        eyebrow: standardEyebrow || '模式A',
         title: label,
         detail: detail || '抽卡与侵蚀区操作',
         Icon: PackagePlus,
@@ -167,7 +250,7 @@ const getVisualOptionMeta = (option: PopupOption): VisualOptionMeta => {
       };
     case 'MODE_B':
       return {
-        eyebrow: '模式B',
+        eyebrow: standardEyebrow || '模式B',
         title: label,
         detail: detail || '破坏指定目标',
         Icon: Trash2,
@@ -176,7 +259,7 @@ const getVisualOptionMeta = (option: PopupOption): VisualOptionMeta => {
       };
     case 'MODE_EXHAUST':
       return {
-        eyebrow: '模式A',
+        eyebrow: standardEyebrow || '模式A',
         title: label,
         detail: detail || '横置目标单位',
         Icon: RotateCcw,
@@ -185,7 +268,7 @@ const getVisualOptionMeta = (option: PopupOption): VisualOptionMeta => {
       };
     case 'MODE_BOUNCE':
       return {
-        eyebrow: '模式B',
+        eyebrow: standardEyebrow || '模式B',
         title: label,
         detail: detail || '返回手牌',
         Icon: Undo2,
@@ -194,11 +277,11 @@ const getVisualOptionMeta = (option: PopupOption): VisualOptionMeta => {
       };
     default: {
       const Icon = getChoiceIcon(option);
-      const isType = id === 'UNIT' || id === 'STORY' || id === 'ITEM';
+      const isType = semanticId === 'UNIT' || semanticId === 'STORY' || semanticId === 'ITEM';
       const isDanger = Icon === Trash2 || Icon === Sword;
       const isMove = Icon === RotateCcw || Icon === Undo2 || Icon === Layers;
       return {
-        eyebrow: isType ? '卡片种类' : '效果选项',
+        eyebrow: standardEyebrow || (isType ? '卡片种类' : '效果选项'),
         title: label,
         detail,
         Icon,
@@ -208,7 +291,7 @@ const getVisualOptionMeta = (option: PopupOption): VisualOptionMeta => {
             ? 'from-emerald-500 via-teal-500 to-sky-500'
             : isType
               ? 'from-indigo-500 via-sky-500 to-cyan-500'
-              : 'from-[#f27d26] via-amber-500 to-yellow-500',
+              : 'from-slate-700 via-cyan-700 to-blue-700',
         glow: isDanger
           ? 'shadow-[0_0_35px_rgba(244,63,94,0.26)]'
           : isMove
@@ -250,7 +333,7 @@ const VisualOptionCard: React.FC<{
       <div className="absolute inset-x-4 bottom-4 h-px bg-black/25" />
       <div className="relative z-10 flex h-full flex-col items-center justify-between px-3 py-4 text-center text-white md:px-4 md:py-5">
         <div className="w-full">
-          <div className="text-[9px] md:text-[10px] font-black uppercase tracking-[0.28em] text-white/75">
+          <div className="mx-auto inline-flex max-w-full items-center justify-center rounded-md border border-white/15 bg-zinc-950/55 px-2 py-1 text-center text-[8px] md:text-[10px] font-black uppercase leading-tight tracking-[0.12em] text-white/80 shadow-sm backdrop-blur-sm">
             {meta.eyebrow}
           </div>
           <div className="mt-2 line-clamp-3 text-sm md:text-base font-black leading-tight">

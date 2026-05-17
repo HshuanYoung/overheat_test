@@ -1,6 +1,6 @@
 import { Card, GameState, PlayerState, CardEffect, TriggerLocation, GameEvent } from '../types/game';
 import { AtomicEffectExecutor } from '../services/AtomicEffectExecutor';
-import { canActivateDefaultTiming } from './BaseUtil';
+import { canActivateDefaultTiming, standardizeChoiceOptions } from './BaseUtil';
 
 const effect_104030454_trigger: CardEffect = {
   id: 'sodo_entry_bounce',
@@ -14,22 +14,26 @@ const effect_104030454_trigger: CardEffect = {
   },
   execute: async (instance: Card, gameState: GameState, playerState: PlayerState) => {
     // 1. Ask if player wants to activate (Choice)
+    const choiceContext = {
+      effectId: 'sodo_entry_bounce',
+      sourceCardId: instance.gamecardId,
+      step: 'ACTIVATE_CHOICE'
+    };
+
     gameState.pendingQuery = {
       id: Math.random().toString(36).substring(7),
       type: 'SELECT_CHOICE',
       playerUid: playerState.uid,
-      options: [
+      options: standardizeChoiceOptions(gameState, [
         { id: 'YES', label: '发动 (横置此单位并回场)' },
         { id: 'NO', label: '不发动' }
-      ],
+      ], choiceContext),
       title: '效果发动确认',
       description: `是否发动 [${instance.fullName}] 的效果？发动后此单位将转为横置，并使对手单位返回手牌。`,
+      minSelections: 1,
+      maxSelections: 1,
       callbackKey: 'EFFECT_RESOLVE',
-      context: {
-        effectId: 'sodo_entry_bounce',
-        sourceCardId: instance.gamecardId,
-        step: 'ACTIVATE_CHOICE'
-      }
+      context: choiceContext
     };
   },
   onQueryResolve: async (instance: Card, gameState: GameState, playerState: PlayerState, selections: string[], context: any) => {
