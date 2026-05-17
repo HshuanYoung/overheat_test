@@ -509,11 +509,13 @@ export const findUnitOnBattlefield = (gameState: GameState, gamecardId?: string)
 };
 
 export const canPutUnitOntoBattlefield = (player: PlayerState, card: Card) =>
+  card.type === 'UNIT' &&
   player.unitZone.some(slot => slot === null) &&
   (!card.specialName || !player.unitZone.some(unit => unit?.specialName === card.specialName));
 
 export const canPutItemOntoBattlefield = (player: PlayerState, card: Card) =>
-  !card.specialName || !player.itemZone.some(item => item?.specialName === card.specialName);
+  card.type === 'ITEM' &&
+  (!card.specialName || !player.itemZone.some(item => item?.specialName === card.specialName));
 
 export const hasTruthUnit = (player: PlayerState) =>
   player.unitZone.some(unit => unit && unit.type === 'UNIT' && (unit.specialName === '真理' || unit.fullName.includes('真理')));

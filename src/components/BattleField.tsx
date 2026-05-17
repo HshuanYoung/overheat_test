@@ -952,6 +952,12 @@ export const BattleField: React.FC = () => {
   const rawPendingQueryOptions = Array.isArray(pendingQuery?.options) ? pendingQuery.options : [];
   const isSelectCardPendingQuery = normalizedPendingQueryType === 'SELECT_CARD';
   const pendingQueryOptions = useMemo(() => {
+    if (normalizedPendingQueryType === 'ASK_TRIGGER') {
+      return [
+        { id: 'YES', value: 'YES', label: '是', icon: 'trigger', detail: '发动这个诱发效果' },
+        { id: 'NO', value: 'NO', label: '否', icon: 'decline', detail: '跳过这个诱发效果' }
+      ];
+    }
     if (!game || !pendingQuery || normalizedPendingQueryType !== 'SELECT_CARD') return rawPendingQueryOptions;
     const context = pendingQuery.context || {};
     const sourceCardId = context.sourceCardId;
@@ -998,6 +1004,46 @@ export const BattleField: React.FC = () => {
       return rawPendingQueryOptions;
     }
   }, [game, pendingQuery, rawPendingQueryOptions, normalizedPendingQueryType]);
+  const getPendingOptionId = (option?: any) => option?.card?.gamecardId || option?.card?.id || option?.id || '';
+  const getPendingOptionText = (option?: any) =>
+    `${option?.value || ''} ${option?.id || ''} ${option?.label || ''}`.toUpperCase();
+  const isPositiveBinaryOption = (option?: any) => {
+    const text = getPendingOptionText(option);
+    if (/不发动|取消|否|跳过|不使用|通常/.test(text)) return false;
+    return /\bYES\b/.test(text) || /\bY\b/.test(text) || /发动|确认|同意|是/.test(text);
+  };
+  const isNegativeBinaryOption = (option?: any) => {
+    const text = getPendingOptionText(option);
+    return /\bNO\b/.test(text) || /\bN\b/.test(text) || /不发动|取消|否|跳过|不使用|通常/.test(text);
+  };
+  const enabledPendingQueryOptions = pendingQueryOptions.filter(option => !option.disabled);
+  const binaryConfirmOption = enabledPendingQueryOptions.find(isPositiveBinaryOption);
+  const binaryCancelOption = enabledPendingQueryOptions.find(isNegativeBinaryOption);
+  const isBinaryChoicePendingQuery =
+    normalizedPendingQueryType !== 'ASK_TRIGGER' &&
+    (
+      normalizedPendingQueryType === 'SELECT_CHOICE' &&
+      enabledPendingQueryOptions.length === 2 &&
+      !!binaryConfirmOption &&
+      !!binaryCancelOption &&
+      (pendingQuery?.minSelections ?? 1) === 1 &&
+      (pendingQuery?.maxSelections ?? 1) === 1
+    );
+  const pendingQueryPopupMode =
+    normalizedPendingQueryType === 'SELECT_PAYMENT' ? 'payment_selection' :
+    normalizedPendingQueryType === 'ASK_TRIGGER' ? 'double_selection' :
+    isBinaryChoicePendingQuery ? 'double_selection' :
+    normalizedPendingQueryType === 'SELECT_CHOICE' ? 'choice_selection' :
+    normalizedPendingQueryType === 'SELECT_CARD' ? (pendingQueryOptions.some(o => o.card?.id === 'PLAYER_SELF' || o.card?.id === 'PLAYER_OPPONENT') ? 'player_selection' : 'card_selection') :
+    'choice_selection';
+  const binaryConfirmText =
+    normalizedPendingQueryType === 'ASK_TRIGGER' || /是否发动/.test(`${pendingQuery?.title || ''} ${pendingQuery?.description || ''}`)
+      ? '是'
+      : binaryConfirmOption?.label || '确认';
+  const binaryCancelText =
+    normalizedPendingQueryType === 'ASK_TRIGGER' || /是否发动/.test(`${pendingQuery?.title || ''} ${pendingQuery?.description || ''}`)
+      ? '否'
+      : binaryCancelOption?.label || '取消';
   const selectablePendingQueryOptions = isSelectCardPendingQuery
     ? pendingQueryOptions.filter(option => !!option?.card && !option.disabled)
     : [];
@@ -3287,18 +3333,13 @@ export const BattleField: React.FC = () => {
 
       {/* Standardized My Pending Query Popup */}
       <StandardPopup
+        key={`${game.pendingQuery?.id || 'no-query'}-${pendingQueryPopupMode}`}
         isOpen={!!(!isSpectator && game.pendingQuery && game.pendingQuery.playerUid === myUid)}
         title={game.pendingQuery?.title || ''}
         description={game.pendingQuery?.description || ''}
-        mode={
-          normalizedPendingQueryType === 'SELECT_PAYMENT' ? 'payment_selection' :
-          normalizedPendingQueryType === 'ASK_TRIGGER' ? 'double_selection' :
-          normalizedPendingQueryType === 'SELECT_CHOICE' ? 'choice_selection' :
-          normalizedPendingQueryType === 'SELECT_CARD' ? (pendingQueryOptions.some(o => o.card?.id === 'PLAYER_SELF' || o.card?.id === 'PLAYER_OPPONENT') ? 'player_selection' : 'card_selection') :
-          'choice_selection'
-        }
+        mode={pendingQueryPopupMode}
         options={
-          normalizedPendingQueryType === 'SELECT_CHOICE' || normalizedPendingQueryType === 'SELECT_CARD'
+          normalizedPendingQueryType === 'ASK_TRIGGER' || normalizedPendingQueryType === 'SELECT_CHOICE' || normalizedPendingQueryType === 'SELECT_CARD'
             ? pendingQueryOptions
             : undefined
         }
@@ -3341,10 +3382,11 @@ export const BattleField: React.FC = () => {
             ? formatSelectedPaymentValue(game.pendingQuery?.paymentCost || 0, game.pendingQuery?.paymentColor)
             : paymentSelection.erosionFrontIds.length
         }
-        confirmText="确认"
-        cancelText="取消"
-        onConfirm={() => GameService.submitQueryChoice(gameId!, game.pendingQuery!.id, ['YES'])}
-        onCancel={() => GameService.submitQueryChoice(gameId!, game.pendingQuery!.id, ['NO'])}
+        squarePanel={normalizedPendingQueryType === 'ASK_TRIGGER'}
+        confirmText={binaryConfirmText}
+        cancelText={binaryCancelText}
+        onConfirm={() => GameService.submitQueryChoice(gameId!, game.pendingQuery!.id, [getPendingOptionId(binaryConfirmOption) || 'YES'])}
+        onCancel={() => GameService.submitQueryChoice(gameId!, game.pendingQuery!.id, [getPendingOptionId(binaryCancelOption) || 'NO'])}
         cardBackUrl={cardBackUrl}
         onHide={() => setIsPopupHidden(true)}
         isHidden={isPopupHidden}

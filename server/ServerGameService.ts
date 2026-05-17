@@ -6424,6 +6424,117 @@ export const ServerGameService = {
     return candidates.length >= (firstTargetShape.minSelections ?? 0) ? candidates.length : 0;
   },
 
+  getStoryPlayEffect(card: Card) {
+    return card.type === 'STORY'
+      ? card.effects?.find(effect => effect.type === 'ALWAYS' || effect.type === 'ACTIVATE' || effect.type === 'ACTIVATED')
+      : undefined;
+  },
+
+  chooseBotDeclaredTargetsForEffect(
+    gameState: GameState,
+    playerUid: string,
+    sourceCard: Card,
+    effect: CardEffect,
+    effectIndex: number
+  ) {
+    if (!ServerGameService.hasPreselectTargetSpec(effect) || !effect.targetSpec) return undefined;
+
+    const profile = ServerGameService.getBotProfile(gameState, playerUid);
+    const difficulty = ServerGameService.getBotDifficulty(gameState, playerUid);
+    const spec: any = effect.targetSpec;
+    let modeId: string | undefined;
+    let targetShapes: any[] = [];
+
+    if (spec.modeOptions?.length) {
+      const player = gameState.players[playerUid];
+      const availableModes = spec.modeOptions.filter((mode: any) => {
+        if (mode.condition && !mode.condition(gameState, player, sourceCard)) return false;
+        return ServerGameService.getTargetCandidates(gameState, playerUid, sourceCard, effect, mode).length >= (mode.minSelections ?? 0);
+      });
+      if (availableModes.length === 0) return undefined;
+
+      const modeQuery: any = {
+        id: 'BOT_DECLARE_TARGET_MODE',
+        type: 'SELECT_CHOICE',
+        playerUid,
+        options: availableModes.map((mode: any) => ({
+          id: mode.id,
+          value: mode.id,
+          label: mode.label,
+          detail: mode.modeDescription || mode.description
+        })),
+        title: spec.modeTitle || '选择效果',
+        description: spec.modeDescription || '选择要发动的效果。',
+        minSelections: 1,
+        maxSelections: 1,
+        callbackKey: 'DECLARE_EFFECT_TARGET_MODE',
+        context: { sourceCardId: sourceCard.gamecardId, effectIndex }
+      };
+      const [selectedModeId] = chooseQuerySelections(gameState, playerUid, modeQuery, profile, difficulty);
+      const selectedMode = availableModes.find((mode: any) => mode.id === selectedModeId) || availableModes[0];
+      modeId = selectedMode.id;
+      targetShapes = [selectedMode];
+    } else {
+      targetShapes = spec.targetGroups?.length ? spec.targetGroups : [spec];
+    }
+
+    let declaredTargets: DeclaredEffectTarget[] = [];
+    for (let index = 0; index < targetShapes.length; index += 1) {
+      const targetShape = targetShapes[index];
+      const candidates = ServerGameService.getTargetCandidates(gameState, playerUid, sourceCard, effect, targetShape, declaredTargets);
+      if (candidates.length < (targetShape.minSelections ?? 0)) {
+        ServerGameService.clearDeclaredTargetMarkers(gameState, declaredTargets);
+        return undefined;
+      }
+
+      const targetQuery: any = {
+        id: 'BOT_DECLARE_TARGETS',
+        type: 'SELECT_CARD',
+        playerUid,
+        options: AtomicEffectExecutor.enrichQueryOptions(
+          gameState,
+          playerUid,
+          candidates.map(candidate => ({
+            card: candidate.card,
+            source: candidate.source || (candidate.card.cardlocation as TriggerLocation)
+          }))
+        ),
+        title: targetShape.title || spec.title || '选择对象',
+        description: targetShape.description || spec.description || '请选择合法对象。',
+        minSelections: targetShape.minSelections ?? 1,
+        maxSelections: targetShape.maxSelections ?? targetShape.minSelections ?? 1,
+        callbackKey: 'DECLARE_EFFECT_TARGETS',
+        context: {
+          sourceCardId: sourceCard.gamecardId,
+          effectIndex,
+          modeId,
+          targetGroupIndex: index,
+          declaredTargets
+        }
+      };
+      const selections = chooseQuerySelections(gameState, playerUid, targetQuery, profile, difficulty);
+      if (selections.length < (targetShape.minSelections ?? 1)) {
+        ServerGameService.clearDeclaredTargetMarkers(gameState, declaredTargets);
+        return undefined;
+      }
+
+      const newlyDeclaredTargets = ServerGameService.declareEffectTargets(
+        gameState,
+        playerUid,
+        sourceCard,
+        effect,
+        effectIndex,
+        selections,
+        targetShape,
+        declaredTargets,
+        modeId
+      );
+      declaredTargets = [...declaredTargets, ...newlyDeclaredTargets];
+    }
+
+    return declaredTargets;
+  },
+
   getBotActivatableEffectCandidates(gameState: GameState, playerUid: string) {
     const player = gameState.players[playerUid];
     if (!player || ServerGameService.getBotDifficulty(gameState, playerUid) !== 'hard') return [];
@@ -6542,11 +6653,24 @@ export const ServerGameService = {
       })),
     });
 
+    let declaredTargets: DeclaredEffectTarget[] | undefined;
     try {
-      await ServerGameService.activateEffect(gameState, playerUid, chosen.card.gamecardId, chosen.effectIndex, undefined, undefined);
+      if (ServerGameService.hasPreselectTargetSpec(chosen.effect)) {
+        declaredTargets = ServerGameService.chooseBotDeclaredTargetsForEffect(
+          gameState,
+          playerUid,
+          chosen.card,
+          chosen.effect,
+          chosen.effectIndex
+        );
+        if (!declaredTargets) throw new Error('没有可指定的合法对象');
+      }
+
+      await ServerGameService.activateEffect(gameState, playerUid, chosen.card.gamecardId, chosen.effectIndex, declaredTargets, undefined);
       delete (player as any).lastBotEffectFailure;
       return true;
     } catch (err) {
+      ServerGameService.clearDeclaredTargetMarkers(gameState, declaredTargets);
       const message = err instanceof Error ? err.message : String(err);
       (player as any).lastBotEffectFailure = message;
       if (chosen.effect.id) {
@@ -7268,9 +7392,16 @@ export const ServerGameService = {
         }
         return ServerGameService.canBotPayPositiveCost(gameState, bot, effectiveCost, card.color, card);
       };
-      const canPlayForBot = (card: Card) =>
-        ServerGameService.canPlayCard(gameState, bot, card).canPlay &&
-        canPayPlayCostForBot(card);
+      const canPlayForBot = (card: Card) => {
+        const playEffect = ServerGameService.getStoryPlayEffect(card);
+        if (playEffect && ServerGameService.hasPreselectTargetSpec(playEffect)) {
+          const targetCount = ServerGameService.getEffectTargetCount(gameState, playerUid, card, playEffect);
+          if (targetCount !== undefined && targetCount <= 0) return false;
+        }
+
+        return ServerGameService.canPlayCard(gameState, bot, card).canPlay &&
+          canPayPlayCostForBot(card);
+      };
       const playableCards = bot.hand.filter(canPlayForBot);
       const playableCandidates = playableCards
         .map(card => ({
@@ -7427,11 +7558,26 @@ export const ServerGameService = {
             score: candidate.score,
           })),
         });
+        let declaredTargets: DeclaredEffectTarget[] | undefined;
         try {
-          await ServerGameService.playCard(gameState, playerUid, cardToPlay.gamecardId, initialPaymentSelection);
+          const playEffect = ServerGameService.getStoryPlayEffect(cardToPlay);
+          const playEffectIndex = playEffect ? cardToPlay.effects?.indexOf(playEffect) ?? -1 : -1;
+          if (playEffect && playEffectIndex >= 0 && ServerGameService.hasPreselectTargetSpec(playEffect)) {
+            declaredTargets = ServerGameService.chooseBotDeclaredTargetsForEffect(
+              gameState,
+              playerUid,
+              cardToPlay,
+              playEffect,
+              playEffectIndex
+            );
+            if (!declaredTargets) throw new Error('没有可指定的合法对象');
+          }
+
+          await ServerGameService.playCard(gameState, playerUid, cardToPlay.gamecardId, initialPaymentSelection, declaredTargets);
           // We return and let the next botMove tick handle the next card to ensure stack resolution
           return;
         } catch (e) {
+          ServerGameService.clearDeclaredTargetMarkers(gameState, declaredTargets);
           playFailure = e instanceof Error ? e.message : String(e);
           ServerGameService.recordAiDecision(gameState, playerUid, {
             action: 'PLAY_CARD_FAILED',

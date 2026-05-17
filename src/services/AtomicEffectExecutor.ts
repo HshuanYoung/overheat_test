@@ -740,6 +740,14 @@ export class AtomicEffectExecutor {
 
     finalTargets.forEach(card => {
       if (this.shouldSkipEffect(gameState, card, sourceCard)) return;
+      if (toZone === 'UNIT' && card.type !== 'UNIT') {
+        gameState.logs.push(`[系统] [${card.fullName}] 不是单位卡，不能放置到单位区。`);
+        return;
+      }
+      if (toZone === 'ITEM' && card.type !== 'ITEM') {
+        gameState.logs.push(`[系统] [${card.fullName}] 不是道具卡，不能放置到道具区。`);
+        return;
+      }
 
       // Find current zone and OWNER
       const currentZone = card.cardlocation as TriggerLocation;

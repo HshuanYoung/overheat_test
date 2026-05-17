@@ -153,6 +153,7 @@ interface StandardPopupProps {
   // Hiding functionality
   onHide?: () => void;
   isHidden?: boolean;
+  squarePanel?: boolean;
 }
 
 const getOptionId = (option: PopupOption) => option.card?.gamecardId || option.card?.id || option.id || '';
@@ -394,7 +395,8 @@ export const StandardPopup: React.FC<StandardPopupProps> = ({
   paymentCurrent,
   children,
   onHide,
-  isHidden = false
+  isHidden = false,
+  squarePanel = false
 }) => {
   if (!isOpen) return null;
 
@@ -432,7 +434,9 @@ export const StandardPopup: React.FC<StandardPopupProps> = ({
           exit={{ scale: 0.9, opacity: 0, y: 20 }}
           className={cn(
             "relative w-full bg-zinc-900/90 border border-white/10 rounded-[2rem] shadow-2xl overflow-hidden flex flex-col transition-all duration-500 ease-in-out",
-            (mode === 'double_selection' && !children) ? "max-w-md" : "max-w-6xl max-h-[90vh]",
+            squarePanel
+              ? "max-w-[22rem] md:max-w-[24rem] max-h-[90vh]"
+              : (mode === 'double_selection' && !children) ? "max-w-md" : "max-w-6xl max-h-[90vh]",
             isHidden && "scale-95 blur-sm"
           )}
           onClick={e => e.stopPropagation()}
