@@ -1,7 +1,7 @@
 import { clearAuthSession, getAuthToken, getAuthUser, setAuthToken, setAuthUser, socket } from '../socket';
 import React, { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { BookOpen, Check, Coins, Gem, Layers3, Loader2, LogOut, Menu, Settings, UserRound, UsersRound, X } from 'lucide-react';
+import { BookOpen, Check, Coins, Gem, Layers3, Loader2, LogOut, Menu, Settings, Trophy, UserRound, UsersRound, X } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
 import { readJsonResponse } from '../lib/http';
@@ -113,6 +113,14 @@ export const TopBar: React.FC<{ onOpenRulebook: () => void; onlinePlayerCount?: 
   return (
     <>
       <div className="fixed top-4 right-4 z-50 flex items-center gap-2">
+        <Link
+          to="/bug-cup"
+          className="flex items-center gap-2 rounded-xl border border-red-400/20 bg-zinc-900/80 px-3 py-3 text-sm font-black text-white shadow-xl backdrop-blur-md transition-all hover:border-red-300/50 hover:bg-red-950/50"
+          aria-label="bug杯"
+        >
+          <Trophy className="h-4 w-4 text-red-300" />
+          <span className="hidden sm:inline">bug杯</span>
+        </Link>
         <button
           type="button"
           onClick={onToggleOnlinePlayers}

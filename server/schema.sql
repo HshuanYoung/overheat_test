@@ -36,6 +36,7 @@ CREATE TABLE IF NOT EXISTS deck_square_posts (
     author_name VARCHAR(100) NOT NULL,
     name VARCHAR(255) NOT NULL,
     cards LONGTEXT NOT NULL,
+    tags LONGTEXT,
     created_at BIGINT NOT NULL,
     updated_at BIGINT NOT NULL,
     INDEX (user_id),
@@ -55,6 +56,46 @@ CREATE TABLE IF NOT EXISTS email_verification_codes (
     code VARCHAR(6) NOT NULL,
     expires_at BIGINT NOT NULL,
     created_at BIGINT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS bug_cup_registrations (
+    edition INT NOT NULL,
+    user_id VARCHAR(50) NOT NULL,
+    display_name VARCHAR(100) NOT NULL,
+    deck_source_ids LONGTEXT NOT NULL,
+    deck_names LONGTEXT NOT NULL,
+    deck_cards LONGTEXT NOT NULL,
+    deck_square_post_ids LONGTEXT NOT NULL,
+    registered_at BIGINT NOT NULL,
+    updated_at BIGINT NOT NULL,
+    locked_at BIGINT,
+    PRIMARY KEY (edition, user_id),
+    INDEX idx_bug_cup_reg_edition (edition),
+    INDEX idx_bug_cup_reg_registered_at (registered_at)
+);
+
+CREATE TABLE IF NOT EXISTS bug_cup_matches (
+    id VARCHAR(64) PRIMARY KEY,
+    edition INT NOT NULL,
+    phase VARCHAR(20) NOT NULL,
+    round INT NOT NULL,
+    player1_id VARCHAR(50) NOT NULL,
+    player2_id VARCHAR(50),
+    player1_deck_index INT,
+    player2_deck_index INT,
+    player1_ready BOOLEAN DEFAULT FALSE,
+    player2_ready BOOLEAN DEFAULT FALSE,
+    player1_ready_at BIGINT,
+    player2_ready_at BIGINT,
+    game_id VARCHAR(64),
+    winner_id VARCHAR(50),
+    result_status VARCHAR(20) NOT NULL DEFAULT 'PENDING',
+    scheduled_for BIGINT NOT NULL,
+    created_at BIGINT NOT NULL,
+    updated_at BIGINT NOT NULL,
+    INDEX idx_bug_cup_matches_edition_phase_round (edition, phase, round),
+    INDEX idx_bug_cup_matches_players (player1_id, player2_id),
+    INDEX idx_bug_cup_matches_game (game_id)
 );
 
 -- Note: The passwords below are hashed with bcrypt. 

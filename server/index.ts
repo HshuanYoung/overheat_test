@@ -900,6 +900,13 @@ async function syncAndSaveState(gameId: string, gameState: any) {
     }
 
     if (gameState.gameStatus === 2) {
+        if (gameState.mode === 'bugCup' && gameState.bugCupMatchId) {
+            try {
+                await recordBugCupGameResult(gameState, gameId);
+            } catch (err) {
+                console.error(`[BugCup] Failed to record result for ${gameId}:`, err);
+            }
+        }
         try {
             await saveAiMatchSample(gameState, gameId, history);
         } catch (err) {
@@ -962,6 +969,7 @@ app.use('/pics', express.static(path.join(process.cwd(), 'pics'), {
 // Background Unified Timer Loop
 setInterval(async () => {
     try {
+        await ensureBugCupSchedule();
         const games = await pool.query('SELECT id FROM games WHERE status = 0');
         for (const row of games) {
             const gameId = row.id;
@@ -2059,11 +2067,759 @@ const buildDeckSquarePost = (row: any, likedPostIds: Set<string>) => ({
     authorName: row.author_name,
     name: row.name,
     cards: parseStoredDeckCards(row.cards),
+    tags: parseStoredDeckCards(row.tags),
     likes: Number(row.like_count || 0),
     likedByMe: likedPostIds.has(row.id),
     createdAt: Number(row.created_at),
     updatedAt: Number(row.updated_at)
 });
+
+const BUG_CUP_EDITION = 1;
+const BUG_CUP_NAME = 'bug杯';
+const BUG_CUP_TAG = '第1届bug杯杯赛';
+const DAY_MS = 24 * 60 * 60 * 1000;
+const BUG_CUP_START = Date.parse('2026-05-18T00:00:00+08:00');
+const BUG_CUP_SWISS_START = BUG_CUP_START + 7 * DAY_MS;
+const BUG_CUP_ELIM_SEMI_START = BUG_CUP_SWISS_START + 5 * DAY_MS;
+const BUG_CUP_ELIM_FINAL_START = BUG_CUP_ELIM_SEMI_START + DAY_MS;
+const BUG_CUP_END = BUG_CUP_ELIM_FINAL_START + DAY_MS;
+const BUG_CUP_SIMULATED_OPPONENTS = [
+    { userId: 'bugcup_mock_rank_2', displayName: '模拟对手 2名', rank: 2 },
+    { userId: 'bugcup_mock_rank_3', displayName: '模拟对手 3名', rank: 3 }
+];
+
+const bugCupPrelimQueue: { userId: string; socketId?: string; deckIndex: number; timestamp: number }[] = [];
+const bugCupPrelimResults = new Map<string, string>();
+
+function getBugCupMockNow() {
+    const envNow = Number(process.env.BUG_CUP_MOCK_NOW_MS || '');
+    return Number.isFinite(envNow) && envNow > 0 ? envNow : null;
+}
+
+function getBugCupNow() {
+    return getBugCupMockNow() ?? Date.now();
+}
+
+function shouldInjectBugCupSimulatedOpponents() {
+    const mockNow = getBugCupMockNow();
+    return !!mockNow && mockNow >= BUG_CUP_ELIM_SEMI_START;
+}
+
+function safeJsonArray(value: any): any[] {
+    try {
+        const parsed = typeof value === 'string' ? JSON.parse(value) : value;
+        return Array.isArray(parsed) ? parsed : [];
+    } catch {
+        return [];
+    }
+}
+
+function getBugCupPhase(now = getBugCupNow()) {
+    if (now < BUG_CUP_START) return 'UPCOMING';
+    if (now < BUG_CUP_SWISS_START) return 'PRELIM';
+    if (now < BUG_CUP_ELIM_SEMI_START) return 'SWISS';
+    if (now < BUG_CUP_END) return 'ELIMINATION';
+    return 'FINISHED';
+}
+
+function buildBugCupCurrent(now = getBugCupNow()) {
+    const phase = getBugCupPhase(now);
+    const swissRound = phase === 'SWISS'
+        ? Math.min(5, Math.max(1, Math.floor((now - BUG_CUP_SWISS_START) / DAY_MS) + 1))
+        : phase === 'ELIMINATION' || phase === 'FINISHED' ? 5 : 0;
+    const eliminationRound = phase === 'ELIMINATION'
+        ? (now < BUG_CUP_ELIM_FINAL_START ? 1 : 2)
+        : phase === 'FINISHED' ? 2 : 0;
+
+    return {
+        edition: BUG_CUP_EDITION,
+        name: BUG_CUP_NAME,
+        tag: BUG_CUP_TAG,
+        phase,
+        canEditDecks: now < BUG_CUP_SWISS_START,
+        now,
+        simulated: getBugCupMockNow() === now,
+        swissRound,
+        eliminationRound,
+        schedule: {
+            startAt: BUG_CUP_START,
+            prelimEndAt: BUG_CUP_SWISS_START,
+            swissEndAt: BUG_CUP_ELIM_SEMI_START,
+            semiFinalAt: BUG_CUP_ELIM_SEMI_START,
+            finalAt: BUG_CUP_ELIM_FINAL_START,
+            endAt: BUG_CUP_END
+        }
+    };
+}
+
+function serializeBugCupMatch(row: any) {
+    if (!row) return null;
+    return {
+        id: row.id,
+        edition: Number(row.edition),
+        phase: row.phase,
+        round: Number(row.round),
+        player1Id: row.player1_id,
+        player2Id: row.player2_id || null,
+        player1DeckIndex: row.player1_deck_index === null || row.player1_deck_index === undefined ? null : Number(row.player1_deck_index),
+        player2DeckIndex: row.player2_deck_index === null || row.player2_deck_index === undefined ? null : Number(row.player2_deck_index),
+        player1Ready: !!row.player1_ready,
+        player2Ready: !!row.player2_ready,
+        gameId: row.game_id || null,
+        winnerId: row.winner_id || null,
+        resultStatus: row.result_status,
+        scheduledFor: Number(row.scheduled_for),
+        createdAt: Number(row.created_at),
+        updatedAt: Number(row.updated_at)
+    };
+}
+
+async function getBugCupRegistration(userId: string, edition = BUG_CUP_EDITION) {
+    const rows = await pool.query('SELECT * FROM bug_cup_registrations WHERE edition = ? AND user_id = ? LIMIT 1', [edition, userId]);
+    if (!rows.length) return null;
+    const row = rows[0];
+    return {
+        edition: Number(row.edition),
+        userId: row.user_id,
+        displayName: row.display_name,
+        deckSourceIds: safeJsonArray(row.deck_source_ids).map(String),
+        deckNames: safeJsonArray(row.deck_names).map(String),
+        deckCards: safeJsonArray(row.deck_cards).map((cards: any) => Array.isArray(cards) ? cards.map(String) : []),
+        deckSquarePostIds: safeJsonArray(row.deck_square_post_ids).map(String),
+        registeredAt: Number(row.registered_at),
+        updatedAt: Number(row.updated_at),
+        lockedAt: row.locked_at ? Number(row.locked_at) : null
+    };
+}
+
+async function upsertBugCupDeckSquarePost(user: any, slot: number, sourceDeckId: string, deckName: string, cardIds: string[], existingPostId?: string) {
+    const now = Date.now();
+    const sourceId = `bugcup:${BUG_CUP_EDITION}:${user.userId}:${slot}:${sourceDeckId}`;
+    const postName = `${BUG_CUP_TAG} - ${deckName}`;
+    const existingRows = existingPostId
+        ? await pool.query('SELECT id FROM deck_square_posts WHERE id = ? AND user_id = ? LIMIT 1', [existingPostId, user.userId])
+        : await pool.query('SELECT id FROM deck_square_posts WHERE source_deck_id = ? AND user_id = ? LIMIT 1', [sourceId, user.userId]);
+
+    if (existingRows.length > 0) {
+        await pool.query(
+            'UPDATE deck_square_posts SET source_deck_id = ?, author_name = ?, name = ?, cards = ?, tags = ?, updated_at = ? WHERE id = ?',
+            [sourceId, getUserDisplayLabel(user), postName, JSON.stringify(cardIds), JSON.stringify([BUG_CUP_TAG]), now, existingRows[0].id]
+        );
+        return existingRows[0].id;
+    }
+
+    const postId = `bugcup_${BUG_CUP_EDITION}_${Math.random().toString(36).slice(2, 10)}`;
+    await pool.query(
+        'INSERT INTO deck_square_posts (id, source_deck_id, user_id, author_name, name, cards, tags, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        [postId, sourceId, user.userId, getUserDisplayLabel(user), postName, JSON.stringify(cardIds), JSON.stringify([BUG_CUP_TAG]), now, now]
+    );
+    return postId;
+}
+
+async function readAndValidateBugCupDecks(user: any, deckIds: string[]) {
+    const uniqueDeckIds = deckIds.map(id => String(id || '').trim()).filter(Boolean).slice(0, 2);
+    if (uniqueDeckIds.length < 1 || uniqueDeckIds.length > 2) {
+        throw new Error('请选择 1 到 2 套卡组');
+    }
+
+    const decks: { sourceId: string; name: string; cards: string[] }[] = [];
+    for (const deckId of uniqueDeckIds) {
+        const rows = await pool.query('SELECT id, name, cards FROM decks WHERE id = ? AND user_id = ? LIMIT 1', [deckId, user.userId]);
+        if (!rows.length) throw new Error('未找到选择的卡组');
+
+        const cardIds = parseStoredDeckCards(rows[0].cards);
+        const cardObjects = cardIds.map(id => SERVER_CARD_LIBRARY[id]).filter(Boolean);
+        if (cardObjects.length !== cardIds.length) throw new Error(`《${rows[0].name}》包含服务器未找到的卡牌`);
+
+        const validation = ServerGameService.validateDeck(cardObjects as any);
+        if (!validation.valid) throw new Error(`《${rows[0].name}》不合法：${validation.error}`);
+
+        decks.push({ sourceId: rows[0].id, name: rows[0].name, cards: cardIds });
+    }
+    return decks;
+}
+
+async function saveBugCupRegistration(user: any, deckIds: string[]) {
+    if (!buildBugCupCurrent().canEditDecks) {
+        throw new Error('瑞士轮开始后卡组已锁定，无法修改');
+    }
+
+    const existing = await getBugCupRegistration(user.userId.toString());
+    const decks = await readAndValidateBugCupDecks(user, deckIds);
+    const postIds: string[] = [];
+    for (let i = 0; i < decks.length; i++) {
+        postIds.push(await upsertBugCupDeckSquarePost(user, i, decks[i].sourceId, decks[i].name, decks[i].cards, existing?.deckSquarePostIds?.[i]));
+    }
+
+    const now = Date.now();
+    await pool.query(
+        `REPLACE INTO bug_cup_registrations
+         (edition, user_id, display_name, deck_source_ids, deck_names, deck_cards, deck_square_post_ids, registered_at, updated_at, locked_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+            BUG_CUP_EDITION,
+            user.userId,
+            getUserDisplayLabel(user),
+            JSON.stringify(decks.map(deck => deck.sourceId)),
+            JSON.stringify(decks.map(deck => deck.name)),
+            JSON.stringify(decks.map(deck => deck.cards)),
+            JSON.stringify(postIds),
+            existing?.registeredAt || now,
+            now,
+            null
+        ]
+    );
+    return getBugCupRegistration(user.userId.toString());
+}
+
+async function syncExistingBugCupDecks(user: any) {
+    const registration = await getBugCupRegistration(user.userId.toString());
+    if (!registration) throw new Error('尚未报名');
+    return saveBugCupRegistration(user, registration.deckSourceIds);
+}
+
+function resolveBugCupDeckCards(registration: any, deckIndex: number) {
+    const cardIds = registration?.deckCards?.[deckIndex];
+    if (!Array.isArray(cardIds)) throw new Error('未找到提交卡组');
+    const cards = cardIds.map((id: string) => SERVER_CARD_LIBRARY[id]).filter(Boolean);
+    if (cards.length !== cardIds.length) throw new Error('提交卡组包含服务器未找到的卡牌');
+    const validation = ServerGameService.validateDeck(cards as any);
+    if (!validation.valid) throw new Error(`提交卡组不合法：${validation.error}`);
+    return cards as Card[];
+}
+
+async function createBugCupGame(match: any, player1DeckIndex: number, player2DeckIndex: number) {
+    const p1Reg = await getBugCupRegistration(match.player1_id, Number(match.edition));
+    const p2Reg = await getBugCupRegistration(match.player2_id, Number(match.edition));
+    if (!p1Reg || !p2Reg) throw new Error('双方都需要报名');
+
+    const p1Cards = resolveBugCupDeckCards(p1Reg, player1DeckIndex);
+    const p2Cards = resolveBugCupDeckCards(p2Reg, player2DeckIndex);
+    const gameId = `bugcup_${match.id}_${Math.random().toString(36).slice(2, 7)}`;
+    const gameState = await ServerGameService.createMatchGameState(match.player1_id, p1Cards, match.player2_id, p2Cards);
+    gameState.gameId = gameId;
+    gameState.mode = 'bugCup';
+    (gameState as any).bugCupMatchId = match.id;
+    (gameState as any).bugCupEdition = Number(match.edition);
+    (gameState as any).bugCupPhase = match.phase;
+    (gameState as any).bugCupRound = Number(match.round);
+    gameState.players[match.player1_id].displayName = p1Reg.displayName || '玩家1';
+    gameState.players[match.player2_id].displayName = p2Reg.displayName || '玩家2';
+    gameState.logs = [`${BUG_CUP_NAME} ${match.phase === 'PRELIM' ? '预赛' : match.phase === 'SWISS' ? `瑞士轮第 ${match.round} 轮` : match.round === 1 ? '半决赛' : '决赛'}开始。`];
+
+    await pool.query('INSERT INTO games (id, state, status) VALUES (?, ?, 0)', [gameId, JSON.stringify(gameState)]);
+    return { gameId, gameState };
+}
+
+async function recordBugCupGameResult(gameState: any, gameId: string) {
+    const matchId = gameState?.bugCupMatchId;
+    if (!matchId) return;
+    const rows = await pool.query('SELECT * FROM bug_cup_matches WHERE id = ? LIMIT 1', [matchId]);
+    if (!rows.length || rows[0].result_status === 'COMPLETED' || rows[0].result_status === 'DOUBLE_LOSS') return;
+    await pool.query(
+        'UPDATE bug_cup_matches SET winner_id = ?, result_status = ?, updated_at = ? WHERE id = ?',
+        [gameState.winnerId || null, gameState.winnerId ? 'COMPLETED' : 'DOUBLE_LOSS', Date.now(), matchId]
+    );
+    if (rows[0].phase === 'PRELIM') {
+        bugCupPrelimResults.delete(rows[0].player1_id);
+        if (rows[0].player2_id) bugCupPrelimResults.delete(rows[0].player2_id);
+    }
+}
+
+async function getBugCupStandings(edition = BUG_CUP_EDITION, includeSimulatedOpponents = true) {
+    const registrations = await pool.query('SELECT * FROM bug_cup_registrations WHERE edition = ? ORDER BY registered_at ASC, user_id ASC', [edition]);
+    const table = new Map<string, any>();
+    registrations.forEach((row: any) => {
+        table.set(row.user_id, {
+            userId: row.user_id,
+            displayName: row.display_name,
+            wins: 0,
+            losses: 0,
+            opponentWins: 0,
+            registeredAt: Number(row.registered_at)
+        });
+    });
+
+    const matches = await pool.query(
+        "SELECT * FROM bug_cup_matches WHERE edition = ? AND phase = 'SWISS' AND result_status IN ('COMPLETED', 'DOUBLE_LOSS', 'BYE')",
+        [edition]
+    );
+    for (const match of matches) {
+        const p1 = table.get(match.player1_id);
+        const p2 = match.player2_id ? table.get(match.player2_id) : null;
+        if (!p1) continue;
+        if (!p2) {
+            if (match.winner_id === match.player1_id) p1.wins += 1;
+            continue;
+        }
+        if (match.winner_id === match.player1_id) {
+            p1.wins += 1;
+            p2.losses += 1;
+        } else if (match.winner_id === match.player2_id) {
+            p2.wins += 1;
+            p1.losses += 1;
+        } else {
+            p1.losses += 1;
+            p2.losses += 1;
+        }
+    }
+
+    for (const match of matches) {
+        if (!match.player2_id) continue;
+        const p1 = table.get(match.player1_id);
+        const p2 = table.get(match.player2_id);
+        if (p1 && p2) {
+            p1.opponentWins += p2.wins;
+            p2.opponentWins += p1.wins;
+        }
+    }
+
+    const sorted = Array.from(table.values())
+        .sort((a, b) =>
+            b.wins - a.wins ||
+            b.opponentWins - a.opponentWins ||
+            a.registeredAt - b.registeredAt ||
+            a.userId.localeCompare(b.userId)
+        );
+
+    if (includeSimulatedOpponents && shouldInjectBugCupSimulatedOpponents()) {
+        const existingIds = new Set(sorted.map(entry => entry.userId));
+        const baseWins = sorted[0]?.wins ?? 5;
+        const baseOpponentWins = sorted[0]?.opponentWins ?? 0;
+        const simulated = BUG_CUP_SIMULATED_OPPONENTS
+            .filter(opponent => !existingIds.has(opponent.userId))
+            .map((opponent, index) => ({
+                userId: opponent.userId,
+                displayName: opponent.displayName,
+                wins: Math.max(0, baseWins - 1),
+                losses: index,
+                opponentWins: Math.max(0, baseOpponentWins - index),
+                registeredAt: BUG_CUP_START + opponent.rank
+            }));
+
+        const first = sorted.slice(0, 1);
+        const rest = sorted.slice(1);
+        const injected = [...first, ...simulated, ...rest].slice(0, Math.max(4, sorted.length + simulated.length));
+        return injected.map((entry, index) => ({ rank: index + 1, ...entry, simulated: BUG_CUP_SIMULATED_OPPONENTS.some(opponent => opponent.userId === entry.userId) }));
+    }
+
+    return sorted.map((entry, index) => ({ rank: index + 1, ...entry }));
+}
+
+async function bugCupPairingsAlreadyExist(phase: string, round: number) {
+    const rows = await pool.query('SELECT id FROM bug_cup_matches WHERE edition = ? AND phase = ? AND round = ? LIMIT 1', [BUG_CUP_EDITION, phase, round]);
+    return rows.length > 0;
+}
+
+async function createBugCupMatch(phase: string, round: number, player1Id: string, player2Id: string | null, scheduledFor: number, winnerId?: string | null, status = 'PENDING') {
+    const now = Date.now();
+    const id = `bc${BUG_CUP_EDITION}_${phase.toLowerCase()}_${round}_${Math.random().toString(36).slice(2, 10)}`;
+    await pool.query(
+        `INSERT INTO bug_cup_matches
+         (id, edition, phase, round, player1_id, player2_id, winner_id, result_status, scheduled_for, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [id, BUG_CUP_EDITION, phase, round, player1Id, player2Id, winnerId || null, status, scheduledFor, now, now]
+    );
+}
+
+async function settleExpiredBugCupMatches(now = Date.now()) {
+    const rows = await pool.query(
+        "SELECT * FROM bug_cup_matches WHERE edition = ? AND phase IN ('SWISS', 'ELIMINATION') AND result_status IN ('PENDING', 'ACTIVE') AND scheduled_for + ? <= ?",
+        [BUG_CUP_EDITION, DAY_MS, now]
+    );
+
+    for (const match of rows) {
+        let winnerId: string | null = null;
+        let status = 'DOUBLE_LOSS';
+
+        if (match.game_id) {
+            const gameRows = await pool.query('SELECT state FROM games WHERE id = ? LIMIT 1', [match.game_id]);
+            const state = gameRows.length ? (typeof gameRows[0].state === 'string' ? JSON.parse(gameRows[0].state) : gameRows[0].state) : null;
+            if (state?.gameStatus === 2 && state.winnerId) {
+                winnerId = state.winnerId;
+                status = 'COMPLETED';
+            }
+        } else if (!!match.player1_ready !== !!match.player2_ready) {
+            winnerId = match.player1_ready ? match.player1_id : match.player2_id;
+            status = 'COMPLETED';
+        }
+
+        await pool.query(
+            'UPDATE bug_cup_matches SET winner_id = ?, result_status = ?, updated_at = ? WHERE id = ?',
+            [winnerId, status, now, match.id]
+        );
+    }
+}
+
+async function createSwissRoundIfNeeded(round: number) {
+    if (await bugCupPairingsAlreadyExist('SWISS', round)) return;
+
+    const scheduledFor = BUG_CUP_SWISS_START + (round - 1) * DAY_MS;
+    const standings = await getBugCupStandings(BUG_CUP_EDITION, false);
+    const remaining = standings.map(item => item.userId);
+
+    while (remaining.length > 1) {
+        const player1Id = remaining.shift()!;
+        let opponentIndex = 0;
+        if (round > 1) {
+            const playedRows = await pool.query(
+                "SELECT id FROM bug_cup_matches WHERE edition = ? AND phase = 'SWISS' AND ((player1_id = ? AND player2_id = ?) OR (player1_id = ? AND player2_id = ?)) LIMIT 1",
+                [BUG_CUP_EDITION, player1Id, remaining[0], remaining[0], player1Id]
+            );
+            if (playedRows.length > 0) {
+                const found = await Promise.all(remaining.map(async (candidate, index) => {
+                    const rows = await pool.query(
+                        "SELECT id FROM bug_cup_matches WHERE edition = ? AND phase = 'SWISS' AND ((player1_id = ? AND player2_id = ?) OR (player1_id = ? AND player2_id = ?)) LIMIT 1",
+                        [BUG_CUP_EDITION, player1Id, candidate, candidate, player1Id]
+                    );
+                    return rows.length === 0 ? index : -1;
+                }));
+                opponentIndex = found.find(index => index >= 0) ?? 0;
+            }
+        }
+        const [player2Id] = remaining.splice(opponentIndex, 1);
+        await createBugCupMatch('SWISS', round, player1Id, player2Id, scheduledFor);
+    }
+
+    if (remaining.length === 1) {
+        await createBugCupMatch('SWISS', round, remaining[0], null, scheduledFor, remaining[0], 'BYE');
+    }
+}
+
+async function createEliminationIfNeeded(now = Date.now()) {
+    if (now >= BUG_CUP_ELIM_SEMI_START && !(await bugCupPairingsAlreadyExist('ELIMINATION', 1))) {
+        const top4 = (await getBugCupStandings()).slice(0, 4);
+        if (top4.length >= 4) {
+            await createBugCupMatch('ELIMINATION', 1, top4[0].userId, top4[3].userId, BUG_CUP_ELIM_SEMI_START);
+            await createBugCupMatch('ELIMINATION', 1, top4[1].userId, top4[2].userId, BUG_CUP_ELIM_SEMI_START);
+        }
+    }
+
+    if (now >= BUG_CUP_ELIM_FINAL_START && !(await bugCupPairingsAlreadyExist('ELIMINATION', 2))) {
+        const semiRows = await pool.query(
+            "SELECT * FROM bug_cup_matches WHERE edition = ? AND phase = 'ELIMINATION' AND round = 1 AND result_status = 'COMPLETED' AND winner_id IS NOT NULL ORDER BY created_at ASC",
+            [BUG_CUP_EDITION]
+        );
+        if (semiRows.length >= 2) {
+            await createBugCupMatch('ELIMINATION', 2, semiRows[0].winner_id, semiRows[1].winner_id, BUG_CUP_ELIM_FINAL_START);
+        }
+    }
+}
+
+async function ensureBugCupSchedule() {
+    const now = getBugCupNow();
+    if (now >= BUG_CUP_SWISS_START) {
+        await pool.query('UPDATE bug_cup_registrations SET locked_at = COALESCE(locked_at, ?) WHERE edition = ?', [BUG_CUP_SWISS_START, BUG_CUP_EDITION]);
+    }
+
+    if (now >= BUG_CUP_SWISS_START) {
+        const currentRound = Math.min(5, Math.floor((Math.min(now, BUG_CUP_ELIM_SEMI_START - 1) - BUG_CUP_SWISS_START) / DAY_MS) + 1);
+        for (let round = 1; round <= currentRound; round++) {
+            await createSwissRoundIfNeeded(round);
+            await settleExpiredBugCupMatches(now);
+        }
+    } else {
+        await settleExpiredBugCupMatches(now);
+    }
+    await createEliminationIfNeeded(now);
+}
+
+function getBugCupMatchOpponent(match: any, userId: string) {
+    if (!match) return null;
+    return match.player1_id === userId ? match.player2_id : match.player1_id;
+}
+
+function getBugCupDisplayName(userId?: string | null, fallback?: string | null) {
+    if (!userId) return fallback || '待定';
+    const simulated = BUG_CUP_SIMULATED_OPPONENTS.find(opponent => opponent.userId === userId);
+    return simulated?.displayName || fallback || userId;
+}
+
+async function isProtectedBugCupDeckSquarePost(post: any) {
+    if (!post) return false;
+    if (String(post.source_deck_id || '').startsWith('bugcup:')) return true;
+    if (safeJsonArray(post.tags).map(String).includes(BUG_CUP_TAG)) return true;
+
+    const rows = await pool.query(
+        'SELECT user_id FROM bug_cup_registrations WHERE edition = ? AND JSON_CONTAINS(deck_square_post_ids, JSON_QUOTE(?)) LIMIT 1',
+        [BUG_CUP_EDITION, post.id]
+    );
+    return rows.length > 0;
+}
+
+app.get('/api/bug-cup/current', async (_req, res): Promise<void> => {
+    try {
+        await ensureBugCupSchedule();
+        res.json(buildBugCupCurrent());
+    } catch (err) {
+        console.error('Bug cup current error:', err);
+        res.status(500).json({ error: 'DB Error' });
+    }
+});
+
+app.post('/api/bug-cup/register', async (req, res): Promise<void> => {
+    const user = await getAuthenticatedUserFromHeader(req, res);
+    if (!user) { return; }
+
+    try {
+        await ensureBugCupSchedule();
+        const deckIds = Array.isArray(req.body?.deckIds) ? req.body.deckIds : [];
+        const registration = await saveBugCupRegistration(user, deckIds);
+        res.json({ registration, current: buildBugCupCurrent() });
+    } catch (err: any) {
+        res.status(400).json({ error: err.message || '报名失败' });
+    }
+});
+
+app.post('/api/bug-cup/decks/sync', async (req, res): Promise<void> => {
+    const user = await getAuthenticatedUserFromHeader(req, res);
+    if (!user) { return; }
+
+    try {
+        await ensureBugCupSchedule();
+        const deckIds = Array.isArray(req.body?.deckIds) ? req.body.deckIds : null;
+        const registration = deckIds ? await saveBugCupRegistration(user, deckIds) : await syncExistingBugCupDecks(user);
+        res.json({ registration, current: buildBugCupCurrent() });
+    } catch (err: any) {
+        res.status(400).json({ error: err.message || '同步失败' });
+    }
+});
+
+app.get('/api/bug-cup/me', async (req, res): Promise<void> => {
+    const user = await getAuthenticatedUserFromHeader(req, res);
+    if (!user) { return; }
+
+    try {
+        await ensureBugCupSchedule();
+        const userId = user.userId.toString();
+        const registration = await getBugCupRegistration(userId);
+        const matches = await pool.query(
+            `SELECT m.*,
+                    u1.username AS player1_name,
+                    u2.username AS player2_name
+             FROM bug_cup_matches m
+             LEFT JOIN users u1 ON u1.id = m.player1_id
+             LEFT JOIN users u2 ON u2.id = m.player2_id
+             WHERE m.edition = ? AND (m.player1_id = ? OR m.player2_id = ?)
+             ORDER BY m.scheduled_for DESC, m.created_at DESC
+             LIMIT 30`,
+            [BUG_CUP_EDITION, userId, userId]
+        );
+        const standings = await getBugCupStandings();
+        res.json({
+            current: buildBugCupCurrent(),
+            registration,
+            myRank: standings.find(item => item.userId === userId) || null,
+            matches: matches.map((row: any) => ({
+                ...serializeBugCupMatch(row),
+                opponentId: getBugCupMatchOpponent(row, userId),
+                player1Name: row.player1_name || row.player1_id,
+                player2Name: row.player2_name || row.player2_id
+            }))
+        });
+    } catch (err) {
+        console.error('Bug cup me error:', err);
+        res.status(500).json({ error: 'DB Error' });
+    }
+});
+
+app.get('/api/bug-cup/standings', async (_req, res): Promise<void> => {
+    try {
+        await ensureBugCupSchedule();
+        const eliminationRows = await pool.query(
+            `SELECT m.*,
+                    u1.username AS player1_name,
+                    u2.username AS player2_name
+             FROM bug_cup_matches m
+             LEFT JOIN users u1 ON u1.id = m.player1_id
+             LEFT JOIN users u2 ON u2.id = m.player2_id
+             WHERE m.edition = ? AND m.phase = 'ELIMINATION'
+             ORDER BY m.round ASC, m.created_at ASC`,
+            [BUG_CUP_EDITION]
+        );
+        res.json({
+            current: buildBugCupCurrent(),
+            standings: await getBugCupStandings(),
+            eliminationMatches: eliminationRows.map((row: any) => ({
+                ...serializeBugCupMatch(row),
+                player1Name: getBugCupDisplayName(row.player1_id, row.player1_name),
+                player2Name: getBugCupDisplayName(row.player2_id, row.player2_name),
+                winnerName: row.winner_id === row.player1_id
+                    ? getBugCupDisplayName(row.winner_id, row.player1_name)
+                    : row.winner_id === row.player2_id
+                        ? getBugCupDisplayName(row.winner_id, row.player2_name)
+                        : getBugCupDisplayName(row.winner_id, null)
+            }))
+        });
+    } catch (err) {
+        console.error('Bug cup standings error:', err);
+        res.status(500).json({ error: 'DB Error' });
+    }
+});
+
+app.post('/api/bug-cup/prelim/matchmaking', async (req, res): Promise<void> => {
+    const user = await getAuthenticatedUserFromHeader(req, res);
+    if (!user) { return; }
+
+    try {
+        await ensureBugCupSchedule();
+        const current = buildBugCupCurrent();
+        if (current.phase !== 'PRELIM') { res.status(400).json({ error: '当前不在预赛阶段' }); return; }
+
+        const userId = user.userId.toString();
+        if (req.body?.cancel) {
+            for (let i = bugCupPrelimQueue.length - 1; i >= 0; i--) {
+                if (bugCupPrelimQueue[i].userId === userId) bugCupPrelimQueue.splice(i, 1);
+            }
+            res.json({ matched: false, cancelled: true });
+            return;
+        }
+
+        const existingGameId = bugCupPrelimResults.get(userId);
+        if (existingGameId) {
+            res.json({ matched: true, gameId: existingGameId });
+            return;
+        }
+
+        const registration = await getBugCupRegistration(userId);
+        if (!registration) { res.status(400).json({ error: '请先报名' }); return; }
+        const deckIndex = Number(req.body?.deckIndex || 0);
+        if (!Number.isInteger(deckIndex) || deckIndex < 0 || deckIndex >= registration.deckCards.length) {
+            res.status(400).json({ error: '请选择已提交的卡组' });
+            return;
+        }
+        resolveBugCupDeckCards(registration, deckIndex);
+
+        for (let i = bugCupPrelimQueue.length - 1; i >= 0; i--) {
+            if (bugCupPrelimQueue[i].userId === userId) bugCupPrelimQueue.splice(i, 1);
+        }
+
+        const opponentIndex = bugCupPrelimQueue.findIndex(entry => entry.userId !== userId);
+        if (opponentIndex === -1) {
+            bugCupPrelimQueue.push({
+                userId,
+                socketId: getAuthenticatedSocketIds(userId)[0],
+                deckIndex,
+                timestamp: Date.now()
+            });
+            res.json({ matched: false, position: bugCupPrelimQueue.length });
+            return;
+        }
+
+        const [opponent] = bugCupPrelimQueue.splice(opponentIndex, 1);
+        const matchId = `bc${BUG_CUP_EDITION}_prelim_${Math.random().toString(36).slice(2, 10)}`;
+        const now = Date.now();
+        await pool.query(
+            `INSERT INTO bug_cup_matches
+             (id, edition, phase, round, player1_id, player2_id, player1_deck_index, player2_deck_index, player1_ready, player2_ready, result_status, scheduled_for, created_at, updated_at)
+             VALUES (?, ?, 'PRELIM', 0, ?, ?, ?, ?, TRUE, TRUE, 'ACTIVE', ?, ?, ?)`,
+            [matchId, BUG_CUP_EDITION, opponent.userId, userId, opponent.deckIndex, deckIndex, now, now, now]
+        );
+        const matchRows = await pool.query('SELECT * FROM bug_cup_matches WHERE id = ?', [matchId]);
+        const { gameId } = await createBugCupGame(matchRows[0], opponent.deckIndex, deckIndex);
+        await pool.query('UPDATE bug_cup_matches SET game_id = ?, updated_at = ? WHERE id = ?', [gameId, Date.now(), matchId]);
+
+        bugCupPrelimResults.set(userId, gameId);
+        bugCupPrelimResults.set(opponent.userId, gameId);
+        if (opponent.socketId) io.to(opponent.socketId).emit('bugCupMatchFound', { gameId });
+        getAuthenticatedSocketIds(userId).forEach(socketId => io.to(socketId).emit('bugCupMatchFound', { gameId }));
+        res.json({ matched: true, gameId });
+    } catch (err: any) {
+        console.error('Bug cup prelim matchmaking error:', err);
+        res.status(500).json({ error: err.message || '匹配失败' });
+    }
+});
+
+app.post('/api/bug-cup/matches/:id/ready', async (req, res): Promise<void> => {
+    const user = await getAuthenticatedUserFromHeader(req, res);
+    if (!user) { return; }
+
+    const matchId = req.params.id;
+    try {
+        await ensureBugCupSchedule();
+        await withGameLock(`bugcup:${matchId}`, async () => {
+            const rows = await pool.query('SELECT * FROM bug_cup_matches WHERE id = ? AND edition = ? LIMIT 1', [matchId, BUG_CUP_EDITION]);
+            if (!rows.length) { res.status(404).json({ error: '未找到比赛' }); return; }
+            const match = rows[0];
+            const userId = user.userId.toString();
+            const isPlayer1 = match.player1_id === userId;
+            const isPlayer2 = match.player2_id === userId;
+            if (!isPlayer1 && !isPlayer2) { res.status(403).json({ error: '你不是该轮比赛选手' }); return; }
+            if (match.result_status === 'COMPLETED' || match.result_status === 'DOUBLE_LOSS' || match.result_status === 'BYE') {
+                res.json({ match: serializeBugCupMatch(match), gameId: match.game_id || null });
+                return;
+            }
+
+            if (req.body?.ready === false || req.body?.cancel === true) {
+                if (match.phase !== 'SWISS') {
+                    res.status(400).json({ error: '只有瑞士轮可以取消准备' });
+                    return;
+                }
+                if (match.game_id) {
+                    res.status(400).json({ error: '对局已开始，无法取消准备' });
+                    return;
+                }
+
+                const updateField = isPlayer1 ? 'player1' : 'player2';
+                await pool.query(
+                    `UPDATE bug_cup_matches
+                     SET ${updateField}_ready = FALSE, ${updateField}_ready_at = NULL, ${updateField}_deck_index = NULL, updated_at = ?
+                     WHERE id = ?`,
+                    [Date.now(), matchId]
+                );
+
+                const nextRows = await pool.query('SELECT * FROM bug_cup_matches WHERE id = ? LIMIT 1', [matchId]);
+                res.json({ match: serializeBugCupMatch(nextRows[0]), gameId: null });
+                return;
+            }
+
+            const registration = await getBugCupRegistration(userId);
+            if (!registration) { res.status(400).json({ error: '请先报名' }); return; }
+            const deckIndex = Number(req.body?.deckIndex || 0);
+            if (!Number.isInteger(deckIndex) || deckIndex < 0 || deckIndex >= registration.deckCards.length) {
+                res.status(400).json({ error: '请选择已提交的卡组' });
+                return;
+            }
+            resolveBugCupDeckCards(registration, deckIndex);
+
+            const updateField = isPlayer1 ? 'player1' : 'player2';
+            const now = Date.now();
+            await pool.query(
+                `UPDATE bug_cup_matches
+                 SET ${updateField}_ready = TRUE, ${updateField}_ready_at = ?, ${updateField}_deck_index = ?, updated_at = ?
+                 WHERE id = ?`,
+                [now, deckIndex, now, matchId]
+            );
+
+            const nextRows = await pool.query('SELECT * FROM bug_cup_matches WHERE id = ? LIMIT 1', [matchId]);
+            const nextMatch = nextRows[0];
+            if (nextMatch.player1_ready && nextMatch.player2_ready && !nextMatch.game_id) {
+                const { gameId } = await createBugCupGame(nextMatch, Number(nextMatch.player1_deck_index || 0), Number(nextMatch.player2_deck_index || 0));
+                await pool.query(
+                    "UPDATE bug_cup_matches SET game_id = ?, result_status = 'ACTIVE', updated_at = ? WHERE id = ?",
+                    [gameId, Date.now(), matchId]
+                );
+
+                [nextMatch.player1_id, nextMatch.player2_id]
+                    .filter(Boolean)
+                    .forEach((uid: string) => {
+                        getAuthenticatedSocketIds(uid.toString()).forEach(socketId => {
+                            io.to(socketId).emit('bugCupMatchFound', { gameId, matchId });
+                        });
+                    });
+
+                res.json({ match: { ...serializeBugCupMatch(nextMatch), gameId, resultStatus: 'ACTIVE' }, gameId });
+                return;
+            }
+
+            res.json({ match: serializeBugCupMatch(nextMatch), gameId: nextMatch.game_id || null });
+        });
+    } catch (err: any) {
+        console.error('Bug cup ready error:', err);
+        res.status(500).json({ error: err.message || '准备失败' });
+    }
+});
+
 
 app.get('/api/deck-square', async (req, res): Promise<void> => {
     const user = await getAuthenticatedUserFromHeader(req, res);
@@ -2096,6 +2852,9 @@ app.post('/api/deck-square/publish', async (req, res): Promise<void> => {
 
     try {
         const { deckId } = req.body || {};
+        const tags = Array.isArray(req.body?.tags)
+            ? req.body.tags.map((tag: any) => String(tag).trim()).filter(Boolean).slice(0, 8)
+            : [];
         if (!deckId) { res.status(400).json({ error: '请选择要发布的卡组' }); return; }
 
         const deckRows = await pool.query('SELECT * FROM decks WHERE id = ? AND user_id = ?', [deckId, user.userId]);
@@ -2109,8 +2868,8 @@ app.post('/api/deck-square/publish', async (req, res): Promise<void> => {
         const now = Date.now();
         if (existingRows.length > 0) {
             await pool.query(
-                'UPDATE deck_square_posts SET author_name = ?, name = ?, cards = ?, updated_at = ? WHERE id = ?',
-                [getUserDisplayLabel(user), deck.name, JSON.stringify(cardIds), now, existingRows[0].id]
+                'UPDATE deck_square_posts SET author_name = ?, name = ?, cards = ?, tags = ?, updated_at = ? WHERE id = ?',
+                [getUserDisplayLabel(user), deck.name, JSON.stringify(cardIds), JSON.stringify(tags), now, existingRows[0].id]
             );
             res.json({ id: existingRows[0].id, updated: true });
             return;
@@ -2118,8 +2877,8 @@ app.post('/api/deck-square/publish', async (req, res): Promise<void> => {
 
         const postId = Math.random().toString(36).substring(2, 10);
         await pool.query(
-            'INSERT INTO deck_square_posts (id, source_deck_id, user_id, author_name, name, cards, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-            [postId, deckId, user.userId, getUserDisplayLabel(user), deck.name, JSON.stringify(cardIds), now, now]
+            'INSERT INTO deck_square_posts (id, source_deck_id, user_id, author_name, name, cards, tags, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+            [postId, deckId, user.userId, getUserDisplayLabel(user), deck.name, JSON.stringify(cardIds), JSON.stringify(tags), now, now]
         );
         res.json({ id: postId, published: true });
     } catch (err) {
@@ -2161,9 +2920,13 @@ app.delete('/api/deck-square/:id', async (req, res): Promise<void> => {
 
     try {
         const postId = req.params.id;
-        const postRows = await pool.query('SELECT id, user_id FROM deck_square_posts WHERE id = ?', [postId]);
+        const postRows = await pool.query('SELECT id, user_id, source_deck_id, tags FROM deck_square_posts WHERE id = ?', [postId]);
         if (postRows.length === 0) { res.status(404).json({ error: '未找到发布的卡组' }); return; }
         if (postRows[0].user_id !== user.userId) { res.status(403).json({ error: '只有发布者可以删除该卡组' }); return; }
+        if (await isProtectedBugCupDeckSquarePost(postRows[0])) {
+            res.status(400).json({ error: 'bug杯参赛卡组不能从套牌广场删除' });
+            return;
+        }
 
         await pool.query('DELETE FROM deck_square_likes WHERE post_id = ?', [postId]);
         await pool.query('DELETE FROM deck_square_posts WHERE id = ? AND user_id = ?', [postId, user.userId]);

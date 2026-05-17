@@ -15,6 +15,7 @@ interface DeckSquarePost {
   authorName: string;
   name: string;
   cards: string[];
+  tags?: string[];
   likes: number;
   likedByMe: boolean;
   createdAt: number;
@@ -63,6 +64,7 @@ export const DeckSquare: React.FC = () => {
     return posts.filter(post =>
       post.name.toLowerCase().includes(term) ||
       post.authorName.toLowerCase().includes(term) ||
+      (post.tags || []).some(tag => tag.toLowerCase().includes(term)) ||
       post.cards.some(cardId => getCardByReference(cardId)?.fullName.toLowerCase().includes(term))
     );
   }, [posts, searchTerm, getCardByReference]);
@@ -115,6 +117,10 @@ export const DeckSquare: React.FC = () => {
 
   const deletePost = async (post: DeckSquarePost) => {
     if (post.authorUid !== currentUser?.uid) return;
+    if (isBugCupPost(post)) {
+      setNotice('bug杯参赛卡组不能从套牌广场删除');
+      return;
+    }
     if (!window.confirm(`确定要删除《${post.name}》吗？`)) return;
 
     setActionPostId(post.id);
@@ -135,6 +141,9 @@ export const DeckSquare: React.FC = () => {
       setActionPostId(null);
     }
   };
+
+  const isBugCupPost = (post: DeckSquarePost) =>
+    post.sourceDeckId?.startsWith('bugcup:') || (post.tags || []).includes('第1届bug杯杯赛');
 
   if (loading || cardsLoading) {
     return (
@@ -180,6 +189,7 @@ export const DeckSquare: React.FC = () => {
               const preview = groupedPreview(post).slice(0, 8);
               const busy = actionPostId === post.id;
               const isAuthor = post.authorUid === currentUser?.uid;
+              const protectedBugCupPost = isBugCupPost(post);
               return (
                 <motion.div
                   key={post.id}
@@ -195,9 +205,18 @@ export const DeckSquare: React.FC = () => {
                         <span>{post.cards.length} 张</span>
                         <span>{new Date(post.updatedAt || post.createdAt).toLocaleDateString()}</span>
                       </div>
+                      {!!post.tags?.length && (
+                        <div className="mt-3 flex flex-wrap gap-1.5">
+                          {post.tags.map(tag => (
+                            <span key={tag} className="rounded-full bg-red-500/15 px-2.5 py-1 text-[10px] font-black text-red-200">
+                              {tag}
+                            </span>
+                          ))}
+                        </div>
+                      )}
                     </div>
                     <div className="flex shrink-0 gap-2">
-                      {isAuthor && (
+                      {isAuthor && !protectedBugCupPost && (
                         <button
                           onClick={() => deletePost(post)}
                           disabled={busy}
@@ -206,6 +225,11 @@ export const DeckSquare: React.FC = () => {
                           {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
                           删除
                         </button>
+                      )}
+                      {isAuthor && protectedBugCupPost && (
+                        <span className="rounded-xl border border-red-400/20 bg-red-500/10 px-3 py-2 text-xs font-black text-red-200">
+                          参赛锁定
+                        </span>
                       )}
                       <button
                         onClick={() => toggleLike(post)}
@@ -273,13 +297,27 @@ export const DeckSquare: React.FC = () => {
                 <div>
                   <h2 className="text-2xl font-black italic tracking-tight">{selectedPost.name}</h2>
                   <p className="mt-1 text-xs font-bold text-zinc-500">{selectedPost.authorName} · {selectedPost.cards.length} 张卡牌</p>
+                  {!!selectedPost.tags?.length && (
+                    <div className="mt-3 flex flex-wrap gap-1.5">
+                      {selectedPost.tags.map(tag => (
+                        <span key={tag} className="rounded-full bg-red-500/15 px-2.5 py-1 text-[10px] font-black text-red-200">
+                          {tag}
+                        </span>
+                      ))}
+                    </div>
+                  )}
                 </div>
                 <div className="flex gap-2">
-                  {selectedPost.authorUid === currentUser?.uid && (
+                  {selectedPost.authorUid === currentUser?.uid && !isBugCupPost(selectedPost) && (
                     <button onClick={() => deletePost(selectedPost)} className="flex items-center gap-2 rounded-xl bg-zinc-800 px-4 py-2 text-sm font-black hover:bg-red-600">
                       <Trash2 className="h-4 w-4" />
                       删除
                     </button>
+                  )}
+                  {selectedPost.authorUid === currentUser?.uid && isBugCupPost(selectedPost) && (
+                    <span className="flex items-center rounded-xl border border-red-400/20 bg-red-500/10 px-4 py-2 text-sm font-black text-red-200">
+                      参赛锁定
+                    </span>
                   )}
                   <button onClick={() => toggleLike(selectedPost)} className="flex items-center gap-2 rounded-xl bg-zinc-800 px-4 py-2 text-sm font-black hover:bg-zinc-700">
                     <Heart className={cn('h-4 w-4', selectedPost.likedByMe && 'fill-current text-red-400')} />

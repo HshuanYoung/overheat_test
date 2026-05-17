@@ -668,7 +668,7 @@ export const BattleField: React.FC = () => {
   // Join game effect
   useEffect(() => {
     if (!gameId || gameId === 'undefined') return;
-    if (seat === 'player' && !deckId && !gameId.startsWith('friend_')) return;
+    if (seat === 'player' && !deckId && !gameId.startsWith('friend_') && !gameId.startsWith('bugcup_')) return;
 
     const performJoin = () => {
       console.log('[BattleField] Emitting joinGame:', gameId);
@@ -703,7 +703,7 @@ export const BattleField: React.FC = () => {
     if (!gameId || !gameId.startsWith('friend_')) return;
     if (!myUid || seat !== 'player') return;
     if (me && opponent) return;
-    if (seat === 'player' && !deckId && !gameId.startsWith('friend_')) return;
+    if (seat === 'player' && !deckId && !gameId.startsWith('friend_') && !gameId.startsWith('bugcup_')) return;
 
     const timeout = window.setTimeout(() => {
       if (Date.now() - lastJoinEmitRef.current < 1200) return;
