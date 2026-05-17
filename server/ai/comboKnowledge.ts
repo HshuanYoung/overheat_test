@@ -47,6 +47,17 @@ function countTotalErosion(player: PlayerState) {
   return player.erosionFront.filter(Boolean).length + player.erosionBack.filter(Boolean).length;
 }
 
+function countLikelyDefenders(gameState: GameState, defender: PlayerState | undefined) {
+  if (!defender) return 0;
+  return defender.unitZone.filter(unit =>
+    unit &&
+    !unit.isExhausted &&
+    !(unit as any).battleForbiddenByEffect &&
+    !((unit as any).data?.cannotDefendTurn === gameState.turnCount) &&
+    !((unit as any).data?.cannotAttackOrDefendUntilTurn && (unit as any).data.cannotAttackOrDefendUntilTurn >= gameState.turnCount)
+  ).length;
+}
+
 function cardMatches(card: Card | null | undefined, id: string) {
   if (!card) return false;
   return card.id === id || card.uniqueId === id || card.effects?.some(effect => effect.id?.startsWith(id));
@@ -227,6 +238,23 @@ export function getComboAllianceAttack(
     .filter((card): card is Card => !!card && availableIds.has(card.gamecardId));
 
   if (attackers.length !== 2 || !attackers.some(isSmileKoriel)) return undefined;
+
+  const opponentUid = gameState.playerIds.find(uid => uid !== player.uid);
+  const opponent = opponentUid ? gameState.players[opponentUid] : undefined;
+  const likelyDefenders = countLikelyDefenders(gameState, opponent);
+  if (opponent && likelyDefenders === 0) {
+    const totalDamage = availableAttackers.reduce((sum, card) => sum + Math.max(0, card.damage || 0), 0);
+    const comboDamage = attackers.reduce((sum, card) => sum + Math.max(0, card.damage || 0), 0);
+    const damageToCritical = Math.max(1, 10 - countTotalErosion(opponent));
+    const directDeckLethal = totalDamage > opponent.deck.length;
+    const directErosionCritical = totalDamage >= damageToCritical;
+    const comboDeckLethal = comboDamage > opponent.deck.length;
+    const comboErosionCritical = comboDamage >= damageToCritical;
+
+    if ((directDeckLethal && !comboDeckLethal) || (directErosionCritical && !comboErosionCritical)) {
+      return undefined;
+    }
+  }
 
   return {
     comboId: combo.id,

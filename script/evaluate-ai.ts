@@ -307,13 +307,18 @@ function collectDecisionDiagnostics(logs: AiDecisionLog[]) {
   for (const log of logs) {
     const trace = traceFor(log);
     if (log.action === 'TURN_PLAN') trace.plan = log;
-    if (log.action === 'ATTACK') trace.attacks++;
+    if (log.action === 'ATTACK' || log.action === 'COMBO_ALLIANCE_ATTACK') trace.attacks++;
     if (log.action === 'PLAY_CARD') trace.plays++;
     if (log.action === 'ACTIVATE_EFFECT' || log.action === 'PLAY_BATTLE_STORY') trace.effects++;
     if (log.action === 'PAYMENT') {
       trace.payments++;
-      const text = `${rawLogDetail(log, 'selection')} ${rawLogDetail(log, 'projectedPayment')} ${log.reason}`;
-      if (/横置|妯疆|exhaust/i.test(text)) trace.exhaustedPayments++;
+      const structuredExhausts = numericLogDetail(log, 'paymentExhaustsUnits');
+      if (structuredExhausts > 0) {
+        trace.exhaustedPayments += structuredExhausts;
+      } else {
+        const text = `${rawLogDetail(log, 'selection')} ${rawLogDetail(log, 'projectedPayment')}`;
+        if (/横置|妯疆|exhaust/i.test(text)) trace.exhaustedPayments++;
+      }
     }
     if (log.action === 'END_TURN') trace.ended = true;
     if (

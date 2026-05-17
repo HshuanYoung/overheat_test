@@ -336,7 +336,7 @@ function collectSampleIssues(sample: NormalizedSample): IssueFinding[] {
     const action = String(log?.action || '');
 
     if (action === 'TURN_PLAN') trace.plan = log;
-    if (action === 'ATTACK') {
+    if (action === 'ATTACK' || action === 'COMBO_ALLIANCE_ATTACK') {
       trace.attacks++;
       trace.firstAttackIndex ??= index;
     }
@@ -352,6 +352,10 @@ function collectSampleIssues(sample: NormalizedSample): IssueFinding[] {
           addIssue(findings, sample, 'STORY_TIMING_RISK', `主阶段故事卡 rawScore=${rawScore.toFixed(1)}，需要确认是否有明确收益`, log);
         }
       }
+    }
+    if (action === 'PAYMENT') {
+      trace.exhaustedPayments += numericLogDetail(log, 'paymentExhaustsUnits');
+      trace.deckPayments += numericLogDetail(log, 'estimatedDeckPayment');
     }
     if (action === 'ACTIVATE_EFFECT' || action === 'PLAY_BATTLE_STORY') {
       trace.effects++;
