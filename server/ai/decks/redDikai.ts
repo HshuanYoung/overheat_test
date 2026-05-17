@@ -224,6 +224,15 @@ export const redDikaiProfile: DeckAiProfile = {
       if (!card) return 0;
       const effectId = queryEffectId(context);
 
+      if (effectId === '102050432_reset_attack_unit') {
+        const location = card.cardlocation || context.option?.source;
+        if (location === 'UNIT' || location === 'ITEM') return -140;
+        if (location === 'GRAVE') return 42;
+        if (location === 'DECK') return 34;
+        if (location === 'HAND') return 24;
+        return 10;
+      }
+
       if (effectId === '202000131_duel') {
         if (!queryOptionIsMine(context)) return 0;
         return 60 + (RED_CORE_IDS.has(card.id) ? 34 : 0) + (card.godMark ? 12 : 0) + (card.damage || 0) * 9 + (card.power || 0) / 700;
@@ -239,6 +248,9 @@ export const redDikaiProfile: DeckAiProfile = {
     },
     adjustEffectScore: context => {
       let score = 0;
+      if (context.effect.id === '102050432_reset_attack_unit' && context.gameState.phase === 'COUNTERING') {
+        score -= 35;
+      }
       if (effectHasTag(context, 'combat') || effectHasTag(context, 'finisher') || effectHasTag(context, 'buff')) score += 5;
       if (effectHasTag(context, 'removal') || effectHasTag(context, 'tempo')) score += opponentHasTrait(context, 'large-defenders') ? 5 : 2.5;
       if (effectHasTag(context, 'draw') && (context.player?.deck.length || 0) <= 8) score -= 5;

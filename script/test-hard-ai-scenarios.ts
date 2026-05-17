@@ -1,8 +1,11 @@
 import {
   buildTurnPlan,
+  chooseAttacker,
   chooseDefender,
   choosePlayableCard,
   chooseQuerySelections,
+  isClosingTurnPlan,
+  scoreAttackCandidate,
   scoreActivatableEffect,
   scorePlayableCard,
   scorePaymentSacrificeValue,
@@ -830,6 +833,176 @@ function testPreventDestroySelectsThreatenedHighValueUnit(): ScenarioResult {
   );
 }
 
+function testPreventBattleDestroyEffectRequiresCombatThreat(): ScenarioResult {
+  const profile = getDeckAiProfile('white-temple');
+  const protectedUnit = unit({ id: '101000501', fullName: 'White Tiger', damage: 2, power: 3500, godMark: true, playedTurn: 1 });
+  const attacker = unit({ id: 'BATTLE_DESTROY_ATTACKER', color: 'RED', damage: 2, power: 4500 });
+  const preventBattleEffect = effect({
+    id: '101150208_prevent_battle_destroy',
+    description: 'prevent battle destroy target own unit',
+    content: 'PREVENT_BATTLE_DESTROY PROTECT',
+  });
+  const source = unit({ id: '101150208', fullName: 'Battle Protection Source', effects: [preventBattleEffect] });
+  const noThreatState = game(
+    { isTurn: false, unitZone: [source, protectedUnit, null, null, null, null] },
+    { isTurn: true, unitZone: [attacker, null, null, null, null, null] },
+    {
+      phase: 'COUNTERING',
+      currentTurnPlayer: 1,
+      priorityPlayerId: 'BOT',
+      battleState: { attackers: [attacker.gamecardId] },
+    }
+  );
+  const threatState = game(
+    { isTurn: false, unitZone: [source, protectedUnit, null, null, null, null] },
+    { isTurn: true, unitZone: [attacker, null, null, null, null, null] },
+    {
+      phase: 'COUNTERING',
+      currentTurnPlayer: 1,
+      priorityPlayerId: 'BOT',
+      battleState: {
+        attackers: [attacker.gamecardId],
+        defender: protectedUnit.gamecardId,
+        resolvedUnitIds: [],
+      },
+    }
+  );
+  const noThreatScore = scoreActivatableEffect(
+    noThreatState,
+    noThreatState.players.BOT,
+    source as any,
+    preventBattleEffect as any,
+    profile,
+    { opponent: noThreatState.players.P1, targetCount: 1, hasTargetSpec: true }
+  ).score;
+  const threatScore = scoreActivatableEffect(
+    threatState,
+    threatState.players.BOT,
+    source as any,
+    preventBattleEffect as any,
+    profile,
+    { opponent: threatState.players.P1, targetCount: 1, hasTargetSpec: true }
+  ).score;
+
+  return assertScenario(
+    'prevent-battle-destroy effect waits for high-value combat loss',
+    noThreatScore < 18 && threatScore > 25 && threatScore > noThreatScore + 70,
+    `noThreat=${noThreatScore.toFixed(1)}, threat=${threatScore.toFixed(1)}`
+  );
+}
+
+function testPreventBattleDestroySelectsThreatenedCombatUnit(): ScenarioResult {
+  const profile = getDeckAiProfile('white-temple');
+  const threatened = unit({ id: '101130440', fullName: 'Threatened Magic Spear', damage: 2, power: 2500, playedTurn: 1 });
+  const decoyCore = unit({ id: '101000501', fullName: 'White Tiger Decoy', damage: 3, power: 5000, godMark: true, playedTurn: 1 });
+  const attacker = unit({ id: 'BATTLE_DESTROY_ATTACKER', color: 'RED', damage: 2, power: 3500 });
+  const state = game(
+    { isTurn: false, unitZone: [threatened, decoyCore, null, null, null, null], botDeckProfileId: 'white-temple' },
+    { isTurn: true, unitZone: [attacker, null, null, null, null, null] },
+    {
+      phase: 'COUNTERING',
+      currentTurnPlayer: 1,
+      priorityPlayerId: 'BOT',
+      battleState: {
+        attackers: [attacker.gamecardId],
+        defender: threatened.gamecardId,
+        resolvedUnitIds: [],
+      },
+    }
+  );
+  const query = {
+    type: 'SELECT_CARD',
+    options: [
+      { card: decoyCore, source: 'UNIT', isMine: true },
+      { card: threatened, source: 'UNIT', isMine: true },
+    ],
+    minSelections: 1,
+    maxSelections: 1,
+    callbackKey: 'EFFECT_RESOLVE',
+    context: { effectId: '101150208_prevent_battle_destroy', step: 'TARGET' },
+  };
+  const selected = chooseQuerySelections(state, 'BOT', query as any, profile, 'hard');
+  return assertScenario(
+    'prevent-battle-destroy target selection follows combat loss',
+    selected[0] === threatened.gamecardId,
+    `selected=${selected[0]}, threatened=${threatened.gamecardId}, decoy=${decoyCore.gamecardId}`
+  );
+}
+
+function testDikaiResetCostChoosesNonFieldGodmarkCosts(): ScenarioResult {
+  const profile = getDeckAiProfile('red-dikai');
+  const handCost = unit({ id: '102050432', fullName: 'Dikai Hand Cost', color: 'RED', godMark: true, cardlocation: 'HAND' });
+  const deckCost = unit({ id: '102050432', fullName: 'Dikai Deck Cost', color: 'RED', godMark: true, cardlocation: 'DECK' });
+  const graveCost = unit({ id: '102050432', fullName: 'Dikai Grave Cost', color: 'RED', godMark: true, cardlocation: 'GRAVE' });
+  const fieldCore = unit({ id: '102050432', fullName: 'Dikai Field Core', color: 'RED', godMark: true, cardlocation: 'UNIT', damage: 4, power: 4000 });
+  const state = game(
+    {
+      hand: [handCost],
+      deck: [deckCost],
+      grave: [graveCost],
+      unitZone: [fieldCore, null, null, null, null, null],
+      botDeckProfileId: 'red-dikai',
+    },
+    {}
+  );
+  const query = {
+    type: 'SELECT_CARD',
+    options: [
+      { card: fieldCore, source: 'UNIT', isMine: true },
+      { card: handCost, source: 'HAND', isMine: true },
+      { card: deckCost, source: 'DECK', isMine: true },
+      { card: graveCost, source: 'GRAVE', isMine: true },
+    ],
+    minSelections: 2,
+    maxSelections: 2,
+    callbackKey: 'EFFECT_RESOLVE',
+    context: { effectId: '102050432_reset_attack_unit' },
+  };
+  const selected = chooseQuerySelections(state, 'BOT', query as any, profile, 'hard');
+  return assertScenario(
+    'dikai reset cost can choose non-field godmark costs',
+    selected.length === 2 && !selected.includes(fieldCore.gamecardId),
+    `selected=${selected.join(',')}, field=${fieldCore.gamecardId}`
+  );
+}
+
+function testDikaiResetHeldInCountering(): ScenarioResult {
+  const profile = getDeckAiProfile('red-dikai');
+  const resetEffect = effect({
+    id: '102050432_reset_attack_unit',
+    type: 'ACTIVATE',
+    description: 'reset this unit and it can attack opponent unit next attack',
+    content: 'RESET READY ATTACK UNIT RESOURCE',
+  });
+  const commander = unit({
+    id: '102050432',
+    color: 'RED',
+    fullName: 'Knight Captain Dikai',
+    damage: 4,
+    power: 4000,
+    godMark: true,
+    effects: [resetEffect],
+  });
+  const state = game(
+    { unitZone: [commander, null, null, null, null, null], botDeckProfileId: 'red-dikai' },
+    {},
+    { phase: 'COUNTERING', priorityPlayerId: 'BOT' }
+  );
+  const score = scoreActivatableEffect(
+    state,
+    state.players.BOT,
+    commander as any,
+    resetEffect as any,
+    profile,
+    { opponent: state.players.P1, targetCount: 0, hasTargetSpec: false }
+  ).score;
+  return assertScenario(
+    'dikai reset is held during generic countering windows',
+    score < 18,
+    `score=${score.toFixed(1)}`
+  );
+}
+
 function testRedCannotDefendNeedsTargetInClosingWindow(): ScenarioResult {
   const profile = getDeckAiProfile('red-dikai');
   const source = unit({ id: '102050427', color: 'RED', damage: 2, power: 2500, playedTurn: 1 });
@@ -1265,6 +1438,102 @@ function testDefenseDoesNotThrowGodMarkOnNonLethalHit(): ScenarioResult {
   );
 }
 
+function testDefenseDeclinesLowImpactChumpBlock(): ScenarioResult {
+  const profile = getDeckAiProfile('red-dikai');
+  const low = unit({ id: 'CHUMP_LOW', fullName: 'Chump Low', color: 'RED', power: 500, damage: 0 });
+  const attacker = unit({ id: 'LOW_IMPACT_ATTACKER', fullName: 'Low Impact Attacker', color: 'WHITE', power: 2500, damage: 1 });
+  const state = game(
+    {
+      unitZone: [low, null, null, null, null, null],
+      erosionFront: [],
+      erosionBack: [],
+      deck: deckCards(20, 'BOT_CHUMP_SAFE'),
+    },
+    { unitZone: [attacker, null, null, null, null, null] },
+    { phase: 'DEFENSE_DECLARATION' }
+  );
+  const chosen = chooseDefender(state, state.players.BOT, [attacker] as any, [low] as any, profile, 'hard');
+  return assertScenario(
+    'defense declines low-impact chump block',
+    !chosen,
+    `chosen=${chosen?.fullName || 'none'}`
+  );
+}
+
+function testDefenseSacrificesLowValueUnitToPreventLethalHit(): ScenarioResult {
+  const profile = getDeckAiProfile('white-temple');
+  const god = unit({ id: 'LETHAL_DEF_GOD', fullName: 'Lethal Def God', godMark: true, power: 500, damage: 2 });
+  const low = unit({ id: 'LETHAL_DEF_LOW', fullName: 'Lethal Def Low', power: 500, damage: 0 });
+  const attacker = unit({ id: 'LETHAL_ATTACKER', fullName: 'Lethal Attacker', color: 'RED', power: 3000, damage: 1 });
+  const state = game(
+    {
+      unitZone: [god, low, null, null, null, null],
+      erosionFront: [],
+      erosionBack: erosionCards(9, 'BOT_DEF_LETHAL'),
+      deck: deckCards(20, 'BOT_DEF_LETHAL_DECK'),
+    },
+    { unitZone: [attacker, null, null, null, null, null] },
+    { phase: 'DEFENSE_DECLARATION' }
+  );
+  const chosen = chooseDefender(state, state.players.BOT, [attacker] as any, [god, low] as any, profile, 'hard');
+  return assertScenario(
+    'defense sacrifices low-value unit to prevent lethal hit',
+    chosen?.gamecardId === low.gamecardId,
+    `chosen=${chosen?.fullName || 'none'}`
+  );
+}
+
+function testDefenseHighValueUnitBlocksLethalWhenOnlyOption(): ScenarioResult {
+  const profile = getDeckAiProfile('white-temple');
+  const god = unit({ id: 'ONLY_LETHAL_GOD', fullName: 'Only Lethal God', godMark: true, power: 1000, damage: 2 });
+  const attacker = unit({ id: 'ONLY_LETHAL_ATTACKER', fullName: 'Only Lethal Attacker', color: 'RED', power: 1000, damage: 1 });
+  const state = game(
+    {
+      unitZone: [god, null, null, null, null, null],
+      erosionFront: [],
+      erosionBack: erosionCards(9, 'BOT_ONLY_LETHAL'),
+      deck: deckCards(20, 'BOT_ONLY_LETHAL_DECK'),
+    },
+    { unitZone: [attacker, null, null, null, null, null] },
+    { phase: 'DEFENSE_DECLARATION' }
+  );
+  const chosen = chooseDefender(state, state.players.BOT, [attacker] as any, [god] as any, profile, 'hard');
+  return assertScenario(
+    'defense uses high-value unit when it is the only lethal block',
+    chosen?.gamecardId === god.gamecardId,
+    `chosen=${chosen?.fullName || 'none'}`
+  );
+}
+
+function testDefenseTakesProfitableWinAgainstHighValueAttacker(): ScenarioResult {
+  const profile = getDeckAiProfile('red-dikai');
+  const defender = unit({ id: 'PROFITABLE_DEFENDER', fullName: 'Profitable Defender', color: 'RED', power: 3500, damage: 0 });
+  const attacker = unit({
+    id: 'PROFITABLE_GOD_ATTACKER',
+    fullName: 'Profitable God Attacker',
+    color: 'WHITE',
+    godMark: true,
+    power: 1000,
+    damage: 2,
+  });
+  const state = game(
+    {
+      unitZone: [defender, null, null, null, null, null],
+      erosionFront: [],
+      erosionBack: [],
+      deck: deckCards(20, 'BOT_PROFIT_DEF'),
+    },
+    { unitZone: [attacker, null, null, null, null, null] },
+    { phase: 'DEFENSE_DECLARATION' }
+  );
+  const chosen = chooseDefender(state, state.players.BOT, [attacker] as any, [defender] as any, profile, 'hard');
+  return assertScenario(
+    'defense takes profitable win against high-value attacker',
+    chosen?.gamecardId === defender.gamecardId,
+    `chosen=${chosen?.fullName || 'none'}`
+  );
+}
+
 function testFiveDeckProfilesProduceTurnPlans(): ScenarioResult {
   const ids = ['white-temple', 'blue-adventurer', 'red-dikai', 'yellow-alchemy', 'overlord-totem'];
   const failures: string[] = [];
@@ -1329,6 +1598,274 @@ function testRedDikaiCommitsNearKillPressure(): ScenarioResult {
     'red dikai route commits attackers in near-kill window',
     plan.attackBeforeDeveloping && plan.reserveDefenders === 0 && hasRouteNote,
     `attackBefore=${plan.attackBeforeDeveloping}, reserve=${plan.reserveDefenders}, notes=${plan.notes.join('|')}`
+  );
+}
+
+function testClosingPlanHelperRecognizesErosionLethal(): ScenarioResult {
+  const profile = getDeckAiProfile('white-temple');
+  const attackerA = unit({ id: 'CLOSING_A', damage: 3, power: 3500, playedTurn: 1 });
+  const attackerB = unit({ id: 'CLOSING_B', damage: 2, power: 2500, playedTurn: 1 });
+  const state = game(
+    { unitZone: [attackerA, attackerB, null, null, null, null] },
+    { erosionBack: erosionCards(6, 'P1_CLOSING') }
+  );
+  const plan = buildTurnPlan(state, state.players.BOT, profile);
+  return assertScenario(
+    'closing helper recognizes erosion lethal attack line',
+    isClosingTurnPlan(plan),
+    `mode=${plan.mode}, tactical=${plan.tacticalLine}, damage=${plan.totalAvailableDamage}/${plan.damageToCritical}`
+  );
+}
+
+function testComboAllianceDoesNotOverrideDirectLethal(): ScenarioResult {
+  const profile = getDeckAiProfile('white-temple');
+  const smile = unit({
+    id: KNOWN_COMBO_CARD_IDS.smileKoriel,
+    uniqueId: `${KNOWN_COMBO_CARD_IDS.smileKoriel}:N`,
+    fullName: 'Smile Koriel',
+    damage: 1,
+    color: 'WHITE',
+    playedTurn: 1,
+    godMark: true,
+  });
+  const tiger = unit({ id: '101000501', fullName: 'White Tiger', damage: 3, power: 3500, color: 'WHITE', playedTurn: 1 });
+  const spear = unit({ id: '101130440', fullName: 'Temple Spear', damage: 2, power: 2500, color: 'WHITE', playedTurn: 1 });
+  const guard = unit({ id: '101130233', fullName: 'Temple Guard', damage: 2, power: 1500, color: 'WHITE', playedTurn: 1 });
+  const eclipse = story({
+    id: KNOWN_COMBO_CARD_IDS.eclipse,
+    uniqueId: `${KNOWN_COMBO_CARD_IDS.eclipse}:N`,
+    fullName: 'Eclipse',
+    effects: [{ id: KNOWN_COMBO_CARD_IDS.eclipseEffect, type: 'ACTIVATE', description: 'combo board wipe' }],
+  });
+  const state = game(
+    {
+      hand: [eclipse],
+      unitZone: [smile, tiger, spear, guard, null, null],
+      erosionBack: erosionCards(3, 'BOT_DIRECT_LETHAL'),
+    },
+    {
+      deck: deckCards(7, 'P1_DIRECT_LETHAL'),
+      unitZone: [null, null, null, null, null, null],
+    },
+    { phase: 'BATTLE_DECLARATION' }
+  );
+  const plan = getComboAllianceAttack(state, state.players.BOT, profile, [smile, tiger, spear, guard] as any);
+  return assertScenario(
+    'combo alliance yields to direct no-blocker lethal',
+    !plan,
+    plan ? `combo=${plan.attackers.map(card => card.id).join(',')}` : 'direct lethal preferred'
+  );
+}
+
+function testWhiteTigerBattleExileNeedsCurrentBattleThreat(): ScenarioResult {
+  const profile = getDeckAiProfile('white-temple');
+  const tigerEffect = effect({
+    id: '101000501_battle_exile_return',
+    description: 'battle phase discard a white unit: exile this unit, return it after battle',
+    cost: { type: 'DISCARD', amount: 1 },
+  });
+  const tiger = unit({
+    id: '101000501',
+    fullName: 'White Tiger',
+    damage: 3,
+    power: 3500,
+    color: 'WHITE',
+    godMark: true,
+    effects: [tigerEffect],
+    playedTurn: 1,
+  });
+  const discardUnit = unit({ id: 'WHITE_DISCARD_UNIT', color: 'WHITE', cardlocation: 'HAND' });
+  const defender = unit({ id: 'RED_BIG_DEFENDER', color: 'RED', power: 5000, damage: 2 });
+  const noThreatState = game(
+    { hand: [discardUnit], unitZone: [tiger, null, null, null, null, null] },
+    { deck: deckCards(20, 'P1_TIGER_SAFE') },
+    { phase: 'BATTLE_FREE', battleState: { attackers: [tiger.gamecardId] } }
+  );
+  const threatenedTiger = { ...tiger, gamecardId: `${tiger.gamecardId}_threat` } as any;
+  const threatState = game(
+    { hand: [discardUnit], unitZone: [threatenedTiger, null, null, null, null, null] },
+    { unitZone: [defender, null, null, null, null, null] },
+    { phase: 'BATTLE_FREE', battleState: { attackers: [threatenedTiger.gamecardId], defender: defender.gamecardId } }
+  );
+  const noThreatScore = scoreActivatableEffect(noThreatState, noThreatState.players.BOT, tiger as any, tigerEffect as any, profile, {}).score;
+  const threatScore = scoreActivatableEffect(threatState, threatState.players.BOT, threatenedTiger as any, tigerEffect as any, profile, {}).score;
+  return assertScenario(
+    'white tiger battle exile waits for a real battle threat',
+    noThreatScore < 18 && threatScore > noThreatScore + 45,
+    `safe=${noThreatScore.toFixed(1)}, threatened=${threatScore.toFixed(1)}`
+  );
+}
+
+function testPaymentPreservesClosingAttacker(): ScenarioResult {
+  const profile = getDeckAiProfile('red-dikai');
+  const attacker = unit({ id: 'RED_CLOSING_ATTACKER', color: 'RED', damage: 2, power: 2500, playedTurn: 1 });
+  const sourceCard = story({ id: 'RED_COST_ONE_STORY', color: 'RED', acValue: 1, baseAcValue: 1 });
+  const state = game(
+    {
+      hand: [sourceCard],
+      unitZone: [attacker, null, null, null, null, null],
+      deck: deckCards(20, 'BOT_CLOSING_PAYMENT'),
+      botDifficulty: 'hard',
+      botDeckProfileId: profile.id,
+    },
+    { erosionBack: erosionCards(8, 'P1_CLOSING_PAYMENT') },
+    {
+      botDifficulty: 'hard',
+      botDeckProfiles: { BOT: profile.id },
+    }
+  );
+  const payment = ServerGameService.buildBotPaymentSelectionForPlayer(state, 'BOT', {
+    paymentCost: 1,
+    paymentColor: 'RED',
+    context: {
+      cardId: sourceCard.gamecardId,
+      sourceCardId: sourceCard.gamecardId,
+      paymentTargetId: sourceCard.gamecardId,
+    },
+  }) as any;
+  return assertScenario(
+    'payment preserves ready attacker in closing window',
+    !(payment.exhaustUnitIds || []).includes(attacker.gamecardId),
+    `payment=${JSON.stringify(payment)}`
+  );
+}
+
+function testLowAttackHeldIntoStrongerReadyDefender(): ScenarioResult {
+  const profile = getDeckAiProfile('red-dikai');
+  const lowAttacker = unit({
+    id: 'RED_LOW_ATTACKER',
+    fullName: 'Red Low Attacker',
+    color: 'RED',
+    damage: 1,
+    power: 500,
+    playedTurn: 1,
+  });
+  const strongDefender = unit({
+    id: 'WHITE_STRONG_READY_DEFENDER',
+    fullName: 'White Strong Ready Defender',
+    color: 'WHITE',
+    damage: 3,
+    power: 8000,
+    playedTurn: 1,
+  });
+  const state = game(
+    { unitZone: [lowAttacker, null, null, null, null, null] },
+    {
+      unitZone: [strongDefender, null, null, null, null, null],
+      deck: deckCards(20, 'P1_SAFE_ATTACK'),
+      erosionFront: [],
+      erosionBack: [],
+    },
+    { phase: 'BATTLE_DECLARATION' }
+  );
+
+  const score = scoreAttackCandidate(state, state.players.BOT, lowAttacker as any, profile);
+  const chosen = chooseAttacker(state, state.players.BOT, profile);
+  return assertScenario(
+    'low attacker is held into stronger ready defender',
+    score < 0 && !chosen,
+    `score=${score.toFixed(1)}, chosen=${chosen ? chosen.fullName : 'none'}`
+  );
+}
+
+function testExpendableBaitAttackAllowedForClosingPressure(): ScenarioResult {
+  const profile = getDeckAiProfile('red-dikai');
+  const baitAttacker = unit({
+    id: 'RED_EXPENDABLE_BAIT',
+    fullName: 'Red Expendable Bait',
+    color: 'RED',
+    damage: 1,
+    power: 500,
+    playedTurn: 1,
+  });
+  const closingAttacker = unit({
+    id: 'RED_CLOSING_SUPPORT',
+    fullName: 'Red Closing Support',
+    color: 'RED',
+    damage: 1,
+    power: 3000,
+    playedTurn: 1,
+  });
+  const strongDefender = unit({
+    id: 'WHITE_SINGLE_READY_DEFENDER',
+    fullName: 'White Single Ready Defender',
+    color: 'WHITE',
+    damage: 2,
+    power: 7000,
+    playedTurn: 1,
+  });
+  const state = game(
+    { unitZone: [baitAttacker, closingAttacker, null, null, null, null] },
+    {
+      unitZone: [strongDefender, null, null, null, null, null],
+      deck: deckCards(20, 'P1_NEAR_CRITICAL'),
+      erosionBack: erosionCards(9, 'P1_NEAR_CRITICAL_EROSION'),
+    },
+    { phase: 'BATTLE_DECLARATION' }
+  );
+
+  const score = scoreAttackCandidate(state, state.players.BOT, baitAttacker as any, profile);
+  return assertScenario(
+    'expendable bait attack is allowed when it opens closing pressure',
+    score > 0,
+    `score=${score.toFixed(1)}`
+  );
+}
+
+async function testErosionRecoveryPrefersHighValueGodmark(): Promise<ScenarioResult> {
+  const profile = getDeckAiProfile('white-temple');
+  const colorSourceA = unit({ id: 'WHITE_COLOR_SOURCE_A', color: 'WHITE', damage: 0, isExhausted: true });
+  const colorSourceB = unit({ id: 'WHITE_COLOR_SOURCE_B', color: 'WHITE', damage: 0, isExhausted: true });
+  const godmark = unit({
+    id: '101000501',
+    fullName: 'White Tiger',
+    color: 'WHITE',
+    colorReq: { WHITE: 2 },
+    cardlocation: 'EROSION_FRONT',
+    displayState: 'FRONT_UPRIGHT',
+    godMark: true,
+    damage: 3,
+    power: 3500,
+    acValue: 1,
+    baseAcValue: 1,
+  });
+  const lowDefender = unit({
+    id: 'LOW_EROSION_DEFENDER',
+    fullName: 'Low Erosion Defender',
+    color: 'WHITE',
+    colorReq: { WHITE: 1 },
+    cardlocation: 'EROSION_FRONT',
+    displayState: 'FRONT_UPRIGHT',
+    damage: 0,
+    power: 4500,
+    acValue: 1,
+    baseAcValue: 1,
+  });
+  const threat = unit({ id: 'OPP_LETHAL_THREAT', color: 'RED', damage: 2, power: 2500 });
+  const state = game(
+    {
+      unitZone: [colorSourceA, colorSourceB, null, null, null, null],
+      erosionFront: [lowDefender, godmark],
+      erosionBack: erosionCards(6, 'BOT_EROSION_BACK'),
+      deck: deckCards(20, 'BOT_EROSION_RECOVERY'),
+      botDifficulty: 'hard',
+      botDeckProfileId: profile.id,
+    },
+    { unitZone: [threat, null, null, null, null, null] },
+    {
+      phase: 'EROSION',
+      botDifficulty: 'hard',
+      botDeckProfiles: { BOT: profile.id },
+    }
+  );
+
+  await ServerGameService.botMoveForPlayer(state, 'BOT');
+  const recoveredGodmark = state.players.BOT.hand.some((card: any) => card.gamecardId === godmark.gamecardId);
+  const decision = state.aiDecisionLogs?.find((log: any) => log.action === 'EROSION_CHOICE');
+  return assertScenario(
+    'erosion emergency recovery prefers high-value godmark unit',
+    recoveredGodmark && decision?.details?.selected === 'White Tiger',
+    `selected=${decision?.details?.selected}, hand=${state.players.BOT.hand.map((card: any) => card.fullName).join(',')}`
   );
 }
 
@@ -1518,6 +2055,10 @@ const scenarios: ScenarioRun[] = [
   testPreventDestroyWaitsForThreatWindow,
   testPreventDestroyConfrontationRequiresHighValueThreat,
   testPreventDestroySelectsThreatenedHighValueUnit,
+  testPreventBattleDestroyEffectRequiresCombatThreat,
+  testPreventBattleDestroySelectsThreatenedCombatUnit,
+  testDikaiResetCostChoosesNonFieldGodmarkCosts,
+  testDikaiResetHeldInCountering,
   testRedCannotDefendNeedsTargetInClosingWindow,
   testYellowReviveMainPhaseNotBattleSetup,
   testTotemPrepareStoryMainNotBattleFiller,
@@ -1530,10 +2071,21 @@ const scenarios: ScenarioRun[] = [
   testBotDoesNotAlwaysSpendFeijing,
   testPaymentProtectsGodMark,
   testDefenseDoesNotThrowGodMarkOnNonLethalHit,
+  testDefenseDeclinesLowImpactChumpBlock,
+  testDefenseSacrificesLowValueUnitToPreventLethalHit,
+  testDefenseHighValueUnitBlocksLethalWhenOnlyOption,
+  testDefenseTakesProfitableWinAgainstHighValueAttacker,
   testFiveDeckProfilesProduceTurnPlans,
   testWhiteTempleConvertsHallPressure,
   testBlueAdventurerConvertsTempoPressure,
   testRedDikaiCommitsNearKillPressure,
+  testClosingPlanHelperRecognizesErosionLethal,
+  testComboAllianceDoesNotOverrideDirectLethal,
+  testWhiteTigerBattleExileNeedsCurrentBattleThreat,
+  testPaymentPreservesClosingAttacker,
+  testLowAttackHeldIntoStrongerReadyDefender,
+  testExpendableBaitAttackAllowedForClosingPressure,
+  testErosionRecoveryPrefersHighValueGodmark,
   testYellowAlchemyConvertsEnginePressure,
   testOverlordTotemConvertsRecursiveBoard,
   testYellowTurretTargetsOpponentUnit,
