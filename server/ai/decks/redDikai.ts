@@ -1,12 +1,41 @@
 import { DeckAiProfile } from '../types';
-import { cardCost, cardText, effectHasTag, hasAny, hasRole, opponentErosion, opponentHasTrait, opponentIs, readyAttackers } from './strategyUtils';
+import { cardCost, cardText, effectHasTag, hasAny, hasRole, opponentErosion, opponentHasTrait, opponentIs, queryEffectId, queryOptionCard, queryOptionIsMine, readyAttackers } from './strategyUtils';
+
+const RED_CORE_IDS = new Set([
+  '102050091',
+  '102050432',
+  '102050427',
+  '302050013',
+]);
+
+const RED_REMOVAL_EFFECT_IDS = new Set([
+  '102000146_exile_destroy',
+  '102050087_destroy',
+  '202000035_destroy',
+  '202050034_destroy_god',
+]);
 
 export const redDikaiProfile: DeckAiProfile = {
   id: 'red-dikai',
   displayName: '纯红迪凯',
-  shareCode: 'GiZGyewEYc36VH-D_OFfRCRYj_pxghorWWk',
+  shareCode: 'GiZGyewEUeiShgkxp0T0GzhKdIaZTuzP2w',
   notes: '偏进攻，优先推动伤害和战斗阶段，较少保守防御。',
   preferredFactions: ['迪凯'],
+  preferredCardIds: {
+    '102050085': 8,
+    '102050088': 7,
+    '102050091': 14,
+    '102050427': 10,
+    '102050432': 16,
+    '302050013': 9,
+  },
+  preserveCardIds: {
+    '102050091': 18,
+    '102050427': 12,
+    '102050432': 22,
+    '302050013': 12,
+    '202000131': 10,
+  },
   effectPreferences: {
     preferredEffectIds: {
       '102050432_reset_attack_unit': 10,
@@ -142,6 +171,15 @@ export const redDikaiProfile: DeckAiProfile = {
       const card = context.card;
       const text = cardText(card);
       let score = 0;
+      if (card.id === '202000131') {
+        const ownUnits = context.player?.unitZone.filter(Boolean) || [];
+        const opponentUnits = context.opponent?.unitZone.filter(Boolean) || [];
+        const bestOwn = Math.max(0, ...ownUnits.map(unit => (unit?.power || 0) / 400 + (unit?.damage || 0) * 8 + (RED_CORE_IDS.has(unit?.id || '') ? 18 : 0)));
+        const boardResetGain = opponentUnits.length - Math.max(0, ownUnits.length - 1);
+        score += ownUnits.length > 0 && opponentUnits.length >= 2 && boardResetGain >= 1
+          ? 18 + boardResetGain * 12 + bestOwn * 0.4
+          : -34;
+      }
       if (card.type === 'UNIT') score += (card.damage || 0) * 4 + (card.isrush ? 6 : 0);
       if (card.type === 'UNIT' && cardCost(card) <= 3) score += 3;
       if (hasRole(card, 'removal') || hasRole(card, 'damage') || hasRole(card, 'finisher')) score += 3;
@@ -162,6 +200,7 @@ export const redDikaiProfile: DeckAiProfile = {
     adjustDefenseScore: context => {
       const damage = context.card.damage || 0;
       let score = -6 - damage * 3;
+      if (RED_CORE_IDS.has(context.card.id) && (context.player?.deck.length || 99) > 5 && !opponentHasTrait(context, 'burst-damage')) score -= 10;
       if ((context.player?.deck.length || 0) <= 5 || opponentHasTrait(context, 'burst-damage')) score += 12;
       return score;
     },
@@ -174,6 +213,29 @@ export const redDikaiProfile: DeckAiProfile = {
       if (hasRole(card, 'finisher') && cardCost(card) <= 4) score += 5;
       if (cardCost(card) >= 5 && !card.isrush) score -= 14;
       return score;
+    },
+    adjustPaymentScore: context => {
+      if (RED_CORE_IDS.has(context.card.id)) return 26;
+      if (context.card.id === '102050085' && readyAttackers(context) > 0) return 10;
+      return 0;
+    },
+    adjustQueryScore: context => {
+      const card = queryOptionCard(context);
+      if (!card) return 0;
+      const effectId = queryEffectId(context);
+
+      if (effectId === '202000131_duel') {
+        if (!queryOptionIsMine(context)) return 0;
+        return 60 + (RED_CORE_IDS.has(card.id) ? 34 : 0) + (card.godMark ? 12 : 0) + (card.damage || 0) * 9 + (card.power || 0) / 700;
+      }
+
+      if (RED_REMOVAL_EFFECT_IDS.has(effectId) || effectId === '102050427_cannot_defend') {
+        return queryOptionIsMine(context)
+          ? -110
+          : 46 + (card.godMark ? 10 : 0) + (card.damage || 0) * 8 + (card.power || 0) / 800;
+      }
+
+      return 0;
     },
     adjustEffectScore: context => {
       let score = 0;

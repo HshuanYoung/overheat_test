@@ -19,6 +19,8 @@ type ScenarioResult = {
   detail: string;
 };
 
+type ScenarioRun = () => ScenarioResult | Promise<ScenarioResult>;
+
 let seq = 0;
 
 function unit(overrides: Record<string, any> = {}) {
@@ -484,6 +486,132 @@ function testBlueCounterStoryRequiresCounterWindow(): ScenarioResult {
     'blue counter story is held outside counter window',
     mainScore < 0 && counterScore > 20 && counterScore > mainScore + 40,
     `main=${mainScore.toFixed(1)}, counter=${counterScore.toFixed(1)}`
+  );
+}
+
+async function testHardAiUsesConfrontationStory(): Promise<ScenarioResult> {
+  const counterEffect = effect({
+    id: '204000145_counter_silence',
+    description: 'counter target effect and silence it',
+    content: 'COUNTER_EFFECT SILENCE',
+  });
+  const counterStory = story({
+    id: '204000145',
+    fullName: 'Counter Silence Story',
+    color: 'BLUE',
+    acValue: 0,
+    baseAcValue: 0,
+    effects: [counterEffect],
+  });
+  const opponentSource = story({
+    id: 'P1_STACK_STORY',
+    gamecardId: 'P1_STACK_STORY',
+    fullName: 'Opponent Stack Story',
+    cardlocation: 'PLAY',
+    effects: [effect({ id: 'p1_stack_effect', type: 'ACTIVATE', description: 'opponent stack effect' })],
+  });
+  const state = game(
+    { isTurn: false, hand: [counterStory], botDifficulty: 'hard', botDeckProfileId: 'blue-adventurer' },
+    { isTurn: true, playZone: [opponentSource] },
+    {
+      phase: 'COUNTERING',
+      previousPhase: 'MAIN',
+      currentTurnPlayer: 1,
+      priorityPlayerId: 'BOT',
+      botDifficulty: 'hard',
+      counterStack: [{ card: opponentSource, ownerUid: 'P1', type: 'PLAY', timestamp: Date.now() }],
+    }
+  );
+
+  const used = await ServerGameService.tryUseBotConfrontationAction(state, 'BOT', 18);
+  const action = state.aiDecisionLogs?.at(-1)?.action;
+  return assertScenario(
+    'hard AI uses high-value story in confrontation',
+    used && action === 'PLAY_CONFRONTATION_STORY' && state.phase === 'COUNTERING' && state.priorityPlayerId === 'P1' && state.counterStack.length === 2,
+    `used=${used}, action=${action}, priority=${state.priorityPlayerId}, stack=${state.counterStack.length}`
+  );
+}
+
+async function testHardAiPassesLowValueConfrontationStory(): Promise<ScenarioResult> {
+  const setupStory = story({
+    id: 'LOW_VALUE_SETUP_STORY',
+    fullName: 'Low Value Setup Story',
+    acValue: 0,
+    baseAcValue: 0,
+    effects: [effect({
+      id: 'low_value_setup_draw',
+      type: 'ACTIVATE',
+      description: 'draw 1 card and search deck for setup',
+      content: 'DRAW_CARD SEARCH_DECK RESOURCE SETUP',
+    })],
+  });
+  const state = game(
+    { isTurn: false, hand: [setupStory], botDifficulty: 'hard', botDeckProfileId: 'blue-adventurer' },
+    { isTurn: true },
+    {
+      phase: 'COUNTERING',
+      previousPhase: 'MAIN',
+      currentTurnPlayer: 1,
+      priorityPlayerId: 'BOT',
+      botDifficulty: 'hard',
+      counterStack: [{ type: 'PHASE_END', ownerUid: 'P1', timestamp: Date.now() }],
+    }
+  );
+
+  const hasAction = ServerGameService.playerHasAvailableConfrontationAction(state, 'BOT');
+  const candidateScore = ServerGameService.getBotStoryPlayCandidates(state, 'BOT')[0]?.score ?? -999;
+  const used = await ServerGameService.tryUseBotConfrontationAction(state, 'BOT', 18);
+  await ServerGameService.botMoveForPlayer(state, 'BOT');
+
+  return assertScenario(
+    'hard AI passes low-value confrontation story without stalling',
+    hasAction && !used && candidateScore < 18 && state.phase === 'MAIN' && state.counterStack.length === 0,
+    `hasAction=${hasAction}, used=${used}, score=${candidateScore.toFixed(1)}, phase=${state.phase}, stack=${state.counterStack.length}`
+  );
+}
+
+async function testHardAiChoosesConfrontationFieldEffect(): Promise<ScenarioResult> {
+  const tempoEffect = effect({
+    id: 'counter_tempo_field_effect',
+    type: 'ACTIVATE',
+    description: 'countering silence target opponent unit and prevent damage',
+    content: 'COUNTER SILENCE PREVENT DAMAGE',
+    targetSpec: {
+      title: 'choose opponent unit',
+      description: 'choose opponent unit',
+      minSelections: 1,
+      maxSelections: 1,
+      zones: ['UNIT'],
+      controller: 'OPPONENT',
+    },
+  });
+  const source = unit({
+    id: 'COUNTER_FIELD_SOURCE',
+    fullName: 'Counter Field Source',
+    color: 'BLUE',
+    effects: [tempoEffect],
+  });
+  const target = unit({ id: 'COUNTER_FIELD_TARGET', power: 3500, damage: 2 });
+  const state = game(
+    { isTurn: false, unitZone: [source, null, null, null, null, null], botDifficulty: 'hard', botDeckProfileId: 'blue-adventurer' },
+    { isTurn: true, unitZone: [target, null, null, null, null, null] },
+    {
+      phase: 'COUNTERING',
+      previousPhase: 'BATTLE_FREE',
+      currentTurnPlayer: 1,
+      priorityPlayerId: 'BOT',
+      botDifficulty: 'hard',
+      battleState: { attackers: [target.gamecardId] },
+      counterStack: [{ type: 'ATTACK', ownerUid: 'P1', timestamp: Date.now(), card: target }],
+    }
+  );
+
+  const candidates = ServerGameService.getBotActivatableEffectCandidates(state, 'BOT');
+  const used = await ServerGameService.tryUseBotConfrontationAction(state, 'BOT', 18);
+  return assertScenario(
+    'hard AI chooses useful field effect in confrontation',
+    candidates.length > 0 && candidates[0].effect.id === tempoEffect.id && candidates[0].score >= 18 && used && state.pendingQuery?.context?.sourceCardId === source.gamecardId,
+    `candidates=${candidates.length}, top=${candidates[0]?.effect.id}, score=${(candidates[0]?.score ?? 0).toFixed(1)}, used=${used}, query=${state.pendingQuery?.callbackKey}`
   );
 }
 
@@ -1066,7 +1194,137 @@ function testOverlordTotemConvertsRecursiveBoard(): ScenarioResult {
   );
 }
 
-const scenarios = [
+function testYellowTurretTargetsOpponentUnit(): ScenarioResult {
+  const profile = getDeckAiProfile('yellow-alchemy');
+  const ownCore = unit({ id: '105120167', color: 'YELLOW', fullName: 'Great Alchemist Core', power: 2000, damage: 1, godMark: true });
+  const opponentThreat = unit({ id: 'OPP_TURRET_TARGET', color: 'RED', fullName: 'Opponent Attacker', power: 3500, damage: 3 });
+  const state = game(
+    { unitZone: [ownCore, null, null, null, null, null], botDeckProfileId: 'yellow-alchemy' },
+    { unitZone: [opponentThreat, null, null, null, null, null] }
+  );
+  const query = {
+    type: 'SELECT_CARD',
+    options: [
+      { card: ownCore, source: 'UNIT', isMine: true },
+      { card: opponentThreat, source: 'UNIT', isMine: false },
+    ],
+    minSelections: 1,
+    maxSelections: 1,
+    context: { effectId: '305110029_activate' },
+  };
+  const selected = chooseQuerySelections(state, 'BOT', query as any, profile, 'hard');
+  return assertScenario(
+    'yellow turret targets opponent instead of own core',
+    selected[0] === opponentThreat.gamecardId,
+    `selected=${selected[0]}`
+  );
+}
+
+function testYellowAlchemyCostPreservesCore(): ScenarioResult {
+  const profile = getDeckAiProfile('yellow-alchemy');
+  const core = unit({ id: '105120167', color: 'YELLOW', fullName: 'Great Alchemist Core', power: 2000, damage: 1, godMark: true });
+  const expendable = unit({ id: '105110224', color: 'YELLOW', fullName: 'Alchemy Feijing Material', power: 500, damage: 0, feijingMark: true });
+  const state = game(
+    { unitZone: [core, expendable, null, null, null, null], botDeckProfileId: 'yellow-alchemy' },
+    {}
+  );
+  const query = {
+    type: 'SELECT_CARD',
+    options: [
+      { card: core, source: 'UNIT', isMine: true },
+      { card: expendable, source: 'UNIT', isMine: true },
+    ],
+    minSelections: 1,
+    maxSelections: 1,
+    context: { effectId: '305120030_activate', step: 'SEND_UNIT' },
+  };
+  const selected = chooseQuerySelections(state, 'BOT', query as any, profile, 'hard');
+  return assertScenario(
+    'yellow alchemy cost preserves engine core',
+    selected[0] === expendable.gamecardId,
+    `selected=${selected[0]}`
+  );
+}
+
+function testRedDuelKeepsCommander(): ScenarioResult {
+  const profile = getDeckAiProfile('red-dikai');
+  const commander = unit({ id: '102050432', color: 'RED', fullName: 'Knight Captain Dikai', power: 3500, damage: 4, godMark: true });
+  const small = unit({ id: '102050085', color: 'RED', fullName: 'Pursuit Troop', power: 1000, damage: 1 });
+  const state = game(
+    { unitZone: [small, commander, null, null, null, null], botDeckProfileId: 'red-dikai' },
+    {}
+  );
+  const query = {
+    type: 'SELECT_CARD',
+    options: [
+      { card: small, source: 'UNIT', isMine: true },
+      { card: commander, source: 'UNIT', isMine: true },
+    ],
+    minSelections: 1,
+    maxSelections: 1,
+    context: { effectId: '202000131_duel', step: 'SELF' },
+  };
+  const selected = chooseQuerySelections(state, 'BOT', query as any, profile, 'hard');
+  return assertScenario(
+    'red duel keeps the commander',
+    selected[0] === commander.gamecardId,
+    `selected=${selected[0]}`
+  );
+}
+
+function testBlueSwapChoosesErosionPayoff(): ScenarioResult {
+  const profile = getDeckAiProfile('blue-adventurer');
+  const lowValue = unit({ id: 'BLUE_LOW_EROSION', color: 'BLUE', fullName: 'Low Erosion Unit', power: 500, damage: 0, cardlocation: 'EROSION_FRONT' });
+  const batla = unit({ id: '104030453', color: 'BLUE', fullName: 'Batla Payoff', power: 2500, damage: 2, cardlocation: 'EROSION_FRONT' });
+  const state = game(
+    { erosionFront: [lowValue, batla], botDeckProfileId: 'blue-adventurer' },
+    {}
+  );
+  const query = {
+    type: 'SELECT_CARD',
+    options: [
+      { card: lowValue, source: 'EROSION_FRONT', isMine: true },
+      { card: batla, source: 'EROSION_FRONT', isMine: true },
+    ],
+    minSelections: 1,
+    maxSelections: 1,
+    context: { effectId: '104030459_swap_activate', step: 'TARGET' },
+  };
+  const selected = chooseQuerySelections(state, 'BOT', query as any, profile, 'hard');
+  return assertScenario(
+    'blue swap chooses erosion payoff',
+    selected[0] === batla.gamecardId,
+    `selected=${selected[0]}`
+  );
+}
+
+function testTotemRitualChoosesOverlord(): ScenarioResult {
+  const profile = getDeckAiProfile('overlord-totem');
+  const lowTotem = unit({ id: '103080312', color: 'GREEN', fullName: 'Winged Totem', power: 1000, damage: 1, cardlocation: 'DECK' });
+  const overlord = unit({ id: '103000139', color: 'GREEN', fullName: 'Jungle Overlord', power: 4000, damage: 3, cardlocation: 'DECK' });
+  const state = game(
+    { deck: [lowTotem, overlord], botDeckProfileId: 'overlord-totem' },
+    {}
+  );
+  const query = {
+    type: 'SELECT_CARD',
+    options: [
+      { card: lowTotem, source: 'DECK', isMine: true },
+      { card: overlord, source: 'DECK', isMine: true },
+    ],
+    minSelections: 1,
+    maxSelections: 1,
+    context: { effectId: '203000126_ritual' },
+  };
+  const selected = chooseQuerySelections(state, 'BOT', query as any, profile, 'hard');
+  return assertScenario(
+    'totem ritual chooses overlord payoff',
+    selected[0] === overlord.gamecardId,
+    `selected=${selected[0]}`
+  );
+}
+
+const scenarios: ScenarioRun[] = [
   testLethalTurnPlan,
   testSmileEclipseCombo,
   testProtectHighValueFromSelfDestroy,
@@ -1078,6 +1336,9 @@ const scenarios = [
   testBattleCombatStoryBeatsSetupStory,
   testEclipseWaitsForProtectedAllianceWindow,
   testBlueCounterStoryRequiresCounterWindow,
+  testHardAiUsesConfrontationStory,
+  testHardAiPassesLowValueConfrontationStory,
+  testHardAiChoosesConfrontationFieldEffect,
   testPreventDestroyWaitsForThreatWindow,
   testRedCannotDefendNeedsTargetInClosingWindow,
   testYellowReviveMainPhaseNotBattleSetup,
@@ -1097,9 +1358,17 @@ const scenarios = [
   testRedDikaiCommitsNearKillPressure,
   testYellowAlchemyConvertsEnginePressure,
   testOverlordTotemConvertsRecursiveBoard,
+  testYellowTurretTargetsOpponentUnit,
+  testYellowAlchemyCostPreservesCore,
+  testRedDuelKeepsCommander,
+  testBlueSwapChoosesErosionPayoff,
+  testTotemRitualChoosesOverlord,
 ];
 
-const results = scenarios.map(run => run());
+const results: ScenarioResult[] = [];
+for (const run of scenarios) {
+  results.push(await run());
+}
 for (const result of results) {
   console.log(`${result.passed ? 'PASS' : 'FAIL'} ${result.name}: ${result.detail}`);
 }

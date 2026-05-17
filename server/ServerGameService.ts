@@ -6394,7 +6394,8 @@ export const ServerGameService = {
     const player = gameState.players[playerUid];
     if (!player || ServerGameService.getBotDifficulty(gameState, playerUid) !== 'hard') return [];
     if (gameState.pendingQuery || gameState.isResolvingStack || gameState.currentProcessingItem) return [];
-    if (!['MAIN', 'BATTLE_FREE'].includes(gameState.phase)) return [];
+    if (!['MAIN', 'BATTLE_FREE', 'COUNTERING'].includes(gameState.phase)) return [];
+    if (gameState.phase === 'COUNTERING' && gameState.priorityPlayerId !== playerUid) return [];
 
     const profile = ServerGameService.getBotProfile(gameState, playerUid);
     const opponentUid = gameState.playerIds.find(uid => uid !== playerUid);
@@ -6408,10 +6409,14 @@ export const ServerGameService = {
       { location: 'EROSION_BACK', cards: player.erosionBack },
       { location: 'GRAVE', cards: player.grave },
     ];
+    if (gameState.phase === 'COUNTERING') {
+      zones.push({ location: 'HAND', cards: player.hand });
+    }
 
     return zones.flatMap(({ location, cards }) =>
       cards.flatMap(card => {
         if (!card?.effects?.length) return [];
+        if (location === 'HAND' && card.type === 'STORY') return [];
         return card.effects.map((effect, effectIndex) => {
           if (!(effect.type === 'ACTIVATE' || effect.type === 'ACTIVATED')) return undefined;
           if (effect.id && failedEffectIds[effect.id]) return undefined;
@@ -6467,18 +6472,15 @@ export const ServerGameService = {
     ).sort((a: any, b: any) => b.score - a.score);
   },
 
-  async tryActivateBotEffect(
+  async activateBotEffectCandidate(
     gameState: GameState,
     playerUid: string,
     phaseContext: string,
-    minScore: number,
-    onUpdate?: (state: GameState) => Promise<void>
+    chosen: any,
+    candidates: any[]
   ) {
     const player = gameState.players[playerUid];
     if (!player) return false;
-    const candidates = ServerGameService.getBotActivatableEffectCandidates(gameState, playerUid);
-    const chosen = candidates.find((candidate: any) => candidate.score >= minScore) as any;
-    if (!chosen) return false;
 
     const attempts = ServerGameService.getBotEffectAttempts(gameState, player);
     const attemptKey = ServerGameService.getBotEffectAttemptKey(gameState, chosen.card, chosen.effectIndex);
@@ -6534,7 +6536,7 @@ export const ServerGameService = {
     }
   },
 
-  async tryPlayBotBattleStory(
+  async tryActivateBotEffect(
     gameState: GameState,
     playerUid: string,
     phaseContext: string,
@@ -6542,11 +6544,24 @@ export const ServerGameService = {
     onUpdate?: (state: GameState) => Promise<void>
   ) {
     const player = gameState.players[playerUid];
-    if (!player || !player.isTurn || gameState.phase !== 'BATTLE_FREE') return false;
+    if (!player) return false;
+    const candidates = ServerGameService.getBotActivatableEffectCandidates(gameState, playerUid);
+    const chosen = candidates.find((candidate: any) => candidate.score >= minScore) as any;
+    if (!chosen) return false;
+    return ServerGameService.activateBotEffectCandidate(gameState, playerUid, phaseContext, chosen, candidates);
+  },
+
+  getBotStoryPlayCandidates(gameState: GameState, playerUid: string) {
+    const player = gameState.players[playerUid];
+    if (!player || ServerGameService.getBotDifficulty(gameState, playerUid) !== 'hard') return [];
+    if (gameState.pendingQuery || gameState.isResolvingStack || gameState.currentProcessingItem) return [];
+    if (gameState.phase === 'BATTLE_FREE' && !player.isTurn) return [];
+    if (gameState.phase === 'COUNTERING' && gameState.priorityPlayerId !== playerUid) return [];
+    if (!['BATTLE_FREE', 'COUNTERING'].includes(gameState.phase)) return [];
 
     const difficulty = ServerGameService.getBotDifficulty(gameState, playerUid);
     const profile = ServerGameService.getBotProfile(gameState, playerUid);
-    if (difficulty !== 'hard') return false;
+    if (difficulty !== 'hard') return [];
 
     const canPayPlayCost = (card: Card) => {
       const effectiveCost = ServerGameService.getEffectivePlayCost(player, card, gameState);
@@ -6559,7 +6574,7 @@ export const ServerGameService = {
       return ServerGameService.canBotPayPositiveCost(gameState, player, effectiveCost, card.color, card);
     };
 
-    const candidates = player.hand
+    return player.hand
       .filter(card =>
         card.type === 'STORY' &&
         ServerGameService.canPlayCard(gameState, player, card).canPlay &&
@@ -6578,28 +6593,47 @@ export const ServerGameService = {
             },
           })
           : {};
+        const paymentRisk = effectiveCost > 0
+          ? ServerGameService.scoreBotPaymentSelectionRisk(gameState, playerUid, initialPaymentSelection, {
+            paymentCost: effectiveCost,
+            paymentColor: card.color,
+            sourceCard: card,
+          })
+          : { penalty: 0, notes: [] as string[], estimatedDeckPayment: 0, readyDefendersAfter: undefined };
         return {
           card,
-          score: scorePlayableCard(gameState, player, card, profile),
+          score: scorePlayableCard(gameState, player, card, profile) - paymentRisk.penalty,
           effectiveCost,
           initialPaymentSelection,
+          paymentRisk,
         };
       })
       .sort((a, b) => b.score - a.score);
+  },
 
-    const chosen = candidates.find(candidate => candidate.score >= minScore);
-    if (!chosen) return false;
-
-    const combo = getBestComboOpportunity(gameState, player, profile);
+  async playBotStoryCandidate(
+    gameState: GameState,
+    playerUid: string,
+    phaseContext: string,
+    chosen: any,
+    candidates: any[],
+    action: string,
+    failureAction: string,
+    reason: string
+  ) {
+    const combo = getBestComboOpportunity(gameState, gameState.players[playerUid], ServerGameService.getBotProfile(gameState, playerUid));
     ServerGameService.recordAiDecision(gameState, playerUid, {
-      action: 'PLAY_BATTLE_STORY',
+      action,
       subject: ServerGameService.getAiCardName(chosen.card),
       score: chosen.score,
-      reason: 'Hard AI plays a high-value story during the battle free window instead of limiting itself to field effects.',
+      reason,
       details: {
         phaseContext,
         cost: chosen.effectiveCost,
         initialPayment: ServerGameService.describeAiPaymentSelection(gameState, chosen.initialPaymentSelection),
+        paymentRisk: chosen.paymentRisk?.penalty ? Number(chosen.paymentRisk.penalty.toFixed(1)) : 0,
+        readyDefendersAfterPayment: chosen.paymentRisk?.readyDefendersAfter,
+        estimatedDeckPayment: chosen.paymentRisk?.estimatedDeckPayment,
         combo: describeComboForDecision(combo),
         battleAttackers: gameState.battleState?.attackers?.length || 0,
       },
@@ -6615,10 +6649,10 @@ export const ServerGameService = {
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       ServerGameService.recordAiDecision(gameState, playerUid, {
-        action: 'PLAY_BATTLE_STORY_FAILED',
+        action: failureAction,
         subject: ServerGameService.getAiCardName(chosen.card),
         score: chosen.score,
-        reason: 'Battle story passed scoring but playCard rejected it; skip this story for the current decision.',
+        reason: 'Story passed scoring but playCard rejected it; skip this story for the current decision.',
         details: {
           phaseContext,
           error: message,
@@ -6627,6 +6661,72 @@ export const ServerGameService = {
       });
       return false;
     }
+  },
+
+  async tryPlayBotBattleStory(
+    gameState: GameState,
+    playerUid: string,
+    phaseContext: string,
+    minScore: number,
+    onUpdate?: (state: GameState) => Promise<void>
+  ) {
+    const player = gameState.players[playerUid];
+    if (!player || !player.isTurn || gameState.phase !== 'BATTLE_FREE') return false;
+
+    const candidates = ServerGameService.getBotStoryPlayCandidates(gameState, playerUid);
+    const chosen = candidates.find(candidate => candidate.score >= minScore);
+    if (!chosen) return false;
+
+    return ServerGameService.playBotStoryCandidate(
+      gameState,
+      playerUid,
+      phaseContext,
+      chosen,
+      candidates,
+      'PLAY_BATTLE_STORY',
+      'PLAY_BATTLE_STORY_FAILED',
+      'Hard AI plays a high-value story during the battle free window instead of limiting itself to field effects.'
+    );
+  },
+
+  async tryUseBotConfrontationAction(
+    gameState: GameState,
+    playerUid: string,
+    minScore = 18,
+    onUpdate?: (state: GameState) => Promise<void>
+  ) {
+    const player = gameState.players[playerUid];
+    if (!player || ServerGameService.getBotDifficulty(gameState, playerUid) !== 'hard') return false;
+    if (gameState.phase !== 'COUNTERING' || gameState.priorityPlayerId !== playerUid) return false;
+
+    const effectCandidates = ServerGameService.getBotActivatableEffectCandidates(gameState, playerUid)
+      .map((candidate: any) => ({ type: 'ACTIVATE_EFFECT', candidate, score: candidate.score }));
+    const storyCandidates = ServerGameService.getBotStoryPlayCandidates(gameState, playerUid)
+      .map((candidate: any) => ({ type: 'PLAY_STORY', candidate, score: candidate.score }));
+    const candidates = [...effectCandidates, ...storyCandidates].sort((a, b) => b.score - a.score);
+    const chosen = candidates.find(candidate => candidate.score >= minScore);
+    if (!chosen) return false;
+
+    if (chosen.type === 'ACTIVATE_EFFECT') {
+      return ServerGameService.activateBotEffectCandidate(
+        gameState,
+        playerUid,
+        'COUNTERING',
+        chosen.candidate,
+        effectCandidates.map(entry => entry.candidate)
+      );
+    }
+
+    return ServerGameService.playBotStoryCandidate(
+      gameState,
+      playerUid,
+      'COUNTERING',
+      chosen.candidate,
+      storyCandidates.map(entry => entry.candidate),
+      'PLAY_CONFRONTATION_STORY',
+      'PLAY_CONFRONTATION_STORY_FAILED',
+      'Hard AI uses a story card in the confrontation window only when it has clear tactical value.'
+    );
   },
 
   getBotQuerySelections(query: any): string[] {
@@ -6997,7 +7097,9 @@ export const ServerGameService = {
     // Handle Countering (Bot chooses to pass priority)
     if (gameState.phase === 'COUNTERING') {
       if (gameState.priorityPlayerId === playerUid) {
-        // console.log('[Bot] Passing confrontation priority');
+        if (difficulty === 'hard' && await ServerGameService.tryUseBotConfrontationAction(gameState, playerUid, 18, onUpdate)) {
+          return;
+        }
         await ServerGameService.passConfrontation(gameState, playerUid, onUpdate);
       }
       return;

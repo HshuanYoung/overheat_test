@@ -1,5 +1,26 @@
 import { DeckAiProfile } from '../types';
-import { cardCost, effectHasTag, hasRole, openUnitSlots, opponentErosion, opponentHasTrait, opponentIs, ownErosion, readyAttackers, readyDefenders } from './strategyUtils';
+import { cardCost, effectHasTag, hasRole, openUnitSlots, opponentErosion, opponentHasTrait, opponentIs, ownErosion, queryEffectId, queryOptionCard, queryOptionIsMine, queryStep, readyAttackers, readyDefenders } from './strategyUtils';
+
+const YELLOW_CORE_IDS = new Set([
+  '105110113',
+  '105120167',
+  '105120168',
+  '305120030',
+  '305000018',
+]);
+
+const ALCHEMY_SUMMON_PRIORITY: Record<string, number> = {
+  '105120166': 48,
+  '105120468': 46,
+  '105120164': 38,
+  '105120165': 34,
+  '105120168': 28,
+};
+
+const YELLOW_ENGINE_EFFECT_IDS = new Set([
+  '105120167_activate',
+  '305120030_activate',
+]);
 
 export const yellowAlchemyProfile: DeckAiProfile = {
   id: 'yellow-alchemy',
@@ -7,6 +28,23 @@ export const yellowAlchemyProfile: DeckAiProfile = {
   shareCode: 'GiZGyewEmGvwiDA8EzjGhhYsxlzWwjocHi8BbiA',
   notes: '偏组合和资源利用，保留手牌质量，优先发挥效果牌。',
   preferredFactions: ['炼金'],
+  preferredCardIds: {
+    '105110113': 12,
+    '105120167': 14,
+    '105120168': 10,
+    '105120166': 11,
+    '105120468': 10,
+    '305120030': 12,
+    '305110029': 7,
+  },
+  preserveCardIds: {
+    '105110113': 14,
+    '105120167': 22,
+    '105120168': 14,
+    '305120030': 18,
+    '305000018': 12,
+    '305110028': 6,
+  },
   effectPreferences: {
     preferredEffectIds: {
       '105110113_use_erosion_item': 7,
@@ -180,6 +218,46 @@ export const yellowAlchemyProfile: DeckAiProfile = {
       if (card.type === 'ITEM' && cardCost(card) <= 3) score += 4;
       if (opponentIs(context, 'aggro') && card.type !== 'UNIT' && (context.earlyUnitsInHand || 0) === 0) score -= 10;
       return score;
+    },
+    adjustPaymentScore: context => {
+      if (YELLOW_CORE_IDS.has(context.card.id)) return 26;
+      if (context.card.id === '305110028' && context.card.cardlocation === 'ITEM') return -8;
+      if (context.card.feijingMark) return -4;
+      return 0;
+    },
+    adjustQueryScore: context => {
+      const card = queryOptionCard(context);
+      if (!card) return 0;
+      const effectId = queryEffectId(context);
+      const step = queryStep(context);
+
+      if (effectId === '305110029_activate') {
+        return queryOptionIsMine(context)
+          ? -95
+          : 48 + (card.damage || 0) * 9 + (card.power || 0) / 850 + (card.isExhausted ? -6 : 6);
+      }
+
+      if (YELLOW_ENGINE_EFFECT_IDS.has(effectId)) {
+        if (step === 'PUT_UNIT') {
+          return ALCHEMY_SUMMON_PRIORITY[card.id] || ((card.damage || 0) * 8 + (card.power || 0) / 900);
+        }
+
+        if (step === 'DISCARD') {
+          if (YELLOW_CORE_IDS.has(card.id)) return -90;
+          if (card.feijingMark) return 28;
+          return cardCost(card) <= 2 ? 12 : -Math.max(0, cardCost(card) - 2) * 4;
+        }
+
+        if (step === 'SEND_FIELD' || step === 'SEND_UNIT') {
+          if (!queryOptionIsMine(context)) return -80;
+          if (YELLOW_CORE_IDS.has(card.id) || card.godMark) return -100;
+          if (card.id === '305110028') return 42;
+          if (card.feijingMark) return 26;
+          return 14 - (card.damage || 0) * 5 - (card.power || 0) / 1100;
+        }
+      }
+
+      return 0;
     },
     adjustEffectScore: context => {
       let score = 0;

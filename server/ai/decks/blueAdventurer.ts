@@ -1,5 +1,39 @@
 import { DeckAiProfile } from '../types';
-import { cardCost, cardText, effectHasTag, hasAny, hasRole, openUnitSlots, opponentErosion, opponentHasTrait, opponentIs, readyAttackers } from './strategyUtils';
+import { cardCost, cardText, effectHasTag, hasAny, hasRole, openUnitSlots, opponentErosion, opponentHasTrait, opponentIs, queryEffectId, queryOptionCard, queryOptionIsMine, readyAttackers } from './strategyUtils';
+
+const BLUE_CORE_IDS = new Set([
+  '104000073',
+  '104020068',
+  '104030125',
+  '104030126',
+  '104030450',
+  '304030075',
+]);
+
+const BLUE_EROSION_PAYOFF_PRIORITY: Record<string, number> = {
+  '104030453': 36,
+  '104030459': 35,
+  '104030454': 34,
+  '104030450': 32,
+  '104030452': 26,
+  '104030451': 24,
+};
+
+const BLUE_SWAP_EFFECT_IDS = new Set([
+  'aketi_play_from_erosion',
+  '104030459_swap_activate',
+  '104030453_swap',
+  'wen_swap_activate',
+  'freya_ranger_activate',
+  'dragon_wing_receptionist_activate',
+  'accept_commission_activate',
+]);
+
+const BLUE_OPPONENT_TEMPO_EFFECT_IDS = new Set([
+  '204020024_activate',
+  'sodo_entry_bounce',
+  '104030459_entry_exhaust',
+]);
 
 export const blueAdventurerProfile: DeckAiProfile = {
   id: 'blue-adventurer',
@@ -7,6 +41,26 @@ export const blueAdventurerProfile: DeckAiProfile = {
   shareCode: 'GiZGyewEtT6lckR2Hcp99EgcA8tX2-BW6Hx6NI_c',
   notes: '偏节奏和手牌质量，重视低费展开与效果牌选择。',
   preferredFactions: ['冒险家'],
+  preferredCardIds: {
+    '104000073': 10,
+    '104020068': 12,
+    '104030453': 9,
+    '104030459': 9,
+    '104030450': 8,
+    '104030454': 9,
+    '304030075': 12,
+  },
+  preserveCardIds: {
+    '104000073': 16,
+    '104020068': 18,
+    '104030453': 10,
+    '104030459': 10,
+    '104030450': 10,
+    '104030454': 11,
+    '204000145': 12,
+    '204000026': 14,
+    '304030075': 16,
+  },
   effectPreferences: {
     preferredEffectIds: {
       'gensou_swallow_counter': 3,
@@ -178,6 +232,34 @@ export const blueAdventurerProfile: DeckAiProfile = {
       if (hasRole(card, 'tempo')) score += 4;
       if (cardCost(card) >= 5) score -= 8;
       return score;
+    },
+    adjustPaymentScore: context => {
+      if (BLUE_CORE_IDS.has(context.card.id)) return 20;
+      if (context.card.id === '204000145' || context.card.id === '204000026') return 14;
+      if (BLUE_EROSION_PAYOFF_PRIORITY[context.card.id] && context.card.cardlocation !== 'HAND') return 12;
+      return 0;
+    },
+    adjustQueryScore: context => {
+      const card = queryOptionCard(context);
+      if (!card) return 0;
+      const effectId = queryEffectId(context);
+      const source = String(context.option?.source || card.cardlocation || '');
+
+      if (BLUE_SWAP_EFFECT_IDS.has(effectId)) {
+        if (!queryOptionIsMine(context)) return -60;
+        const payoff = BLUE_EROSION_PAYOFF_PRIORITY[card.id] || 0;
+        const fromReusableZone = source === 'EROSION_FRONT' || source === 'GRAVE' || source === 'DECK';
+        if (fromReusableZone && payoff > 0) return 55 + payoff + (card.damage || 0) * 5;
+        if (context.intent === 'cost' && BLUE_CORE_IDS.has(card.id)) return -70;
+      }
+
+      if (BLUE_OPPONENT_TEMPO_EFFECT_IDS.has(effectId)) {
+        return queryOptionIsMine(context)
+          ? -90
+          : 42 + (card.godMark ? 8 : 0) + (card.damage || 0) * 7 + (card.power || 0) / 900;
+      }
+
+      return 0;
     },
     adjustEffectScore: context => {
       let score = 0;

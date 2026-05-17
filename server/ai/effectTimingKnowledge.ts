@@ -144,8 +144,8 @@ const MANUAL_EFFECT_TIMING_OVERRIDES: Record<string, {
   },
   '305110029_activate': {
     tags: ['removal', 'damage'],
-    phaseBias: { MAIN: 5, BATTLE_DECLARATION: 2, BATTLE_FREE: 2 },
-    reasons: ['auto turret should fire only when damage/removal has a real target'],
+    phaseBias: { MAIN: 2, BATTLE_DECLARATION: 4, DEFENSE_DECLARATION: 5, BATTLE_FREE: 4, DAMAGE_CALCULATION: 3 },
+    reasons: ['auto turret should fire into an attacker, defender, or clear combat target'],
   },
   '305120030_activate': {
     tags: ['engine', 'resource'],
@@ -177,6 +177,11 @@ const MANUAL_EFFECT_TIMING_OVERRIDES: Record<string, {
     phaseBias: { MAIN: 7, BATTLE_FREE: -8, COUNTERING: -9 },
     reasons: ['trade scale value effect belongs in main sequencing'],
   },
+  '204020024_activate': {
+    tags: ['tempo', 'removal'],
+    phaseBias: { MAIN: 4, BATTLE_DECLARATION: 4, BATTLE_FREE: 5, COUNTERING: 2 },
+    reasons: ['Aketi inducement should tap or bounce an opposing tactical target, not own board filler'],
+  },
   '104020066_activate_1': {
     tags: ['engine', 'resource'],
     phaseBias: { MAIN: 6, BATTLE_FREE: -5 },
@@ -202,10 +207,20 @@ const MANUAL_EFFECT_TIMING_OVERRIDES: Record<string, {
     phaseBias: { MAIN: 6, BATTLE_DECLARATION: 3, BATTLE_FREE: 3 },
     reasons: ['ambush destroy should clear a relevant opposing unit'],
   },
+  '102000146_exile_destroy': {
+    tags: ['removal', 'tempo'],
+    phaseBias: { MAIN: 4, DEFENSE_DECLARATION: 5, BATTLE_FREE: 4, COUNTERING: 3 },
+    reasons: ['wandering shadow trades itself only for a real opposing non-godmark threat'],
+  },
   '202000035_destroy': {
     tags: ['removal'],
     phaseBias: { MAIN: 6, BATTLE_DECLARATION: 2, BATTLE_FREE: 2 },
     reasons: ['beast subjugation is removal and needs a meaningful target'],
+  },
+  '202000131_duel': {
+    tags: ['removal', 'risk'],
+    phaseBias: { MAIN: 3, BATTLE_FREE: -8, COUNTERING: -10 },
+    reasons: ['single duel is a risky board reset and should be planned before attacks'],
   },
   '202050034_destroy_god': {
     tags: ['removal', 'tempo'],
@@ -237,6 +252,11 @@ const MANUAL_EFFECT_TIMING_OVERRIDES: Record<string, {
     phaseBias: { BATTLE_FREE: 7, DAMAGE_CALCULATION: 5, MAIN: -3 },
     reasons: ['totem stun boost/return is a battle value effect'],
   },
+  '103090180_exhaust_boost': {
+    tags: ['combat', 'buff', 'finisher', 'risk'],
+    phaseBias: { MAIN: -4, BATTLE_DECLARATION: 5, BATTLE_FREE: 8, DAMAGE_CALCULATION: 5 },
+    reasons: ['multi-exhaust boost should spend attackers only for a meaningful combat payoff'],
+  },
   '203000051_destroy_except_highest': {
     tags: ['removal', 'risk'],
     phaseBias: { MAIN: 5, BATTLE_FREE: -3, COUNTERING: -8 },
@@ -246,6 +266,11 @@ const MANUAL_EFFECT_TIMING_OVERRIDES: Record<string, {
     tags: ['summon', 'revive', 'resource'],
     phaseBias: { MAIN: 8, BATTLE_FREE: -8, COUNTERING: -9 },
     reasons: ['earth spirit descent is main-phase board setup'],
+  },
+  '203000076_spirit_boost': {
+    tags: ['combat', 'buff', 'finisher'],
+    phaseBias: { MAIN: -5, BATTLE_DECLARATION: 5, BATTLE_FREE: 8, DAMAGE_CALCULATION: 5 },
+    reasons: ['sky spirit descent should convert a combat or lethal window'],
   },
   '203000126_ritual': {
     tags: ['revive', 'summon', 'setup'],

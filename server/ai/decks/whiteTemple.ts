@@ -1,8 +1,23 @@
 import { DeckAiProfile, DeckAiQueryScoreContext } from '../types';
 import { Card } from '../../../src/types/game';
-import { cardCost, cardText, effectHasTag, hasAny, hasRole, openUnitSlots, opponentErosion, opponentHasTrait, opponentIs, readyAttackers, readyDefenders } from './strategyUtils';
+import { battlePressureActive, cardCost, cardText, effectHasTag, hasAny, hasRole, openUnitSlots, opponentErosion, opponentHasTrait, opponentIs, queryEffectId, queryOptionCard, queryOptionIsMine, readyAttackers, readyDefenders } from './strategyUtils';
 
 const PREFERRED_RESET_TARGET_IDS = new Set(['101130440', '101130458']);
+const WHITE_CORE_IDS = new Set([
+  '101000501', // 冰峰神兽「白虎」
+  '101100096', // 女神的微笑「柯莉尔」
+  '101130200', // 圣王国的盾兵
+  '101130439',
+  '101130440',
+  '101130441',
+  '101130458',
+  '101150208',
+]);
+const WHITE_COMBAT_PROTECTION_EFFECT_IDS = new Set([
+  '201000059_prevent_destroy',
+  '101000159_protect',
+  '101100096_alliance_protect',
+]);
 const SAINT_KINGDOM_ARCHER_ID = '101130202';
 const SAINT_KINGDOM_ARCHER_EFFECT_ID = '101130202_hand_to_field';
 const CHURCH_ESCORT_EFFECT_ID = '101140151_enter_exile';
@@ -82,20 +97,28 @@ export const whiteTempleProfile: DeckAiProfile = {
   notes: '偏防守和资源续航，保留高价值单位，倾向稳健防御。',
   preferredFactions: ['殿堂', '圣王国'],
   preferredCardIds: {
+    '101000501': 14,
     '101100096': 12,
     '201100037': 8,
     '101130202': 11,
+    '101130200': 7,
     '101130439': 8,
     '101130440': 10,
+    '101130441': 8,
     '101130458': 9,
+    '101150208': 8,
   },
   preserveCardIds: {
+    '101000501': 22,
     '101100096': 18,
     '201100037': 14,
     '101130202': 10,
+    '101130200': 12,
     '101130439': 8,
     '101130440': 12,
+    '101130441': 10,
     '101130458': 12,
+    '101150208': 12,
   },
   effectPreferences: {
     preferredEffectIds: {
@@ -265,6 +288,9 @@ export const whiteTempleProfile: DeckAiProfile = {
       let score = 0;
       if (opponentIs(context, 'aggro', 'tempo') || opponentHasTrait(context, 'burst-damage')) score += 10;
       if (hasRole(context.card, 'defender') || hasRole(context.card, 'protection')) score += 4;
+      if (WHITE_CORE_IDS.has(context.card.id) && (context.player?.deck.length || 99) > 5 && !opponentHasTrait(context, 'burst-damage')) {
+        score -= 8;
+      }
       if ((context.card.damage || 0) >= 2 && !opponentHasTrait(context, 'burst-damage')) score -= 2;
       return score;
     },
@@ -284,6 +310,7 @@ export const whiteTempleProfile: DeckAiProfile = {
       return 0;
     },
     adjustPaymentScore: context => {
+      if (WHITE_CORE_IDS.has(context.card.id)) return 26;
       if (context.card.id === SAINT_KINGDOM_ARCHER_ID && isHandCard(context.card) && bestArcherTargetInHand(context.player)) return 40;
       if (isSaintKingdomArcherTarget(context.card) && isHandCard(context.card) && handHasArcher(context.player)) return 30;
       return 0;
@@ -301,6 +328,11 @@ export const whiteTempleProfile: DeckAiProfile = {
       const card = context.option?.card;
       const effectId = String((context.query as any).context?.effectId || '');
       if (!card) return 0;
+      if (WHITE_COMBAT_PROTECTION_EFFECT_IDS.has(queryEffectId(context))) {
+        if (!queryOptionIsMine(context)) return -80;
+        const pressureBonus = battlePressureActive(context) ? 16 : -18;
+        return pressureBonus + (WHITE_CORE_IDS.has(card.id) ? 48 : 0) + (card.godMark ? 16 : 0) + (card.damage || 0) * 6;
+      }
       if (effectId === SAINT_KINGDOM_ARCHER_EFFECT_ID) {
         if (context.option?.isMine === false) return -80;
         if (!isSaintKingdomArcherTarget(card)) return -80;
