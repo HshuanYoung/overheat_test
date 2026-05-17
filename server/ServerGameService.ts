@@ -7563,13 +7563,29 @@ export const ServerGameService = {
           (ownUnits === 0 && opponentUnits >= 2);
         const selectedScore = scoredErosionCards[0]?.score || 0;
         const openUnitSlot = bot.unitZone.some(slot => slot === null);
-        const emergencyRecoveryCard = scoredErosionCards.find(({ card }) => {
+        const recoveryValue = (card: Card) => {
+          const preserve = profile.preserveCardIds?.[card.id] || profile.preserveCardIds?.[card.uniqueId] || 0;
+          const preferred = profile.preferredCardIds?.[card.id] || profile.preferredCardIds?.[card.uniqueId] || 0;
+          let score = scoreCardValue(card, profile) + scorePlayableCard(gameState, bot, card, profile) * 0.2;
+          if (card.type === 'UNIT') {
+            if (card.godMark) score += 72;
+            if (preserve > 0 || preferred > 0) score += 24 + preserve * 0.8 + preferred * 0.45;
+            score += Math.max(0, card.damage || 0) * 5;
+            score += Math.max(0, card.power || 0) / 900;
+          }
+          return score;
+        };
+        const emergencyRecoveryCard = scoredErosionCards
+          .filter(({ card }) => {
           if (!canUseChoiceC || !openUnitSlot || card.type !== 'UNIT') return false;
           if (bot.factionLock && card.faction !== bot.factionLock) return false;
+          const colorCheck = ServerGameService.getColorRequirementResult(bot, card.colorReq || {});
+          if (!colorCheck.valid) return false;
           const effectiveCost = ServerGameService.getEffectivePlayCost(bot, card, gameState);
           if (effectiveCost < 0) return true;
           return ServerGameService.canBotPayPositiveCost(gameState, bot, effectiveCost, card.color, card);
-        })?.card;
+        })
+          .sort((a, b) => recoveryValue(b.card) - recoveryValue(a.card))[0]?.card;
         const needsEmergencyRecovery =
           !!emergencyRecoveryCard &&
           incomingThreat.lethalWithoutBlocks &&
@@ -7578,7 +7594,7 @@ export const ServerGameService = {
         if (needsEmergencyRecovery) {
           selectedErosionCard = emergencyRecoveryCard;
           erosionChoice = 'C';
-          erosionReason = 'emergency defense: recover a playable unit from erosion despite low deck pressure';
+          erosionReason = 'emergency defense: recover a high-value playable unit from erosion despite low deck pressure';
         } else if (deckDanger && selectedErosionCard) {
           erosionChoice = 'B';
           erosionReason = 'low deck: preserve the best erosion card without spending another deck card';
@@ -7629,16 +7645,21 @@ export const ServerGameService = {
       }
 
       if (difficulty === 'hard' && (bot as any).botReservedAttackTurn === gameState.turnCount) {
+        const heldUnfavorableAttack = (bot as any).botHeldUnfavorableAttackTurn === gameState.turnCount;
         ServerGameService.recordAiDecision(gameState, playerUid, {
           action: 'END_TURN',
-          subject: 'reserved defenders',
-          reason: 'End the turn after holding ready units for defense; avoid spending reserved defenders on main-phase payments or effects.',
+          subject: heldUnfavorableAttack ? 'held unfavorable attacks' : 'reserved defenders',
+          reason: heldUnfavorableAttack
+            ? 'End the turn after holding attacks that would trade down into stronger ready defenders.'
+            : 'End the turn after holding ready units for defense; avoid spending reserved defenders on main-phase payments or effects.',
           details: {
             reservedDefenders: ((bot as any).botReservedDefenderIds || []).length,
+            heldUnfavorableAttack,
             turn: gameState.turnCount,
           },
         });
         delete (bot as any).lastBotPlayFailure;
+        delete (bot as any).botHeldUnfavorableAttackTurn;
         await ServerGameService.advancePhase(gameState, 'DECLARE_END', playerUid);
         return;
       }
@@ -8123,7 +8144,7 @@ export const ServerGameService = {
         return;
       }
       const attacker = difficulty === 'hard'
-        ? forcedAttackUnit || scoredAvailableAttackers[0]?.card
+        ? forcedAttackUnit || (scoredAvailableAttackers[0]?.score > 0 ? scoredAvailableAttackers[0].card : undefined)
         : forcedAttackUnit || bot.unitZone.find(c => {
         if (!c || c.isExhausted || c.canAttack === false) return false;
         if ((c as any).battleForbiddenByEffect) return false;
@@ -8171,18 +8192,30 @@ export const ServerGameService = {
         });
         await ServerGameService.declareAttack(gameState, playerUid, [attacker.gamecardId], false, undefined, undefined, onUpdate);
       } else {
+        const heldUnfavorableAttack = difficulty === 'hard' && !forcedAttackUnit && scoredAvailableAttackers.length > 0;
         if (reservedDefenderIds.size > 0) {
           (bot as any).botReservedAttackTurn = gameState.turnCount;
+        } else if (heldUnfavorableAttack) {
+          (bot as any).botReservedAttackTurn = gameState.turnCount;
+          (bot as any).botHeldUnfavorableAttackTurn = gameState.turnCount;
         }
         ServerGameService.recordAiDecision(gameState, playerUid, {
-          action: reservedDefenderIds.size > 0 ? 'HOLD_ATTACKERS' : 'RETURN_MAIN',
-          subject: reservedDefenderIds.size > 0 ? `${reservedDefenderIds.size} reserved defenders` : '无攻击者',
+          action: reservedDefenderIds.size > 0 || heldUnfavorableAttack ? 'HOLD_ATTACKERS' : 'RETURN_MAIN',
+          subject: reservedDefenderIds.size > 0
+            ? `${reservedDefenderIds.size} reserved defenders`
+            : heldUnfavorableAttack
+              ? 'unfavorable attacks'
+              : '无攻击者',
           reason: reservedDefenderIds.size > 0
             ? 'Hold remaining ready units for defense because the current attack is not lethal and the opponent can pressure back.'
-            : '战斗宣言阶段没有合法攻击单位，返回主要阶段继续判断。',
+            : heldUnfavorableAttack
+              ? 'Hold attackers because available attacks would trade down into stronger ready defenders without a clear closing purpose.'
+              : '战斗宣言阶段没有合法攻击单位，返回主要阶段继续判断。',
           details: {
             canAttackers: attackCandidates.length,
             reservedDefenders: reservedDefenderIds.size,
+            heldUnfavorableAttack,
+            bestAttackScore: scoredAvailableAttackers[0]?.score,
             opponentPotentialDamage,
             dynamicCounterPressure,
             ownErosion,
