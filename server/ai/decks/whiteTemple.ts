@@ -14,7 +14,6 @@ const WHITE_CORE_IDS = new Set([
   '101150208',
 ]);
 const WHITE_COMBAT_PROTECTION_EFFECT_IDS = new Set([
-  '201000059_prevent_destroy',
   '101000159_protect',
   '101100096_alliance_protect',
 ]);
