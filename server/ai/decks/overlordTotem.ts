@@ -1,5 +1,20 @@
 import { DeckAiProfile } from '../types';
-import { cardText, effectHasTag, hasAny, hasRole, openUnitSlots, opponentHasTrait, opponentIs, readyDefenders } from './strategyUtils';
+import { battlePressureActive, cardText, effectHasTag, hasAny, hasRole, openUnitSlots, opponentErosion, opponentHasTrait, opponentIs, ownErosion, queryEffectId, queryOptionCard, queryOptionIsMine, queryStep, readyAttackers, readyDefenders } from './strategyUtils';
+
+const TOTEM_CORE_IDS = new Set([
+  '103080184',
+  '103080185',
+  '103080182',
+  '103080183',
+  '103080212',
+]);
+
+const OVERLORD_SUMMON_PRIORITY: Record<string, number> = {
+  '103000139': 48,
+  '102000150': 44,
+  '104000178': 40,
+  '105000491': 38,
+};
 
 export const overlordTotemProfile: DeckAiProfile = {
   id: 'overlord-totem',
@@ -7,10 +22,29 @@ export const overlordTotemProfile: DeckAiProfile = {
   shareCode: 'GiZGyewEgBU3mzFTW6iQg3U5uknjrogEhXPquA',
   notes: '偏站场和图腾协同，重视场面价值与关键单位存活。',
   preferredFactions: ['图腾', '霸者'],
+  preferredCardIds: {
+    '103080184': 14,
+    '103080185': 12,
+    '103080182': 10,
+    '103080183': 10,
+    '103000139': 10,
+    '102000150': 9,
+    '203000126': 10,
+    '203000129': 8,
+  },
+  preserveCardIds: {
+    '103080184': 22,
+    '103080185': 16,
+    '103080182': 12,
+    '103080183': 12,
+    '103080212': 12,
+    '203000126': 12,
+  },
   effectPreferences: {
     preferredEffectIds: {
       '103080211_rebirth': 9,
       '103080212_plan': 7,
+      '103080184_totem_grant': 8,
       '103080184_granted_totem_revive': 8,
       '103080183_destroy': 5,
       '103080258_boost_return': 4,
@@ -18,6 +52,7 @@ export const overlordTotemProfile: DeckAiProfile = {
       '103090180_ten_revive': 8,
       '203000075_choice': 8,
       '203000076_spirit_boost': 6,
+      '203000051_destroy_except_highest': 5,
       '203000126_ritual': 8,
       '203080083_prepare': 7,
       '203000129_trample': 5,
@@ -103,19 +138,42 @@ export const overlordTotemProfile: DeckAiProfile = {
   },
   strategyHooks: {
     adjustTurnPlan: context => {
+      const notes: string[] = [];
+      let reserveDefendersDelta = 0;
+      let minMainEffectScoreDelta = 0;
+      let minBattleEffectScoreDelta = 0;
+      let attackBeforeDeveloping: boolean | undefined;
+      const boardOnline = context.plan.attackers >= 2 || context.plan.totalAvailableDamage >= 3;
+      const pressureReady =
+        boardOnline &&
+        (
+          context.plan.opponentErosion >= 5 ||
+          context.opponentDeckProfile?.archetype === 'engine' ||
+          context.opponentDeckProfile?.archetype === 'combo' ||
+          context.opponentDeckProfile?.archetype === 'control'
+        );
+
       if (context.opponentDeckProfile?.archetype === 'aggro') {
-        return {
-          reserveDefendersDelta: 1,
-          notes: ['totem hook: trade recursive bodies into aggro pressure'],
-        };
+        reserveDefendersDelta += 1;
+        notes.push('totem hook: trade recursive bodies into aggro pressure');
       }
       if (context.plan.attackers >= 2 && (context.opponentDeckProfile?.archetype === 'engine' || context.opponentDeckProfile?.archetype === 'combo')) {
-        return {
-          attackBeforeDeveloping: true,
-          notes: ['totem hook: pressure setup decks once board is established'],
-        };
+        attackBeforeDeveloping = true;
+        notes.push('totem hook: pressure setup decks once board is established');
       }
-      return undefined;
+      if (pressureReady) {
+        attackBeforeDeveloping = true;
+        reserveDefendersDelta -= 1;
+        minBattleEffectScoreDelta -= 0.5;
+        notes.push('totem route: recursive board shifts from setup into pressure');
+      }
+      if (!pressureReady && context.plan.ownDeck <= 12) {
+        minMainEffectScoreDelta -= 0.3;
+        notes.push('totem route: low deck relies on recursion instead of raw payments');
+      }
+      return notes.length
+        ? { attackBeforeDeveloping, reserveDefendersDelta, minMainEffectScoreDelta, minBattleEffectScoreDelta, notes }
+        : undefined;
     },
     adjustPlayableScore: context => {
       const card = context.card;
@@ -125,6 +183,8 @@ export const overlordTotemProfile: DeckAiProfile = {
       if (card.type === 'UNIT' && openUnitSlots(context) > 0) score += 2;
       if (hasRole(card, 'engine') || hasRole(card, 'combo_piece')) score += 2.5;
       if (hasRole(card, 'removal') && (opponentHasTrait(context, 'large-defenders') || opponentHasTrait(context, 'engine-density'))) score += 3;
+      if (card.type === 'UNIT' && opponentErosion(context) >= 5) score += (card.damage || 0) * 1.2;
+      if ((context.player?.deck.length || 0) <= 12 && (hasRole(card, 'draw') || hasRole(card, 'search'))) score -= 4;
       return score;
     },
     adjustAttackScore: context => {
@@ -141,6 +201,7 @@ export const overlordTotemProfile: DeckAiProfile = {
       let score = 0;
       if (hasAny(text, [/复生|复活|墓地|rebirth|revive|grave/i])) score += 5;
       if (opponentIs(context, 'aggro') || opponentHasTrait(context, 'burst-damage')) score += 8;
+      if (TOTEM_CORE_IDS.has(context.card.id) && !opponentHasTrait(context, 'burst-damage') && (context.player?.deck.length || 99) > 5) score -= 7;
       if (hasRole(context.card, 'engine') && !opponentHasTrait(context, 'burst-damage')) score -= 4;
       return score;
     },
@@ -154,11 +215,55 @@ export const overlordTotemProfile: DeckAiProfile = {
       if (opponentIs(context, 'aggro') && card.type !== 'UNIT') score -= 5;
       return score;
     },
+    adjustPaymentScore: context => {
+      if (TOTEM_CORE_IDS.has(context.card.id)) return 22;
+      if (context.card.id === '103080213') return -6;
+      return 0;
+    },
+    adjustQueryScore: context => {
+      const card = queryOptionCard(context);
+      const effectId = queryEffectId(context);
+      const step = queryStep(context);
+
+      if (effectId === '203000075_choice' && !card) {
+        const optionId = String(context.option?.id || '').toUpperCase();
+        if (optionId === 'REVIVE') return battlePressureActive(context) ? -12 : 18;
+        if (optionId === 'BOOST') return battlePressureActive(context) || readyAttackers(context) > 0 ? 20 : 4;
+      }
+
+      if (!card) return 0;
+
+      if (effectId === '203000126_ritual') {
+        return OVERLORD_SUMMON_PRIORITY[card.id] || ((card.damage || 0) * 8 + (card.power || 0) / 900);
+      }
+
+      if (effectId === '203000075_choice') {
+        if (step === 'REVIVE') {
+          return queryOptionIsMine(context)
+            ? 36 + (card.id === '103080183' ? 14 : 0) + (card.id === '103080182' ? 12 : 0) + (card.damage || 0) * 5
+            : -80;
+        }
+        if (step === 'BOOST') {
+          return queryOptionIsMine(context)
+            ? 28 + (card.id === '103080182' ? 18 : 0) + (card.id === '103080185' ? 16 : 0) + (card.damage || 0) * 8
+            : -60;
+        }
+      }
+
+      if (effectId === '103080212_plan' && step === 'RETURN') {
+        if (TOTEM_CORE_IDS.has(card.id) || card.godMark) return -90;
+        if (card.id === '103080213') return 34;
+      }
+
+      return 0;
+    },
     adjustEffectScore: context => {
       let score = 0;
       if (effectHasTag(context, 'revive') || effectHasTag(context, 'summon')) score += openUnitSlots(context) > 0 ? 6 : -4;
       if (effectHasTag(context, 'buff') || effectHasTag(context, 'combat')) score += readyDefenders(context) >= 1 ? 2 : 0;
       if (effectHasTag(context, 'removal') && (opponentHasTrait(context, 'large-defenders') || opponentIs(context, 'engine', 'combo'))) score += 3;
+      if ((effectHasTag(context, 'buff') || effectHasTag(context, 'combat')) && (opponentErosion(context) >= 6 || readyAttackers(context) >= 2)) score += 3;
+      if ((effectHasTag(context, 'revive') || effectHasTag(context, 'summon')) && ownErosion(context) >= 6) score += 2;
       return score;
     },
   },

@@ -54,6 +54,8 @@ interface MatchDiagnosis {
   severity: 'info' | 'warning' | 'error';
   title: string;
   detail: string;
+  tags?: string[];
+  metrics?: Record<string, number>;
 }
 
 interface EvaluationLimits {
@@ -245,6 +247,139 @@ function describePendingQuery(state: GameState) {
     title: state.pendingQuery.title,
     callbackKey: state.pendingQuery.callbackKey,
     options: state.pendingQuery.options?.length || 0,
+  };
+}
+
+function rawLogDetail(log: AiDecisionLog, key: string) {
+  const value = log.details?.[key];
+  return value === undefined || value === null ? '' : String(value);
+}
+
+function truthyLogDetail(log: AiDecisionLog, key: string) {
+  const value = log.details?.[key];
+  return value === true || value === 'true' || value === 1 || value === '1';
+}
+
+function numericLogDetail(log: AiDecisionLog, key: string) {
+  const value = Number(log.details?.[key]);
+  return Number.isFinite(value) ? value : 0;
+}
+
+function collectDecisionDiagnostics(logs: AiDecisionLog[]) {
+  type TurnTrace = {
+    plan?: AiDecisionLog;
+    attacks: number;
+    plays: number;
+    effects: number;
+    payments: number;
+    exhaustedPayments: number;
+    ended: boolean;
+    comboActions: number;
+  };
+  const traces = new Map<string, TurnTrace>();
+  const metrics: Record<string, number> = {
+    MISSED_LETHAL: 0,
+    MISSED_COMBO: 0,
+    BAD_EFFECT_TIMING: 0,
+    BAD_PAYMENT: 0,
+    OVER_DEVELOP: 0,
+    UNDER_PRESSURE_NO_STABILIZE: 0,
+    QUERY_FAILED: 0,
+    EFFECT_FAILED: 0,
+  };
+
+  const traceFor = (log: AiDecisionLog) => {
+    const key = `${log.playerUid}:${log.turn}`;
+    if (!traces.has(key)) {
+      traces.set(key, {
+        attacks: 0,
+        plays: 0,
+        effects: 0,
+        payments: 0,
+        exhaustedPayments: 0,
+        ended: false,
+        comboActions: 0,
+      });
+    }
+    return traces.get(key)!;
+  };
+
+  for (const log of logs) {
+    const trace = traceFor(log);
+    if (log.action === 'TURN_PLAN') trace.plan = log;
+    if (log.action === 'ATTACK') trace.attacks++;
+    if (log.action === 'PLAY_CARD') trace.plays++;
+    if (log.action === 'ACTIVATE_EFFECT' || log.action === 'PLAY_BATTLE_STORY') trace.effects++;
+    if (log.action === 'PAYMENT') {
+      trace.payments++;
+      const text = `${rawLogDetail(log, 'selection')} ${rawLogDetail(log, 'projectedPayment')} ${log.reason}`;
+      if (/横置|妯疆|exhaust/i.test(text)) trace.exhaustedPayments++;
+    }
+    if (log.action === 'END_TURN') trace.ended = true;
+    if (
+      log.action === 'COMBO_ALLIANCE_ATTACK' ||
+      log.action === 'PLAY_BATTLE_STORY' ||
+      /201100037|eclipse|日蚀|combo/i.test(`${rawLogDetail(log, 'effectId')} ${rawLogDetail(log, 'combo')} ${log.subject}`)
+    ) {
+      trace.comboActions++;
+    }
+    if (log.action === 'QUERY_FAILED') metrics.QUERY_FAILED++;
+    if (log.action === 'ACTIVATE_EFFECT_FAILED') metrics.EFFECT_FAILED++;
+    if (log.action === 'ACTIVATE_EFFECT') {
+      const notes = rawLogDetail(log, 'notes');
+      if (/prefers|timing .*-/i.test(notes)) metrics.BAD_EFFECT_TIMING++;
+    }
+  }
+
+  for (const trace of traces.values()) {
+    const plan = trace.plan;
+    if (!plan) continue;
+    const totalDamage = numericLogDetail(plan, 'totalDamage');
+    const damageToCritical = Math.max(1, numericLogDetail(plan, 'damageToCritical'));
+    const lethalPotential =
+      truthyLogDetail(plan, 'lethalWindow') ||
+      rawLogDetail(plan, 'tacticalLine') === 'lethal' ||
+      rawLogDetail(plan, 'tacticalLine') === 'erosion-lethal' ||
+      totalDamage >= damageToCritical;
+    const comboReady = truthyLogDetail(plan, 'comboReady') || truthyLogDetail(plan, 'comboPayoffPlayable');
+    const incomingLethal = truthyLogDetail(plan, 'incomingLethal');
+    const reserveDefenders = numericLogDetail(plan, 'reserveDefenders');
+    const defendersNeeded = numericLogDetail(plan, 'defendersNeededNextTurn');
+    const mode = String(plan.subject || '');
+
+    if (lethalPotential && trace.attacks === 0 && trace.ended) metrics.MISSED_LETHAL++;
+    if (comboReady && trace.comboActions === 0 && trace.ended) metrics.MISSED_COMBO++;
+    if (incomingLethal && !/defense|stabilize/i.test(mode)) metrics.UNDER_PRESSURE_NO_STABILIZE++;
+    if (trace.exhaustedPayments > 0 && (incomingLethal || reserveDefenders > 0 || defendersNeeded > 0)) {
+      metrics.BAD_PAYMENT += trace.exhaustedPayments;
+    }
+    if (lethalPotential && trace.plays >= 2 && trace.attacks > 0) metrics.OVER_DEVELOP++;
+  }
+
+  const tags = Object.entries(metrics)
+    .filter(([, count]) => count > 0)
+    .map(([tag]) => tag);
+
+  return { metrics, tags };
+}
+
+function withDecisionDiagnostics(diagnosis: MatchDiagnosis, logs: AiDecisionLog[]): MatchDiagnosis {
+  const decisionDiagnostics = collectDecisionDiagnostics(logs);
+  const severe =
+    (decisionDiagnostics.metrics.MISSED_LETHAL || 0) > 0 ||
+    (decisionDiagnostics.metrics.MISSED_COMBO || 0) > 0 ||
+    (decisionDiagnostics.metrics.UNDER_PRESSURE_NO_STABILIZE || 0) > 0;
+  const severity = diagnosis.severity === 'info' && severe ? 'warning' : diagnosis.severity;
+  const extraDetail = decisionDiagnostics.tags.length
+    ? ` Decision diagnostics: ${decisionDiagnostics.tags.join(', ')}.`
+    : '';
+
+  return {
+    ...diagnosis,
+    severity,
+    detail: `${diagnosis.detail}${extraDetail}`,
+    tags: decisionDiagnostics.tags,
+    metrics: decisionDiagnostics.metrics,
   };
 }
 
@@ -449,7 +584,7 @@ function buildMatchResult(
 
   return {
     ...result,
-    diagnosis: diagnoseMatch(result),
+    diagnosis: withDecisionDiagnostics(diagnoseMatch(result), result.aiDecisionLogs),
   };
 }
 
@@ -789,6 +924,23 @@ function buildFailureReasonRows(results: MatchResult[]) {
   return rows.sort((a, b) => Number(b[2]) - Number(a[2]));
 }
 
+function buildDecisionDiagnosticRows(results: MatchResult[]) {
+  const totals = new Map<string, { count: number; games: number }>();
+  for (const result of results) {
+    for (const [tag, count] of Object.entries(result.diagnosis.metrics || {})) {
+      if (Number(count) <= 0) continue;
+      const current = totals.get(tag) || { count: 0, games: 0 };
+      current.count += Number(count);
+      current.games += 1;
+      totals.set(tag, current);
+    }
+  }
+
+  return [...totals.entries()]
+    .sort((a, b) => b[1].count - a[1].count || a[0].localeCompare(b[0]))
+    .map(([tag, value]) => [tag, value.count, value.games]);
+}
+
 function buildProblemLeaderboardRows(results: MatchResult[]) {
   const rows: Array<Array<string | number>> = [];
   const aggregate = aggregateDeckStats(results);
@@ -799,6 +951,13 @@ function buildProblemLeaderboardRows(results: MatchResult[]) {
     if (effectFailed > 0) rows.push(['warning', deck, 'ACTIVATE_EFFECT_FAILED', effectFailed, '主动效果发动入口拒绝，优先看 effectId 失败榜']);
     if (stats.queryFailures > 0) rows.push(['warning', deck, 'QUERY_FAILED', stats.queryFailures, '必选查询没有合法选择或选择器未覆盖']);
     if (stats.warnings > 0) rows.push(['warning', deck, 'UNRESOLVED_GAME', stats.warnings, '回合/步数上限或阶段截断']);
+  }
+
+  for (const result of results) {
+    for (const [tag, count] of Object.entries(result.diagnosis.metrics || {})) {
+      if (Number(count) <= 0) continue;
+      rows.push(['warning', result.winnerDeck || `${result.deckA} vs ${result.deckB}`, tag, Number(count), 'Decision diagnostic from turn plans and action logs']);
+    }
   }
 
   for (const [deck, effectId, , failed, failRate] of buildEffectRows(results)) {
@@ -863,6 +1022,24 @@ function buildTuningSuggestionRows(results: MatchResult[], limits?: EvaluationLi
       suggestion = shortCapRun
         ? 'Treat this as an evaluation-cap sample first; rerun with --maxTurns=30 --maxSteps=500 before changing strategy.'
         : 'Tune attack/lethal pressure first; if logs show real stalemates, raise evaluation caps separately.';
+    } else if (problemText === 'MISSED_LETHAL') {
+      focus = 'lethal search';
+      suggestion = 'Prioritize one-turn lethal lines before play/effect development and add a scenario test for the missed turn.';
+    } else if (problemText === 'MISSED_COMBO') {
+      focus = 'combo execution';
+      suggestion = 'Add a deck-specific combo hook or lower the battle effect threshold when the combo is ready.';
+    } else if (problemText === 'BAD_PAYMENT') {
+      focus = 'payment guard';
+      suggestion = 'Increase payment preservation for ready attackers, blockers, god-marked units, and combo pieces.';
+    } else if (problemText === 'BAD_EFFECT_TIMING') {
+      focus = 'effect timing';
+      suggestion = 'Add a static timing rule or observed timing override for this effect family.';
+    } else if (problemText === 'UNDER_PRESSURE_NO_STABILIZE') {
+      focus = 'defense/stabilize';
+      suggestion = 'Raise defender reserve and defensive development when the opponent has a lethal next turn.';
+    } else if (problemText === 'OVER_DEVELOP') {
+      focus = 'attack sequencing';
+      suggestion = 'Reduce development priority once a lethal or critical erosion attack line is available.';
     }
 
     const priority = severity === 'error'
@@ -881,6 +1058,7 @@ function buildAiDiagnostics(results: MatchResult[], limits?: EvaluationLimits) {
     capWarnings: buildCapWarningRows(results, limits),
     diagnosisCounts: buildDiagnosisSummary(results),
     decisionActions: buildDecisionActionSummary(results),
+    decisionDiagnostics: buildDecisionDiagnosticRows(results),
     problemLeaderboard: buildProblemLeaderboardRows(results),
     tuningSuggestions: buildTuningSuggestionRows(results, limits),
     deckSummary: buildDeckAiSummaryRows(results),
@@ -954,6 +1132,16 @@ function buildMarkdownReport(report: any) {
   lines.push('## AI Action Counts');
   lines.push('');
   lines.push(markdownTable(['Action', 'Count'], buildDecisionActionSummary(report.results)));
+  lines.push('');
+
+  lines.push('## AI Decision Diagnostics');
+  lines.push('');
+  const decisionDiagnosticRows = report.aiDiagnostics?.decisionDiagnostics || buildDecisionDiagnosticRows(report.results);
+  if (decisionDiagnosticRows.length === 0) {
+    lines.push('- No decision diagnostics detected.');
+  } else {
+    lines.push(markdownTable(['Diagnostic', 'Count', 'Games'], decisionDiagnosticRows));
+  }
   lines.push('');
 
   const capWarnings = report.aiDiagnostics?.capWarnings || [];
