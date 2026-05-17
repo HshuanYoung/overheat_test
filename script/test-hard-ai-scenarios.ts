@@ -830,6 +830,176 @@ function testPreventDestroySelectsThreatenedHighValueUnit(): ScenarioResult {
   );
 }
 
+function testPreventBattleDestroyEffectRequiresCombatThreat(): ScenarioResult {
+  const profile = getDeckAiProfile('white-temple');
+  const protectedUnit = unit({ id: '101000501', fullName: 'White Tiger', damage: 2, power: 3500, godMark: true, playedTurn: 1 });
+  const attacker = unit({ id: 'BATTLE_DESTROY_ATTACKER', color: 'RED', damage: 2, power: 4500 });
+  const preventBattleEffect = effect({
+    id: '101150208_prevent_battle_destroy',
+    description: 'prevent battle destroy target own unit',
+    content: 'PREVENT_BATTLE_DESTROY PROTECT',
+  });
+  const source = unit({ id: '101150208', fullName: 'Battle Protection Source', effects: [preventBattleEffect] });
+  const noThreatState = game(
+    { isTurn: false, unitZone: [source, protectedUnit, null, null, null, null] },
+    { isTurn: true, unitZone: [attacker, null, null, null, null, null] },
+    {
+      phase: 'COUNTERING',
+      currentTurnPlayer: 1,
+      priorityPlayerId: 'BOT',
+      battleState: { attackers: [attacker.gamecardId] },
+    }
+  );
+  const threatState = game(
+    { isTurn: false, unitZone: [source, protectedUnit, null, null, null, null] },
+    { isTurn: true, unitZone: [attacker, null, null, null, null, null] },
+    {
+      phase: 'COUNTERING',
+      currentTurnPlayer: 1,
+      priorityPlayerId: 'BOT',
+      battleState: {
+        attackers: [attacker.gamecardId],
+        defender: protectedUnit.gamecardId,
+        resolvedUnitIds: [],
+      },
+    }
+  );
+  const noThreatScore = scoreActivatableEffect(
+    noThreatState,
+    noThreatState.players.BOT,
+    source as any,
+    preventBattleEffect as any,
+    profile,
+    { opponent: noThreatState.players.P1, targetCount: 1, hasTargetSpec: true }
+  ).score;
+  const threatScore = scoreActivatableEffect(
+    threatState,
+    threatState.players.BOT,
+    source as any,
+    preventBattleEffect as any,
+    profile,
+    { opponent: threatState.players.P1, targetCount: 1, hasTargetSpec: true }
+  ).score;
+
+  return assertScenario(
+    'prevent-battle-destroy effect waits for high-value combat loss',
+    noThreatScore < 18 && threatScore > 25 && threatScore > noThreatScore + 70,
+    `noThreat=${noThreatScore.toFixed(1)}, threat=${threatScore.toFixed(1)}`
+  );
+}
+
+function testPreventBattleDestroySelectsThreatenedCombatUnit(): ScenarioResult {
+  const profile = getDeckAiProfile('white-temple');
+  const threatened = unit({ id: '101130440', fullName: 'Threatened Magic Spear', damage: 2, power: 2500, playedTurn: 1 });
+  const decoyCore = unit({ id: '101000501', fullName: 'White Tiger Decoy', damage: 3, power: 5000, godMark: true, playedTurn: 1 });
+  const attacker = unit({ id: 'BATTLE_DESTROY_ATTACKER', color: 'RED', damage: 2, power: 3500 });
+  const state = game(
+    { isTurn: false, unitZone: [threatened, decoyCore, null, null, null, null], botDeckProfileId: 'white-temple' },
+    { isTurn: true, unitZone: [attacker, null, null, null, null, null] },
+    {
+      phase: 'COUNTERING',
+      currentTurnPlayer: 1,
+      priorityPlayerId: 'BOT',
+      battleState: {
+        attackers: [attacker.gamecardId],
+        defender: threatened.gamecardId,
+        resolvedUnitIds: [],
+      },
+    }
+  );
+  const query = {
+    type: 'SELECT_CARD',
+    options: [
+      { card: decoyCore, source: 'UNIT', isMine: true },
+      { card: threatened, source: 'UNIT', isMine: true },
+    ],
+    minSelections: 1,
+    maxSelections: 1,
+    callbackKey: 'EFFECT_RESOLVE',
+    context: { effectId: '101150208_prevent_battle_destroy', step: 'TARGET' },
+  };
+  const selected = chooseQuerySelections(state, 'BOT', query as any, profile, 'hard');
+  return assertScenario(
+    'prevent-battle-destroy target selection follows combat loss',
+    selected[0] === threatened.gamecardId,
+    `selected=${selected[0]}, threatened=${threatened.gamecardId}, decoy=${decoyCore.gamecardId}`
+  );
+}
+
+function testDikaiResetCostChoosesNonFieldGodmarkCosts(): ScenarioResult {
+  const profile = getDeckAiProfile('red-dikai');
+  const handCost = unit({ id: '102050432', fullName: 'Dikai Hand Cost', color: 'RED', godMark: true, cardlocation: 'HAND' });
+  const deckCost = unit({ id: '102050432', fullName: 'Dikai Deck Cost', color: 'RED', godMark: true, cardlocation: 'DECK' });
+  const graveCost = unit({ id: '102050432', fullName: 'Dikai Grave Cost', color: 'RED', godMark: true, cardlocation: 'GRAVE' });
+  const fieldCore = unit({ id: '102050432', fullName: 'Dikai Field Core', color: 'RED', godMark: true, cardlocation: 'UNIT', damage: 4, power: 4000 });
+  const state = game(
+    {
+      hand: [handCost],
+      deck: [deckCost],
+      grave: [graveCost],
+      unitZone: [fieldCore, null, null, null, null, null],
+      botDeckProfileId: 'red-dikai',
+    },
+    {}
+  );
+  const query = {
+    type: 'SELECT_CARD',
+    options: [
+      { card: fieldCore, source: 'UNIT', isMine: true },
+      { card: handCost, source: 'HAND', isMine: true },
+      { card: deckCost, source: 'DECK', isMine: true },
+      { card: graveCost, source: 'GRAVE', isMine: true },
+    ],
+    minSelections: 2,
+    maxSelections: 2,
+    callbackKey: 'EFFECT_RESOLVE',
+    context: { effectId: '102050432_reset_attack_unit' },
+  };
+  const selected = chooseQuerySelections(state, 'BOT', query as any, profile, 'hard');
+  return assertScenario(
+    'dikai reset cost can choose non-field godmark costs',
+    selected.length === 2 && !selected.includes(fieldCore.gamecardId),
+    `selected=${selected.join(',')}, field=${fieldCore.gamecardId}`
+  );
+}
+
+function testDikaiResetHeldInCountering(): ScenarioResult {
+  const profile = getDeckAiProfile('red-dikai');
+  const resetEffect = effect({
+    id: '102050432_reset_attack_unit',
+    type: 'ACTIVATE',
+    description: 'reset this unit and it can attack opponent unit next attack',
+    content: 'RESET READY ATTACK UNIT RESOURCE',
+  });
+  const commander = unit({
+    id: '102050432',
+    color: 'RED',
+    fullName: 'Knight Captain Dikai',
+    damage: 4,
+    power: 4000,
+    godMark: true,
+    effects: [resetEffect],
+  });
+  const state = game(
+    { unitZone: [commander, null, null, null, null, null], botDeckProfileId: 'red-dikai' },
+    {},
+    { phase: 'COUNTERING', priorityPlayerId: 'BOT' }
+  );
+  const score = scoreActivatableEffect(
+    state,
+    state.players.BOT,
+    commander as any,
+    resetEffect as any,
+    profile,
+    { opponent: state.players.P1, targetCount: 0, hasTargetSpec: false }
+  ).score;
+  return assertScenario(
+    'dikai reset is held during generic countering windows',
+    score < 18,
+    `score=${score.toFixed(1)}`
+  );
+}
+
 function testRedCannotDefendNeedsTargetInClosingWindow(): ScenarioResult {
   const profile = getDeckAiProfile('red-dikai');
   const source = unit({ id: '102050427', color: 'RED', damage: 2, power: 2500, playedTurn: 1 });
@@ -1518,6 +1688,10 @@ const scenarios: ScenarioRun[] = [
   testPreventDestroyWaitsForThreatWindow,
   testPreventDestroyConfrontationRequiresHighValueThreat,
   testPreventDestroySelectsThreatenedHighValueUnit,
+  testPreventBattleDestroyEffectRequiresCombatThreat,
+  testPreventBattleDestroySelectsThreatenedCombatUnit,
+  testDikaiResetCostChoosesNonFieldGodmarkCosts,
+  testDikaiResetHeldInCountering,
   testRedCannotDefendNeedsTargetInClosingWindow,
   testYellowReviveMainPhaseNotBattleSetup,
   testTotemPrepareStoryMainNotBattleFiller,

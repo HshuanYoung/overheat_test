@@ -749,6 +749,9 @@ function bestStoryEffectTimingScore(gameState: GameState, player: PlayerState, c
 const PREVENT_NEXT_DESTROY_EFFECT_IDS = new Set([
   '201000059_prevent_destroy',
 ]);
+const PREVENT_BATTLE_DESTROY_EFFECT_IDS = new Set([
+  '101150208_prevent_battle_destroy',
+]);
 const PREVENT_NEXT_DESTROY_HIGH_VALUE_THRESHOLD = 65;
 
 function isPreventNextDestroyEffect(effect: CardEffect | undefined) {
@@ -767,6 +770,26 @@ function isPreventNextDestroyQuery(query: EffectQuery) {
   const effectId = String(query.context?.effectId || '');
   return PREVENT_NEXT_DESTROY_EFFECT_IDS.has(effectId) ||
     /PREVENT[_-]*(?:NEXT[_-]*)?DESTROY/i.test(queryText(query));
+}
+
+function isPreventBattleDestroyEffect(effect: CardEffect | undefined) {
+  if (!effect) return false;
+  const id = effect.id || '';
+  const text = `${id} ${effect.content || ''} ${effect.description || ''}`;
+  return PREVENT_BATTLE_DESTROY_EFFECT_IDS.has(id) ||
+    /PREVENT[_-]*BATTLE[_-]*DESTROY|BATTLE[_-]*DESTROY.*PREVENT/i.test(text);
+}
+
+function isPreventBattleDestroyTargetQuery(query: EffectQuery) {
+  const effectId = String(query.context?.effectId || '');
+  const step = String(query.context?.step || '');
+  return (PREVENT_BATTLE_DESTROY_EFFECT_IDS.has(effectId) ||
+    /PREVENT[_-]*BATTLE[_-]*DESTROY|BATTLE[_-]*DESTROY.*PREVENT/i.test(queryText(query))) &&
+    (!step || /TARGET/i.test(step));
+}
+
+function isPreventDestroyTargetQuery(query: EffectQuery) {
+  return isPreventNextDestroyQuery(query) || isPreventBattleDestroyTargetQuery(query);
 }
 
 function getStackItemEffect(item: GameState['counterStack'][number]) {
@@ -920,6 +943,26 @@ function getPreventNextDestroyThreatContext(gameState: GameState, player: Player
     bestValue: sorted[0]?.value || 0,
     reason: sorted[0]?.reason,
   };
+}
+
+function getPreventBattleDestroyThreatContext(gameState: GameState, player: PlayerState, profile: DeckAiProfile) {
+  const threatened = new Map<string, { unit: Card; value: number; reason: string }>();
+  for (const unit of collectBattleDestroyedOwnUnits(gameState, player)) {
+    pushThreatenedUnit(threatened, gameState, player, profile, unit, 'battle-destroy');
+  }
+  const sorted = [...threatened.values()].sort((a, b) => b.value - a.value);
+  return {
+    units: sorted,
+    best: sorted[0]?.unit,
+    bestValue: sorted[0]?.value || 0,
+    reason: sorted[0]?.reason,
+  };
+}
+
+function getPreventDestroyQueryThreatContext(gameState: GameState, player: PlayerState, profile: DeckAiProfile, query: EffectQuery) {
+  return isPreventBattleDestroyTargetQuery(query)
+    ? getPreventBattleDestroyThreatContext(gameState, player, profile)
+    : getPreventNextDestroyThreatContext(gameState, player, profile);
 }
 
 function scoreStoryPlayDiscipline(gameState: GameState, player: PlayerState, card: Card, profile: DeckAiProfile) {
@@ -1933,6 +1976,17 @@ export function scoreActivatableEffect(
     }
   }
 
+  if (isPreventBattleDestroyEffect(effect)) {
+    const threat = getPreventBattleDestroyThreatContext(gameState, player, profile);
+    if (threat.best) {
+      score += 28 + Math.min(22, threat.bestValue * 0.35);
+      notes.push(`prevent battle destroy saves high-value unit-${threat.reason || 'threat'}`);
+    } else {
+      score -= gameState.phase === 'MAIN' ? 35 : 90;
+      notes.push('prevent battle destroy held until a high-value unit is losing combat');
+    }
+  }
+
   if (timingTags.has('counter') && !validCounterWindow) {
     score -= 22;
     notes.push('counter held for chain/battle window');
@@ -2349,10 +2403,10 @@ function scoreQueryCardOption(
     ? scoreStrategicBoardPresenceValue(gameState, playerUid, card, profile)
     : 0;
 
-  if (isPreventNextDestroyQuery(query)) {
+  if (isPreventDestroyTargetQuery(query)) {
     if (!isMine) return -160;
     const player = gameState.players[playerUid];
-    const threat = player ? getPreventNextDestroyThreatContext(gameState, player, profile) : undefined;
+    const threat = player ? getPreventDestroyQueryThreatContext(gameState, player, profile, query) : undefined;
     const threatened = threat?.units.find(entry => entry.unit.gamecardId === card.gamecardId);
     return threatened
       ? 140 + threatened.value
@@ -2559,7 +2613,7 @@ export function chooseQuerySelections(
     .sort((a, b) => b.score - a.score);
 
   if (
-    !isPreventNextDestroyQuery(query) &&
+    !isPreventDestroyTargetQuery(query) &&
     isLikelyOwnBoardLossQuery(query, intent) &&
     scored.length > 0 &&
     scored.every(entry => !entry.option.card || optionIsMine(gameState, playerUid, entry.option))
@@ -2568,7 +2622,8 @@ export function chooseQuerySelections(
       .filter(entry => entry.option.card);
     const onlyProtectedChoices = selected.length > 0 && selected.every(entry => {
       const card = entry.option.card as Card;
-      return card.godMark || scoreStrategicBoardPresenceValue(gameState, playerUid, card, profile) >= 58;
+      const isFieldCard = card.cardlocation === 'UNIT' || card.cardlocation === 'ITEM';
+      return isFieldCard && (card.godMark || scoreStrategicBoardPresenceValue(gameState, playerUid, card, profile) >= 58);
     });
     if (onlyProtectedChoices) return [];
   }
