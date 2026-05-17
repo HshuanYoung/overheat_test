@@ -19,6 +19,7 @@ import {
   canUnitAttack,
   countErosion,
   estimateIncomingThreat,
+  isClosingTurnPlan,
   scoreCardValue,
   scoreActivatableEffect,
   applyOpeningHandSoftCompensation,
@@ -6345,6 +6346,19 @@ export const ServerGameService = {
     };
   },
 
+  markBotClosingAttackCommitment(gameState: GameState, playerUid: string, turnPlan?: ReturnType<typeof buildTurnPlan>) {
+    const player = gameState.players[playerUid] as any;
+    if (!player || ServerGameService.getBotDifficulty(gameState, playerUid) !== 'hard') return;
+    if (isClosingTurnPlan(turnPlan)) {
+      player.botClosingAttackTurn = gameState.turnCount;
+    }
+  },
+
+  hasBotClosingAttackCommitment(gameState: GameState, playerUid: string) {
+    const player = gameState.players[playerUid] as any;
+    return !!player && player.botClosingAttackTurn === gameState.turnCount;
+  },
+
   getBotEffectAttemptKey(gameState: GameState, card: Card, effectIndex: number) {
     return `${gameState.turnCount}:${gameState.phase}:${card.gamecardId}:${effectIndex}`;
   },
@@ -6835,6 +6849,11 @@ export const ServerGameService = {
     const totalErosion = player.erosionFront.filter(c => c !== null).length + player.erosionBack.filter(c => c !== null).length;
     const canUseWindProduction = (player as any).windProductionTurn === gameState.turnCount;
     const incomingThreat = estimateIncomingThreat(gameState, player, profile);
+    const opponentUid = gameState.playerIds.find(uid => uid !== playerUid);
+    const opponent = opponentUid ? gameState.players[opponentUid] : undefined;
+    const opponentErosion = opponent ? countErosion(opponent) : 0;
+    const ownAttackers = player.unitZone.filter(unit => canUnitAttack(gameState, unit)) as Card[];
+    const totalAttackDamage = ownAttackers.reduce((sum, unit) => sum + Math.max(0, unit.damage || 0), 0);
     const opponentPotentialDamage = incomingThreat.totalDamage;
     const ownErosion = countErosion(player);
     const lowDeck = profile.riskThresholds?.lowDeck ?? 10;
@@ -6852,6 +6871,17 @@ export const ServerGameService = {
       profile.gamePlan?.primaryGoal === 'resourceLoop' ||
       profile.gamePlan?.primaryGoal === 'comboSetup'
     );
+    const closingAttackPressure = difficulty === 'hard' &&
+      player.isTurn &&
+      gameState.phase === 'MAIN' &&
+      ownAttackers.length > 0 &&
+      !!opponent &&
+      (
+        totalAttackDamage > opponent.deck.length ||
+        totalAttackDamage >= Math.max(1, 10 - opponentErosion) ||
+        opponentErosion >= 7 ||
+        opponent.deck.length <= lowDeck
+      );
     const canDefendSoon = (unit: Card | null | undefined) => !!unit &&
       !unit.isExhausted &&
       !(unit as any).battleForbiddenByEffect &&
@@ -6886,6 +6916,8 @@ export const ServerGameService = {
         let selectedMin = 0;
         let selectedMax = 0;
         let selectedReadyDefenders = 0;
+        let selectedAttackDamage = 0;
+        let selectedAttackers = 0;
 
         for (let i = 0; i < candidateCount; i++) {
           if ((mask & (1 << i)) === 0) continue;
@@ -6902,6 +6934,7 @@ export const ServerGameService = {
             );
             const newlyPlayed = unit.playedTurn === gameState.turnCount;
             const highValueUnit = explicitPreserve || cardValue >= 34;
+            const readyAttacker = canUnitAttack(gameState, unit);
             selectedUnitValue += defensePressure
               ? baseUnitValue * 1.4 +
                 (unit.damage || 0) * 8 +
@@ -6913,6 +6946,13 @@ export const ServerGameService = {
                 (preserveBoardForPlan ? (unit.damage || 0) * 6 : 0)
               : baseUnitValue;
             if (canDefendSoon(unit)) selectedReadyDefenders += 1;
+            if (readyAttacker) {
+              selectedAttackers += 1;
+              selectedAttackDamage += Math.max(0, unit.damage || 0);
+              if (closingAttackPressure) {
+                selectedUnitValue += 24 + (unit.damage || 0) * 14 + (unit.power || 0) / 600;
+              }
+            }
           }
           selectedMin += candidates[i].accessMin;
           selectedMax += candidates[i].accessMax;
@@ -6926,6 +6966,15 @@ export const ServerGameService = {
           if (incomingThreat.lethalThroughOneBlock && readyDefendersAfter < 2) selectedUnitValue += 28;
           if (opponentPotentialDamage >= Math.max(4, 10 - ownErosion) && readyDefendersAfter === 0) selectedUnitValue += 36;
           if (exhaustUnitIds.length >= 2) selectedUnitValue += (exhaustUnitIds.length - 1) * 12;
+        }
+        if (closingAttackPressure && selectedAttackers > 0 && opponent) {
+          const remainingAttackDamage = Math.max(0, totalAttackDamage - selectedAttackDamage);
+          const damageNeeded = Math.max(1, 10 - opponentErosion);
+          if (totalAttackDamage > opponent.deck.length && remainingAttackDamage <= opponent.deck.length) {
+            selectedUnitValue += 70;
+          } else if (totalAttackDamage >= damageNeeded && remainingAttackDamage < damageNeeded) {
+            selectedUnitValue += 50;
+          }
         }
         const remainingAfterUnits = Math.max(0, remainingCost - selectedMax);
         if (remainingAfterUnits > player.deck.length) continue;
@@ -7017,6 +7066,20 @@ export const ServerGameService = {
         const canPay = ServerGameService.canBotPayQueryCost(gameState, playerUid, query);
         const payment = canPay ? ServerGameService.buildBotPaymentSelectionForPlayer(gameState, playerUid, query) : {};
         selections = canPay ? [JSON.stringify(payment)] : [];
+        const paymentPlayerUid = query.context?.activationPlayerUid || playerUid;
+        const paymentPlayer = gameState.players[paymentPlayerUid];
+        const paymentTargetId = query.context?.targetCardId || query.context?.targetId || query.context?.sourceCardId;
+        const paymentTarget = paymentTargetId ? ServerGameService.findCardById(gameState, paymentTargetId) : undefined;
+        const resolvedPaymentCost = paymentTarget && query.context?.useEffectiveCardCost !== false && paymentPlayer
+          ? ServerGameService.getEffectivePlayCost(paymentPlayer, paymentTarget, gameState)
+          : Number(query.paymentCost || 0);
+        const paymentRisk = canPay && resolvedPaymentCost > 0
+          ? ServerGameService.scoreBotPaymentSelectionRisk(gameState, paymentPlayerUid, payment, {
+            paymentCost: resolvedPaymentCost,
+            paymentColor: paymentTarget?.color || query.paymentColor,
+            sourceCard: paymentTarget,
+          })
+          : { penalty: 0, notes: [] as string[], exhaustedUnits: [] as Card[], estimatedDeckPayment: 0, readyDefendersAfter: undefined };
         if (canPay) ServerGameService.recordAiDecision(gameState, playerUid, {
           action: 'PAYMENT',
           subject: query.title || '支付费用',
@@ -7025,8 +7088,12 @@ export const ServerGameService = {
             : '简单 AI 使用可用的默认费用支付组合。',
           details: {
             callback: query.callbackKey,
-            paymentCost: Number(query.paymentCost || 0),
+            paymentCost: resolvedPaymentCost,
             selection: ServerGameService.describeAiPaymentSelection(gameState, payment),
+            paymentExhaustsUnits: paymentRisk.exhaustedUnits?.length || 0,
+            estimatedDeckPayment: paymentRisk.estimatedDeckPayment || 0,
+            readyDefendersAfterPayment: paymentRisk.readyDefendersAfter,
+            paymentRisk: paymentRisk.penalty ? Number(paymentRisk.penalty.toFixed(1)) : 0,
           },
         });
       } else if (query.callbackKey === 'TRIGGER_CHOICE') {
@@ -7417,11 +7484,51 @@ export const ServerGameService = {
         return;
       }
 
+      if (difficulty === 'hard' && ServerGameService.hasBotClosingAttackCommitment(gameState, playerUid)) {
+        const attackCandidates = bot.unitZone.filter(unit => canUnitAttack(gameState, unit)) as Card[];
+        if (attackCandidates.length > 0) {
+          ServerGameService.recordAiDecision(gameState, playerUid, {
+            action: 'ENTER_BATTLE',
+            subject: `${attackCandidates.length} attackers`,
+            reason: 'Continue the committed closing attack line before considering any further development.',
+            details: {
+              attackers: attackCandidates.length,
+              closingAttackCommitted: true,
+              opponentErosion: turnPlan?.opponentErosion,
+              totalAvailableDamage: attackCandidates.reduce((sum, unit) => sum + Math.max(0, unit.damage || 0), 0),
+              damageToCritical: turnPlan?.damageToCritical,
+              ownDeck: bot.deck.length,
+            },
+            candidates: attackCandidates.slice(0, 3).map(card => ({
+              name: ServerGameService.getAiCardName(card),
+              score: scoreAttackCandidate(gameState, bot, card, profile),
+            })),
+          });
+          await ServerGameService.advancePhase(gameState, 'DECLARE_BATTLE', playerUid);
+          return;
+        }
+
+        ServerGameService.recordAiDecision(gameState, playerUid, {
+          action: 'END_TURN',
+          subject: 'closing attack complete',
+          reason: 'The AI already committed to a lethal or critical attack line this turn, so it stops instead of spending cards after the attacks are gone.',
+          details: {
+            closingAttackCommitted: true,
+            playableCards: bot.hand.length,
+            turn: gameState.turnCount,
+          },
+        });
+        delete (bot as any).lastBotPlayFailure;
+        await ServerGameService.advancePhase(gameState, 'DECLARE_END', playerUid);
+        return;
+      }
+
       if (difficulty === 'hard' && turnPlan && gameState.turnCount > 1 && (bot as any).botReservedAttackTurn !== gameState.turnCount) {
         const attackCandidates = bot.unitZone.filter(unit => canUnitAttack(gameState, unit)) as Card[];
         const shouldAttackBeforeDeveloping = turnPlan.attackBeforeDeveloping;
 
         if (shouldAttackBeforeDeveloping) {
+          ServerGameService.markBotClosingAttackCommitment(gameState, playerUid, turnPlan);
           ServerGameService.recordAiDecision(gameState, playerUid, {
             action: 'ENTER_BATTLE',
             subject: `${attackCandidates.length} attackers`,
@@ -7801,6 +7908,7 @@ export const ServerGameService = {
         ? getComboAllianceAttack(gameState, bot, profile, attackCandidates)
         : undefined;
       if (comboAllianceAttack) {
+        ServerGameService.markBotClosingAttackCommitment(gameState, playerUid, turnPlan);
         comboAllianceAttack.attackers.forEach(card => reservedDefenderIds.delete(card.gamecardId));
         ServerGameService.recordAiDecision(gameState, playerUid, {
           action: 'COMBO_ALLIANCE_ATTACK',
@@ -7845,6 +7953,7 @@ export const ServerGameService = {
         return isRush || !wasPlayedThisTurn;
       });
       if (attacker) {
+        ServerGameService.markBotClosingAttackCommitment(gameState, playerUid, turnPlan);
         const chosen = scoredAvailableAttackers.find(candidate => candidate.card.gamecardId === attacker.gamecardId) ||
           scoredAttackers.find(candidate => candidate.card.gamecardId === attacker.gamecardId);
         ServerGameService.recordAiDecision(gameState, playerUid, {

@@ -3,6 +3,7 @@ import {
   chooseDefender,
   choosePlayableCard,
   chooseQuerySelections,
+  isClosingTurnPlan,
   scoreActivatableEffect,
   scorePlayableCard,
   scorePaymentSacrificeValue,
@@ -1502,6 +1503,135 @@ function testRedDikaiCommitsNearKillPressure(): ScenarioResult {
   );
 }
 
+function testClosingPlanHelperRecognizesErosionLethal(): ScenarioResult {
+  const profile = getDeckAiProfile('white-temple');
+  const attackerA = unit({ id: 'CLOSING_A', damage: 3, power: 3500, playedTurn: 1 });
+  const attackerB = unit({ id: 'CLOSING_B', damage: 2, power: 2500, playedTurn: 1 });
+  const state = game(
+    { unitZone: [attackerA, attackerB, null, null, null, null] },
+    { erosionBack: erosionCards(6, 'P1_CLOSING') }
+  );
+  const plan = buildTurnPlan(state, state.players.BOT, profile);
+  return assertScenario(
+    'closing helper recognizes erosion lethal attack line',
+    isClosingTurnPlan(plan),
+    `mode=${plan.mode}, tactical=${plan.tacticalLine}, damage=${plan.totalAvailableDamage}/${plan.damageToCritical}`
+  );
+}
+
+function testComboAllianceDoesNotOverrideDirectLethal(): ScenarioResult {
+  const profile = getDeckAiProfile('white-temple');
+  const smile = unit({
+    id: KNOWN_COMBO_CARD_IDS.smileKoriel,
+    uniqueId: `${KNOWN_COMBO_CARD_IDS.smileKoriel}:N`,
+    fullName: 'Smile Koriel',
+    damage: 1,
+    color: 'WHITE',
+    playedTurn: 1,
+    godMark: true,
+  });
+  const tiger = unit({ id: '101000501', fullName: 'White Tiger', damage: 3, power: 3500, color: 'WHITE', playedTurn: 1 });
+  const spear = unit({ id: '101130440', fullName: 'Temple Spear', damage: 2, power: 2500, color: 'WHITE', playedTurn: 1 });
+  const guard = unit({ id: '101130233', fullName: 'Temple Guard', damage: 2, power: 1500, color: 'WHITE', playedTurn: 1 });
+  const eclipse = story({
+    id: KNOWN_COMBO_CARD_IDS.eclipse,
+    uniqueId: `${KNOWN_COMBO_CARD_IDS.eclipse}:N`,
+    fullName: 'Eclipse',
+    effects: [{ id: KNOWN_COMBO_CARD_IDS.eclipseEffect, type: 'ACTIVATE', description: 'combo board wipe' }],
+  });
+  const state = game(
+    {
+      hand: [eclipse],
+      unitZone: [smile, tiger, spear, guard, null, null],
+      erosionBack: erosionCards(3, 'BOT_DIRECT_LETHAL'),
+    },
+    {
+      deck: deckCards(7, 'P1_DIRECT_LETHAL'),
+      unitZone: [null, null, null, null, null, null],
+    },
+    { phase: 'BATTLE_DECLARATION' }
+  );
+  const plan = getComboAllianceAttack(state, state.players.BOT, profile, [smile, tiger, spear, guard] as any);
+  return assertScenario(
+    'combo alliance yields to direct no-blocker lethal',
+    !plan,
+    plan ? `combo=${plan.attackers.map(card => card.id).join(',')}` : 'direct lethal preferred'
+  );
+}
+
+function testWhiteTigerBattleExileNeedsCurrentBattleThreat(): ScenarioResult {
+  const profile = getDeckAiProfile('white-temple');
+  const tigerEffect = effect({
+    id: '101000501_battle_exile_return',
+    description: 'battle phase discard a white unit: exile this unit, return it after battle',
+    cost: { type: 'DISCARD', amount: 1 },
+  });
+  const tiger = unit({
+    id: '101000501',
+    fullName: 'White Tiger',
+    damage: 3,
+    power: 3500,
+    color: 'WHITE',
+    godMark: true,
+    effects: [tigerEffect],
+    playedTurn: 1,
+  });
+  const discardUnit = unit({ id: 'WHITE_DISCARD_UNIT', color: 'WHITE', cardlocation: 'HAND' });
+  const defender = unit({ id: 'RED_BIG_DEFENDER', color: 'RED', power: 5000, damage: 2 });
+  const noThreatState = game(
+    { hand: [discardUnit], unitZone: [tiger, null, null, null, null, null] },
+    { deck: deckCards(20, 'P1_TIGER_SAFE') },
+    { phase: 'BATTLE_FREE', battleState: { attackers: [tiger.gamecardId] } }
+  );
+  const threatenedTiger = { ...tiger, gamecardId: `${tiger.gamecardId}_threat` } as any;
+  const threatState = game(
+    { hand: [discardUnit], unitZone: [threatenedTiger, null, null, null, null, null] },
+    { unitZone: [defender, null, null, null, null, null] },
+    { phase: 'BATTLE_FREE', battleState: { attackers: [threatenedTiger.gamecardId], defender: defender.gamecardId } }
+  );
+  const noThreatScore = scoreActivatableEffect(noThreatState, noThreatState.players.BOT, tiger as any, tigerEffect as any, profile, {}).score;
+  const threatScore = scoreActivatableEffect(threatState, threatState.players.BOT, threatenedTiger as any, tigerEffect as any, profile, {}).score;
+  return assertScenario(
+    'white tiger battle exile waits for a real battle threat',
+    noThreatScore < 18 && threatScore > noThreatScore + 45,
+    `safe=${noThreatScore.toFixed(1)}, threatened=${threatScore.toFixed(1)}`
+  );
+}
+
+function testPaymentPreservesClosingAttacker(): ScenarioResult {
+  const profile = getDeckAiProfile('red-dikai');
+  const attacker = unit({ id: 'RED_CLOSING_ATTACKER', color: 'RED', damage: 2, power: 2500, playedTurn: 1 });
+  const sourceCard = story({ id: 'RED_COST_ONE_STORY', color: 'RED', acValue: 1, baseAcValue: 1 });
+  const state = game(
+    {
+      hand: [sourceCard],
+      unitZone: [attacker, null, null, null, null, null],
+      deck: deckCards(20, 'BOT_CLOSING_PAYMENT'),
+      botDifficulty: 'hard',
+      botDeckProfileId: profile.id,
+    },
+    { erosionBack: erosionCards(8, 'P1_CLOSING_PAYMENT') },
+    {
+      botDifficulty: 'hard',
+      botDeckProfiles: { BOT: profile.id },
+    }
+  );
+  const payment = ServerGameService.buildBotPaymentSelectionForPlayer(state, 'BOT', {
+    paymentCost: 1,
+    paymentColor: 'RED',
+    context: {
+      cardId: sourceCard.gamecardId,
+      sourceCardId: sourceCard.gamecardId,
+      paymentTargetId: sourceCard.gamecardId,
+    },
+  }) as any;
+  return assertScenario(
+    'payment preserves ready attacker in closing window',
+    !(payment.exhaustUnitIds || []).includes(attacker.gamecardId),
+    `payment=${JSON.stringify(payment)}`
+  );
+}
+
 function testYellowAlchemyConvertsEnginePressure(): ScenarioResult {
   const profile = getDeckAiProfile('yellow-alchemy');
   const alchemistA = unit({ id: 'YELLOW_ROUTE_A', color: 'YELLOW', damage: 1, power: 1500, playedTurn: 1 });
@@ -1708,6 +1838,10 @@ const scenarios: ScenarioRun[] = [
   testWhiteTempleConvertsHallPressure,
   testBlueAdventurerConvertsTempoPressure,
   testRedDikaiCommitsNearKillPressure,
+  testClosingPlanHelperRecognizesErosionLethal,
+  testComboAllianceDoesNotOverrideDirectLethal,
+  testWhiteTigerBattleExileNeedsCurrentBattleThreat,
+  testPaymentPreservesClosingAttacker,
   testYellowAlchemyConvertsEnginePressure,
   testOverlordTotemConvertsRecursiveBoard,
   testYellowTurretTargetsOpponentUnit,

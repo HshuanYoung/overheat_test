@@ -77,6 +77,15 @@ export interface HardAiTurnPlan {
   notes: string[];
 }
 
+export function isClosingTurnPlan(plan: Pick<HardAiTurnPlan, 'mode' | 'lethalWindow' | 'tacticalLine' | 'totalAvailableDamage' | 'damageToCritical'> | undefined) {
+  if (!plan) return false;
+  return plan.lethalWindow ||
+    plan.mode === 'lethal' ||
+    plan.tacticalLine === 'lethal' ||
+    plan.tacticalLine === 'erosion-lethal' ||
+    plan.totalAvailableDamage >= Math.max(1, plan.damageToCritical);
+}
+
 function isDamageFatal(damage: number, deckCount: number, erosionCount: number) {
   if (damage <= 0) return false;
   return damage >= deckCount || damage >= Math.max(1, 10 - erosionCount);
@@ -752,6 +761,7 @@ const PREVENT_NEXT_DESTROY_EFFECT_IDS = new Set([
 const PREVENT_BATTLE_DESTROY_EFFECT_IDS = new Set([
   '101150208_prevent_battle_destroy',
 ]);
+const WHITE_TIGER_BATTLE_EXILE_RETURN_EFFECT_ID = '101000501_battle_exile_return';
 const PREVENT_NEXT_DESTROY_HIGH_VALUE_THRESHOLD = 65;
 
 function isPreventNextDestroyEffect(effect: CardEffect | undefined) {
@@ -1984,6 +1994,41 @@ export function scoreActivatableEffect(
     } else {
       score -= gameState.phase === 'MAIN' ? 35 : 90;
       notes.push('prevent battle destroy held until a high-value unit is losing combat');
+    }
+  }
+
+  if (effect.id === WHITE_TIGER_BATTLE_EXILE_RETURN_EFFECT_ID) {
+    const battle = gameState.battleState;
+    const isCurrentAttacker = !!battle?.attackers?.includes(card.gamecardId);
+    const isCurrentDefender = battle?.defender === card.gamecardId;
+    const isCurrentBattleUnit = isCurrentAttacker || isCurrentDefender;
+    const threatenedInBattle = collectBattleDestroyedOwnUnits(gameState, player)
+      .some(unit => unit.gamecardId === card.gamecardId);
+    const currentBattleDamage = battle?.attackers?.reduce((sum, attackerId) => {
+      const attackerUid = gameState.playerIds[gameState.currentTurnPlayer];
+      const attacker = gameState.players[attackerUid]?.unitZone.find(unit => unit?.gamecardId === attackerId);
+      return sum + Math.max(0, attacker?.damage || 0);
+    }, 0) || 0;
+    const currentBattleCloses =
+      !!opponent &&
+      isCurrentAttacker &&
+      !battle?.defender &&
+      (
+        currentBattleDamage > opponent.deck.length ||
+        opponentErosion + currentBattleDamage >= 10
+      );
+
+    if (!isCurrentBattleUnit) {
+      score -= 42;
+      notes.push('battle exile return waits for this unit to be in the current battle');
+    } else if (threatenedInBattle) {
+      score += 34 + Math.min(18, scoreStrategicBoardPresenceValue(gameState, player.uid, card, profile) * 0.2);
+      notes.push('battle exile return saves this unit from battle destruction');
+    } else {
+      score -= currentBattleCloses ? 62 : 38;
+      notes.push(currentBattleCloses
+        ? 'battle exile return would remove closing battle damage'
+        : 'battle exile return held when the current battle is already favorable');
     }
   }
 
